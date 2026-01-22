@@ -1,0 +1,27 @@
+{
+  "name": "frontend-v2",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.26",
+    "@types/react-dom": "^18.3.7",
+    "typescript": "~5.9.3",
+    "vite": "^7.1.7"
+  },
+  "dependencies": {
+    "@blueprintjs/core": "^6.3.2",
+    "@blueprintjs/icons": "^6.2.0",
+    "@tanstack/react-query": "^5.90.5",
+    "axios": "^1.12.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.9.4",
+    "zustand": "^5.0.8"
+  }
+}

@@ -1,0 +1,37 @@
+.settings-page {
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.settings-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.settings-card {
+  padding: 24px;
+  background-color: var(--card-bg);
+}
+
+.settings-card h5 {
+  margin: 0 0 20px 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.settings-card .bp6-form-group {
+  margin-bottom: 20px;
+}
+
+.settings-card .bp6-form-group:last-child {
+  margin-bottom: 0;
+}
+
+.settings-card .bp6-switch {
+  margin-bottom: 12px;
+}
+
+.settings-card .bp6-switch:last-child {
+  margin-bottom: 0;
+}

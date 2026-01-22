@@ -1,0 +1,414 @@
+.devices-page {
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+/* Page Header - Refined and minimal */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 32px;
+}
+
+.page-header h3 {
+  margin-bottom: 6px;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: hsl(var(--foreground));
+}
+
+.page-description {
+  color: hsl(var(--muted));
+  font-size: 14px;
+  margin: 0;
+  font-weight: 500;
+}
+
+/* Controls Section - High contrast card */
+.devices-controls {
+  background-color: var(--card-bg);
+  padding: 24px;
+  margin-bottom: 24px;
+  border: 1px solid var(--border-color);
+}
+
+.controls-row {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+}
+
+.search-section {
+  flex: 1;
+  min-width: 300px;
+}
+
+.filter-section {
+  flex-shrink: 0;
+}
+
+.filter-section .bp6-button-group .bp6-button {
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.01em;
+}
+
+.filter-section .bp6-button-group .bp6-button.bp6-active {
+  background-color: hsl(var(--accent));
+  color: white;
+}
+
+/* Table - Premium styling */
+.devices-card {
+  background-color: var(--card-bg);
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+}
+
+.devices-table {
+  width: 100%;
+  margin: 0;
+  border-collapse: collapse;
+}
+
+.devices-table thead th {
+  background-color: var(--sidebar-accent);
+  padding: 14px 20px;
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  text-align: left;
+  white-space: nowrap;
+  color: hsl(var(--muted));
+  border-bottom: 2px solid var(--border-color);
+}
+
+.devices-table tbody td {
+  padding: 16px 20px;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 14px;
+}
+
+.devices-table tbody tr {
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+}
+
+.devices-table tbody tr:hover {
+  background-color: var(--sidebar-accent-hover);
+}
+
+.devices-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.devices-table tbody td strong {
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+/* Status Cell - Refined icons */
+.status-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.status-cell .bp6-icon {
+  transition: transform 0.2s ease;
+}
+
+.devices-table tbody tr:hover .status-cell .bp6-icon {
+  transform: scale(1.1);
+}
+
+/* Firmware Badge - Monospace and tech */
+.firmware-badge {
+  background-color: hsl(var(--accent) / 0.1);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 1px solid hsl(var(--accent) / 0.3);
+  color: hsl(var(--accent));
+}
+
+/* Actions Column */
+.actions-column {
+  width: 140px;
+  text-align: right;
+}
+
+.actions-column .bp6-button-group .bp6-button {
+  transition: all 0.15s ease;
+}
+
+.actions-column .bp6-button-group .bp6-button:hover {
+  transform: translateY(-1px);
+}
+
+/* Empty State - Elegant and centered */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 100px 20px;
+  text-align: center;
+}
+
+.empty-state .bp6-icon {
+  color: hsl(var(--muted));
+  opacity: 0.3;
+  margin-bottom: 24px;
+}
+
+.empty-state h4 {
+  margin: 0 0 12px 0;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+.empty-state p {
+  margin: 0;
+  color: hsl(var(--muted));
+  font-size: 14px;
+}
+
+/* Drawer - Premium panel */
+.drawer-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.drawer-header {
+  padding: 24px;
+}
+
+.device-status-banner {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 20px;
+  background: linear-gradient(135deg, var(--sidebar-accent) 0%, var(--card-bg) 100%);
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+}
+
+.device-status-banner .bp6-icon {
+  flex-shrink: 0;
+}
+
+.device-status-banner h4 {
+  font-weight: 600;
+  font-size: 18px;
+  letter-spacing: -0.01em;
+}
+
+.device-status-banner p {
+  font-size: 13px;
+  font-weight: 500;
+  color: hsl(var(--muted));
+}
+
+/* Drawer Body */
+.drawer-body {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.drawer-body .bp6-form-group {
+  margin-bottom: 20px;
+}
+
+.drawer-body .bp6-callout {
+  margin-bottom: 24px;
+  border-radius: 8px;
+}
+
+/* Quick Actions - Button grid */
+.quick-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.quick-actions .bp6-button {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  padding: 12px;
+  justify-content: flex-start;
+  transition: all 0.15s ease;
+}
+
+.quick-actions .bp6-button:hover {
+  transform: translateX(2px);
+  background-color: hsl(var(--accent) / 0.15);
+  border-color: hsl(var(--accent) / 0.3);
+}
+
+/* Drawer Footer */
+.drawer-footer {
+  padding: 24px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  background-color: var(--sidebar-accent);
+}
+
+.drawer-footer .bp6-button {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* Status Icon Colors - High contrast - Blueprint handles intent colors natively */
+.bp6-icon.bp6-intent-success,
+.bp6-icon[class*="intent-success"] {
+  color: hsl(var(--success));
+}
+
+.bp6-icon.bp6-intent-danger,
+.bp6-icon[class*="intent-danger"] {
+  color: hsl(var(--danger));
+}
+
+.bp6-icon.bp6-intent-warning,
+.bp6-icon[class*="intent-warning"] {
+  color: hsl(var(--warning));
+}
+
+/* Animations */
+@keyframes slideInFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.devices-controls {
+  animation: fadeIn 0.3s ease;
+}
+
+.devices-card {
+  animation: fadeIn 0.4s ease;
+}
+
+.drawer-content {
+  animation: slideInFromRight 0.3s ease;
+}
+
+/* Responsive Design */
+@media (max-width: 1200px) {
+  .controls-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .search-section {
+    min-width: 100%;
+  }
+
+  .filter-section {
+    width: 100%;
+  }
+
+  .filter-section .bp6-button-group {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .quick-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .page-header {
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .page-header h3 {
+    font-size: 24px;
+  }
+
+  .page-header button {
+    width: 100%;
+  }
+
+  /* Make table scrollable on mobile */
+  .devices-card {
+    overflow-x: auto;
+  }
+
+  .devices-table {
+    min-width: 900px;
+  }
+
+  .devices-table thead th,
+  .devices-table tbody td {
+    padding: 12px 16px;
+    font-size: 13px;
+  }
+
+  .filter-section .bp6-button-group {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .drawer-header,
+  .drawer-body,
+  .drawer-footer {
+    padding: 20px;
+  }
+}
+
+/* Hover effects for better interactivity */
+.bp6-button:not(.bp6-disabled):hover {
+  transform: translateY(-1px);
+}
+
+.bp6-button:not(.bp6-disabled):active {
+  transform: translateY(0);
+}
+
+/* Focus states */
+.bp6-input:focus,
+.bp6-button:focus {
+  outline: 2px solid hsl(var(--accent));
+  outline-offset: 2px;
+}
+
+/* Tag styling */
+.bp6-tag.bp6-minimal {
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  padding: 4px 10px;
+  border-radius: 6px;
+}
