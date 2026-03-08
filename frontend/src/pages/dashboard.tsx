@@ -8,6 +8,7 @@ import {
   Cell,
   ResponsiveContainer,
 } from 'recharts';
+import { useDashboardStats } from '../hooks/use-dashboard';
 import './dashboard.css';
 
 const sparklineData = [
@@ -27,18 +28,10 @@ interface StatCard {
   sparkIndex: number;
 }
 
-const stats: StatCard[] = [
-  { label: 'Total Devices', value: '1,234', delta: '+18 this week', deltaUp: true, icon: 'mobile-video', color: '#2965CC', sparkIndex: 0 },
-  { label: 'Active Devices', value: '987', delta: '+12 today', deltaUp: true, icon: 'tick-circle', color: '#0F9960', sparkIndex: 1 },
-  { label: 'Offline Devices', value: '247', delta: '-5 from yesterday', deltaUp: false, icon: 'warning-sign', color: '#D99E0B', sparkIndex: 2 },
-  { label: 'Total Messages', value: '45.2K', delta: '+2.1K today', deltaUp: true, icon: 'envelope', color: '#8F398F', sparkIndex: 3 },
-];
-
-const donutData = [
-  { name: 'Online', value: 987, color: 'hsl(152, 69%, 45%)' },
-  { name: 'Offline', value: 247, color: 'hsl(0, 84%, 60%)' },
-  { name: 'Warning', value: 23, color: 'hsl(38, 92%, 55%)' },
-];
+function formatCount(n: number): string {
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
+  return n.toString();
+}
 
 interface ActivityEvent {
   id: string;
@@ -67,6 +60,32 @@ const healthMetrics = [
 ];
 
 export const Dashboard = () => {
+  const { data: dashboardStats } = useDashboardStats();
+
+  const stats: StatCard[] = dashboardStats
+    ? [
+        { label: 'Total Devices', value: formatCount(dashboardStats.total_devices), delta: '', deltaUp: true, icon: 'mobile-video', color: '#2965CC', sparkIndex: 0 },
+        { label: 'Active Devices', value: formatCount(dashboardStats.active_devices), delta: '', deltaUp: true, icon: 'tick-circle', color: '#0F9960', sparkIndex: 1 },
+        { label: 'Offline Devices', value: formatCount(dashboardStats.offline_devices), delta: '', deltaUp: false, icon: 'warning-sign', color: '#D99E0B', sparkIndex: 2 },
+        { label: 'Total Messages', value: formatCount(dashboardStats.total_messages), delta: '', deltaUp: true, icon: 'envelope', color: '#8F398F', sparkIndex: 3 },
+      ]
+    : [
+        { label: 'Total Devices', value: '\u2014', delta: '', deltaUp: true, icon: 'mobile-video', color: '#2965CC', sparkIndex: 0 },
+        { label: 'Active Devices', value: '\u2014', delta: '', deltaUp: true, icon: 'tick-circle', color: '#0F9960', sparkIndex: 1 },
+        { label: 'Offline Devices', value: '\u2014', delta: '', deltaUp: false, icon: 'warning-sign', color: '#D99E0B', sparkIndex: 2 },
+        { label: 'Total Messages', value: '\u2014', delta: '', deltaUp: true, icon: 'envelope', color: '#8F398F', sparkIndex: 3 },
+      ];
+
+  const donutData = dashboardStats
+    ? [
+        { name: 'Online', value: dashboardStats.active_devices, color: 'hsl(152, 69%, 45%)' },
+        { name: 'Offline', value: dashboardStats.offline_devices, color: 'hsl(0, 84%, 60%)' },
+      ]
+    : [
+        { name: 'Online', value: 0, color: 'hsl(152, 69%, 45%)' },
+        { name: 'Offline', value: 0, color: 'hsl(0, 84%, 60%)' },
+      ];
+
   const totalDevices = donutData.reduce((sum, d) => sum + d.value, 0);
 
   return (
