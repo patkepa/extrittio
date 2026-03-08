@@ -12,7 +12,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const theme: Theme = 'dark';
 
   useEffect(() => {
-    document.documentElement.classList.add('dark');
+    const root = document.documentElement;
+    root.classList.remove('light', 'bp5-dark');
+    root.classList.add('dark', 'bp6-dark');
   }, []);
 
   return (
@@ -24,6 +26,8 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
 export const useTheme = () => {
   const context = useContext(ThemeContext);
-  if (!context) throw new Error('useTheme must be used within ThemeProvider');
+  if (!context) {
+    throw new Error('useTheme must be used within ThemeProvider');
+  }
   return context;
 };

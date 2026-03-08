@@ -1,53 +1,114 @@
-import {
-  LayoutDashboard, Smartphone, Activity, Bell, History,
-  Settings, User, Wrench, Palette, MonitorSmartphone,
-  Users, Plug, HelpCircle, Code, FlaskConical, Hammer,
-} from 'lucide-react';
-import type { NavGroup, Project, User as UserType } from '../types/navigation';
+import { NavGroup, Project, User } from '../types/navigation';
 
 export const navGroups: NavGroup[] = [
   {
     label: 'General',
     items: [
-      { label: 'Dashboard', icon: LayoutDashboard, href: '/' },
-      { label: 'Devices', icon: Smartphone, href: '/devices' },
+      {
+        label: 'Dashboard',
+        icon: 'dashboard',
+        href: '/',
+      },
+      {
+        label: 'Devices',
+        icon: 'mobile-video',
+        href: '/devices',
+      },
     ],
   },
   {
     label: 'Analytics',
     items: [
-      { label: 'Telemetry', icon: Activity, href: '/telemetry' },
-      { label: 'Alerts', icon: Bell, href: '/alerts' },
-      { label: 'Audit Log', icon: History, href: '/audit-log' },
+      {
+        label: 'Telemetry',
+        icon: 'chart',
+        href: '/telemetry',
+      },
+      {
+        label: 'Alerts',
+        icon: 'notifications',
+        href: '/alerts',
+      },
+      {
+        label: 'Audit Log',
+        icon: 'history',
+        href: '/audit-log',
+      },
     ],
   },
   {
     label: 'Management',
     items: [
       {
-        label: 'Settings', icon: Settings, href: '/settings',
+        label: 'Settings',
+        icon: 'cog',
+        href: '/settings',
         children: [
-          { label: 'Profile', icon: User, href: '/settings/profile' },
-          { label: 'Account', icon: Wrench, href: '/settings/account' },
-          { label: 'Appearance', icon: Palette, href: '/settings/appearance' },
-          { label: 'Notifications', icon: Bell, href: '/settings/notifications' },
-          { label: 'Display', icon: MonitorSmartphone, href: '/settings/display' },
+          {
+            label: 'Profile',
+            icon: 'user',
+            href: '/settings/profile',
+          },
+          {
+            label: 'Account',
+            icon: 'wrench',
+            href: '/settings/account',
+          },
+          {
+            label: 'Appearance',
+            icon: 'style',
+            href: '/settings/appearance',
+          },
+          {
+            label: 'Notifications',
+            icon: 'notifications',
+            href: '/settings/notifications',
+          },
+          {
+            label: 'Display',
+            icon: 'desktop',
+            href: '/settings/display',
+          },
         ],
       },
-      { label: 'Users', icon: Users, href: '/users' },
-      { label: 'Integrations', icon: Plug, href: '/integrations' },
-      { label: 'Help Center', icon: HelpCircle, href: '/help-center' },
+      {
+        label: 'Users',
+        icon: 'people',
+        href: '/users',
+      },
+      {
+        label: 'Integrations',
+        icon: 'data-connection',
+        href: '/integrations',
+      },
+      {
+        label: 'Help Center',
+        icon: 'help',
+        href: '/help-center',
+      },
     ],
   },
 ];
 
 export const projects: Project[] = [
-  { name: 'Extrittio', environment: 'Development', icon: Code },
-  { name: 'Extrittio', environment: 'Testing', icon: FlaskConical },
-  { name: 'Extrittio', environment: 'Production', icon: Hammer },
+  {
+    name: 'Extrittio',
+    environment: 'Development',
+    icon: 'code',
+  },
+  {
+    name: 'Extrittio',
+    environment: 'Testing',
+    icon: 'lab-test',
+  },
+  {
+    name: 'Extrittio',
+    environment: 'Production',
+    icon: 'build',
+  },
 ];
 
-export const currentUser: UserType = {
+export const currentUser: User = {
   name: 'satnaing',
   email: 'satnaingdev@gmail.com',
   avatar: '/avatars/shadcn.jpg',

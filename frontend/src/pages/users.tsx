@@ -1,17 +1,16 @@
-import { Users as UsersIcon } from 'lucide-react';
-import { EmptyState } from '@/components/ui/empty-state';
+import { H3, NonIdealState } from '@blueprintjs/core';
 
-export function Users() {
+export const Users = () => {
   return (
-    <div>
-      <h3 className="text-lg font-semibold text-foreground">Users</h3>
-      <p className="mt-1 text-sm text-muted">Manage team members and permissions.</p>
-      <EmptyState
-        icon={<UsersIcon size={48} />}
-        title="User Management"
-        description="Team member management will be available here."
-        className="mt-8"
+    <div className="users-page">
+      <div className="page-header">
+        <H3>Users</H3>
+      </div>
+      <NonIdealState
+        icon="people"
+        title="Users"
+        description="User management coming soon."
       />
     </div>
   );
-}
+};

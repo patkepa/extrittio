@@ -1,17 +1,16 @@
-import { HelpCircle } from 'lucide-react';
-import { EmptyState } from '@/components/ui/empty-state';
+import { H3, NonIdealState } from '@blueprintjs/core';
 
-export function HelpCenter() {
+export const HelpCenter = () => {
   return (
-    <div>
-      <h3 className="text-lg font-semibold text-foreground">Help Center</h3>
-      <p className="mt-1 text-sm text-muted">Documentation and support resources.</p>
-      <EmptyState
-        icon={<HelpCircle size={48} />}
+    <div className="help-center-page">
+      <div className="page-header">
+        <H3>Help Center</H3>
+      </div>
+      <NonIdealState
+        icon="help"
         title="Help Center"
-        description="Documentation and support resources will be available here."
-        className="mt-8"
+        description="Documentation and support resources coming soon."
       />
     </div>
   );
-}
+};

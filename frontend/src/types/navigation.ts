@@ -1,8 +1,8 @@
-import type { LucideIcon } from 'lucide-react';
+import type { IconName } from '@blueprintjs/icons';
 
 export interface NavItem {
   label: string;
-  icon: LucideIcon;
+  icon: IconName;
   href: string;
   children?: NavItem[];
 }
@@ -15,7 +15,7 @@ export interface NavGroup {
 export interface Project {
   name: string;
   environment: 'Production' | 'Development' | 'Testing';
-  icon: LucideIcon;
+  icon: IconName;
 }
 
 export interface User {
