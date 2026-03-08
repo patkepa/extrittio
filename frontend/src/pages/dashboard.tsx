@@ -2,45 +2,211 @@ import { Card, Elevation, H3, H5, Icon } from '@blueprintjs/core';
 import type { IconName } from '@blueprintjs/icons';
 import './dashboard.css';
 
+// Simple SVG sparkline component
+const Sparkline = ({ data, color, width = 100, height = 32 }: { data: number[]; color: string; width?: number; height?: number }) => {
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  const points = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * width;
+    const y = height - ((v - min) / range) * (height - 4) - 2;
+    return `${x},${y}`;
+  }).join(' ');
+  const areaPoints = `0,${height} ${points} ${width},${height}`;
+
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="sparkline-svg">
+      <defs>
+        <linearGradient id={`spark-grad-${color.replace('#', '')}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity={0.3} />
+          <stop offset="100%" stopColor={color} stopOpacity={0} />
+        </linearGradient>
+      </defs>
+      <polygon points={areaPoints} fill={`url(#spark-grad-${color.replace('#', '')})`} />
+      <polyline points={points} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+};
+
+// Simple SVG donut chart component
+const DonutChart = ({ data, size = 180, thickness = 25 }: { data: { name: string; value: number; color: string }[]; size?: number; thickness?: number }) => {
+  const total = data.reduce((sum, d) => sum + d.value, 0);
+  const radius = (size - thickness) / 2;
+  const circumference = 2 * Math.PI * radius;
+  let offset = 0;
+
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="donut-svg">
+      {data.map((segment) => {
+        const segmentLength = (segment.value / total) * circumference;
+        const gapSize = 4;
+        const dashArray = `${Math.max(segmentLength - gapSize, 0)} ${circumference - segmentLength + gapSize}`;
+        const currentOffset = offset;
+        offset += segmentLength;
+        return (
+          <circle
+            key={segment.name}
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke={segment.color}
+            strokeWidth={thickness}
+            strokeDasharray={dashArray}
+            strokeDashoffset={-currentOffset}
+            strokeLinecap="round"
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          />
+        );
+      })}
+    </svg>
+  );
+};
+
+const sparklineData = [
+  [40, 45, 42, 50, 55, 52, 58],
+  [30, 35, 38, 40, 42, 44, 47],
+  [15, 12, 18, 14, 10, 13, 12],
+  [20, 25, 28, 30, 35, 40, 45],
+];
+
+interface StatCard {
+  label: string;
+  value: string;
+  delta: string;
+  deltaUp: boolean;
+  icon: IconName;
+  color: string;
+  sparkIndex: number;
+}
+
+const stats: StatCard[] = [
+  { label: 'Total Devices', value: '1,234', delta: '+18 this week', deltaUp: true, icon: 'mobile-video', color: '#2965CC', sparkIndex: 0 },
+  { label: 'Active Devices', value: '987', delta: '+12 today', deltaUp: true, icon: 'tick-circle', color: '#0F9960', sparkIndex: 1 },
+  { label: 'Offline Devices', value: '247', delta: '-5 from yesterday', deltaUp: false, icon: 'warning-sign', color: '#D99E0B', sparkIndex: 2 },
+  { label: 'Total Messages', value: '45.2K', delta: '+2.1K today', deltaUp: true, icon: 'envelope', color: '#8F398F', sparkIndex: 3 },
+];
+
+const donutData = [
+  { name: 'Online', value: 987, color: 'hsl(152, 69%, 45%)' },
+  { name: 'Offline', value: 247, color: 'hsl(0, 84%, 60%)' },
+  { name: 'Warning', value: 23, color: 'hsl(38, 92%, 55%)' },
+];
+
+interface ActivityEvent {
+  id: string;
+  time: string;
+  device: string;
+  event: string;
+  status: 'online' | 'offline' | 'warning';
+}
+
+const activityEvents: ActivityEvent[] = [
+  { id: '1', time: '14:32:01', device: 'Temperature Sensor 01', event: 'Came online', status: 'online' },
+  { id: '2', time: '14:28:45', device: 'Smart Lock 08', event: 'Firmware updated to v3.0.1', status: 'online' },
+  { id: '3', time: '14:15:22', device: 'Motion Detector 12', event: 'Went offline', status: 'offline' },
+  { id: '4', time: '13:58:03', device: 'Humidity Sensor 05', event: 'High humidity alert', status: 'warning' },
+  { id: '5', time: '13:42:17', device: 'Smart Camera 03', event: 'Came online', status: 'online' },
+  { id: '6', time: '13:30:00', device: 'Temperature Sensor 04', event: 'Battery low warning', status: 'warning' },
+  { id: '7', time: '13:15:44', device: 'Smart Lock 02', event: 'Came online', status: 'online' },
+  { id: '8', time: '12:58:12', device: 'Motion Detector 07', event: 'Went offline', status: 'offline' },
+];
+
+const healthMetrics = [
+  { label: 'UPTIME', value: '99.97%', status: 'online' as const },
+  { label: 'API LATENCY', value: '23ms', status: 'online' as const },
+  { label: 'LAST SYNC', value: '14:32:01', status: 'online' as const },
+  { label: 'CONNECTIONS', value: '987', status: 'online' as const },
+];
+
 export const Dashboard = () => {
-  const stats: { label: string; value: string; icon: IconName; color: string }[] = [
-    { label: 'Total Devices', value: '1,234', icon: 'mobile-video', color: '#2965CC' },
-    { label: 'Active Devices', value: '987', icon: 'tick-circle', color: '#0F9960' },
-    { label: 'Offline Devices', value: '247', icon: 'warning-sign', color: '#D99E0B' },
-    { label: 'Total Messages', value: '45.2K', icon: 'envelope', color: '#8F398F' },
-  ];
+  const totalDevices = donutData.reduce((sum, d) => sum + d.value, 0);
 
   return (
     <div className="dashboard-page">
-      <div className="page-header">
-        <H3>Dashboard</H3>
-        <p className="page-description">Welcome to Extrittio IoT Hub</p>
+      {/* System Health Strip */}
+      <div className="health-strip">
+        {healthMetrics.map((metric) => (
+          <div key={metric.label} className="health-metric">
+            <span className={`status-led status-led--${metric.status}`} />
+            <span className="health-label">{metric.label}</span>
+            <span className="health-value mono-data">{metric.value}</span>
+          </div>
+        ))}
       </div>
 
+      <div className="page-header">
+        <H3>Dashboard</H3>
+        <p className="page-description">Extrittio IoT Hub — Operational Overview</p>
+      </div>
+
+      {/* Stat Cards */}
       <div className="stats-grid">
         {stats.map((stat) => (
-          <Card key={stat.label} elevation={Elevation.TWO} className="stat-card">
-            <div className="stat-icon" style={{ backgroundColor: stat.color }}>
-              <Icon icon={stat.icon} size={24} color="white" />
+          <Card key={stat.label} elevation={Elevation.TWO} className="stat-card stagger-item">
+            <div className="stat-card-top">
+              <div className="stat-icon" style={{ backgroundColor: stat.color }}>
+                <Icon icon={stat.icon} size={20} color="white" />
+              </div>
+              <div className="stat-sparkline">
+                <Sparkline data={sparklineData[stat.sparkIndex]!} color={stat.color} />
+              </div>
             </div>
             <div className="stat-content">
-              <H5 className="stat-value">{stat.value}</H5>
-              <p className="stat-label">{stat.label}</p>
+              <span className="stat-value mono-data">{stat.value}</span>
+              <span className="stat-label">{stat.label}</span>
+              <span className={`stat-delta ${stat.deltaUp ? 'delta-up' : 'delta-down'}`}>
+                <Icon icon={stat.deltaUp ? 'trending-up' : 'trending-down'} size={12} />
+                {stat.delta}
+              </span>
             </div>
           </Card>
         ))}
       </div>
 
+      {/* Content Grid */}
       <div className="dashboard-content">
         <div className="content-grid">
-          <Card elevation={Elevation.TWO} className="content-card">
-            <H5>Recent Activity</H5>
-            <p className="text-muted">No recent activity to display</p>
+          {/* Activity Timeline */}
+          <Card elevation={Elevation.TWO} className="content-card stagger-item">
+            <div className="card-header">
+              <H5>Recent Activity</H5>
+              <span className="section-label" style={{ margin: 0 }}>{activityEvents.length} events</span>
+            </div>
+            <div className="activity-timeline">
+              {activityEvents.map((event) => (
+                <div key={event.id} className="timeline-item">
+                  <span className={`status-led status-led--${event.status}`} />
+                  <span className="timeline-time mono-data">{event.time}</span>
+                  <span className="timeline-device">{event.device}</span>
+                  <span className="timeline-event">{event.event}</span>
+                </div>
+              ))}
+            </div>
           </Card>
 
-          <Card elevation={Elevation.TWO} className="content-card">
-            <H5>Device Status</H5>
-            <p className="text-muted">Device statistics will appear here</p>
+          {/* Device Status Donut */}
+          <Card elevation={Elevation.TWO} className="content-card stagger-item">
+            <div className="card-header">
+              <H5>Device Status</H5>
+              <span className="section-label" style={{ margin: 0 }}>{totalDevices} total</span>
+            </div>
+            <div className="donut-container">
+              <DonutChart data={donutData} />
+              <div className="donut-center">
+                <span className="donut-total mono-data">{totalDevices.toLocaleString()}</span>
+                <span className="donut-label">Devices</span>
+              </div>
+            </div>
+            <div className="donut-legend">
+              {donutData.map((entry) => (
+                <div key={entry.name} className="legend-item">
+                  <span className="legend-dot" style={{ backgroundColor: entry.color }} />
+                  <span className="legend-name">{entry.name}</span>
+                  <span className="legend-value mono-data">{entry.value}</span>
+                </div>
+              ))}
+            </div>
           </Card>
         </div>
       </div>
