@@ -83,9 +83,6 @@ export const AppSidebar = ({ isCollapsed = false, isMobileOpen = false, onMobile
         labelElement={
           !isCollapsed ? (
             <span className="nav-item-right">
-              {item.shortcut && !active && (
-                <span className="nav-shortcut mono-data">{item.shortcut}</span>
-              )}
               {badge && (
                 badge.status ? (
                   <span className={`status-led status-led--${badge.status}`} />

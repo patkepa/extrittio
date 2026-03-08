@@ -5,7 +5,6 @@ export interface NavItem {
   icon: IconName;
   href: string;
   children?: NavItem[];
-  shortcut?: string;
 }
 
 export interface NavGroup {

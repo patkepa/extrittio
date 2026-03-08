@@ -8,13 +8,11 @@ export const navGroups: NavGroup[] = [
         label: 'Dashboard',
         icon: 'dashboard',
         href: '/',
-        shortcut: '⌘D',
       },
       {
         label: 'Devices',
         icon: 'mobile-video',
         href: '/devices',
-        shortcut: '⌘E',
       },
     ],
   },
@@ -45,7 +43,6 @@ export const navGroups: NavGroup[] = [
         label: 'Settings',
         icon: 'cog',
         href: '/settings',
-        shortcut: '⌘,',
         children: [
           {
             label: 'Profile',

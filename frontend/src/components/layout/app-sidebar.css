@@ -5,10 +5,12 @@
   flex-direction: column;
   height: 100vh;
   width: 260px;
+  min-width: 60px;
   background-color: var(--sidebar-bg);
   border-right: 1px solid var(--sidebar-border);
   transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .app-sidebar.collapsed {
@@ -194,6 +196,7 @@
 .sidebar-nav {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 8px 0;
 }
 
@@ -261,28 +264,6 @@
   pointer-events: none;
 }
 
-/* Active glow */
-.sidebar-menu .bp6-menu-item.sidebar-item-active {
-  box-shadow: 0 0 0 1px hsl(var(--accent) / 0.15),
-              inset 3px 0 0 hsl(var(--accent));
-}
-
-/* Keyboard shortcut hint */
-.nav-shortcut {
-  font-size: 10px;
-  color: var(--sidebar-muted-foreground);
-  opacity: 0;
-  transition: opacity 0.15s ease;
-  padding: 1px 4px;
-  border-radius: 3px;
-  background-color: hsl(0 0% 15%);
-  border: 1px solid hsl(0 0% 20%);
-  letter-spacing: 0.02em;
-}
-
-.sidebar-menu .bp6-menu-item:hover .nav-shortcut {
-  opacity: 1;
-}
 
 /* Nav item right section */
 .nav-item-right {
@@ -459,6 +440,12 @@
 }
 
 /* ── Collapsed state ── */
+.app-sidebar.collapsed .sidebar-header {
+  padding: 14px;
+  display: flex;
+  justify-content: center;
+}
+
 .app-sidebar.collapsed .sidebar-logo {
   justify-content: center;
 }
@@ -473,13 +460,28 @@
 }
 
 .app-sidebar.collapsed .sidebar-menu {
-  padding: 0 6px;
+  padding: 0 8px;
 }
 
 .app-sidebar.collapsed .sidebar-menu .bp6-menu-item {
   justify-content: center;
   padding: 8px;
   border-radius: 8px;
+  overflow: hidden;
+}
+
+.app-sidebar.collapsed .sidebar-menu .bp6-menu-item .bp6-text-overflow-ellipsis,
+.app-sidebar.collapsed .sidebar-menu .bp6-menu-item .bp6-menu-item-label {
+  display: none;
+}
+
+.app-sidebar.collapsed .sidebar-menu .bp6-menu-item::before,
+.app-sidebar.collapsed .sidebar-menu .bp6-menu-item > * {
+  margin-right: 0;
+}
+
+.app-sidebar.collapsed .sidebar-menu .bp6-menu-item > .bp6-fill {
+  display: none;
 }
 
 .app-sidebar.collapsed .sidebar-menu .bp6-menu-item:hover {
@@ -488,8 +490,13 @@
 
 .app-sidebar.collapsed .sidebar-footer {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
   padding: 12px 8px;
+}
+
+.app-sidebar.collapsed .sidebar-nav {
+  padding: 8px 0;
 }
 
 /* ── Menu divider ── */
