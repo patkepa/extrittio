@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Button, Navbar, NavbarGroup } from '@blueprintjs/core';
+import { useLocation } from 'react-router-dom';
+import { Button, Navbar, NavbarGroup, NavbarDivider, Tag } from '@blueprintjs/core';
 import { AppSidebar } from './app-sidebar';
 import './main-layout.css';
 
@@ -7,9 +8,20 @@ interface MainLayoutProps {
   children: React.ReactNode;
 }
 
+const routeNames: Record<string, string> = {
+  '/': 'Dashboard',
+  '/devices': 'Devices',
+  '/settings': 'Settings',
+  '/users': 'Users',
+  '/help-center': 'Help Center',
+};
+
 export const MainLayout = ({ children }: MainLayoutProps) => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const location = useLocation();
+
+  const currentRoute = routeNames[location.pathname] ?? location.pathname.split('/').filter(Boolean).map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' / ');
 
   return (
     <div className="main-layout">
@@ -42,10 +54,20 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
               title="Toggle Sidebar"
             />
+            <NavbarDivider />
+            <span className="navbar-breadcrumb">{currentRoute}</span>
           </NavbarGroup>
 
           <NavbarGroup align="right">
-            <Button icon="notifications" minimal title="Notifications" />
+            <Tag minimal className="navbar-status">
+              <span className="status-led status-led--online" />
+              <span>All Systems Operational</span>
+            </Tag>
+            <NavbarDivider />
+            <div className="notification-wrapper">
+              <Button icon="notifications" minimal title="Notifications" />
+              <span className="notification-badge">3</span>
+            </div>
             <Button icon="search" minimal title="Search" />
           </NavbarGroup>
         </Navbar>
