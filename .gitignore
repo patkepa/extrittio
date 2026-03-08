@@ -24,3 +24,8 @@ target
 # Added by cargo
 
 /target
+
+# SQLite databases
+*.db
+*.db-journal
+*.db-wal
