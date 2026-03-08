@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use diesel::r2d2::{ConnectionManager, Pool};
+use diesel::r2d2::{ConnectionManager, CustomizeConnection, Pool};
 use diesel::sqlite::SqliteConnection;
 use diesel::RunQueryDsl;
 use diesel_migrations::MigrationHarness;
@@ -12,11 +12,20 @@ use extrittio_backend::config::AppConfig;
 use extrittio_backend::state::AppState;
 use extrittio_backend::{api, background, zenoh_handler, MIGRATIONS};
 
+#[derive(Debug)]
+struct SqlitePragmas;
+
+impl CustomizeConnection<SqliteConnection, diesel::r2d2::Error> for SqlitePragmas {
+    fn on_acquire(&self, conn: &mut SqliteConnection) -> Result<(), diesel::r2d2::Error> {
+        diesel::sql_query("PRAGMA foreign_keys = ON")
+            .execute(conn)
+            .map_err(|e| diesel::r2d2::Error::QueryError(e))?;
+        Ok(())
+    }
+}
+
 fn run_migrations(conn: &mut SqliteConnection) {
-    // Enable foreign keys and WAL journal mode for SQLite
-    diesel::sql_query("PRAGMA foreign_keys = ON")
-        .execute(conn)
-        .expect("Failed to enable foreign keys");
+    // Enable WAL journal mode for SQLite (per-database, only needs to run once)
     diesel::sql_query("PRAGMA journal_mode = WAL")
         .execute(conn)
         .expect("Failed to set WAL journal mode");
@@ -45,6 +54,7 @@ async fn main() {
     let manager = ConnectionManager::<SqliteConnection>::new(&config.database_url);
     let db_pool = Pool::builder()
         .max_size(4)
+        .connection_customizer(Box::new(SqlitePragmas))
         .build(manager)
         .expect("Failed to create database connection pool");
 
@@ -56,9 +66,6 @@ async fn main() {
 
     // Open zenoh session
     let zenoh_config = zenoh::Config::default();
-    // Note: custom connect endpoints via ZENOH_CONNECT are not configured here;
-    // the default peer mode works for local development. For production, set
-    // zenoh configuration via environment or config file as needed.
 
     let zenoh_session = zenoh::open(zenoh_config)
         .await
@@ -78,7 +85,8 @@ async fn main() {
     let subscriber_session = zenoh_session.clone();
     tokio::spawn(async move {
         if let Err(e) = zenoh_handler::subscriber::run_subscriber(&subscriber_session, subscriber_pool).await {
-            tracing::error!("Zenoh subscriber error: {}", e);
+            tracing::error!("Zenoh subscriber failed: {}. Shutting down.", e);
+            std::process::exit(1);
         }
     });
 
@@ -90,8 +98,9 @@ async fn main() {
     });
 
     // Set up CORS
+    let origin = config.allowed_origin.clone();
     let cors = CorsLayer::new()
-        .allow_origin(Any)
+        .allow_origin(origin.parse::<axum::http::HeaderValue>().expect("Invalid CORS origin"))
         .allow_methods(Any)
         .allow_headers(Any);
 

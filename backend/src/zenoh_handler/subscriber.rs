@@ -202,9 +202,17 @@ fn handle_heartbeat(db_pool: &DbPool, payload: &[u8]) {
         }
     }
 
+    let valid_statuses = ["online", "offline", "warning"];
+    let status = if valid_statuses.contains(&heartbeat_msg.status.as_str()) {
+        heartbeat_msg.status.clone()
+    } else {
+        warn!("Invalid status '{}' from device {}, defaulting to 'online'", heartbeat_msg.status, heartbeat_msg.device_id);
+        "online".to_string()
+    };
+
     let now = Utc::now().naive_utc();
     let changeset = UpdateDevice {
-        status: Some(heartbeat_msg.status.clone()),
+        status: Some(status),
         firmware: Some(heartbeat_msg.firmware.clone()),
         uptime_seconds: Some(heartbeat_msg.uptime_seconds as i32),
         last_seen: Some(now),

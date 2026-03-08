@@ -46,7 +46,6 @@ pub struct UpdateDeviceRequest {
     pub device_type: Option<String>,
     pub location: Option<String>,
     pub firmware: Option<String>,
-    pub status: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -258,7 +257,6 @@ async fn update_device(
         device_type: body.device_type,
         location: body.location,
         firmware: body.firmware,
-        status: body.status,
         updated_at: Some(Utc::now().naive_utc()),
         ..Default::default()
     };
