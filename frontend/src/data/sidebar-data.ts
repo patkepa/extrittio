@@ -8,21 +8,44 @@ export const navGroups: NavGroup[] = [
         label: 'Dashboard',
         icon: 'dashboard',
         href: '/',
+        shortcut: '⌘D',
       },
       {
         label: 'Devices',
         icon: 'mobile-video',
         href: '/devices',
+        shortcut: '⌘E',
       },
     ],
   },
   {
-    label: 'Other',
+    label: 'Analytics',
+    items: [
+      {
+        label: 'Telemetry',
+        icon: 'chart',
+        href: '/telemetry',
+      },
+      {
+        label: 'Alerts',
+        icon: 'notifications',
+        href: '/alerts',
+      },
+      {
+        label: 'Audit Log',
+        icon: 'history',
+        href: '/audit-log',
+      },
+    ],
+  },
+  {
+    label: 'Management',
     items: [
       {
         label: 'Settings',
         icon: 'cog',
         href: '/settings',
+        shortcut: '⌘,',
         children: [
           {
             label: 'Profile',
@@ -55,6 +78,11 @@ export const navGroups: NavGroup[] = [
         label: 'Users',
         icon: 'people',
         href: '/users',
+      },
+      {
+        label: 'Integrations',
+        icon: 'data-connection',
+        href: '/integrations',
       },
       {
         label: 'Help Center',
