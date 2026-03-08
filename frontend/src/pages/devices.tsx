@@ -15,38 +15,22 @@ import {
   Divider,
   Tabs,
   Tab,
+  Spinner,
 } from '@blueprintjs/core';
 import { AreaChart, Area, ResponsiveContainer } from 'recharts';
+import { useDevices, useDeleteDevice, useRestartDevice } from '../hooks/use-devices';
+import { useDeviceTelemetry } from '../hooks/use-telemetry';
+import type { Device } from '../types/api';
 import './devices.css';
 
-interface Device {
-  id: string;
-  name: string;
-  type: string;
-  status: 'online' | 'offline' | 'warning';
-  lastSeen: string;
-  firmware: string;
-  location: string;
-  uptime: string;
-  activity: number[];
-}
-
-const devices: Device[] = [
-  { id: 'DEV-001', name: 'Temperature Sensor 01', type: 'Sensor', status: 'online', lastSeen: '2 min ago', firmware: 'v2.1.3', location: 'Building A — Floor 2', uptime: '45d 12h', activity: [20, 35, 28, 45, 38, 52, 44] },
-  { id: 'DEV-002', name: 'Smart Camera 03', type: 'Camera', status: 'online', lastSeen: '5 min ago', firmware: 'v1.8.2', location: 'Entrance — Main Gate', uptime: '12d 8h', activity: [50, 42, 55, 48, 60, 52, 58] },
-  { id: 'DEV-003', name: 'Motion Detector 12', type: 'Sensor', status: 'offline', lastSeen: '2h ago', firmware: 'v2.0.1', location: 'Warehouse — Zone C', uptime: '0d', activity: [30, 25, 20, 15, 10, 5, 0] },
-  { id: 'DEV-004', name: 'Humidity Sensor 05', type: 'Sensor', status: 'warning', lastSeen: '1 min ago', firmware: 'v2.1.1', location: 'Server Room', uptime: '89d 4h', activity: [40, 45, 60, 75, 80, 85, 90] },
-  { id: 'DEV-005', name: 'Smart Lock 08', type: 'Actuator', status: 'online', lastSeen: '30s ago', firmware: 'v3.0.0', location: 'Office — Room 204', uptime: '156d 2h', activity: [10, 15, 12, 18, 14, 20, 16] },
-];
-
-type SortField = 'name' | 'status' | 'lastSeen' | 'uptime';
+type SortField = 'name' | 'status' | 'last_seen' | 'uptime';
 type SortDir = 'asc' | 'desc';
 
-const telemetryData = {
-  cpu: [32, 45, 38, 42, 55, 48, 52, 44, 40, 38, 42, 50],
-  memory: [60, 62, 58, 65, 63, 67, 64, 68, 62, 60, 65, 63],
-  signal: [85, 82, 88, 84, 90, 86, 88, 85, 83, 87, 89, 85],
-};
+function generateSparkline(id: string): number[] {
+  let hash = 0;
+  for (const ch of id) hash = ((hash << 5) - hash + ch.charCodeAt(0)) | 0;
+  return Array.from({ length: 7 }, (_, i) => Math.abs((hash * (i + 1)) % 100));
+}
 
 const logEntries = [
   { time: '14:32:01', level: 'INFO', message: 'Device heartbeat received' },
@@ -74,6 +58,24 @@ export const Devices = () => {
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [drawerTab, setDrawerTab] = useState('overview');
+
+  const { data: devices = [], isLoading, error } = useDevices();
+  const deleteDeviceMutation = useDeleteDevice();
+  const restartDeviceMutation = useRestartDevice();
+
+  const { data: telemetryRecords = [] } = useDeviceTelemetry(
+    selectedDevice?.id ?? null,
+    { limit: 50 }
+  );
+
+  const telemetryChartData = telemetryRecords
+    .slice()
+    .reverse()
+    .map((r) => ({
+      temperature: r.temperature,
+      humidity: r.humidity,
+      battery: r.battery_level,
+    }));
 
   const filteredDevices = devices
     .filter((device) => {
@@ -110,7 +112,6 @@ export const Devices = () => {
     all: devices.length,
     online: devices.filter((d) => d.status === 'online').length,
     offline: devices.filter((d) => d.status === 'offline').length,
-    warning: devices.filter((d) => d.status === 'warning').length,
   };
 
   const SortHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
@@ -128,10 +129,27 @@ export const Devices = () => {
     switch (status) {
       case 'online': return '#0F9960';
       case 'offline': return '#E76A6E';
-      case 'warning': return '#D99E0B';
       default: return '#888';
     }
   };
+
+  if (error) {
+    return (
+      <div className="devices-page">
+        <Callout intent="danger" icon="error">
+          Failed to load devices. Is the backend running?
+        </Callout>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="devices-page">
+        <Spinner />
+      </div>
+    );
+  }
 
   return (
     <div className="devices-page">
@@ -167,7 +185,7 @@ export const Devices = () => {
           </div>
 
           <div className="filter-section">
-            {(['all', 'online', 'offline', 'warning'] as const).map((status) => (
+            {(['all', 'online', 'offline'] as const).map((status) => (
               <button
                 key={status}
                 className={`filter-pill ${filterStatus === status ? 'active' : ''} ${status !== 'all' ? `pill-${status}` : ''}`}
@@ -227,7 +245,7 @@ export const Devices = () => {
                   </td>
                   <td className="location-cell">{device.location}</td>
                   <td>
-                    <span className="mono-data">{device.lastSeen}</span>
+                    <span className="mono-data">{device.last_seen}</span>
                   </td>
                   <td>
                     <code className="firmware-badge">{device.firmware}</code>
@@ -235,7 +253,7 @@ export const Devices = () => {
                   <td>
                     <div className="row-sparkline">
                       <ResponsiveContainer width="100%" height={24}>
-                        <AreaChart data={device.activity.map((v, i) => ({ v, i }))}>
+                        <AreaChart data={generateSparkline(device.id).map((v, i) => ({ v, i }))}>
                           <Area
                             type="monotone"
                             dataKey="v"
@@ -256,7 +274,17 @@ export const Devices = () => {
                   <td className="actions-column" onClick={(e) => e.stopPropagation()}>
                     <Button icon="eye-open" minimal small onClick={() => handleViewDevice(device)} title="View Details" />
                     <Button icon="edit" minimal small title="Edit Device" />
-                    <Button icon="trash" minimal small intent="danger" title="Delete Device" />
+                    <Button
+                      icon="trash"
+                      minimal
+                      small
+                      intent="danger"
+                      title="Delete Device"
+                      loading={deleteDeviceMutation.isPending}
+                      onClick={() => {
+                        deleteDeviceMutation.mutate(device.id);
+                      }}
+                    />
                   </td>
                 </tr>
               ))}
@@ -313,12 +341,7 @@ export const Devices = () => {
                   <>
                     {selectedDevice.status === 'offline' && (
                       <Callout intent="danger" icon="error" style={{ marginBottom: 16 }}>
-                        Device offline — last seen {selectedDevice.lastSeen}
-                      </Callout>
-                    )}
-                    {selectedDevice.status === 'warning' && (
-                      <Callout intent="warning" icon="warning-sign" style={{ marginBottom: 16 }}>
-                        Device reporting warnings. Check telemetry.
+                        Device offline — last seen {selectedDevice.last_seen}
                       </Callout>
                     )}
 
@@ -337,7 +360,7 @@ export const Devices = () => {
                       </div>
                       <div className="detail-item">
                         <span className="section-label">Last Seen</span>
-                        <span className="detail-value mono-data">{selectedDevice.lastSeen}</span>
+                        <span className="detail-value mono-data">{selectedDevice.last_seen}</span>
                       </div>
                       <div className="detail-item">
                         <span className="section-label">Uptime</span>
@@ -349,7 +372,16 @@ export const Devices = () => {
 
                     <span className="section-label">Quick Actions</span>
                     <div className="quick-actions">
-                      <Button icon="refresh" fill>Restart</Button>
+                      <Button
+                        icon="refresh"
+                        fill
+                        loading={restartDeviceMutation.isPending}
+                        onClick={() => {
+                          if (selectedDevice) restartDeviceMutation.mutate(selectedDevice.id);
+                        }}
+                      >
+                        Restart
+                      </Button>
                       <Button icon="cloud-upload" fill>Update FW</Button>
                       <Button icon="chart" fill>Telemetry</Button>
                       <Button icon="cog" fill>Configure</Button>
@@ -359,39 +391,49 @@ export const Devices = () => {
 
                 {drawerTab === 'telemetry' && (
                   <div className="telemetry-tab">
-                    {[
-                      { label: 'CPU Usage', data: telemetryData.cpu, color: '#2965CC', unit: '%' },
-                      { label: 'Memory', data: telemetryData.memory, color: '#0F9960', unit: '%' },
-                      { label: 'Signal Strength', data: telemetryData.signal, color: '#D99E0B', unit: 'dBm' },
-                    ].map((metric) => (
-                      <div key={metric.label} className="telemetry-chart">
-                        <div className="telemetry-header">
-                          <span className="section-label">{metric.label}</span>
-                          <span className="mono-data" style={{ fontSize: 14, color: metric.color }}>
-                            {metric.data[metric.data.length - 1]}{metric.unit}
-                          </span>
-                        </div>
-                        <ResponsiveContainer width="100%" height={60}>
-                          <AreaChart data={metric.data.map((v, i) => ({ v, i }))}>
-                            <defs>
-                              <linearGradient id={`tel-${metric.label.replace(/\s/g, '')}`} x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor={metric.color} stopOpacity={0.3} />
-                                <stop offset="100%" stopColor={metric.color} stopOpacity={0} />
-                              </linearGradient>
-                            </defs>
-                            <Area
-                              type="monotone"
-                              dataKey="v"
-                              stroke={metric.color}
-                              strokeWidth={1.5}
-                              fill={`url(#tel-${metric.label.replace(/\s/g, '')})`}
-                              dot={false}
-                              isAnimationActive={false}
-                            />
-                          </AreaChart>
-                        </ResponsiveContainer>
-                      </div>
-                    ))}
+                    {telemetryChartData.length === 0 ? (
+                      <Callout icon="info-sign" intent="primary">
+                        No telemetry data available for this device.
+                      </Callout>
+                    ) : (
+                      [
+                        { label: 'Temperature', dataKey: 'temperature' as const, color: '#2965CC', unit: '\u00B0C' },
+                        { label: 'Humidity', dataKey: 'humidity' as const, color: '#0F9960', unit: '%' },
+                        { label: 'Battery Level', dataKey: 'battery' as const, color: '#D99E0B', unit: '%' },
+                      ].map((metric) => {
+                        const latestValue = telemetryChartData[telemetryChartData.length - 1]?.[metric.dataKey];
+                        return (
+                          <div key={metric.label} className="telemetry-chart">
+                            <div className="telemetry-header">
+                              <span className="section-label">{metric.label}</span>
+                              <span className="mono-data" style={{ fontSize: 14, color: metric.color }}>
+                                {latestValue != null ? `${latestValue}${metric.unit}` : '—'}
+                              </span>
+                            </div>
+                            <ResponsiveContainer width="100%" height={60}>
+                              <AreaChart data={telemetryChartData}>
+                                <defs>
+                                  <linearGradient id={`tel-${metric.label.replace(/\s/g, '')}`} x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor={metric.color} stopOpacity={0.3} />
+                                    <stop offset="100%" stopColor={metric.color} stopOpacity={0} />
+                                  </linearGradient>
+                                </defs>
+                                <Area
+                                  type="monotone"
+                                  dataKey={metric.dataKey}
+                                  stroke={metric.color}
+                                  strokeWidth={1.5}
+                                  fill={`url(#tel-${metric.label.replace(/\s/g, '')})`}
+                                  dot={false}
+                                  isAnimationActive={false}
+                                  connectNulls
+                                />
+                              </AreaChart>
+                            </ResponsiveContainer>
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
                 )}
 
