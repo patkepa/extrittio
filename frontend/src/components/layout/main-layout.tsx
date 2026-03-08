@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Button, Navbar, NavbarGroup } from '@blueprintjs/core';
 import { AppSidebar } from './app-sidebar';
+import { CommandPalette } from '../command-palette/command-palette';
 import './main-layout.css';
 
 interface MainLayoutProps {
@@ -46,7 +47,14 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
               <Button icon="notifications" minimal title="Notifications" />
               <span className="notification-badge">3</span>
             </div>
-            <Button icon="search" minimal title="Search" />
+            <Button
+              icon="search"
+              minimal
+              title="Search (⌘K)"
+              onClick={() => {
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }));
+              }}
+            />
           </NavbarGroup>
         </Navbar>
 
@@ -54,6 +62,8 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
           {children}
         </div>
       </div>
+
+      <CommandPalette />
     </div>
   );
 };

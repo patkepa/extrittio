@@ -24,6 +24,7 @@ import {
 import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 import { useDevices, useCreateDevice, useDeleteDevice, useRestartDevice } from '../hooks/use-devices';
 import { useDeviceTelemetry } from '../hooks/use-telemetry';
+import { useUIStore } from '../stores/ui-store';
 import type { Device } from '../types/api';
 import './devices.css';
 
@@ -62,8 +63,8 @@ export const Devices = () => {
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [drawerTab, setDrawerTab] = useState('overview');
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [newDevice, setNewDevice] = useState({ name: '', device_type: '', location: '', firmware: '' });
+  const { isAddDeviceDialogOpen: isAddDialogOpen, openAddDeviceDialog, closeAddDeviceDialog } = useUIStore();
+  const [newDevice, setNewDevice] = useState({ name: '', device_type_id: '', location: '', firmware: '' });
 
   const { data: devices = [], isLoading, error } = useDevices();
   const createDeviceMutation = useCreateDevice();
@@ -74,14 +75,14 @@ export const Devices = () => {
     createDeviceMutation.mutate(
       {
         name: newDevice.name,
-        device_type: newDevice.device_type,
+        device_type_id: Number(newDevice.device_type_id),
         location: newDevice.location || undefined,
         firmware: newDevice.firmware || undefined,
       },
       {
         onSuccess: () => {
-          setIsAddDialogOpen(false);
-          setNewDevice({ name: '', device_type: '', location: '', firmware: '' });
+          closeAddDeviceDialog();
+          setNewDevice({ name: '', device_type_id: '', location: '', firmware: '' });
         },
       }
     );
@@ -105,7 +106,7 @@ export const Devices = () => {
     .filter((device) => {
       const matchesSearch =
         device.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        device.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        device.device_type_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         device.location.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = filterStatus === 'all' || device.status === filterStatus;
       return matchesSearch && matchesStatus;
@@ -185,7 +186,7 @@ export const Devices = () => {
             {filteredDevices.length} of {devices.length} devices
           </p>
         </div>
-        <Button intent="primary" icon="add" onClick={() => setIsAddDialogOpen(true)}>
+        <Button intent="primary" icon="add" onClick={() => openAddDeviceDialog()}>
           Add Device
         </Button>
       </div>
@@ -265,7 +266,7 @@ export const Devices = () => {
                     </div>
                   </td>
                   <td>
-                    <Tag minimal>{device.type}</Tag>
+                    <Tag minimal>{device.device_type_name}</Tag>
                   </td>
                   <td className="location-cell">{device.location}</td>
                   <td>
@@ -322,7 +323,7 @@ export const Devices = () => {
         icon="add"
         title="Add Device"
         isOpen={isAddDialogOpen}
-        onClose={() => setIsAddDialogOpen(false)}
+        onClose={() => closeAddDeviceDialog()}
       >
         <DialogBody>
           <FormGroup label="Name" labelInfo="(required)">
@@ -332,11 +333,11 @@ export const Devices = () => {
               onChange={(e) => setNewDevice({ ...newDevice, name: e.target.value })}
             />
           </FormGroup>
-          <FormGroup label="Device Type" labelInfo="(required)">
+          <FormGroup label="Device Type ID" labelInfo="(required)">
             <InputGroup
-              placeholder="e.g. sensor, gateway, actuator"
-              value={newDevice.device_type}
-              onChange={(e) => setNewDevice({ ...newDevice, device_type: e.target.value })}
+              placeholder="e.g. 1, 2, 3"
+              value={newDevice.device_type_id}
+              onChange={(e) => setNewDevice({ ...newDevice, device_type_id: e.target.value })}
             />
           </FormGroup>
           <FormGroup label="Location">
@@ -362,13 +363,13 @@ export const Devices = () => {
         <DialogFooter
           actions={
             <>
-              <Button onClick={() => setIsAddDialogOpen(false)}>Cancel</Button>
+              <Button onClick={() => closeAddDeviceDialog()}>Cancel</Button>
               <Button
                 intent="primary"
                 icon="add"
                 onClick={handleAddDevice}
                 loading={createDeviceMutation.isPending}
-                disabled={!newDevice.name.trim() || !newDevice.device_type.trim()}
+                disabled={!newDevice.name.trim() || !newDevice.device_type_id.trim()}
               >
                 Add Device
               </Button>
@@ -397,7 +398,7 @@ export const Devices = () => {
                     <p style={{ margin: 0 }} className="banner-subtitle">
                       <span className="mono-data">{selectedDevice.id}</span>
                       <span className="banner-sep">|</span>
-                      {selectedDevice.type}
+                      {selectedDevice.device_type_name}
                       <span className="banner-sep">|</span>
                       <span style={{ textTransform: 'uppercase', fontWeight: 700, fontSize: 12, letterSpacing: '0.06em' }}>
                         {selectedDevice.status}
