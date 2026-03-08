@@ -149,9 +149,9 @@ export const AppSidebar = ({
     <div
       className={cn(
         'flex flex-col h-screen bg-surface border-r border-border shrink-0 overflow-hidden',
-        'transition-[width] duration-250 ease-[cubic-bezier(0.4,0,0.2,1)]',
+        'transition-[width] duration-[250ms] ease-[cubic-bezier(0.4,0,0.2,1)]',
         isCollapsed ? 'w-[60px]' : 'w-[260px]',
-        isMobileOpen && 'mobile-open',
+        isMobileOpen && 'fixed inset-y-0 left-0 z-50 w-[260px] shadow-2xl',
       )}
     >
       {/* Header */}
@@ -254,7 +254,7 @@ export const AppSidebar = ({
       )}
 
       {/* Navigation */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden py-2 scrollbar-thin">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden py-2 [&::-webkit-scrollbar]:w-1">
         {navGroups.map((group, idx) => (
           <div key={group.label} className="mb-2">
             {!isCollapsed && (
