@@ -1,0 +1,24 @@
+syntax = "proto3";
+package extrittio;
+
+message DeviceTelemetry {
+    string device_id = 1;
+    int64 timestamp = 2;
+    float temperature = 3;
+    float humidity = 4;
+    float battery_level = 5;
+    map<string, string> metadata = 6;
+}
+
+message DeviceHeartbeat {
+    string device_id = 1;
+    int64 timestamp = 2;
+    string status = 3;
+    string firmware = 4;
+    int64 uptime_seconds = 5;
+}
+
+message DeviceCommand {
+    string command = 1;
+    map<string, string> params = 2;
+}
