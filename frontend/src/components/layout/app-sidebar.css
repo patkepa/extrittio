@@ -280,3 +280,46 @@
   box-shadow: 0 0 0 1px hsl(var(--accent) / 0.3),
               0 0 20px hsl(var(--accent) / 0.1);
 }
+
+/* Nav item right section */
+.nav-item-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Count badge */
+.nav-count-badge {
+  font-size: 10px;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+  font-weight: 700;
+  min-width: 28px;
+  text-align: center;
+  background-color: hsl(var(--accent) / 0.15) !important;
+  color: hsl(var(--accent)) !important;
+  border: none !important;
+}
+
+/* Environment badge in footer */
+.sidebar-env-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  border-radius: 6px;
+  background-color: var(--sidebar-accent);
+  border: 1px solid var(--sidebar-border);
+}
+
+.env-text {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--sidebar-foreground);
+}
+
+.version-text {
+  font-size: 10px;
+  color: var(--sidebar-muted-foreground);
+  margin-left: auto;
+}

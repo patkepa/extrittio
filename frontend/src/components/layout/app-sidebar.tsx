@@ -8,8 +8,9 @@ import {
   Collapse,
   ControlGroup,
   HTMLSelect,
+  Tag,
 } from '@blueprintjs/core';
-import { navGroups, projects } from '../../data/sidebar-data';
+import { navGroups, projects, currentUser } from '../../data/sidebar-data';
 import type { NavItem } from '../../types/navigation';
 import './app-sidebar.css';
 
@@ -18,6 +19,11 @@ interface AppSidebarProps {
   isMobileOpen?: boolean;
   onMobileClose?: () => void;
 }
+
+const navBadges: Record<string, { count: number; status?: 'online' | 'warning' }> = {
+  'Dashboard': { count: 0, status: 'online' },
+  'Devices': { count: 987 },
+};
 
 export const AppSidebar = ({ isCollapsed = false, isMobileOpen = false, onMobileClose }: AppSidebarProps) => {
   const navigate = useNavigate();
@@ -37,9 +43,7 @@ export const AppSidebar = ({ isCollapsed = false, isMobileOpen = false, onMobile
     });
   };
 
-  const isActive = (href: string) => {
-    return location.pathname === href;
-  };
+  const isActive = (href: string) => location.pathname === href;
 
   const handleNavigation = (href: string) => {
     navigate(href);
@@ -50,6 +54,7 @@ export const AppSidebar = ({ isCollapsed = false, isMobileOpen = false, onMobile
     const hasChildren = item.children && item.children.length > 0;
     const isExpanded = expandedItems.has(item.label);
     const active = isActive(item.href);
+    const badge = navBadges[item.label];
 
     return (
       <div key={item.label} style={{ paddingLeft: `${depth * 16}px` }}>
@@ -65,9 +70,18 @@ export const AppSidebar = ({ isCollapsed = false, isMobileOpen = false, onMobile
             }
           }}
           labelElement={
-            hasChildren ? (
-              <Icon icon={isExpanded ? 'chevron-down' : 'chevron-right'} size={12} />
-            ) : undefined
+            <span className="nav-item-right">
+              {badge && !isCollapsed && (
+                badge.status ? (
+                  <span className={`status-led status-led--${badge.status}`} />
+                ) : (
+                  <Tag minimal round className="nav-count-badge">{badge.count}</Tag>
+                )
+              )}
+              {hasChildren && (
+                <Icon icon={isExpanded ? 'chevron-down' : 'chevron-right'} size={12} />
+              )}
+            </span>
           }
           aria-expanded={hasChildren ? isExpanded : undefined}
           className={active ? 'sidebar-item-active' : ''}
@@ -125,6 +139,26 @@ export const AppSidebar = ({ isCollapsed = false, isMobileOpen = false, onMobile
           </div>
         ))}
       </div>
+
+      {/* Footer */}
+      {!isCollapsed && (
+        <div className="sidebar-footer">
+          <div className="sidebar-env-badge">
+            <span className="status-led status-led--online" />
+            <span className="env-text mono-data">{selectedProject.environment.toUpperCase()}</span>
+            <span className="version-text mono-data">v0.1.0</span>
+          </div>
+          <div className="user-card">
+            <div className="user-info">
+              <div className="user-avatar">{currentUser.name.charAt(0).toUpperCase()}</div>
+              <div className="user-details">
+                <div className="user-name">{currentUser.name}</div>
+                <div className="user-email">{currentUser.email}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
