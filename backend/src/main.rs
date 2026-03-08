@@ -1,24 +1,16 @@
-pub mod api;
-pub mod background;
-pub mod config;
-pub mod db;
-pub mod state;
-pub mod zenoh_handler;
-
 use std::sync::Arc;
 
 use diesel::r2d2::{ConnectionManager, Pool};
 use diesel::sqlite::SqliteConnection;
 use diesel::RunQueryDsl;
-use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+use diesel_migrations::MigrationHarness;
 use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-use crate::config::AppConfig;
-use crate::state::AppState;
-
-pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
+use extrittio_backend::config::AppConfig;
+use extrittio_backend::state::AppState;
+use extrittio_backend::{api, background, zenoh_handler, MIGRATIONS};
 
 fn run_migrations(conn: &mut SqliteConnection) {
     // Enable foreign keys and WAL journal mode for SQLite
