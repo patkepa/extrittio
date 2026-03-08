@@ -1,0 +1,12 @@
+CREATE TABLE devices (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    device_type TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'offline',
+    firmware TEXT NOT NULL DEFAULT '',
+    location TEXT NOT NULL DEFAULT '',
+    last_seen TIMESTAMP,
+    uptime_seconds INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
