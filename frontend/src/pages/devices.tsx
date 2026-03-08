@@ -16,33 +16,8 @@ import {
   Tabs,
   Tab,
 } from '@blueprintjs/core';
+import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 import './devices.css';
-
-// Pure SVG sparkline (same pattern as dashboard)
-const Sparkline = ({ data, color, width = 80, height = 24 }: { data: number[]; color: string; width?: number; height?: number }) => {
-  const min = Math.min(...data);
-  const max = Math.max(...data);
-  const range = max - min || 1;
-  const points = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * width;
-    const y = height - ((v - min) / range) * (height - 4) - 2;
-    return `${x},${y}`;
-  }).join(' ');
-  const areaPoints = `0,${height} ${points} ${width},${height}`;
-
-  return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>
-      <defs>
-        <linearGradient id={`dsp-${color.replace(/[^a-zA-Z0-9]/g, '')}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity={0.3} />
-          <stop offset="100%" stopColor={color} stopOpacity={0} />
-        </linearGradient>
-      </defs>
-      <polygon points={areaPoints} fill={`url(#dsp-${color.replace(/[^a-zA-Z0-9]/g, '')})`} />
-      <polyline points={points} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-};
 
 interface Device {
   id: string;
@@ -259,7 +234,20 @@ export const Devices = () => {
                   </td>
                   <td>
                     <div className="row-sparkline">
-                      <Sparkline data={device.activity} color={getStatusColor(device.status)} />
+                      <ResponsiveContainer width="100%" height={24}>
+                        <AreaChart data={device.activity.map((v, i) => ({ v, i }))}>
+                          <Area
+                            type="monotone"
+                            dataKey="v"
+                            stroke={getStatusColor(device.status)}
+                            strokeWidth={1}
+                            fill={getStatusColor(device.status)}
+                            fillOpacity={0.15}
+                            dot={false}
+                            isAnimationActive={false}
+                          />
+                        </AreaChart>
+                      </ResponsiveContainer>
                     </div>
                   </td>
                   <td>
@@ -383,7 +371,25 @@ export const Devices = () => {
                             {metric.data[metric.data.length - 1]}{metric.unit}
                           </span>
                         </div>
-                        <Sparkline data={metric.data} color={metric.color} width={440} height={60} />
+                        <ResponsiveContainer width="100%" height={60}>
+                          <AreaChart data={metric.data.map((v, i) => ({ v, i }))}>
+                            <defs>
+                              <linearGradient id={`tel-${metric.label.replace(/\s/g, '')}`} x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor={metric.color} stopOpacity={0.3} />
+                                <stop offset="100%" stopColor={metric.color} stopOpacity={0} />
+                              </linearGradient>
+                            </defs>
+                            <Area
+                              type="monotone"
+                              dataKey="v"
+                              stroke={metric.color}
+                              strokeWidth={1.5}
+                              fill={`url(#tel-${metric.label.replace(/\s/g, '')})`}
+                              dot={false}
+                              isAnimationActive={false}
+                            />
+                          </AreaChart>
+                        </ResponsiveContainer>
                       </div>
                     ))}
                   </div>
