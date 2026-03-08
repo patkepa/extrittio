@@ -16,9 +16,13 @@ import {
   Tabs,
   Tab,
   Spinner,
+  Dialog,
+  DialogBody,
+  DialogFooter,
+  FormGroup,
 } from '@blueprintjs/core';
 import { AreaChart, Area, ResponsiveContainer } from 'recharts';
-import { useDevices, useDeleteDevice, useRestartDevice } from '../hooks/use-devices';
+import { useDevices, useCreateDevice, useDeleteDevice, useRestartDevice } from '../hooks/use-devices';
 import { useDeviceTelemetry } from '../hooks/use-telemetry';
 import type { Device } from '../types/api';
 import './devices.css';
@@ -58,10 +62,30 @@ export const Devices = () => {
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [drawerTab, setDrawerTab] = useState('overview');
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [newDevice, setNewDevice] = useState({ name: '', device_type: '', location: '', firmware: '' });
 
   const { data: devices = [], isLoading, error } = useDevices();
+  const createDeviceMutation = useCreateDevice();
   const deleteDeviceMutation = useDeleteDevice();
   const restartDeviceMutation = useRestartDevice();
+
+  const handleAddDevice = () => {
+    createDeviceMutation.mutate(
+      {
+        name: newDevice.name,
+        device_type: newDevice.device_type,
+        location: newDevice.location || undefined,
+        firmware: newDevice.firmware || undefined,
+      },
+      {
+        onSuccess: () => {
+          setIsAddDialogOpen(false);
+          setNewDevice({ name: '', device_type: '', location: '', firmware: '' });
+        },
+      }
+    );
+  };
 
   const { data: telemetryRecords = [] } = useDeviceTelemetry(
     selectedDevice?.id ?? null,
@@ -161,7 +185,7 @@ export const Devices = () => {
             {filteredDevices.length} of {devices.length} devices
           </p>
         </div>
-        <Button intent="primary" icon="add">
+        <Button intent="primary" icon="add" onClick={() => setIsAddDialogOpen(true)}>
           Add Device
         </Button>
       </div>
@@ -292,6 +316,66 @@ export const Devices = () => {
           </HTMLTable>
         )}
       </Card>
+
+      {/* Add Device Dialog */}
+      <Dialog
+        icon="add"
+        title="Add Device"
+        isOpen={isAddDialogOpen}
+        onClose={() => setIsAddDialogOpen(false)}
+      >
+        <DialogBody>
+          <FormGroup label="Name" labelInfo="(required)">
+            <InputGroup
+              placeholder="e.g. Temperature Sensor A1"
+              value={newDevice.name}
+              onChange={(e) => setNewDevice({ ...newDevice, name: e.target.value })}
+            />
+          </FormGroup>
+          <FormGroup label="Device Type" labelInfo="(required)">
+            <InputGroup
+              placeholder="e.g. sensor, gateway, actuator"
+              value={newDevice.device_type}
+              onChange={(e) => setNewDevice({ ...newDevice, device_type: e.target.value })}
+            />
+          </FormGroup>
+          <FormGroup label="Location">
+            <InputGroup
+              placeholder="e.g. Building A, Floor 2"
+              value={newDevice.location}
+              onChange={(e) => setNewDevice({ ...newDevice, location: e.target.value })}
+            />
+          </FormGroup>
+          <FormGroup label="Firmware">
+            <InputGroup
+              placeholder="e.g. v1.2.0"
+              value={newDevice.firmware}
+              onChange={(e) => setNewDevice({ ...newDevice, firmware: e.target.value })}
+            />
+          </FormGroup>
+          {createDeviceMutation.isError && (
+            <Callout intent="danger" icon="error">
+              Failed to create device. Please try again.
+            </Callout>
+          )}
+        </DialogBody>
+        <DialogFooter
+          actions={
+            <>
+              <Button onClick={() => setIsAddDialogOpen(false)}>Cancel</Button>
+              <Button
+                intent="primary"
+                icon="add"
+                onClick={handleAddDevice}
+                loading={createDeviceMutation.isPending}
+                disabled={!newDevice.name.trim() || !newDevice.device_type.trim()}
+              >
+                Add Device
+              </Button>
+            </>
+          }
+        />
+      </Dialog>
 
       {/* Device Detail Drawer */}
       <Drawer

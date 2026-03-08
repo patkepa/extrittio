@@ -12,6 +12,7 @@ import {
   Button,
 } from '@blueprintjs/core';
 import { navGroups, projects, currentUser } from '../../data/sidebar-data';
+import { useDashboardStats } from '../../hooks/use-dashboard';
 import type { NavItem } from '../../types/navigation';
 import './app-sidebar.css';
 
@@ -20,12 +21,6 @@ interface AppSidebarProps {
   isMobileOpen?: boolean;
   onMobileClose?: () => void;
 }
-
-const navBadges: Record<string, { count?: number; status?: 'online' | 'warning' | 'offline' }> = {
-  'Dashboard': { status: 'online' },
-  'Devices': { count: 987 },
-  'Alerts': { count: 3 },
-};
 
 const envColors: Record<string, string> = {
   'Development': 'hsl(var(--accent))',
@@ -36,6 +31,7 @@ const envColors: Record<string, string> = {
 export const AppSidebar = ({ isCollapsed = false, isMobileOpen = false, onMobileClose }: AppSidebarProps) => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { data: dashboardStats } = useDashboardStats();
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [selectedProject, setSelectedProject] = useState(projects[0]!);
   const [projectSwitcherOpen, setProjectSwitcherOpen] = useState(false);
@@ -60,6 +56,12 @@ export const AppSidebar = ({ isCollapsed = false, isMobileOpen = false, onMobile
   const handleNavigation = (href: string) => {
     navigate(href);
     onMobileClose?.();
+  };
+
+  const navBadges: Record<string, { count?: number; status?: 'online' | 'warning' | 'offline' }> = {
+    'Dashboard': { status: 'online' },
+    ...(dashboardStats && { 'Devices': { count: dashboardStats.total_devices } }),
+    'Alerts': { count: 3 },
   };
 
   const renderNavItem = (item: NavItem, depth: number = 0) => {

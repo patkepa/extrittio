@@ -17,26 +17,6 @@ export const navGroups: NavGroup[] = [
     ],
   },
   {
-    label: 'Analytics',
-    items: [
-      {
-        label: 'Telemetry',
-        icon: 'chart',
-        href: '/telemetry',
-      },
-      {
-        label: 'Alerts',
-        icon: 'notifications',
-        href: '/alerts',
-      },
-      {
-        label: 'Audit Log',
-        icon: 'history',
-        href: '/audit-log',
-      },
-    ],
-  },
-  {
     label: 'Management',
     items: [
       {
@@ -77,11 +57,6 @@ export const navGroups: NavGroup[] = [
         href: '/users',
       },
       {
-        label: 'Integrations',
-        icon: 'data-connection',
-        href: '/integrations',
-      },
-      {
         label: 'Help Center',
         icon: 'help',
         href: '/help-center',
@@ -109,7 +84,7 @@ export const projects: Project[] = [
 ];
 
 export const currentUser: User = {
-  name: 'satnaing',
-  email: 'satnaingdev@gmail.com',
+  name: 'Patryk Kępa',
+  email: 'opensource@extrittio.dev',
   avatar: '/avatars/shadcn.jpg',
 };
