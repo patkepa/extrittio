@@ -5,7 +5,7 @@ This document explains how colors are properly implemented in the frontend-v2 ap
 ## Overview
 
 We use Blueprint.js v6's color system **correctly** by:
-1. ✅ Letting Blueprint handle text and UI colors through `.bp5-dark` class
+1. ✅ Letting Blueprint handle text and UI colors through `.bp6-dark` class
 2. ✅ Only overriding structural/background colors via CSS variables
 3. ✅ Using Blueprint's `Colors` constant for any custom component styling
 4. ✅ Using `intent` props for semantic coloring (primary, success, warning, danger)
@@ -73,13 +73,13 @@ Always use Blueprint's built-in `intent` prop for semantic coloring:
 ### Before (Problematic):
 ```css
 /* ❌ BAD: Hardcoded Blueprint CSS variables */
-.bp5-dark {
+.bp6-dark {
   --bp5-text-color: #F6F7F9 !important;
   --bp5-link-color: #4C90F0 !important;
 }
 
 /* ❌ BAD: Excessive !important overrides */
-.bp5-dark .bp5-button {
+.bp6-dark .bp6-button {
   color: #F6F7F9 !important;
 }
 ```
@@ -87,13 +87,13 @@ Always use Blueprint's built-in `intent` prop for semantic coloring:
 ### After (Correct):
 ```css
 /* ✅ GOOD: Let Blueprint handle its own colors */
-.bp5-dark {
+.bp6-dark {
   background-color: var(--content-bg);
   /* Blueprint handles text colors automatically */
 }
 
 /* ✅ GOOD: Minimal, specific overrides without !important */
-.bp5-button {
+.bp6-button {
   font-weight: 500;
   /* Let Blueprint's cascade work naturally */
 }
@@ -136,7 +136,7 @@ Always use Blueprint's built-in `intent` prop for semantic coloring:
 - Use Blueprint's `intent` prop for semantic colors
 - Import from `@/styles/colors.ts` for custom styling
 - Reference CSS variables for structural colors (backgrounds, borders)
-- Let Blueprint's `.bp5-dark` class handle text colors
+- Let Blueprint's `.bp6-dark` class handle text colors
 - Use Blueprint components as designed
 
 ### ❌ DON'T:
@@ -181,7 +181,7 @@ export function CustomBadge({ status }: { status: string }) {
 .custom-panel {
   background-color: var(--card-bg);
   border: 1px solid var(--border-color);
-  /* Blueprint handles text color via .bp5-dark */
+  /* Blueprint handles text color via .bp6-dark */
 }
 ```
 
@@ -194,7 +194,7 @@ export function CustomBadge({ status }: { status: string }) {
 ## Troubleshooting
 
 **Q: Text is not visible in dark theme**
-- ✅ Ensure `<html class="bp5-dark">` is set
+- ✅ Ensure `<html class="bp6-dark">` is set
 - ✅ Don't override Blueprint's text color variables
 - ✅ Let Blueprint handle text colors automatically
 

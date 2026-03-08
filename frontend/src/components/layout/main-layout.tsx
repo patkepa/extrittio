@@ -9,16 +9,34 @@ interface MainLayoutProps {
 
 export const MainLayout = ({ children }: MainLayoutProps) => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   return (
     <div className="main-layout">
-      <AppSidebar isCollapsed={sidebarCollapsed} />
+      <AppSidebar
+        isCollapsed={sidebarCollapsed}
+        isMobileOpen={mobileSidebarOpen}
+        onMobileClose={() => setMobileSidebarOpen(false)}
+      />
+      {mobileSidebarOpen && (
+        <div
+          className="mobile-sidebar-overlay"
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      )}
 
       <div className="main-content">
-        {/* Top Navigation Bar */}
         <Navbar className="top-navbar">
           <NavbarGroup>
             <Button
+              className="mobile-menu-button"
+              icon="menu"
+              minimal
+              onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
+              title="Open Menu"
+            />
+            <Button
+              className="desktop-collapse-button"
               icon={sidebarCollapsed ? "double-chevron-right" : "double-chevron-left"}
               minimal
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
@@ -32,7 +50,6 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
           </NavbarGroup>
         </Navbar>
 
-        {/* Page Content */}
         <div className="page-content">
           {children}
         </div>

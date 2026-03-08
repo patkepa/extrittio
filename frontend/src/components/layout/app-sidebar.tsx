@@ -8,22 +8,22 @@ import {
   Collapse,
   ControlGroup,
   HTMLSelect,
-  Button,
 } from '@blueprintjs/core';
-import type { IconName } from '@blueprintjs/icons';
 import { navGroups, projects } from '../../data/sidebar-data';
 import type { NavItem } from '../../types/navigation';
 import './app-sidebar.css';
 
 interface AppSidebarProps {
   isCollapsed?: boolean;
+  isMobileOpen?: boolean;
+  onMobileClose?: () => void;
 }
 
-export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
+export const AppSidebar = ({ isCollapsed = false, isMobileOpen = false, onMobileClose }: AppSidebarProps) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
-  const [selectedProject, setSelectedProject] = useState(projects[0]);
+  const [selectedProject, setSelectedProject] = useState(projects[0]!);
 
   const toggleExpanded = (label: string) => {
     setExpandedItems((prev) => {
@@ -43,6 +43,7 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
 
   const handleNavigation = (href: string) => {
     navigate(href);
+    onMobileClose?.();
   };
 
   const renderNavItem = (item: NavItem, depth: number = 0) => {
@@ -53,7 +54,7 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
     return (
       <div key={item.label} style={{ paddingLeft: `${depth * 16}px` }}>
         <MenuItem
-          icon={item.icon as IconName}
+          icon={item.icon}
           text={!isCollapsed ? item.label : undefined}
           active={active}
           onClick={() => {
@@ -68,6 +69,7 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
               <Icon icon={isExpanded ? 'chevron-down' : 'chevron-right'} size={12} />
             ) : undefined
           }
+          aria-expanded={hasChildren ? isExpanded : undefined}
           className={active ? 'sidebar-item-active' : ''}
         />
         {hasChildren && !isCollapsed && (
@@ -82,7 +84,7 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
   };
 
   return (
-    <div className={`app-sidebar ${isCollapsed ? 'collapsed' : ''}`}>
+    <div className={`app-sidebar ${isCollapsed ? 'collapsed' : ''} ${isMobileOpen ? 'mobile-open' : ''}`}>
       {/* Header */}
       <div className="sidebar-header">
         <div className="sidebar-logo">
@@ -102,7 +104,7 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
                 if (project) setSelectedProject(project);
               }}
               options={projects.map(p => p.environment)}
-              iconName={selectedProject.icon as IconName}
+              iconName="double-caret-vertical"
               fill
             />
           </ControlGroup>

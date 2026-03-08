@@ -149,6 +149,7 @@
 
 .sidebar-menu .bp6-menu-item .bp6-icon {
   color: currentColor;
+  pointer-events: none;
 }
 
 .sidebar-submenu {

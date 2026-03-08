@@ -28,6 +28,15 @@
   background-color: var(--content-bg);
 }
 
+/* Mobile/desktop button visibility */
+.mobile-menu-button {
+  display: none;
+}
+
+.mobile-sidebar-overlay {
+  display: none;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .app-sidebar {
@@ -41,6 +50,22 @@
 
   .app-sidebar.mobile-open {
     transform: translateX(0);
+  }
+
+  .mobile-menu-button {
+    display: inline-flex;
+  }
+
+  .desktop-collapse-button {
+    display: none;
+  }
+
+  .mobile-sidebar-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 99;
+    background-color: rgba(0, 0, 0, 0.5);
   }
 
   .page-content {
