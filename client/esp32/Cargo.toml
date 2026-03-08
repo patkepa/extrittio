@@ -1,0 +1,26 @@
+[package]
+name = "extrittio-client-esp32"
+version = "0.1.0"
+edition = "2021"
+
+# NOTE: This crate is NOT a workspace member — it cross-compiles to
+# riscv32imc-esp-espidf and must be built independently:
+#   cd client/esp32
+#   cargo build
+#
+# To target a different ESP32 variant, update .cargo/config.toml:
+#   ESP32   (Xtensa)  → target = "xtensa-esp32-espidf"   (requires `channel = "esp"` toolchain)
+#   ESP32-S3 (Xtensa) → target = "xtensa-esp32s3-espidf" (requires `channel = "esp"` toolchain)
+#   ESP32-C3 (RISC-V) → target = "riscv32imc-esp-espidf" (standard nightly, current default)
+#   ESP32-C6 (RISC-V) → target = "riscv32imac-esp-espidf" (standard nightly)
+
+[dependencies]
+extrittio-proto = { path = "../../proto" }
+prost = "0.13"
+zenoh = { version = "1", default-features = false }
+esp-idf-svc = { version = "0.50", features = ["binstart"] }
+log = "0.4"
+rand = { version = "0.8", default-features = false, features = ["std"] }
+
+[build-dependencies]
+embuild = "0.33"
