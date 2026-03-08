@@ -52,143 +52,90 @@
   color: var(--sidebar-foreground);
 }
 
-/* ── Project Switcher ── */
-.sidebar-project-switcher {
-  padding: 12px;
-  border-bottom: 1px solid var(--sidebar-border);
+/* ── Environment Switcher (Footer) ── */
+.sidebar-env-switcher {
+  margin-top: 8px;
 }
 
-.project-switcher-btn {
+.env-switcher-btn {
   display: flex;
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding: 10px 12px;
+  padding: 6px 10px;
   background-color: var(--sidebar-accent);
   border: 1px solid var(--sidebar-border);
-  border-radius: 8px;
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
   font-family: inherit;
   color: var(--sidebar-foreground);
 }
 
-.project-switcher-btn:hover {
+.env-switcher-btn:hover {
   background-color: var(--sidebar-accent-hover);
   border-color: hsl(var(--accent) / 0.3);
 }
 
-.project-switcher-left {
+.env-switcher-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
-.project-icon-wrapper {
-  width: 30px;
-  height: 30px;
-  border-radius: 6px;
-  background-color: hsl(0 0% 12%);
-  border: 1.5px solid;
+.env-switcher-right {
   display: flex;
   align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  color: var(--sidebar-foreground);
+  gap: 6px;
 }
 
-.project-switcher-info {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 1px;
-}
-
-.project-switcher-name {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--sidebar-foreground);
-  line-height: 1.2;
-}
-
-.project-switcher-env {
-  font-size: 9px;
-  color: var(--sidebar-muted-foreground);
-  letter-spacing: 0.1em;
-}
-
-.project-switcher-caret {
+.env-switcher-caret {
   color: var(--sidebar-muted-foreground);
   transition: transform 0.15s ease;
 }
 
-/* Project Dropdown */
-.project-dropdown {
+/* Environment Dropdown */
+.env-dropdown {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding-top: 8px;
+  padding-top: 6px;
 }
 
-.project-option {
+.env-option {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
-  padding: 8px 12px;
+  padding: 6px 10px;
   background: transparent;
   border: 1px solid transparent;
   border-radius: 6px;
   cursor: pointer;
   font-family: inherit;
-  color: var(--sidebar-foreground);
+  color: var(--sidebar-muted-foreground);
+  font-size: 12px;
   transition: all 0.1s ease;
 }
 
-.project-option:hover {
+.env-option:hover {
   background-color: var(--sidebar-accent);
   border-color: var(--sidebar-border);
+  color: var(--sidebar-foreground);
 }
 
-.project-option.active {
+.env-option.active {
   background-color: hsl(var(--accent) / 0.1);
   border-color: hsl(var(--accent) / 0.2);
-}
-
-.project-option-icon {
-  width: 24px;
-  height: 24px;
-  border-radius: 5px;
-  background-color: hsl(0 0% 12%);
-  border: 1.5px solid;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
   color: var(--sidebar-foreground);
 }
 
-.project-option-info {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+.env-option-label {
   flex: 1;
+  text-align: left;
 }
 
-.project-option-name {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--sidebar-foreground);
-  line-height: 1.2;
-}
-
-.project-option-env {
-  font-size: 9px;
-  color: var(--sidebar-muted-foreground);
-  letter-spacing: 0.06em;
-}
-
-.project-option-check {
+.env-option-check {
   color: hsl(var(--accent));
 }
 
@@ -317,18 +264,6 @@
   background-color: var(--sidebar-bg);
 }
 
-/* Environment badge */
-.sidebar-env-badge {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  margin-bottom: 8px;
-  border-radius: 6px;
-  background-color: var(--sidebar-accent);
-  border: 1px solid var(--sidebar-border);
-}
-
 .env-dot {
   width: 6px;
   height: 6px;
@@ -345,7 +280,6 @@
 .version-text {
   font-size: 9px;
   color: var(--sidebar-muted-foreground);
-  margin-left: auto;
 }
 
 /* User card */

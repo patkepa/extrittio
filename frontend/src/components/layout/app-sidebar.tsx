@@ -135,52 +135,6 @@ export const AppSidebar = ({ isCollapsed = false, isMobileOpen = false, onMobile
         </div>
       </div>
 
-      {/* Project Switcher */}
-      {!isCollapsed && (
-        <div className="sidebar-project-switcher">
-          <button
-            className="project-switcher-btn"
-            onClick={() => setProjectSwitcherOpen(!projectSwitcherOpen)}
-          >
-            <div className="project-switcher-left">
-              <div className="project-icon-wrapper" style={{ borderColor: envColors[selectedProject.environment] }}>
-                <Icon icon={selectedProject.icon} size={14} />
-              </div>
-              <div className="project-switcher-info">
-                <span className="project-switcher-name">{selectedProject.name}</span>
-                <span className="project-switcher-env mono-data">{selectedProject.environment.toUpperCase()}</span>
-              </div>
-            </div>
-            <Icon icon="double-caret-vertical" size={14} className="project-switcher-caret" />
-          </button>
-          <Collapse isOpen={projectSwitcherOpen}>
-            <div className="project-dropdown">
-              {projects.map((project) => (
-                <button
-                  key={project.environment}
-                  className={`project-option ${selectedProject.environment === project.environment ? 'active' : ''}`}
-                  onClick={() => {
-                    setSelectedProject(project);
-                    setProjectSwitcherOpen(false);
-                  }}
-                >
-                  <div className="project-option-icon" style={{ borderColor: envColors[project.environment] }}>
-                    <Icon icon={project.icon} size={12} />
-                  </div>
-                  <div className="project-option-info">
-                    <span className="project-option-name">{project.name}</span>
-                    <span className="project-option-env mono-data">{project.environment}</span>
-                  </div>
-                  {selectedProject.environment === project.environment && (
-                    <Icon icon="tick" size={14} className="project-option-check" />
-                  )}
-                </button>
-              ))}
-            </div>
-          </Collapse>
-        </div>
-      )}
-
       {/* Navigation */}
       <div className="sidebar-nav">
         {navGroups.map((group, idx) => (
@@ -200,14 +154,6 @@ export const AppSidebar = ({ isCollapsed = false, isMobileOpen = false, onMobile
       <div className="sidebar-footer">
         {!isCollapsed ? (
           <>
-            <div className="sidebar-env-badge">
-              <span
-                className="env-dot"
-                style={{ backgroundColor: envColors[selectedProject.environment] }}
-              />
-              <span className="env-text mono-data">{selectedProject.environment.toUpperCase()}</span>
-              <span className="version-text mono-data">v0.1.0</span>
-            </div>
             <div className="user-card">
               <div className="user-info">
                 <div className="user-avatar">{currentUser.name.charAt(0).toUpperCase()}</div>
@@ -217,6 +163,47 @@ export const AppSidebar = ({ isCollapsed = false, isMobileOpen = false, onMobile
                 </div>
                 <Button icon="log-out" minimal small className="user-logout" title="Sign out" />
               </div>
+            </div>
+            <div className="sidebar-env-switcher">
+              <button
+                className="env-switcher-btn"
+                onClick={() => setProjectSwitcherOpen(!projectSwitcherOpen)}
+              >
+                <div className="env-switcher-left">
+                  <span
+                    className="env-dot"
+                    style={{ backgroundColor: envColors[selectedProject.environment] }}
+                  />
+                  <span className="env-text mono-data">{selectedProject.environment.toUpperCase()}</span>
+                </div>
+                <div className="env-switcher-right">
+                  <span className="version-text mono-data">v0.1.0</span>
+                  <Icon icon="double-caret-vertical" size={12} className="env-switcher-caret" />
+                </div>
+              </button>
+              <Collapse isOpen={projectSwitcherOpen}>
+                <div className="env-dropdown">
+                  {projects.map((project) => (
+                    <button
+                      key={project.environment}
+                      className={`env-option ${selectedProject.environment === project.environment ? 'active' : ''}`}
+                      onClick={() => {
+                        setSelectedProject(project);
+                        setProjectSwitcherOpen(false);
+                      }}
+                    >
+                      <span
+                        className="env-dot"
+                        style={{ backgroundColor: envColors[project.environment] }}
+                      />
+                      <span className="env-option-label">{project.environment}</span>
+                      {selectedProject.environment === project.environment && (
+                        <Icon icon="tick" size={12} className="env-option-check" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </Collapse>
             </div>
           </>
         ) : (
