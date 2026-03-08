@@ -280,7 +280,7 @@ export const Devices = () => {
                       small
                       intent="danger"
                       title="Delete Device"
-                      loading={deleteDeviceMutation.isPending}
+                      loading={deleteDeviceMutation.isPending && deleteDeviceMutation.variables === device.id}
                       onClick={() => {
                         deleteDeviceMutation.mutate(device.id);
                       }}
