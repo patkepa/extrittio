@@ -1,7 +1,49 @@
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 
-use super::schema::{devices, telemetry};
+use super::schema::{device_types, devices, fleets, telemetry};
+
+// ---------------------------------------------------------------------------
+// Device Types
+// ---------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug, Clone)]
+#[diesel(table_name = device_types)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct DeviceType {
+    pub id: i32,
+    pub name: String,
+    pub created_at: NaiveDateTime,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = device_types)]
+pub struct NewDeviceType {
+    pub name: String,
+}
+
+// ---------------------------------------------------------------------------
+// Fleets
+// ---------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug, Clone)]
+#[diesel(table_name = fleets)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct Fleet {
+    pub id: i32,
+    pub name: String,
+    pub created_at: NaiveDateTime,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = fleets)]
+pub struct NewFleet {
+    pub name: String,
+}
+
+// ---------------------------------------------------------------------------
+// Devices
+// ---------------------------------------------------------------------------
 
 #[derive(Queryable, Selectable, Debug)]
 #[diesel(table_name = devices)]
@@ -9,7 +51,8 @@ use super::schema::{devices, telemetry};
 pub struct Device {
     pub id: String,
     pub name: String,
-    pub device_type: String,
+    pub device_type_id: i32,
+    pub fleet_id: Option<i32>,
     pub status: String,
     pub firmware: String,
     pub location: String,
@@ -24,7 +67,8 @@ pub struct Device {
 pub struct NewDevice {
     pub id: String,
     pub name: String,
-    pub device_type: String,
+    pub device_type_id: i32,
+    pub fleet_id: Option<i32>,
     pub location: String,
     pub firmware: String,
 }
@@ -33,7 +77,8 @@ pub struct NewDevice {
 #[diesel(table_name = devices)]
 pub struct UpdateDevice {
     pub name: Option<String>,
-    pub device_type: Option<String>,
+    pub device_type_id: Option<i32>,
+    pub fleet_id: Option<Option<i32>>,
     pub location: Option<String>,
     pub firmware: Option<String>,
     pub status: Option<String>,
@@ -41,6 +86,10 @@ pub struct UpdateDevice {
     pub uptime_seconds: Option<i32>,
     pub updated_at: Option<NaiveDateTime>,
 }
+
+// ---------------------------------------------------------------------------
+// Telemetry
+// ---------------------------------------------------------------------------
 
 #[derive(Queryable, Selectable, Debug)]
 #[diesel(table_name = telemetry)]

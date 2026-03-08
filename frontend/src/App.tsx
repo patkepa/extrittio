@@ -3,7 +3,7 @@ import { ThemeProvider } from './context/theme-provider';
 import { MainLayout } from './components/layout/main-layout';
 import { Dashboard } from './pages/dashboard';
 import { Devices } from './pages/devices';
-import { Settings } from './pages/settings';
+import { Settings } from './pages/settings/index';
 import { Users } from './pages/users';
 import { HelpCenter } from './pages/help-center';
 

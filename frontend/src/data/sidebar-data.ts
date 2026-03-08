@@ -49,6 +49,16 @@ export const navGroups: NavGroup[] = [
             icon: 'desktop',
             href: '/settings/display',
           },
+          {
+            label: 'Device Types',
+            icon: 'tag',
+            href: '/settings/device-types',
+          },
+          {
+            label: 'Fleets',
+            icon: 'layers',
+            href: '/settings/fleets',
+          },
         ],
       },
       {

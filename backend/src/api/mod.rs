@@ -1,5 +1,7 @@
 pub mod dashboard;
+pub mod device_types;
 pub mod devices;
+pub mod fleets;
 pub mod telemetry;
 
 use axum::Router;
@@ -12,4 +14,6 @@ pub fn router() -> Router<Arc<AppState>> {
         .merge(devices::router())
         .merge(dashboard::router())
         .merge(telemetry::router())
+        .merge(device_types::router())
+        .merge(fleets::router())
 }

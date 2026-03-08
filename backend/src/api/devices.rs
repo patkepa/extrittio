@@ -10,8 +10,8 @@ use prost::Message;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use crate::db::models::{Device, NewDevice, UpdateDevice};
-use crate::db::schema::devices;
+use crate::db::models::{Device, DeviceType, Fleet, NewDevice, UpdateDevice};
+use crate::db::schema::{device_types, devices, fleets};
 use crate::state::AppState;
 use extrittio_proto::extrittio::DeviceCommand;
 
@@ -23,8 +23,10 @@ use extrittio_proto::extrittio::DeviceCommand;
 pub struct DeviceResponse {
     pub id: String,
     pub name: String,
-    #[serde(rename = "type")]
-    pub device_type: String,
+    pub device_type_id: i32,
+    pub device_type_name: String,
+    pub fleet_id: Option<i32>,
+    pub fleet_name: Option<String>,
     pub status: String,
     pub last_seen: String,
     pub firmware: String,
@@ -35,7 +37,8 @@ pub struct DeviceResponse {
 #[derive(Debug, Deserialize)]
 pub struct NewDeviceRequest {
     pub name: String,
-    pub device_type: String,
+    pub device_type_id: i32,
+    pub fleet_id: Option<i32>,
     pub location: Option<String>,
     pub firmware: Option<String>,
 }
@@ -43,7 +46,8 @@ pub struct NewDeviceRequest {
 #[derive(Debug, Deserialize)]
 pub struct UpdateDeviceRequest {
     pub name: Option<String>,
-    pub device_type: Option<String>,
+    pub device_type_id: Option<i32>,
+    pub fleet_id: Option<Option<i32>>,
     pub location: Option<String>,
     pub firmware: Option<String>,
 }
@@ -52,6 +56,7 @@ pub struct UpdateDeviceRequest {
 pub struct ListDevicesQuery {
     pub status: Option<String>,
     pub search: Option<String>,
+    pub fleet_id: Option<i32>,
 }
 
 // ---------------------------------------------------------------------------
@@ -111,18 +116,23 @@ fn format_last_seen(last_seen: Option<NaiveDateTime>) -> String {
     }
 }
 
-impl From<Device> for DeviceResponse {
-    fn from(d: Device) -> Self {
-        Self {
-            id: d.id,
-            name: d.name,
-            device_type: d.device_type,
-            status: d.status,
-            last_seen: format_last_seen(d.last_seen),
-            firmware: d.firmware,
-            location: d.location,
-            uptime: format_uptime(d.uptime_seconds),
-        }
+fn to_device_response(
+    device: Device,
+    device_type: DeviceType,
+    fleet: Option<Fleet>,
+) -> DeviceResponse {
+    DeviceResponse {
+        id: device.id,
+        name: device.name,
+        device_type_id: device_type.id,
+        device_type_name: device_type.name,
+        fleet_id: fleet.as_ref().map(|f| f.id),
+        fleet_name: fleet.map(|f| f.name),
+        status: device.status,
+        last_seen: format_last_seen(device.last_seen),
+        firmware: device.firmware,
+        location: device.location,
+        uptime: format_uptime(device.uptime_seconds),
     }
 }
 
@@ -153,7 +163,10 @@ async fn list_devices(
         .get()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let mut query = devices::table.into_boxed();
+    let mut query = devices::table
+        .inner_join(device_types::table)
+        .left_join(fleets::table)
+        .into_boxed();
 
     if let Some(ref status) = params.status {
         query = query.filter(devices::status.eq(status));
@@ -164,17 +177,29 @@ async fn list_devices(
         query = query.filter(
             devices::name
                 .like(pattern.clone())
-                .or(devices::device_type.like(pattern.clone()))
+                .or(device_types::name.like(pattern.clone()))
                 .or(devices::location.like(pattern)),
         );
     }
 
-    let results: Vec<Device> = query
-        .select(Device::as_select())
+    if let Some(fleet_id) = params.fleet_id {
+        query = query.filter(devices::fleet_id.eq(fleet_id));
+    }
+
+    let results: Vec<(Device, DeviceType, Option<Fleet>)> = query
+        .select((
+            Device::as_select(),
+            DeviceType::as_select(),
+            Option::<Fleet>::as_select(),
+        ))
         .load(&mut conn)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let response: Vec<DeviceResponse> = results.into_iter().map(DeviceResponse::from).collect();
+    let response: Vec<DeviceResponse> = results
+        .into_iter()
+        .map(|(d, dt, f)| to_device_response(d, dt, f))
+        .collect();
+
     Ok(Json(response))
 }
 
@@ -187,16 +212,22 @@ async fn get_device(
         .get()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let device: Device = devices::table
-        .find(&id)
-        .select(Device::as_select())
+    let (device, device_type, fleet): (Device, DeviceType, Option<Fleet>) = devices::table
+        .inner_join(device_types::table)
+        .left_join(fleets::table)
+        .filter(devices::id.eq(&id))
+        .select((
+            Device::as_select(),
+            DeviceType::as_select(),
+            Option::<Fleet>::as_select(),
+        ))
         .first(&mut conn)
         .map_err(|e| match e {
             diesel::result::Error::NotFound => StatusCode::NOT_FOUND,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         })?;
 
-    Ok(Json(DeviceResponse::from(device)))
+    Ok(Json(to_device_response(device, device_type, fleet)))
 }
 
 async fn create_device(
@@ -213,7 +244,8 @@ async fn create_device(
     let new_device = NewDevice {
         id: new_id.clone(),
         name: body.name,
-        device_type: body.device_type,
+        device_type_id: body.device_type_id,
+        fleet_id: body.fleet_id,
         location: body.location.unwrap_or_default(),
         firmware: body.firmware.unwrap_or_else(|| "unknown".to_string()),
     };
@@ -223,13 +255,22 @@ async fn create_device(
         .execute(&mut conn)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let created: Device = devices::table
-        .find(&new_id)
-        .select(Device::as_select())
+    let (device, device_type, fleet): (Device, DeviceType, Option<Fleet>) = devices::table
+        .inner_join(device_types::table)
+        .left_join(fleets::table)
+        .filter(devices::id.eq(&new_id))
+        .select((
+            Device::as_select(),
+            DeviceType::as_select(),
+            Option::<Fleet>::as_select(),
+        ))
         .first(&mut conn)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    Ok((StatusCode::CREATED, Json(DeviceResponse::from(created))))
+    Ok((
+        StatusCode::CREATED,
+        Json(to_device_response(device, device_type, fleet)),
+    ))
 }
 
 async fn update_device(
@@ -254,7 +295,8 @@ async fn update_device(
 
     let changeset = UpdateDevice {
         name: body.name,
-        device_type: body.device_type,
+        device_type_id: body.device_type_id,
+        fleet_id: body.fleet_id,
         location: body.location,
         firmware: body.firmware,
         updated_at: Some(Utc::now().naive_utc()),
@@ -266,13 +308,19 @@ async fn update_device(
         .execute(&mut conn)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let updated: Device = devices::table
-        .find(&id)
-        .select(Device::as_select())
+    let (device, device_type, fleet): (Device, DeviceType, Option<Fleet>) = devices::table
+        .inner_join(device_types::table)
+        .left_join(fleets::table)
+        .filter(devices::id.eq(&id))
+        .select((
+            Device::as_select(),
+            DeviceType::as_select(),
+            Option::<Fleet>::as_select(),
+        ))
         .first(&mut conn)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    Ok(Json(DeviceResponse::from(updated)))
+    Ok(Json(to_device_response(device, device_type, fleet)))
 }
 
 async fn delete_device(
