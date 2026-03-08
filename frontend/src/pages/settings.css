@@ -1,37 +1,48 @@
 .settings-page {
-  max-width: 1000px;
+  max-width: 800px;
   margin: 0 auto;
+}
+
+.settings-page .page-header {
+  margin-bottom: 24px;
+}
+
+.settings-page .page-header h3 {
+  margin-bottom: 4px;
+  letter-spacing: -0.03em;
 }
 
 .settings-content {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
 .settings-card {
-  padding: 24px;
+  padding: 20px;
   background-color: var(--card-bg);
+  border-left: 3px solid hsl(var(--accent));
 }
 
-.settings-card h5 {
-  margin: 0 0 20px 0;
+.settings-card .section-label {
+  display: block;
+  margin-bottom: 16px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--border-color);
 }
 
-.settings-card .bp6-form-group {
-  margin-bottom: 20px;
+.settings-form .bp6-form-group {
+  margin-bottom: 16px;
 }
 
-.settings-card .bp6-form-group:last-child {
+.settings-form .bp6-form-group:last-child {
   margin-bottom: 0;
 }
 
-.settings-card .bp6-switch {
-  margin-bottom: 12px;
+.settings-switches .bp6-switch {
+  margin-bottom: 10px;
 }
 
-.settings-card .bp6-switch:last-child {
+.settings-switches .bp6-switch:last-child {
   margin-bottom: 0;
 }
