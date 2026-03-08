@@ -1,5 +1,12 @@
-import { Card, Elevation, H3, H5, Icon } from '@blueprintjs/core';
-import type { IconName } from '@blueprintjs/icons';
+import {
+  Smartphone,
+  CheckCircle2,
+  AlertTriangle,
+  Mail,
+  TrendingUp,
+  TrendingDown,
+  type LucideIcon,
+} from 'lucide-react';
 import {
   AreaChart,
   Area,
@@ -8,7 +15,7 @@ import {
   Cell,
   ResponsiveContainer,
 } from 'recharts';
-import './dashboard.css';
+import { Card } from '@/components/ui/card';
 
 const sparklineData = [
   [40, 45, 42, 50, 55, 52, 58],
@@ -22,16 +29,16 @@ interface StatCard {
   value: string;
   delta: string;
   deltaUp: boolean;
-  icon: IconName;
+  icon: LucideIcon;
   color: string;
   sparkIndex: number;
 }
 
 const stats: StatCard[] = [
-  { label: 'Total Devices', value: '1,234', delta: '+18 this week', deltaUp: true, icon: 'mobile-video', color: '#2965CC', sparkIndex: 0 },
-  { label: 'Active Devices', value: '987', delta: '+12 today', deltaUp: true, icon: 'tick-circle', color: '#0F9960', sparkIndex: 1 },
-  { label: 'Offline Devices', value: '247', delta: '-5 from yesterday', deltaUp: false, icon: 'warning-sign', color: '#D99E0B', sparkIndex: 2 },
-  { label: 'Total Messages', value: '45.2K', delta: '+2.1K today', deltaUp: true, icon: 'envelope', color: '#8F398F', sparkIndex: 3 },
+  { label: 'Total Devices', value: '1,234', delta: '+18 this week', deltaUp: true, icon: Smartphone, color: '#2965CC', sparkIndex: 0 },
+  { label: 'Active Devices', value: '987', delta: '+12 today', deltaUp: true, icon: CheckCircle2, color: '#0F9960', sparkIndex: 1 },
+  { label: 'Offline Devices', value: '247', delta: '-5 from yesterday', deltaUp: false, icon: AlertTriangle, color: '#D99E0B', sparkIndex: 2 },
+  { label: 'Total Messages', value: '45.2K', delta: '+2.1K today', deltaUp: true, icon: Mail, color: '#8F398F', sparkIndex: 3 },
 ];
 
 const donutData = [
@@ -70,32 +77,43 @@ export const Dashboard = () => {
   const totalDevices = donutData.reduce((sum, d) => sum + d.value, 0);
 
   return (
-    <div className="dashboard-page">
+    <div className="mx-auto max-w-[1400px] space-y-6">
       {/* System Health Strip */}
-      <div className="health-strip">
+      <div className="flex flex-wrap items-center overflow-hidden rounded-md border border-border bg-surface">
         {healthMetrics.map((metric) => (
-          <div key={metric.label} className="health-metric">
+          <div
+            key={metric.label}
+            className="flex flex-1 items-center gap-2 border-r border-border px-5 py-2.5 last:border-r-0 max-md:flex-[1_1_45%] max-md:border-b max-md:border-border"
+          >
             <span className={`status-led status-led--${metric.status}`} />
-            <span className="health-label">{metric.label}</span>
-            <span className="health-value mono-data">{metric.value}</span>
+            <span className="text-[10px] font-bold tracking-[0.08em] text-muted">{metric.label}</span>
+            <span className="font-mono tabular-nums font-semibold tracking-wide text-[13px] text-foreground">{metric.value}</span>
           </div>
         ))}
       </div>
 
-      <div className="page-header">
-        <H3>Dashboard</H3>
-        <p className="page-description">Extrittio IoT Hub — Operational Overview</p>
+      {/* Page Header */}
+      <div>
+        <h3 className="text-lg font-semibold tracking-tight text-foreground">Dashboard</h3>
+        <p className="mt-1 text-sm text-muted">Extrittio IoT Hub — Operational Overview</p>
       </div>
 
       {/* Stat Cards */}
-      <div className="stats-grid">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (
-          <Card key={stat.label} elevation={Elevation.TWO} className="stat-card stagger-item">
-            <div className="stat-card-top">
-              <div className="stat-icon" style={{ backgroundColor: stat.color }}>
-                <Icon icon={stat.icon} size={20} color="white" />
+          <Card
+            key={stat.label}
+            className="stagger-item border-l-3 p-4"
+            style={{ borderLeftColor: stat.color }}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <div
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
+                style={{ backgroundColor: stat.color }}
+              >
+                <stat.icon size={20} color="white" />
               </div>
-              <div className="stat-sparkline">
+              <div className="h-8 max-w-[100px] flex-1">
                 <ResponsiveContainer width="100%" height={32}>
                   <AreaChart data={sparklineData[stat.sparkIndex]!.map((v, i) => ({ v, i }))}>
                     <defs>
@@ -117,11 +135,11 @@ export const Dashboard = () => {
                 </ResponsiveContainer>
               </div>
             </div>
-            <div className="stat-content">
-              <span className="stat-value mono-data">{stat.value}</span>
-              <span className="stat-label">{stat.label}</span>
-              <span className={`stat-delta ${stat.deltaUp ? 'delta-up' : 'delta-down'}`}>
-                <Icon icon={stat.deltaUp ? 'trending-up' : 'trending-down'} size={12} />
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[28px] font-bold leading-none text-foreground font-mono tabular-nums">{stat.value}</span>
+              <span className="text-xs font-semibold uppercase tracking-[0.06em] text-muted">{stat.label}</span>
+              <span className={`mt-1 flex items-center gap-1 text-xs font-semibold ${stat.deltaUp ? 'text-success' : 'text-danger'}`}>
+                {stat.deltaUp ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
                 {stat.delta}
               </span>
             </div>
@@ -130,68 +148,69 @@ export const Dashboard = () => {
       </div>
 
       {/* Content Grid */}
-      <div className="dashboard-content">
-        <div className="content-grid">
-          {/* Activity Timeline */}
-          <Card elevation={Elevation.TWO} className="content-card stagger-item">
-            <div className="card-header">
-              <H5>Recent Activity</H5>
-              <span className="section-label" style={{ margin: 0 }}>{activityEvents.length} events</span>
-            </div>
-            <div className="activity-timeline">
-              {activityEvents.map((event) => (
-                <div key={event.id} className="timeline-item">
-                  <span className={`status-led status-led--${event.status}`} />
-                  <span className="timeline-time mono-data">{event.time}</span>
-                  <span className="timeline-device">{event.device}</span>
-                  <span className="timeline-event">{event.event}</span>
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          {/* Device Status Donut */}
-          <Card elevation={Elevation.TWO} className="content-card stagger-item">
-            <div className="card-header">
-              <H5>Device Status</H5>
-              <span className="section-label" style={{ margin: 0 }}>{totalDevices} total</span>
-            </div>
-            <div className="donut-container">
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie
-                    data={donutData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={85}
-                    paddingAngle={3}
-                    dataKey="value"
-                    strokeWidth={0}
-                    isAnimationActive={false}
-                  >
-                    {donutData.map((entry) => (
-                      <Cell key={entry.name} fill={entry.color} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="donut-center">
-                <span className="donut-total mono-data">{totalDevices.toLocaleString()}</span>
-                <span className="donut-label">Devices</span>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr]">
+        {/* Activity Timeline */}
+        <Card className="stagger-item p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <h5 className="text-sm font-semibold text-foreground">Recent Activity</h5>
+            <span className="text-[11px] font-bold uppercase tracking-widest text-muted">{activityEvents.length} events</span>
+          </div>
+          <div className="flex flex-col">
+            {activityEvents.map((event) => (
+              <div
+                key={event.id}
+                className="flex items-center gap-2.5 border-b border-[hsl(0_0%_15%/0.5)] py-2 text-[13px] last:border-b-0"
+              >
+                <span className={`status-led status-led--${event.status}`} />
+                <span className="min-w-[60px] shrink-0 font-mono tabular-nums font-semibold tracking-wide text-[11px] text-muted">{event.time}</span>
+                <span className="min-w-0 shrink overflow-hidden text-ellipsis whitespace-nowrap font-semibold text-foreground">{event.device}</span>
+                <span className="ml-auto shrink-0 overflow-hidden text-ellipsis whitespace-nowrap text-muted">{event.event}</span>
               </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* Device Status Donut */}
+        <Card className="stagger-item p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <h5 className="text-sm font-semibold text-foreground">Device Status</h5>
+            <span className="text-[11px] font-bold uppercase tracking-widest text-muted">{totalDevices} total</span>
+          </div>
+          <div className="relative flex justify-center py-2.5">
+            <ResponsiveContainer width="100%" height={200}>
+              <PieChart>
+                <Pie
+                  data={donutData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={85}
+                  paddingAngle={3}
+                  dataKey="value"
+                  strokeWidth={0}
+                  isAnimationActive={false}
+                >
+                  {donutData.map((entry) => (
+                    <Cell key={entry.name} fill={entry.color} />
+                  ))}
+                </Pie>
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="pointer-events-none absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center">
+              <span className="text-2xl font-bold leading-none text-foreground font-mono tabular-nums">{totalDevices.toLocaleString()}</span>
+              <span className="mt-0.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">Devices</span>
             </div>
-            <div className="donut-legend">
-              {donutData.map((entry) => (
-                <div key={entry.name} className="legend-item">
-                  <span className="legend-dot" style={{ backgroundColor: entry.color }} />
-                  <span className="legend-name">{entry.name}</span>
-                  <span className="legend-value mono-data">{entry.value}</span>
-                </div>
-              ))}
-            </div>
-          </Card>
-        </div>
+          </div>
+          <div className="mt-2 flex justify-center gap-6">
+            {donutData.map((entry) => (
+              <div key={entry.name} className="flex items-center gap-1.5 text-[13px]">
+                <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: entry.color }} />
+                <span className="font-medium text-muted">{entry.name}</span>
+                <span className="font-mono tabular-nums font-semibold tracking-wide text-foreground">{entry.value}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
       </div>
     </div>
   );

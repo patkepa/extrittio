@@ -1,50 +1,56 @@
-import { Card, Elevation, H3, FormGroup, InputGroup, Switch } from '@blueprintjs/core';
-import './settings.css';
+import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 
-export const Settings = () => {
+export function Settings() {
   return (
-    <div className="settings-page">
-      <div className="page-header">
-        <H3>Settings</H3>
-        <p className="page-description">Application configuration</p>
+    <div className="max-w-3xl space-y-6">
+      <div>
+        <h3 className="text-lg font-semibold text-foreground">Settings</h3>
+        <p className="mt-1 text-sm text-muted">Application configuration</p>
       </div>
 
-      <div className="settings-content">
-        <Card elevation={Elevation.TWO} className="settings-card">
-          <span className="section-label">Profile</span>
-          <div className="settings-form">
-            <FormGroup label="Name" labelFor="name-input">
-              <InputGroup id="name-input" placeholder="Enter your name" defaultValue="satnaing" />
-            </FormGroup>
-            <FormGroup label="Email" labelFor="email-input">
-              <InputGroup
-                id="email-input"
-                type="email"
-                placeholder="Enter your email"
-                defaultValue="satnaingdev@gmail.com"
-              />
-            </FormGroup>
+      <Card className="p-5 border-l-2 border-l-accent">
+        <span className="text-[11px] font-bold uppercase tracking-widest text-muted mb-4 pb-2 border-b border-border block">
+          Profile
+        </span>
+        <div className="space-y-4">
+          <div>
+            <label htmlFor="name-input" className="block text-sm font-semibold text-foreground mb-1.5">
+              Name
+            </label>
+            <Input id="name-input" placeholder="Enter your name" defaultValue="satnaing" />
           </div>
-        </Card>
+          <div>
+            <label htmlFor="email-input" className="block text-sm font-semibold text-foreground mb-1.5">
+              Email
+            </label>
+            <Input id="email-input" type="email" placeholder="Enter your email" defaultValue="satnaingdev@gmail.com" />
+          </div>
+        </div>
+      </Card>
 
-        <Card elevation={Elevation.TWO} className="settings-card">
-          <span className="section-label">Notifications</span>
-          <div className="settings-switches">
-            <Switch label="Email notifications" defaultChecked />
-            <Switch label="Push notifications" />
-            <Switch label="Device alerts" defaultChecked />
-          </div>
-        </Card>
+      <Card className="p-5 border-l-2 border-l-accent">
+        <span className="text-[11px] font-bold uppercase tracking-widest text-muted mb-4 pb-2 border-b border-border block">
+          Notifications
+        </span>
+        <div className="space-y-3">
+          <Switch label="Email notifications" defaultChecked />
+          <Switch label="Push notifications" />
+          <Switch label="Device alerts" defaultChecked />
+        </div>
+      </Card>
 
-        <Card elevation={Elevation.TWO} className="settings-card">
-          <span className="section-label">Display</span>
-          <div className="settings-switches">
-            <Switch label="Compact mode" />
-            <Switch label="Show device thumbnails" defaultChecked />
-            <Switch label="Enable animations" defaultChecked />
-          </div>
-        </Card>
-      </div>
+      <Card className="p-5 border-l-2 border-l-accent">
+        <span className="text-[11px] font-bold uppercase tracking-widest text-muted mb-4 pb-2 border-b border-border block">
+          Display
+        </span>
+        <div className="space-y-3">
+          <Switch label="Compact mode" />
+          <Switch label="Show device thumbnails" defaultChecked />
+          <Switch label="Enable animations" defaultChecked />
+        </div>
+      </Card>
     </div>
   );
-};
+}
