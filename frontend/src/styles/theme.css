@@ -64,6 +64,60 @@
   --danger-light: 0 60% 15%;
 }
 
+/* Lattice-style grid background texture */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+}
+
+/* LED Status Indicator System */
+.status-led {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.status-led--online {
+  background-color: hsl(var(--success));
+  box-shadow: 0 0 6px hsl(var(--success) / 0.6), 0 0 12px hsl(var(--success) / 0.3);
+  animation: led-pulse 2s ease-in-out infinite;
+}
+
+.status-led--offline {
+  background-color: hsl(var(--danger));
+  box-shadow: 0 0 4px hsl(var(--danger) / 0.4);
+}
+
+.status-led--warning {
+  background-color: hsl(var(--warning));
+  box-shadow: 0 0 6px hsl(var(--warning) / 0.5);
+  animation: led-blink 1.5s ease-in-out infinite;
+}
+
+@keyframes led-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 6px hsl(var(--success) / 0.6), 0 0 12px hsl(var(--success) / 0.3); }
+  50% { opacity: 0.7; box-shadow: 0 0 3px hsl(var(--success) / 0.3), 0 0 6px hsl(var(--success) / 0.15); }
+}
+
+@keyframes led-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
 /* Global styles */
 * {
   margin: 0;
@@ -88,6 +142,24 @@ code {
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro',
     'Menlo', 'Consolas', 'Courier New', monospace;
   font-size: 0.875em;
+}
+
+/* Monospaced data display — for timestamps, IDs, counts, firmware */
+.mono-data {
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+/* Section header labels — uppercase tracked */
+.section-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: hsl(var(--muted));
+  margin-bottom: 12px;
 }
 
 /* Typography improvements */
@@ -441,3 +513,20 @@ p {
 .bp6-dark .bp6-popover-arrow-fill {
   fill: var(--card-bg);
 }
+
+/* Stagger fade-in animation for card grids */
+@keyframes staggerFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.stagger-item {
+  animation: staggerFadeIn 0.4s ease-out both;
+}
+
+.stagger-item:nth-child(1) { animation-delay: 0ms; }
+.stagger-item:nth-child(2) { animation-delay: 80ms; }
+.stagger-item:nth-child(3) { animation-delay: 160ms; }
+.stagger-item:nth-child(4) { animation-delay: 240ms; }
+.stagger-item:nth-child(5) { animation-delay: 320ms; }
+.stagger-item:nth-child(6) { animation-delay: 400ms; }
