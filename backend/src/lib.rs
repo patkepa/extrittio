@@ -1,4 +1,5 @@
 pub mod api;
+pub mod auth;
 pub mod background;
 pub mod config;
 pub mod db;

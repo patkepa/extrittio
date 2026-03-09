@@ -7,4 +7,5 @@ pub type DbPool = Pool<ConnectionManager<SqliteConnection>>;
 pub struct AppState {
     pub db_pool: DbPool,
     pub zenoh_session: Arc<zenoh::Session>,
+    pub jwt_secret: String,
 }
