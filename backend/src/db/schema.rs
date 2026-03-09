@@ -44,6 +44,13 @@ diesel::table! {
 }
 
 diesel::table! {
+    server_config (key) {
+        key -> Text,
+        value -> Text,
+    }
+}
+
+diesel::table! {
     telemetry (id) {
         id -> Integer,
         device_id -> Text,
@@ -53,6 +60,16 @@ diesel::table! {
         battery_level -> Nullable<Float>,
         custom_json -> Nullable<Text>,
         received_at -> Timestamp,
+    }
+}
+
+diesel::table! {
+    users (id) {
+        id -> Integer,
+        username -> Text,
+        password_hash -> Text,
+        role -> Text,
+        created_at -> Timestamp,
     }
 }
 
@@ -66,5 +83,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     device_types,
     devices,
     fleets,
+    server_config,
     telemetry,
+    users,
 );
