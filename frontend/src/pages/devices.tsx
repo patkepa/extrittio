@@ -223,7 +223,7 @@ export const Devices = () => {
             )}
           </p>
         </div>
-        <Button intent="primary" icon="add" onClick={() => setIsAddDialogOpen(true)}>
+        <Button intent="primary" icon="add" onClick={() => openAddDeviceDialog()}>
           Add Device
         </Button>
       </div>
@@ -392,7 +392,7 @@ export const Devices = () => {
         icon="add"
         title="Add Device"
         isOpen={isAddDialogOpen}
-        onClose={() => setIsAddDialogOpen(false)}
+        onClose={() => closeAddDeviceDialog()}
       >
         <DialogBody>
           <FormGroup label="Name" labelInfo="(required)">
@@ -457,7 +457,7 @@ export const Devices = () => {
         <DialogFooter
           actions={
             <>
-              <Button onClick={() => setIsAddDialogOpen(false)}>Cancel</Button>
+              <Button onClick={() => closeAddDeviceDialog()}>Cancel</Button>
               <Button
                 intent="primary"
                 icon="add"
