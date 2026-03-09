@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Card,
   Elevation,
@@ -9,13 +10,8 @@ import {
   Button,
   InputGroup,
   Icon,
-  Drawer,
-  Position,
   H4,
   Callout,
-  Divider,
-  Tabs,
-  Tab,
   Spinner,
   Dialog,
   DialogBody,
@@ -24,12 +20,11 @@ import {
   HTMLSelect,
 } from '@blueprintjs/core';
 import { AreaChart, Area, ResponsiveContainer } from 'recharts';
-import { useDevices, useCreateDevice, useDeleteDevice, useRestartDevice } from '../hooks/use-devices';
-import { useDeviceTelemetry } from '../hooks/use-telemetry';
-import { useDeviceShadow, useUpdateDesiredState, useDeleteDeviceShadow } from '../hooks/use-shadow';
+import { useDevices, useCreateDevice, useDeleteDevice } from '../hooks/use-devices';
 import { useDeviceTypes } from '../hooks/use-device-types';
 import { useFleets } from '../hooks/use-fleets';
 import { useUIStore } from '../stores/ui-store';
+import { DeviceSummaryCard } from '../components/devices/device-summary-card';
 import type { Device } from '../types/api';
 import './devices.css';
 
@@ -42,33 +37,13 @@ function generateSparkline(id: string): number[] {
   return Array.from({ length: 7 }, (_, i) => Math.abs((hash * (i + 1)) % 100));
 }
 
-const logEntries = [
-  { time: '14:32:01', level: 'INFO', message: 'Device heartbeat received' },
-  { time: '14:30:45', level: 'INFO', message: 'Telemetry data uploaded (128 bytes)' },
-  { time: '14:28:12', level: 'WARN', message: 'Signal strength below threshold' },
-  { time: '14:25:00', level: 'INFO', message: 'Configuration sync completed' },
-  { time: '14:20:33', level: 'ERROR', message: 'Connection timeout — retrying' },
-  { time: '14:18:15', level: 'INFO', message: 'Firmware check: up to date' },
-];
-
-const configEntries = [
-  { key: 'reporting_interval', value: '30s' },
-  { key: 'max_retries', value: '3' },
-  { key: 'protocol', value: 'MQTT v5' },
-  { key: 'encryption', value: 'TLS 1.3' },
-  { key: 'data_format', value: 'Protobuf' },
-  { key: 'keepalive', value: '60s' },
-];
-
 export const Devices = () => {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
-  const [drawerTab, setDrawerTab] = useState('overview');
   const { isAddDeviceDialogOpen: isAddDialogOpen, openAddDeviceDialog, closeAddDeviceDialog } = useUIStore();
   const [newDevice, setNewDevice] = useState({
     name: '',
@@ -77,6 +52,18 @@ export const Devices = () => {
     location: '',
     firmware: '',
   });
+
+  // Hover tooltip state
+  const [hoveredDevice, setHoveredDevice] = useState<Device | null>(null);
+  const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
+  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup hover timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    };
+  }, []);
 
   // Fleet filter from URL query param
   const filterFleetId = searchParams.get('fleet_id') ? Number(searchParams.get('fleet_id')) : null;
@@ -97,28 +84,19 @@ export const Devices = () => {
   const { data: fleets = [] } = useFleets();
   const createDeviceMutation = useCreateDevice();
   const deleteDeviceMutation = useDeleteDevice();
-  const restartDeviceMutation = useRestartDevice();
-  const { data: shadow, isLoading: isShadowLoading } = useDeviceShadow(
-    selectedDevice?.id ?? null
-  );
-  const updateDesiredMutation = useUpdateDesiredState();
-  const deleteShadowMutation = useDeleteDeviceShadow();
-  const [desiredInput, setDesiredInput] = useState('');
 
-  // Open device drawer when navigated with ?device= query param (from command palette)
+  // Navigate to device detail when accessed with ?device= query param (from command palette)
   const deviceParam = searchParams.get('device');
   useEffect(() => {
     if (deviceParam && devices.length > 0) {
       const device = devices.find((d) => d.id === deviceParam);
       if (device) {
-        setSelectedDevice(device);
-        setDrawerTab('overview');
-        setIsDrawerOpen(true);
+        navigate(`/devices/${device.id}`, { replace: true });
       }
       searchParams.delete('device');
       setSearchParams(searchParams, { replace: true });
     }
-  }, [deviceParam, devices]);
+  }, [deviceParam, devices, navigate, searchParams, setSearchParams]);
 
   // Set default device_type_id when device types load
   const defaultTypeId = deviceTypes.find((dt) => dt.name === 'default')?.id ?? deviceTypes[0]?.id ?? 0;
@@ -140,20 +118,6 @@ export const Devices = () => {
       }
     );
   };
-
-  const { data: telemetryRecords = [] } = useDeviceTelemetry(
-    selectedDevice?.id ?? null,
-    { limit: 50 }
-  );
-
-  const telemetryChartData = telemetryRecords
-    .slice()
-    .reverse()
-    .map((r) => ({
-      temperature: r.temperature,
-      humidity: r.humidity,
-      battery: r.battery_level,
-    }));
 
   const filteredDevices = devices
     .filter((device) => {
@@ -181,9 +145,23 @@ export const Devices = () => {
   };
 
   const handleViewDevice = (device: Device) => {
-    setSelectedDevice(device);
-    setDrawerTab('overview');
-    setIsDrawerOpen(true);
+    navigate(`/devices/${device.id}`);
+  };
+
+  const handleRowMouseEnter = (device: Device, e: React.MouseEvent) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setHoverPos({ x: rect.left - 8, y: rect.top + rect.height / 2 });
+    hoverTimeoutRef.current = setTimeout(() => {
+      setHoveredDevice(device);
+    }, 300);
+  };
+
+  const handleRowMouseLeave = () => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+    setHoveredDevice(null);
   };
 
   const statusCounts = {
@@ -334,80 +312,99 @@ export const Devices = () => {
             </thead>
             <tbody>
               {filteredDevices.map((device, idx) => (
-                <tr
-                  key={device.id}
-                  className={`device-row ${selectedDevice?.id === device.id ? 'row-selected' : ''}`}
-                  onClick={() => handleViewDevice(device)}
-                  style={{ animationDelay: `${idx * 30}ms` }}
-                >
-                  <td>
-                    <span className={`status-led status-led--${device.status}`} />
-                  </td>
-                  <td>
-                    <div className="device-name-cell">
-                      <strong>{device.name}</strong>
-                      <span className="device-id mono-data">{device.id}</span>
-                    </div>
-                  </td>
-                  <td>
-                    <Tag minimal>{device.device_type_name}</Tag>
-                  </td>
-                  <td>
-                    {device.fleet_name ? (
-                      <Tag minimal intent="primary">{device.fleet_name}</Tag>
-                    ) : (
-                      <span style={{ color: 'hsl(var(--muted))', fontSize: 12 }}>—</span>
-                    )}
-                  </td>
-                  <td className="location-cell">{device.location}</td>
-                  <td>
-                    <span className="mono-data">{device.last_seen}</span>
-                  </td>
-                  <td>
-                    <code className="firmware-badge">{device.firmware}</code>
-                  </td>
-                  <td>
-                    <div className="row-sparkline">
-                      <ResponsiveContainer width="100%" height={24}>
-                        <AreaChart data={generateSparkline(device.id).map((v, i) => ({ v, i }))}>
-                          <Area
-                            type="monotone"
-                            dataKey="v"
-                            stroke={getStatusColor(device.status)}
-                            strokeWidth={1}
-                            fill={getStatusColor(device.status)}
-                            fillOpacity={0.15}
-                            dot={false}
-                            isAnimationActive={false}
-                          />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </td>
-                  <td>
-                    <span className="mono-data">{device.uptime}</span>
-                  </td>
-                  <td className="actions-column" onClick={(e) => e.stopPropagation()}>
-                    <Button icon="eye-open" minimal small onClick={() => handleViewDevice(device)} title="View Details" />
-                    <Button icon="edit" minimal small title="Edit Device" />
-                    <Button
-                      icon="trash"
-                      minimal
-                      small
-                      intent="danger"
-                      title="Delete Device"
-                      loading={deleteDeviceMutation.isPending && deleteDeviceMutation.variables === device.id}
-                      onClick={() => {
-                        deleteDeviceMutation.mutate(device.id);
-                      }}
-                    />
-                  </td>
-                </tr>
+                  <tr
+                    key={device.id}
+                    className="device-row"
+                    onClick={() => handleViewDevice(device)}
+                    onMouseEnter={(e) => handleRowMouseEnter(device, e)}
+                    onMouseLeave={handleRowMouseLeave}
+                    style={{ animationDelay: `${idx * 30}ms` }}
+                  >
+                    <td>
+                      <span className={`status-led status-led--${device.status}`} />
+                    </td>
+                    <td>
+                      <div className="device-name-cell">
+                        <strong>{device.name}</strong>
+                        <span className="device-id mono-data">{device.id}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <Tag minimal>{device.device_type_name}</Tag>
+                    </td>
+                    <td>
+                      {device.fleet_name ? (
+                        <Tag minimal intent="primary">{device.fleet_name}</Tag>
+                      ) : (
+                        <span style={{ color: 'hsl(var(--muted))', fontSize: 12 }}>—</span>
+                      )}
+                    </td>
+                    <td className="location-cell">{device.location}</td>
+                    <td>
+                      <span className="mono-data">{device.last_seen}</span>
+                    </td>
+                    <td>
+                      <code className="firmware-badge">{device.firmware}</code>
+                    </td>
+                    <td>
+                      <div className="row-sparkline">
+                        <ResponsiveContainer width="100%" height={24}>
+                          <AreaChart data={generateSparkline(device.id).map((v, i) => ({ v, i }))}>
+                            <Area
+                              type="monotone"
+                              dataKey="v"
+                              stroke={getStatusColor(device.status)}
+                              strokeWidth={1}
+                              fill={getStatusColor(device.status)}
+                              fillOpacity={0.15}
+                              dot={false}
+                              isAnimationActive={false}
+                            />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </td>
+                    <td>
+                      <span className="mono-data">{device.uptime}</span>
+                    </td>
+                    <td className="actions-column" onClick={(e) => e.stopPropagation()}>
+                      <Button icon="eye-open" minimal small onClick={() => handleViewDevice(device)} title="View Details" />
+                      <Button icon="edit" minimal small title="Edit Device" />
+                      <Button
+                        icon="trash"
+                        minimal
+                        small
+                        intent="danger"
+                        title="Delete Device"
+                        loading={deleteDeviceMutation.isPending && deleteDeviceMutation.variables === device.id}
+                        onClick={() => {
+                          deleteDeviceMutation.mutate(device.id);
+                        }}
+                      />
+                    </td>
+                  </tr>
               ))}
             </tbody>
           </HTMLTable>
         )}
       </Card>
+
+      {/* Hover Summary Card */}
+      {hoveredDevice && createPortal(
+        <div
+          className="device-hover-tooltip"
+          style={{
+            position: 'fixed',
+            left: hoverPos.x,
+            top: hoverPos.y,
+            transform: 'translate(-100%, -50%)',
+            zIndex: 30,
+          }}
+        >
+          <DeviceSummaryCard device={hoveredDevice} />
+        </div>,
+        document.body
+      )}
 
       {/* Add Device Dialog */}
       <Dialog
@@ -493,289 +490,6 @@ export const Devices = () => {
           }
         />
       </Dialog>
-
-      {/* Device Detail Drawer */}
-      <Drawer
-        icon="info-sign"
-        title="Device Details"
-        isOpen={isDrawerOpen}
-        onClose={() => setIsDrawerOpen(false)}
-        position={Position.RIGHT}
-        size="520px"
-      >
-        <div className="drawer-content">
-          {selectedDevice && (
-            <>
-              <div className="drawer-header">
-                <div className="device-status-banner">
-                  <span className={`status-led status-led--${selectedDevice.status}`} style={{ width: 10, height: 10 }} />
-                  <div>
-                    <H4 style={{ margin: 0 }}>{selectedDevice.name}</H4>
-                    <p style={{ margin: 0 }} className="banner-subtitle">
-                      <span className="mono-data">{selectedDevice.id}</span>
-                      <span className="banner-sep">|</span>
-                      {selectedDevice.device_type_name}
-                      {selectedDevice.fleet_name && (
-                        <>
-                          <span className="banner-sep">|</span>
-                          {selectedDevice.fleet_name}
-                        </>
-                      )}
-                      <span className="banner-sep">|</span>
-                      <span style={{ textTransform: 'uppercase', fontWeight: 700, fontSize: 12, letterSpacing: '0.06em' }}>
-                        {selectedDevice.status}
-                      </span>
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="drawer-tabs">
-                <Tabs
-                  id="device-tabs"
-                  selectedTabId={drawerTab}
-                  onChange={(newTab) => setDrawerTab(newTab as string)}
-                >
-                  <Tab id="overview" title="Overview" />
-                  <Tab id="telemetry" title="Telemetry" />
-                  <Tab id="logs" title="Logs" />
-                  <Tab id="config" title="Config" />
-                  <Tab id="shadow" title="Shadow" />
-                </Tabs>
-              </div>
-
-              <div className="drawer-body">
-                {drawerTab === 'overview' && (
-                  <>
-                    {selectedDevice.status === 'offline' && (
-                      <Callout intent="danger" icon="error" style={{ marginBottom: 16 }}>
-                        Device offline — last seen {selectedDevice.last_seen}
-                      </Callout>
-                    )}
-
-                    <div className="detail-grid">
-                      <div className="detail-item">
-                        <span className="section-label">Device ID</span>
-                        <span className="detail-value mono-data">{selectedDevice.id}</span>
-                      </div>
-                      <div className="detail-item">
-                        <span className="section-label">Type</span>
-                        <span className="detail-value">{selectedDevice.device_type_name}</span>
-                      </div>
-                      <div className="detail-item">
-                        <span className="section-label">Fleet</span>
-                        <span className="detail-value">{selectedDevice.fleet_name ?? '—'}</span>
-                      </div>
-                      <div className="detail-item">
-                        <span className="section-label">Location</span>
-                        <span className="detail-value">{selectedDevice.location}</span>
-                      </div>
-                      <div className="detail-item">
-                        <span className="section-label">Firmware</span>
-                        <span className="detail-value mono-data">{selectedDevice.firmware}</span>
-                      </div>
-                      <div className="detail-item">
-                        <span className="section-label">Last Seen</span>
-                        <span className="detail-value mono-data">{selectedDevice.last_seen}</span>
-                      </div>
-                      <div className="detail-item">
-                        <span className="section-label">Uptime</span>
-                        <span className="detail-value mono-data">{selectedDevice.uptime}</span>
-                      </div>
-                    </div>
-
-                    <Divider style={{ margin: '16px 0' }} />
-
-                    <span className="section-label">Quick Actions</span>
-                    <div className="quick-actions">
-                      <Button
-                        icon="refresh"
-                        fill
-                        loading={restartDeviceMutation.isPending}
-                        onClick={() => {
-                          if (selectedDevice) restartDeviceMutation.mutate(selectedDevice.id);
-                        }}
-                      >
-                        Restart
-                      </Button>
-                      <Button icon="cloud-upload" fill>Update FW</Button>
-                      <Button icon="chart" fill>Telemetry</Button>
-                      <Button icon="cog" fill>Configure</Button>
-                    </div>
-                  </>
-                )}
-
-                {drawerTab === 'telemetry' && (
-                  <div className="telemetry-tab">
-                    {telemetryChartData.length === 0 ? (
-                      <Callout icon="info-sign" intent="primary">
-                        No telemetry data available for this device.
-                      </Callout>
-                    ) : (
-                      [
-                        { label: 'Temperature', dataKey: 'temperature' as const, color: '#2965CC', unit: '\u00B0C' },
-                        { label: 'Humidity', dataKey: 'humidity' as const, color: '#0F9960', unit: '%' },
-                        { label: 'Battery Level', dataKey: 'battery' as const, color: '#D99E0B', unit: '%' },
-                      ].map((metric) => {
-                        const latestValue = telemetryChartData[telemetryChartData.length - 1]?.[metric.dataKey];
-                        return (
-                          <div key={metric.label} className="telemetry-chart">
-                            <div className="telemetry-header">
-                              <span className="section-label">{metric.label}</span>
-                              <span className="mono-data" style={{ fontSize: 14, color: metric.color }}>
-                                {latestValue != null ? `${latestValue}${metric.unit}` : '—'}
-                              </span>
-                            </div>
-                            <ResponsiveContainer width="100%" height={60}>
-                              <AreaChart data={telemetryChartData}>
-                                <defs>
-                                  <linearGradient id={`tel-${metric.label.replace(/\s/g, '')}`} x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="0%" stopColor={metric.color} stopOpacity={0.3} />
-                                    <stop offset="100%" stopColor={metric.color} stopOpacity={0} />
-                                  </linearGradient>
-                                </defs>
-                                <Area
-                                  type="monotone"
-                                  dataKey={metric.dataKey}
-                                  stroke={metric.color}
-                                  strokeWidth={1.5}
-                                  fill={`url(#tel-${metric.label.replace(/\s/g, '')})`}
-                                  dot={false}
-                                  isAnimationActive={false}
-                                  connectNulls
-                                />
-                              </AreaChart>
-                            </ResponsiveContainer>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                )}
-
-                {drawerTab === 'logs' && (
-                  <div className="logs-tab">
-                    {logEntries.map((entry, i) => (
-                      <div key={i} className="log-entry">
-                        <span className="log-time mono-data">{entry.time}</span>
-                        <span className={`log-level log-level--${entry.level.toLowerCase()} mono-data`}>
-                          {entry.level}
-                        </span>
-                        <span className="log-message">{entry.message}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {drawerTab === 'config' && (
-                  <div className="config-tab">
-                    {configEntries.map((entry) => (
-                      <div key={entry.key} className="config-row">
-                        <span className="config-key mono-data">{entry.key}</span>
-                        <span className="config-value mono-data">{entry.value}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {drawerTab === 'shadow' && (
-                  <div className="shadow-tab">
-                    {isShadowLoading ? (
-                      <Spinner />
-                    ) : shadow ? (
-                      <>
-                        <div className="shadow-status-row">
-                          <Tag
-                            intent={Object.keys(shadow.delta).length === 0 ? 'success' : 'warning'}
-                            minimal
-                            large
-                          >
-                            {Object.keys(shadow.delta).length === 0 ? 'In Sync' : 'Pending'}
-                          </Tag>
-                          <span className="mono-data" style={{ fontSize: 12, opacity: 0.6 }}>
-                            v{shadow.version}
-                          </span>
-                        </div>
-
-                        {Object.keys(shadow.delta).length > 0 && (
-                          <Callout intent="warning" icon="info-sign" style={{ marginBottom: 16 }}>
-                            Delta: {Object.keys(shadow.delta).join(', ')}
-                          </Callout>
-                        )}
-
-                        <div className="shadow-panes">
-                          <div className="shadow-pane">
-                            <span className="section-label">Reported State</span>
-                            <pre className="shadow-json mono-data">
-                              {JSON.stringify(shadow.reported, null, 2)}
-                            </pre>
-                          </div>
-                          <div className="shadow-pane">
-                            <span className="section-label">Desired State</span>
-                            <pre className="shadow-json mono-data">
-                              {JSON.stringify(shadow.desired, null, 2)}
-                            </pre>
-                          </div>
-                        </div>
-
-                        <Divider style={{ margin: '16px 0' }} />
-
-                        <span className="section-label">Update Desired State</span>
-                        <p style={{ fontSize: 12, opacity: 0.6, margin: '4px 0 8px' }}>
-                          Enter JSON to merge into desired state (e.g. {`{"interval": 30}`})
-                        </p>
-                        <InputGroup
-                          placeholder='{"key": "value"}'
-                          value={desiredInput}
-                          onChange={(e) => setDesiredInput(e.target.value)}
-                          className="mono-data"
-                        />
-                        <div className="shadow-actions" style={{ marginTop: 12, display: 'flex', gap: 8 }}>
-                          <Button
-                            intent="primary"
-                            icon="cloud-upload"
-                            loading={updateDesiredMutation.isPending}
-                            disabled={!desiredInput.trim()}
-                            onClick={() => {
-                              try {
-                                const parsed = JSON.parse(desiredInput);
-                                updateDesiredMutation.mutate(
-                                  { deviceId: selectedDevice!.id, state: parsed },
-                                  { onSuccess: () => setDesiredInput('') }
-                                );
-                              } catch {
-                                // Invalid JSON - ignore
-                              }
-                            }}
-                          >
-                            Send to Device
-                          </Button>
-                          <Button
-                            intent="danger"
-                            icon="trash"
-                            minimal
-                            loading={deleteShadowMutation.isPending}
-                            onClick={() => deleteShadowMutation.mutate(selectedDevice!.id)}
-                          >
-                            Clear Shadow
-                          </Button>
-                        </div>
-                      </>
-                    ) : (
-                      <Callout icon="info-sign">No shadow data available.</Callout>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div className="drawer-footer">
-                <Button onClick={() => setIsDrawerOpen(false)}>Close</Button>
-                <Button intent="primary" icon="edit">Edit Device</Button>
-              </div>
-            </>
-          )}
-        </div>
-      </Drawer>
     </div>
   );
 };

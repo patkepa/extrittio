@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useDevice } from '../../hooks/use-devices';
 import { Button, Navbar, NavbarGroup } from '@blueprintjs/core';
 import { AppSidebar } from './app-sidebar';
 import { CommandPalette } from '../command-palette/command-palette';
@@ -22,9 +23,18 @@ const routeNames: Record<string, string> = {
 export const MainLayout = ({ children }: MainLayoutProps) => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
   const openCommandPalette = useUIStore((s) => s.openCommandPalette);
 
-  const currentRoute = routeNames[location.pathname] ?? location.pathname.split('/').filter(Boolean).map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' / ');
+  // Detect device detail page: /devices/:deviceId
+  const deviceDetailMatch = location.pathname.match(/^\/devices\/([^/]+)$/);
+  const deviceId = deviceDetailMatch?.[1] ?? null;
+  const { data: deviceData } = useDevice(deviceId);
+
+  const currentRoute = deviceDetailMatch
+    ? null
+    : routeNames[location.pathname]
+      ?? location.pathname.split('/').filter(Boolean).map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' / ');
 
   return (
     <div className="main-layout">
@@ -42,7 +52,20 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
               title="Toggle Sidebar"
             />
-            <span className="navbar-breadcrumb">{currentRoute}</span>
+            {deviceDetailMatch ? (
+              <span className="navbar-breadcrumb">
+                <span
+                  className="breadcrumb-link"
+                  onClick={() => navigate('/devices')}
+                >
+                  Devices
+                </span>
+                <span className="breadcrumb-sep"> / </span>
+                <span>{deviceData?.name ?? deviceId}</span>
+              </span>
+            ) : (
+              <span className="navbar-breadcrumb">{currentRoute}</span>
+            )}
           </NavbarGroup>
 
           <NavbarGroup align="right">

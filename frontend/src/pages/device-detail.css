@@ -1,0 +1,72 @@
+.device-detail-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  animation: fadeIn 0.3s ease;
+}
+
+.device-detail-page .device-status-banner {
+  margin-bottom: 24px;
+}
+
+/* Tabs bar */
+.detail-tabs {
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 24px;
+}
+
+.detail-tabs .bp6-tabs {
+  margin-bottom: -1px;
+}
+
+.detail-tabs .bp6-tab {
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: 0.01em;
+}
+
+/* Tab content area */
+.detail-tab-content {
+  min-height: 400px;
+}
+
+/* Shadow two-column layout */
+.shadow-panes-horizontal {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.shadow-panes-horizontal .shadow-pane {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 16px;
+}
+
+.shadow-panes-horizontal .shadow-json {
+  font-size: 12px;
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: hsl(var(--foreground));
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+/* Wider telemetry charts on full page */
+.device-detail-page .telemetry-chart {
+  padding: 16px;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .shadow-panes-horizontal {
+    grid-template-columns: 1fr;
+  }
+}

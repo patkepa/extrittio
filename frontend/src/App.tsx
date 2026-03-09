@@ -3,6 +3,7 @@ import { ThemeProvider } from './context/theme-provider';
 import { MainLayout } from './components/layout/main-layout';
 import { Dashboard } from './pages/dashboard';
 import { Devices } from './pages/devices';
+import { DeviceDetail } from './pages/device-detail';
 import { Settings } from './pages/settings/index';
 
 // Import Blueprint.js styles
@@ -18,6 +19,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/devices" element={<Devices />} />
+            <Route path="/devices/:deviceId" element={<DeviceDetail />} />
             <Route path="/settings/*" element={<Settings />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
