@@ -6,7 +6,9 @@ use esp_idf_svc::eventloop::EspSystemEventLoop;
 use esp_idf_svc::hal::peripherals::Peripherals;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_svc::wifi::{BlockingWifi, ClientConfiguration, Configuration, EspWifi};
-use extrittio_proto::extrittio::{DeviceHeartbeat, DeviceTelemetry};
+use extrittio_proto::extrittio::{
+    DeviceHeartbeat, DeviceTelemetry, ShadowDelta, ShadowGet, ShadowReport,
+};
 use log::info;
 use prost::Message;
 use rand::Rng;
@@ -111,7 +113,68 @@ fn main() {
 
     let telemetry_topic = format!("extrittio/devices/{}/telemetry", DEVICE_ID);
     let heartbeat_topic = format!("extrittio/devices/{}/heartbeat", DEVICE_ID);
+    let shadow_get_topic = format!("extrittio/devices/{}/shadow/get", DEVICE_ID);
+    let shadow_delta_topic = format!("extrittio/devices/{}/shadow/delta", DEVICE_ID);
+    let shadow_report_topic = format!("extrittio/devices/{}/shadow/report", DEVICE_ID);
     let start = Instant::now();
+
+    // ── Request pending shadow delta on startup ──────────────────────
+    let shadow_get = ShadowGet {
+        device_id: DEVICE_ID.to_string(),
+    };
+    match session.put(&shadow_get_topic, shadow_get.encode_to_vec()).wait() {
+        Ok(_) => info!("Shadow get request sent to '{shadow_get_topic}'"),
+        Err(e) => log::warn!("Failed to send shadow get request: {e}"),
+    }
+
+    // ── Shadow subscriber thread ─────────────────────────────────────
+    let shadow_session = session.clone();
+    let shadow_report_key = shadow_report_topic.clone();
+    thread::spawn(move || {
+        let subscriber = shadow_session
+            .declare_subscriber(&shadow_delta_topic)
+            .wait()
+            .expect("Failed to declare shadow delta subscriber");
+
+        info!("Shadow subscriber listening on '{shadow_delta_topic}'");
+
+        loop {
+            match subscriber.recv() {
+                Ok(sample) => {
+                    let payload = sample.payload().to_bytes();
+                    match ShadowDelta::decode(payload.as_ref()) {
+                        Ok(delta) => {
+                            info!(
+                                "Shadow delta received: version={}, delta_json={}",
+                                delta.version, delta.delta_json
+                            );
+
+                            // Echo the delta back as reported state (simple embedded approach)
+                            let report = ShadowReport {
+                                device_id: DEVICE_ID.to_string(),
+                                timestamp: now_millis(),
+                                state_json: delta.delta_json,
+                                version: delta.version,
+                            };
+
+                            match shadow_session
+                                .put(&shadow_report_key, report.encode_to_vec())
+                                .wait()
+                            {
+                                Ok(_) => info!("Shadow report sent (version={})", delta.version),
+                                Err(e) => log::warn!("Failed to send shadow report: {e}"),
+                            }
+                        }
+                        Err(e) => log::warn!("Failed to decode shadow delta: {e}"),
+                    }
+                }
+                Err(e) => {
+                    log::warn!("Shadow subscriber recv error: {e}");
+                    break;
+                }
+            }
+        }
+    });
 
     // ── Heartbeat thread ────────────────────────────────────────────
     let hb_session = session.clone();
