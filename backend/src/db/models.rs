@@ -1,7 +1,7 @@
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 
-use super::schema::{device_types, devices, fleets, telemetry, device_shadows};
+use super::schema::{device_types, devices, fleets, telemetry, device_shadows, users, server_config};
 
 // ---------------------------------------------------------------------------
 // Device Types
@@ -146,4 +146,45 @@ pub struct UpdateShadow {
     pub delta: Option<String>,
     pub version: Option<i32>,
     pub updated_at: Option<NaiveDateTime>,
+}
+
+// ---------------------------------------------------------------------------
+// Users
+// ---------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug, Clone)]
+#[diesel(table_name = users)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct User {
+    pub id: i32,
+    pub username: String,
+    pub password_hash: String,
+    pub role: String,
+    pub created_at: NaiveDateTime,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = users)]
+pub struct NewUser {
+    pub username: String,
+    pub password_hash: String,
+}
+
+// ---------------------------------------------------------------------------
+// Server Config
+// ---------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug, Clone)]
+#[diesel(table_name = server_config)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct ServerConfigEntry {
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = server_config)]
+pub struct NewServerConfigEntry {
+    pub key: String,
+    pub value: String,
 }
