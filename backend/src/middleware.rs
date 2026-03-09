@@ -6,7 +6,7 @@ use axum::{
 };
 use std::sync::Arc;
 
-use crate::auth::{validate_token, Claims};
+use crate::auth::validate_token;
 use crate::state::AppState;
 
 pub async fn auth_middleware(
