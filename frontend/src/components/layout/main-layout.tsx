@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { Button, Navbar, NavbarGroup } from '@blueprintjs/core';
 import { AppSidebar } from './app-sidebar';
 import { CommandPalette } from '../command-palette/command-palette';
+import { useUIStore } from '../../stores/ui-store';
 import './main-layout.css';
 
 interface MainLayoutProps {
@@ -22,6 +23,7 @@ const routeNames: Record<string, string> = {
 export const MainLayout = ({ children }: MainLayoutProps) => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const location = useLocation();
+  const openCommandPalette = useUIStore((s) => s.openCommandPalette);
 
   const currentRoute = routeNames[location.pathname] ?? location.pathname.split('/').filter(Boolean).map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' / ');
 
@@ -53,9 +55,7 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
               icon="search"
               minimal
               title="Search (⌘K)"
-              onClick={() => {
-                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }));
-              }}
+              onClick={openCommandPalette}
             />
           </NavbarGroup>
         </Navbar>

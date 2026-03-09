@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Command } from 'cmdk';
 import { Icon } from '@blueprintjs/core';
@@ -21,10 +21,14 @@ const pages: PageEntry[] = [
   { label: 'Help Center', icon: 'help', href: '/help-center' },
 ];
 
+const MAX_PALETTE_DEVICES = 20;
+
 export const CommandPalette = () => {
-  const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   const { data: devices = [] } = useDevices();
+  const open = useUIStore((s) => s.isCommandPaletteOpen);
+  const toggleCommandPalette = useUIStore((s) => s.toggleCommandPalette);
+  const closeCommandPalette = useUIStore((s) => s.closeCommandPalette);
   const openAddDeviceDialog = useUIStore((s) => s.openAddDeviceDialog);
 
   // Toggle on Cmd+K / Ctrl+K
@@ -32,22 +36,26 @@ export const CommandPalette = () => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        setOpen((prev) => !prev);
+        toggleCommandPalette();
       }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, []);
+  }, [toggleCommandPalette]);
 
   const runAction = (cb: () => void) => {
-    setOpen(false);
+    closeCommandPalette();
     cb();
   };
+
+  const displayedDevices = devices.slice(0, MAX_PALETTE_DEVICES);
 
   return (
     <Command.Dialog
       open={open}
-      onOpenChange={setOpen}
+      onOpenChange={(isOpen) => {
+        if (!isOpen) closeCommandPalette();
+      }}
       label="Command Palette"
       loop
     >
@@ -78,12 +86,12 @@ export const CommandPalette = () => {
         {/* Devices */}
         {devices.length > 0 && (
           <Command.Group heading="Devices">
-            {devices.map((device) => (
+            {displayedDevices.map((device) => (
               <Command.Item
                 key={device.id}
                 value={device.name}
                 keywords={[device.device_type_name, device.id]}
-                onSelect={() => runAction(() => navigate('/devices'))}
+                onSelect={() => runAction(() => navigate(`/devices?device=${device.id}`))}
               >
                 <span
                   className={`cmdk-device-led cmdk-device-led--${device.status}`}
@@ -92,6 +100,17 @@ export const CommandPalette = () => {
                 <span className="cmdk-item-meta">{device.device_type_name}</span>
               </Command.Item>
             ))}
+            {devices.length > MAX_PALETTE_DEVICES && (
+              <Command.Item
+                value="View all devices"
+                onSelect={() => runAction(() => navigate('/devices'))}
+              >
+                <Icon icon="more" size={16} />
+                <span className="cmdk-item-label">
+                  View all {devices.length} devices...
+                </span>
+              </Command.Item>
+            )}
           </Command.Group>
         )}
 

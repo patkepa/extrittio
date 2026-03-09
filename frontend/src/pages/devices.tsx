@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Card,
@@ -97,6 +97,21 @@ export const Devices = () => {
   const createDeviceMutation = useCreateDevice();
   const deleteDeviceMutation = useDeleteDevice();
   const restartDeviceMutation = useRestartDevice();
+
+  // Open device drawer when navigated with ?device= query param (from command palette)
+  const deviceParam = searchParams.get('device');
+  useEffect(() => {
+    if (deviceParam && devices.length > 0) {
+      const device = devices.find((d) => d.id === deviceParam);
+      if (device) {
+        setSelectedDevice(device);
+        setDrawerTab('overview');
+        setIsDrawerOpen(true);
+      }
+      searchParams.delete('device');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [deviceParam, devices]);
 
   // Set default device_type_id when device types load
   const defaultTypeId = deviceTypes.find((dt) => dt.name === 'default')?.id ?? deviceTypes[0]?.id ?? 0;
