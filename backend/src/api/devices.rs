@@ -10,8 +10,8 @@ use prost::Message;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use crate::db::models::{Device, DeviceType, Fleet, NewDevice, UpdateDevice};
-use crate::db::schema::{device_types, devices, fleets};
+use crate::db::models::{Device, DeviceType, Fleet, NewDevice, NewDeviceShadow, UpdateDevice};
+use crate::db::schema::{device_shadows, device_types, devices, fleets};
 use crate::state::AppState;
 use extrittio_proto::extrittio::DeviceCommand;
 
@@ -252,6 +252,15 @@ async fn create_device(
 
     diesel::insert_into(devices::table)
         .values(&new_device)
+        .execute(&mut conn)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Create shadow record for the new device
+    let new_shadow = NewDeviceShadow {
+        device_id: new_id.clone(),
+    };
+    diesel::insert_into(device_shadows::table)
+        .values(&new_shadow)
         .execute(&mut conn)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
