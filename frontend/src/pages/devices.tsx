@@ -26,6 +26,7 @@ import {
 import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 import { useDevices, useCreateDevice, useDeleteDevice, useRestartDevice } from '../hooks/use-devices';
 import { useDeviceTelemetry } from '../hooks/use-telemetry';
+import { useDeviceShadow, useUpdateDesiredState, useDeleteDeviceShadow } from '../hooks/use-shadow';
 import { useDeviceTypes } from '../hooks/use-device-types';
 import { useFleets } from '../hooks/use-fleets';
 import { useUIStore } from '../stores/ui-store';
@@ -97,6 +98,12 @@ export const Devices = () => {
   const createDeviceMutation = useCreateDevice();
   const deleteDeviceMutation = useDeleteDevice();
   const restartDeviceMutation = useRestartDevice();
+  const { data: shadow, isLoading: isShadowLoading } = useDeviceShadow(
+    selectedDevice?.id ?? null
+  );
+  const updateDesiredMutation = useUpdateDesiredState();
+  const deleteShadowMutation = useDeleteDeviceShadow();
+  const [desiredInput, setDesiredInput] = useState('');
 
   // Open device drawer when navigated with ?device= query param (from command palette)
   const deviceParam = searchParams.get('device');
@@ -533,6 +540,7 @@ export const Devices = () => {
                   <Tab id="telemetry" title="Telemetry" />
                   <Tab id="logs" title="Logs" />
                   <Tab id="config" title="Config" />
+                  <Tab id="shadow" title="Shadow" />
                 </Tabs>
               </div>
 
@@ -667,6 +675,95 @@ export const Devices = () => {
                         <span className="config-value mono-data">{entry.value}</span>
                       </div>
                     ))}
+                  </div>
+                )}
+
+                {drawerTab === 'shadow' && (
+                  <div className="shadow-tab">
+                    {isShadowLoading ? (
+                      <Spinner />
+                    ) : shadow ? (
+                      <>
+                        <div className="shadow-status-row">
+                          <Tag
+                            intent={Object.keys(shadow.delta).length === 0 ? 'success' : 'warning'}
+                            minimal
+                            large
+                          >
+                            {Object.keys(shadow.delta).length === 0 ? 'In Sync' : 'Pending'}
+                          </Tag>
+                          <span className="mono-data" style={{ fontSize: 12, opacity: 0.6 }}>
+                            v{shadow.version}
+                          </span>
+                        </div>
+
+                        {Object.keys(shadow.delta).length > 0 && (
+                          <Callout intent="warning" icon="info-sign" style={{ marginBottom: 16 }}>
+                            Delta: {Object.keys(shadow.delta).join(', ')}
+                          </Callout>
+                        )}
+
+                        <div className="shadow-panes">
+                          <div className="shadow-pane">
+                            <span className="section-label">Reported State</span>
+                            <pre className="shadow-json mono-data">
+                              {JSON.stringify(shadow.reported, null, 2)}
+                            </pre>
+                          </div>
+                          <div className="shadow-pane">
+                            <span className="section-label">Desired State</span>
+                            <pre className="shadow-json mono-data">
+                              {JSON.stringify(shadow.desired, null, 2)}
+                            </pre>
+                          </div>
+                        </div>
+
+                        <Divider style={{ margin: '16px 0' }} />
+
+                        <span className="section-label">Update Desired State</span>
+                        <p style={{ fontSize: 12, opacity: 0.6, margin: '4px 0 8px' }}>
+                          Enter JSON to merge into desired state (e.g. {`{"interval": 30}`})
+                        </p>
+                        <InputGroup
+                          placeholder='{"key": "value"}'
+                          value={desiredInput}
+                          onChange={(e) => setDesiredInput(e.target.value)}
+                          className="mono-data"
+                        />
+                        <div className="shadow-actions" style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+                          <Button
+                            intent="primary"
+                            icon="cloud-upload"
+                            loading={updateDesiredMutation.isPending}
+                            disabled={!desiredInput.trim()}
+                            onClick={() => {
+                              try {
+                                const parsed = JSON.parse(desiredInput);
+                                updateDesiredMutation.mutate(
+                                  { deviceId: selectedDevice!.id, state: parsed },
+                                  { onSuccess: () => setDesiredInput('') }
+                                );
+                              } catch {
+                                // Invalid JSON - ignore
+                              }
+                            }}
+                          >
+                            Send to Device
+                          </Button>
+                          <Button
+                            intent="danger"
+                            icon="trash"
+                            minimal
+                            loading={deleteShadowMutation.isPending}
+                            onClick={() => deleteShadowMutation.mutate(selectedDevice!.id)}
+                          >
+                            Clear Shadow
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <Callout icon="info-sign">No shadow data available.</Callout>
+                    )}
                   </div>
                 )}
               </div>

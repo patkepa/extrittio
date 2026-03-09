@@ -523,3 +523,36 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Shadow tab */
+.shadow-tab { padding: 0; }
+
+.shadow-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.shadow-panes {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.shadow-pane {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.shadow-json {
+  font-size: 12px;
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: hsl(var(--foreground));
+  max-height: 200px;
+  overflow-y: auto;
+}
