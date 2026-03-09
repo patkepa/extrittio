@@ -37,6 +37,7 @@ export function useCreateDevice() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["devices"] });
       void queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      void queryClient.invalidateQueries({ queryKey: ["fleets"] });
     },
   });
 }
@@ -60,6 +61,7 @@ export function useDeleteDevice() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["devices"] });
       void queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      void queryClient.invalidateQueries({ queryKey: ["fleets"] });
     },
   });
 }

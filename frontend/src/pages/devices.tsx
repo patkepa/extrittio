@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Card,
   Elevation,
@@ -20,10 +21,13 @@ import {
   DialogBody,
   DialogFooter,
   FormGroup,
+  HTMLSelect,
 } from '@blueprintjs/core';
 import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 import { useDevices, useCreateDevice, useDeleteDevice, useRestartDevice } from '../hooks/use-devices';
 import { useDeviceTelemetry } from '../hooks/use-telemetry';
+import { useDeviceTypes } from '../hooks/use-device-types';
+import { useFleets } from '../hooks/use-fleets';
 import { useUIStore } from '../stores/ui-store';
 import type { Device } from '../types/api';
 import './devices.css';
@@ -56,6 +60,7 @@ const configEntries = [
 ];
 
 export const Devices = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
@@ -64,25 +69,51 @@ export const Devices = () => {
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [drawerTab, setDrawerTab] = useState('overview');
   const { isAddDeviceDialogOpen: isAddDialogOpen, openAddDeviceDialog, closeAddDeviceDialog } = useUIStore();
-  const [newDevice, setNewDevice] = useState({ name: '', device_type_id: '', location: '', firmware: '' });
+  const [newDevice, setNewDevice] = useState({
+    name: '',
+    device_type_id: 0,
+    fleet_id: undefined as number | undefined,
+    location: '',
+    firmware: '',
+  });
 
-  const { data: devices = [], isLoading, error } = useDevices();
+  // Fleet filter from URL query param
+  const filterFleetId = searchParams.get('fleet_id') ? Number(searchParams.get('fleet_id')) : null;
+
+  const setFilterFleetId = (fleetId: number | null) => {
+    if (fleetId === null) {
+      searchParams.delete('fleet_id');
+    } else {
+      searchParams.set('fleet_id', String(fleetId));
+    }
+    setSearchParams(searchParams);
+  };
+
+  const { data: devices = [], isLoading, error } = useDevices(
+    filterFleetId ? { fleet_id: filterFleetId } : undefined
+  );
+  const { data: deviceTypes = [] } = useDeviceTypes();
+  const { data: fleets = [] } = useFleets();
   const createDeviceMutation = useCreateDevice();
   const deleteDeviceMutation = useDeleteDevice();
   const restartDeviceMutation = useRestartDevice();
+
+  // Set default device_type_id when device types load
+  const defaultTypeId = deviceTypes.find((dt) => dt.name === 'default')?.id ?? deviceTypes[0]?.id ?? 0;
 
   const handleAddDevice = () => {
     createDeviceMutation.mutate(
       {
         name: newDevice.name,
-        device_type_id: Number(newDevice.device_type_id),
+        device_type_id: newDevice.device_type_id || defaultTypeId,
+        fleet_id: newDevice.fleet_id,
         location: newDevice.location || undefined,
         firmware: newDevice.firmware || undefined,
       },
       {
         onSuccess: () => {
           closeAddDeviceDialog();
-          setNewDevice({ name: '', device_type_id: '', location: '', firmware: '' });
+          setNewDevice({ name: '', device_type_id: 0, fleet_id: undefined, location: '', firmware: '' });
         },
       }
     );
@@ -158,6 +189,9 @@ export const Devices = () => {
     }
   };
 
+  // Get the fleet name for the active fleet filter
+  const activeFleetName = filterFleetId ? fleets.find((f) => f.id === filterFleetId)?.name : null;
+
   if (error) {
     return (
       <div className="devices-page">
@@ -184,9 +218,12 @@ export const Devices = () => {
           <H3>Devices</H3>
           <p className="page-description">
             {filteredDevices.length} of {devices.length} devices
+            {activeFleetName && (
+              <span> in <strong>{activeFleetName}</strong></span>
+            )}
           </p>
         </div>
-        <Button intent="primary" icon="add" onClick={() => openAddDeviceDialog()}>
+        <Button intent="primary" icon="add" onClick={() => setIsAddDialogOpen(true)}>
           Add Device
         </Button>
       </div>
@@ -223,6 +260,30 @@ export const Devices = () => {
             ))}
           </div>
         </div>
+
+        {/* Fleet filter */}
+        {fleets.length > 0 && (
+          <div className="controls-row" style={{ marginTop: 10 }}>
+            <div className="filter-section">
+              <button
+                className={`filter-pill ${filterFleetId === null ? 'active' : ''}`}
+                onClick={() => setFilterFleetId(null)}
+              >
+                <span className="pill-label">All Fleets</span>
+              </button>
+              {fleets.map((fleet) => (
+                <button
+                  key={fleet.id}
+                  className={`filter-pill ${filterFleetId === fleet.id ? 'active' : ''}`}
+                  onClick={() => setFilterFleetId(fleet.id)}
+                >
+                  <span className="pill-label">{fleet.name}</span>
+                  <span className="pill-count mono-data">{fleet.device_count}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </Card>
 
       {/* Devices Table */}
@@ -240,6 +301,7 @@ export const Devices = () => {
                 <th style={{ width: 40 }}></th>
                 <SortHeader field="name">Name</SortHeader>
                 <th>Type</th>
+                <th>Fleet</th>
                 <th>Location</th>
                 <th>Last Seen</th>
                 <th>Firmware</th>
@@ -267,6 +329,13 @@ export const Devices = () => {
                   </td>
                   <td>
                     <Tag minimal>{device.device_type_name}</Tag>
+                  </td>
+                  <td>
+                    {device.fleet_name ? (
+                      <Tag minimal intent="primary">{device.fleet_name}</Tag>
+                    ) : (
+                      <span style={{ color: 'hsl(var(--muted))', fontSize: 12 }}>—</span>
+                    )}
                   </td>
                   <td className="location-cell">{device.location}</td>
                   <td>
@@ -323,7 +392,7 @@ export const Devices = () => {
         icon="add"
         title="Add Device"
         isOpen={isAddDialogOpen}
-        onClose={() => closeAddDeviceDialog()}
+        onClose={() => setIsAddDialogOpen(false)}
       >
         <DialogBody>
           <FormGroup label="Name" labelInfo="(required)">
@@ -333,12 +402,37 @@ export const Devices = () => {
               onChange={(e) => setNewDevice({ ...newDevice, name: e.target.value })}
             />
           </FormGroup>
-          <FormGroup label="Device Type ID" labelInfo="(required)">
-            <InputGroup
-              placeholder="e.g. 1, 2, 3"
-              value={newDevice.device_type_id}
-              onChange={(e) => setNewDevice({ ...newDevice, device_type_id: e.target.value })}
-            />
+          <FormGroup label="Device Type" labelInfo="(required)">
+            <HTMLSelect
+              fill
+              value={newDevice.device_type_id || defaultTypeId}
+              onChange={(e) => setNewDevice({ ...newDevice, device_type_id: Number(e.target.value) })}
+            >
+              {deviceTypes.map((dt) => (
+                <option key={dt.id} value={dt.id}>
+                  {dt.name}
+                </option>
+              ))}
+            </HTMLSelect>
+          </FormGroup>
+          <FormGroup label="Fleet">
+            <HTMLSelect
+              fill
+              value={newDevice.fleet_id ?? ''}
+              onChange={(e) =>
+                setNewDevice({
+                  ...newDevice,
+                  fleet_id: e.target.value ? Number(e.target.value) : undefined,
+                })
+              }
+            >
+              <option value="">No fleet</option>
+              {fleets.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+            </HTMLSelect>
           </FormGroup>
           <FormGroup label="Location">
             <InputGroup
@@ -363,13 +457,13 @@ export const Devices = () => {
         <DialogFooter
           actions={
             <>
-              <Button onClick={() => closeAddDeviceDialog()}>Cancel</Button>
+              <Button onClick={() => setIsAddDialogOpen(false)}>Cancel</Button>
               <Button
                 intent="primary"
                 icon="add"
                 onClick={handleAddDevice}
                 loading={createDeviceMutation.isPending}
-                disabled={!newDevice.name.trim() || !newDevice.device_type_id.trim()}
+                disabled={!newDevice.name.trim()}
               >
                 Add Device
               </Button>
@@ -399,6 +493,12 @@ export const Devices = () => {
                       <span className="mono-data">{selectedDevice.id}</span>
                       <span className="banner-sep">|</span>
                       {selectedDevice.device_type_name}
+                      {selectedDevice.fleet_name && (
+                        <>
+                          <span className="banner-sep">|</span>
+                          {selectedDevice.fleet_name}
+                        </>
+                      )}
                       <span className="banner-sep">|</span>
                       <span style={{ textTransform: 'uppercase', fontWeight: 700, fontSize: 12, letterSpacing: '0.06em' }}>
                         {selectedDevice.status}
@@ -434,6 +534,14 @@ export const Devices = () => {
                       <div className="detail-item">
                         <span className="section-label">Device ID</span>
                         <span className="detail-value mono-data">{selectedDevice.id}</span>
+                      </div>
+                      <div className="detail-item">
+                        <span className="section-label">Type</span>
+                        <span className="detail-value">{selectedDevice.device_type_name}</span>
+                      </div>
+                      <div className="detail-item">
+                        <span className="section-label">Fleet</span>
+                        <span className="detail-value">{selectedDevice.fleet_name ?? '—'}</span>
                       </div>
                       <div className="detail-item">
                         <span className="section-label">Location</span>

@@ -13,6 +13,8 @@ const routeNames: Record<string, string> = {
   '/': 'Dashboard',
   '/devices': 'Devices',
   '/settings': 'Settings',
+  '/settings/device-types': 'Settings / Device Types',
+  '/settings/fleets': 'Settings / Fleets',
   '/users': 'Users',
   '/help-center': 'Help Center',
 };
