@@ -17,8 +17,6 @@ const pages: PageEntry[] = [
   { label: 'Dashboard', icon: 'dashboard', href: '/' },
   { label: 'Devices', icon: 'mobile-video', href: '/devices' },
   { label: 'Settings', icon: 'cog', href: '/settings' },
-  { label: 'Users', icon: 'people', href: '/users' },
-  { label: 'Help Center', icon: 'help', href: '/help-center' },
 ];
 
 const MAX_PALETTE_DEVICES = 20;

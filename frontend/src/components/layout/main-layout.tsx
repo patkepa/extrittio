@@ -16,8 +16,6 @@ const routeNames: Record<string, string> = {
   '/settings': 'Settings',
   '/settings/device-types': 'Settings / Device Types',
   '/settings/fleets': 'Settings / Fleets',
-  '/users': 'Users',
-  '/help-center': 'Help Center',
 };
 
 export const MainLayout = ({ children }: MainLayoutProps) => {

@@ -25,31 +25,6 @@ export const navGroups: NavGroup[] = [
         href: '/settings',
         children: [
           {
-            label: 'Profile',
-            icon: 'user',
-            href: '/settings/profile',
-          },
-          {
-            label: 'Account',
-            icon: 'wrench',
-            href: '/settings/account',
-          },
-          {
-            label: 'Appearance',
-            icon: 'style',
-            href: '/settings/appearance',
-          },
-          {
-            label: 'Notifications',
-            icon: 'notifications',
-            href: '/settings/notifications',
-          },
-          {
-            label: 'Display',
-            icon: 'desktop',
-            href: '/settings/display',
-          },
-          {
             label: 'Device Types',
             icon: 'tag',
             href: '/settings/device-types',
@@ -60,16 +35,6 @@ export const navGroups: NavGroup[] = [
             href: '/settings/fleets',
           },
         ],
-      },
-      {
-        label: 'Users',
-        icon: 'people',
-        href: '/users',
-      },
-      {
-        label: 'Help Center',
-        icon: 'help',
-        href: '/help-center',
       },
     ],
   },

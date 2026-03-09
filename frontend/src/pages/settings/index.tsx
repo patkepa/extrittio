@@ -1,18 +1,12 @@
-import { Routes, Route } from 'react-router-dom';
-import { SettingsHome } from './home';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { DeviceTypesSettings } from './device-types';
 import { FleetsSettings } from './fleets';
 
 export const Settings = () => (
   <Routes>
-    <Route index element={<SettingsHome />} />
-    <Route path="profile" element={<SettingsHome />} />
-    <Route path="account" element={<SettingsHome />} />
-    <Route path="appearance" element={<SettingsHome />} />
-    <Route path="notifications" element={<SettingsHome />} />
-    <Route path="display" element={<SettingsHome />} />
+    <Route index element={<Navigate to="device-types" replace />} />
     <Route path="device-types" element={<DeviceTypesSettings />} />
     <Route path="fleets" element={<FleetsSettings />} />
-    <Route path="*" element={<SettingsHome />} />
+    <Route path="*" element={<Navigate to="device-types" replace />} />
   </Routes>
 );
