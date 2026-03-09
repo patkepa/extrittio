@@ -2,9 +2,12 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use clap::Parser;
-use extrittio_proto::extrittio::{DeviceHeartbeat, DeviceTelemetry};
+use extrittio_proto::extrittio::{
+    DeviceHeartbeat, DeviceTelemetry, ShadowDelta, ShadowGet, ShadowReport,
+};
 use prost::Message;
 use rand::Rng;
+use tokio::sync::Mutex;
 use tracing::info;
 
 #[derive(Parser)]
@@ -80,6 +83,12 @@ async fn main() {
 
     let telemetry_topic = format!("extrittio/devices/{}/telemetry", args.device_id);
     let heartbeat_topic = format!("extrittio/devices/{}/heartbeat", args.device_id);
+    let shadow_get_topic = format!("extrittio/devices/{}/shadow/get", args.device_id);
+    let shadow_delta_topic = format!("extrittio/devices/{}/shadow/delta", args.device_id);
+    let shadow_report_topic = format!("extrittio/devices/{}/shadow/report", args.device_id);
+
+    let reported_state: Arc<Mutex<serde_json::Map<String, serde_json::Value>>> =
+        Arc::new(Mutex::new(serde_json::Map::new()));
 
     let start = Instant::now();
 
@@ -108,6 +117,94 @@ async fn main() {
                     "Heartbeat sent (uptime: {}s)",
                     start.elapsed().as_secs()
                 );
+            }
+        }
+    });
+
+    // Request any pending shadow delta on startup
+    let shadow_get = ShadowGet {
+        device_id: args.device_id.clone(),
+    };
+    let payload = shadow_get.encode_to_vec();
+    if let Err(e) = session.put(&shadow_get_topic, payload).await {
+        tracing::warn!("Failed to send ShadowGet: {}", e);
+    } else {
+        info!("Sent ShadowGet to '{}'", shadow_get_topic);
+    }
+
+    // Spawn shadow subscriber task
+    let shadow_session = session.clone();
+    let shadow_device_id = args.device_id.clone();
+    let shadow_reported = reported_state.clone();
+    tokio::spawn(async move {
+        let subscriber = shadow_session
+            .declare_subscriber(&shadow_delta_topic)
+            .await
+            .expect("Failed to subscribe to shadow/delta");
+
+        info!("Subscribed to '{}'", shadow_delta_topic);
+
+        loop {
+            let sample = subscriber.recv_async().await;
+            match sample {
+                Ok(sample) => {
+                    let bytes = sample.payload().to_bytes();
+                    match ShadowDelta::decode(bytes.as_ref()) {
+                        Ok(delta) => {
+                            info!("Shadow delta received: {}", delta.delta_json);
+
+                            // Parse delta JSON and merge into reported state
+                            match serde_json::from_str::<serde_json::Value>(&delta.delta_json) {
+                                Ok(serde_json::Value::Object(delta_map)) => {
+                                    let mut state = shadow_reported.lock().await;
+                                    for (key, value) in delta_map {
+                                        state.insert(key, value);
+                                    }
+
+                                    let state_json = serde_json::to_string(&*state)
+                                        .unwrap_or_else(|_| "{}".to_string());
+                                    info!("Applied. Reported state: {}", state_json);
+
+                                    let report = ShadowReport {
+                                        device_id: shadow_device_id.clone(),
+                                        timestamp: chrono_now_millis(),
+                                        state_json,
+                                        version: delta.version,
+                                    };
+
+                                    let payload = report.encode_to_vec();
+                                    if let Err(e) = shadow_session
+                                        .put(&shadow_report_topic, payload)
+                                        .await
+                                    {
+                                        tracing::warn!("Failed to send ShadowReport: {}", e);
+                                    } else {
+                                        info!("ShadowReport sent (version: {})", delta.version);
+                                    }
+                                }
+                                Ok(_) => {
+                                    tracing::warn!(
+                                        "Shadow delta JSON is not an object: {}",
+                                        delta.delta_json
+                                    );
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        "Failed to parse shadow delta JSON: {}",
+                                        e
+                                    );
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to decode ShadowDelta: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Shadow subscriber error: {}", e);
+                    break;
+                }
             }
         }
     });
