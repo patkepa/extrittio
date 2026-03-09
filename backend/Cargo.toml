@@ -18,6 +18,9 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 zenoh = "1"
 prost = "0.13"
+argon2 = "0.5"
+jsonwebtoken = "9"
+rand = "0.8"
 
 [dev-dependencies]
 http-body-util = "0.1"
