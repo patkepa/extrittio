@@ -97,3 +97,17 @@ export interface TelemetryParams {
   limit?: number;
   since?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Device Shadows
+// ---------------------------------------------------------------------------
+
+// Matches ShadowResponse in backend/src/api/shadows.rs
+export interface DeviceShadow {
+  device_id: string;
+  desired: Record<string, unknown>;
+  reported: Record<string, unknown>;
+  delta: Record<string, unknown>;
+  version: number;
+  updated_at: string;
+}
