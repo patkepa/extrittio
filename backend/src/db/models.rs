@@ -1,7 +1,7 @@
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 
-use super::schema::{device_types, devices, fleets, telemetry};
+use super::schema::{device_types, devices, fleets, telemetry, device_shadows};
 
 // ---------------------------------------------------------------------------
 // Device Types
@@ -114,4 +114,36 @@ pub struct NewTelemetryRecord {
     pub humidity: Option<f32>,
     pub battery_level: Option<f32>,
     pub custom_json: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Device Shadows
+// ---------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug)]
+#[diesel(table_name = device_shadows)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct DeviceShadow {
+    pub device_id: String,
+    pub desired: String,
+    pub reported: String,
+    pub delta: String,
+    pub version: i32,
+    pub updated_at: NaiveDateTime,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = device_shadows)]
+pub struct NewDeviceShadow {
+    pub device_id: String,
+}
+
+#[derive(AsChangeset, Debug, Default)]
+#[diesel(table_name = device_shadows)]
+pub struct UpdateShadow {
+    pub desired: Option<String>,
+    pub reported: Option<String>,
+    pub delta: Option<String>,
+    pub version: Option<i32>,
+    pub updated_at: Option<NaiveDateTime>,
 }
