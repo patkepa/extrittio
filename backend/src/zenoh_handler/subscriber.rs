@@ -1,13 +1,14 @@
 use chrono::Utc;
 use diesel::prelude::*;
 use prost::Message;
+use std::sync::Arc;
 use tracing::{info, warn};
 
-use crate::db::models::{Device, NewTelemetryRecord, UpdateDevice};
-use crate::db::schema::{devices, telemetry};
+use crate::db::models::{Device, DeviceShadow, NewTelemetryRecord, UpdateDevice, UpdateShadow};
+use crate::db::schema::{device_shadows, devices, telemetry};
 use crate::state::DbPool;
 
-use extrittio_proto::extrittio::{DeviceHeartbeat, DeviceTelemetry};
+use extrittio_proto::extrittio::{DeviceHeartbeat, DeviceTelemetry, ShadowDelta, ShadowGet, ShadowReport};
 
 /// Start zenoh subscribers for telemetry and heartbeat topics.
 ///
@@ -15,7 +16,7 @@ use extrittio_proto::extrittio::{DeviceHeartbeat, DeviceTelemetry};
 /// in the current task. Both loop indefinitely, receiving messages and
 /// dispatching them to the appropriate handler function.
 pub async fn run_subscriber(
-    session: &zenoh::Session,
+    session: Arc<zenoh::Session>,
     db_pool: DbPool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let telemetry_sub = session
@@ -26,7 +27,15 @@ pub async fn run_subscriber(
         .declare_subscriber("extrittio/devices/*/heartbeat")
         .await?;
 
-    info!("Zenoh subscribers declared for telemetry and heartbeat topics");
+    let shadow_report_sub = session
+        .declare_subscriber("extrittio/devices/*/shadow/report")
+        .await?;
+
+    let shadow_get_sub = session
+        .declare_subscriber("extrittio/devices/*/shadow/get")
+        .await?;
+
+    info!("Zenoh subscribers declared for telemetry, heartbeat, and shadow topics");
 
     // Spawn heartbeat handler in a background task
     let heartbeat_pool = db_pool.clone();
@@ -39,6 +48,41 @@ pub async fn run_subscriber(
                 }
                 Err(e) => {
                     warn!("Heartbeat subscriber channel closed: {}", e);
+                    break;
+                }
+            }
+        }
+    });
+
+    // Spawn shadow report handler
+    let shadow_report_pool = db_pool.clone();
+    tokio::spawn(async move {
+        loop {
+            match shadow_report_sub.recv_async().await {
+                Ok(sample) => {
+                    let payload = sample.payload().to_bytes();
+                    handle_shadow_report(&shadow_report_pool, &payload);
+                }
+                Err(e) => {
+                    warn!("Shadow report subscriber channel closed: {}", e);
+                    break;
+                }
+            }
+        }
+    });
+
+    // Spawn shadow get handler
+    let shadow_get_pool = db_pool.clone();
+    let shadow_get_session = session.clone();
+    tokio::spawn(async move {
+        loop {
+            match shadow_get_sub.recv_async().await {
+                Ok(sample) => {
+                    let payload = sample.payload().to_bytes();
+                    handle_shadow_get(&shadow_get_pool, &shadow_get_session, &payload).await;
+                }
+                Err(e) => {
+                    warn!("Shadow get subscriber channel closed: {}", e);
                     break;
                 }
             }
@@ -235,4 +279,178 @@ fn handle_heartbeat(db_pool: &DbPool, payload: &[u8]) {
         heartbeat_msg.firmware,
         heartbeat_msg.uptime_seconds
     );
+}
+
+fn handle_shadow_report(db_pool: &DbPool, payload: &[u8]) {
+    let report = match ShadowReport::decode(payload) {
+        Ok(msg) => msg,
+        Err(e) => {
+            warn!("Failed to decode ShadowReport: {}", e);
+            return;
+        }
+    };
+
+    let mut conn = match db_pool.get() {
+        Ok(c) => c,
+        Err(e) => {
+            warn!("Failed to get DB connection: {}", e);
+            return;
+        }
+    };
+
+    // Verify device exists
+    let device_exists = devices::table
+        .find(&report.device_id)
+        .select(Device::as_select())
+        .first(&mut conn)
+        .optional();
+
+    match device_exists {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            warn!("Dropping shadow report from unregistered device: {}", report.device_id);
+            return;
+        }
+        Err(e) => {
+            warn!("DB error checking device: {}", e);
+            return;
+        }
+    }
+
+    // Parse incoming reported state
+    let new_reported: serde_json::Value = match serde_json::from_str(&report.state_json) {
+        Ok(v) => v,
+        Err(e) => {
+            warn!("Invalid JSON in ShadowReport: {}", e);
+            return;
+        }
+    };
+
+    // Read current shadow
+    let shadow: DeviceShadow = match device_shadows::table
+        .find(&report.device_id)
+        .select(DeviceShadow::as_select())
+        .first(&mut conn)
+    {
+        Ok(s) => s,
+        Err(e) => {
+            warn!("Failed to read shadow for device {}: {}", report.device_id, e);
+            return;
+        }
+    };
+
+    let current_desired: serde_json::Value = serde_json::from_str(&shadow.desired).unwrap_or_default();
+
+    // Merge reported state
+    let current_reported: serde_json::Value = serde_json::from_str(&shadow.reported).unwrap_or_default();
+    let merged_reported = if let Some(new_obj) = new_reported.as_object() {
+        let mut obj = current_reported.as_object().cloned().unwrap_or_default();
+        for (key, val) in new_obj {
+            if val.is_null() {
+                obj.remove(key);
+            } else {
+                obj.insert(key.clone(), val.clone());
+            }
+        }
+        serde_json::Value::Object(obj)
+    } else {
+        new_reported
+    };
+
+    // Compute delta
+    let new_delta = compute_shadow_delta(&current_desired, &merged_reported);
+    let now = chrono::Utc::now().naive_utc();
+
+    let changeset = UpdateShadow {
+        reported: Some(serde_json::to_string(&merged_reported).unwrap()),
+        delta: Some(serde_json::to_string(&new_delta).unwrap()),
+        version: Some(shadow.version + 1),
+        updated_at: Some(now),
+        ..Default::default()
+    };
+
+    if let Err(e) = diesel::update(device_shadows::table.find(&report.device_id))
+        .set(&changeset)
+        .execute(&mut conn)
+    {
+        warn!("Failed to update shadow: {}", e);
+        return;
+    }
+
+    info!("Shadow report from device {}: version={}", report.device_id, shadow.version + 1);
+}
+
+async fn handle_shadow_get(db_pool: &DbPool, session: &zenoh::Session, payload: &[u8]) {
+    let get_msg = match ShadowGet::decode(payload) {
+        Ok(msg) => msg,
+        Err(e) => {
+            warn!("Failed to decode ShadowGet: {}", e);
+            return;
+        }
+    };
+
+    let mut conn = match db_pool.get() {
+        Ok(c) => c,
+        Err(e) => {
+            warn!("Failed to get DB connection: {}", e);
+            return;
+        }
+    };
+
+    let shadow: DeviceShadow = match device_shadows::table
+        .find(&get_msg.device_id)
+        .select(DeviceShadow::as_select())
+        .first(&mut conn)
+    {
+        Ok(s) => s,
+        Err(e) => {
+            warn!("Shadow not found for device {}: {}", get_msg.device_id, e);
+            return;
+        }
+    };
+
+    // Only send delta if non-empty
+    let delta: serde_json::Value = serde_json::from_str(&shadow.delta).unwrap_or_default();
+    if let Some(obj) = delta.as_object() {
+        if obj.is_empty() {
+            info!("Shadow get from device {}: already in sync", get_msg.device_id);
+            return;
+        }
+    }
+
+    let delta_msg = ShadowDelta {
+        device_id: get_msg.device_id.clone(),
+        delta_json: shadow.delta,
+        version: shadow.version as i64,
+    };
+
+    let response_payload = prost::Message::encode_to_vec(&delta_msg);
+    let topic = format!("extrittio/devices/{}/shadow/delta", get_msg.device_id);
+
+    if let Err(e) = session.put(&topic, response_payload).await {
+        warn!("Failed to publish shadow delta: {}", e);
+    }
+
+    info!("Shadow get from device {}: sent delta", get_msg.device_id);
+}
+
+fn compute_shadow_delta(desired: &serde_json::Value, reported: &serde_json::Value) -> serde_json::Value {
+    let desired_obj = desired.as_object();
+    let reported_obj = reported.as_object();
+
+    match (desired_obj, reported_obj) {
+        (Some(d), Some(r)) => {
+            let mut delta = serde_json::Map::new();
+            for (key, val) in d {
+                match r.get(key) {
+                    Some(reported_val) if reported_val == val => {}
+                    _ => {
+                        delta.insert(key.clone(), val.clone());
+                    }
+                }
+            }
+            serde_json::Value::Object(delta)
+        }
+        _ => desired.clone(),
+    }
 }

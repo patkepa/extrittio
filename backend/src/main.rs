@@ -84,7 +84,7 @@ async fn main() {
     let subscriber_pool = db_pool.clone();
     let subscriber_session = zenoh_session.clone();
     tokio::spawn(async move {
-        if let Err(e) = zenoh_handler::subscriber::run_subscriber(&subscriber_session, subscriber_pool).await {
+        if let Err(e) = zenoh_handler::subscriber::run_subscriber(subscriber_session, subscriber_pool).await {
             tracing::error!("Zenoh subscriber failed: {}. Shutting down.", e);
             std::process::exit(1);
         }
