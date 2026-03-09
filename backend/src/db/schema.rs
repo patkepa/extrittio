@@ -1,6 +1,17 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    device_shadows (device_id) {
+        device_id -> Text,
+        desired -> Text,
+        reported -> Text,
+        delta -> Text,
+        version -> Integer,
+        updated_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     device_types (id) {
         id -> Integer,
         name -> Text,
@@ -45,8 +56,15 @@ diesel::table! {
     }
 }
 
+diesel::joinable!(device_shadows -> devices (device_id));
 diesel::joinable!(devices -> device_types (device_type_id));
 diesel::joinable!(devices -> fleets (fleet_id));
 diesel::joinable!(telemetry -> devices (device_id));
 
-diesel::allow_tables_to_appear_in_same_query!(device_types, devices, fleets, telemetry,);
+diesel::allow_tables_to_appear_in_same_query!(
+    device_shadows,
+    device_types,
+    devices,
+    fleets,
+    telemetry,
+);
