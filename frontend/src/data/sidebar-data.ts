@@ -25,6 +25,11 @@ export const navGroups: NavGroup[] = [
         href: '/settings',
         children: [
           {
+            label: 'Profile',
+            icon: 'user',
+            href: '/settings/profile',
+          },
+          {
             label: 'Device Types',
             icon: 'tag',
             href: '/settings/device-types',
