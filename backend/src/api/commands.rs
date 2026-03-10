@@ -4,15 +4,14 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use diesel::prelude::*;
 use prost::Message;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::db::models::{CommandRecord, Device, NewCommandRecord};
-use crate::db::schema::{command_history, devices};
+use crate::db::models::{CommandRecord, NewCommandRecord};
 use crate::error::AppError;
+use crate::repositories::{command_repo, device_repo};
 use crate::state::AppState;
 use extrittio_proto::extrittio::DeviceCommand;
 
@@ -80,10 +79,7 @@ pub async fn send_command_internal(
     let mut conn = state.db_pool.get()?;
 
     // Verify device exists
-    devices::table
-        .find(device_id)
-        .select(Device::as_select())
-        .first(&mut conn)?;
+    device_repo::find_device(&mut conn, device_id)?;
 
     let correlation_id = uuid::Uuid::new_v4().to_string();
     let params_json = serde_json::to_string(&params).unwrap_or_else(|_| "{}".to_string());
@@ -96,9 +92,7 @@ pub async fn send_command_internal(
         params: params_json,
     };
 
-    diesel::insert_into(command_history::table)
-        .values(&new_record)
-        .execute(&mut conn)?;
+    command_repo::insert_command(&mut conn, &new_record)?;
 
     // Build and publish protobuf
     let proto_command = DeviceCommand {
@@ -117,10 +111,7 @@ pub async fn send_command_internal(
         .map_err(|e| AppError::Zenoh(e.to_string()))?;
 
     // Re-read the record to get the DB-generated timestamps
-    let record = command_history::table
-        .find(&correlation_id)
-        .select(CommandRecord::as_select())
-        .first(&mut conn)?;
+    let record = command_repo::find_command(&mut conn, &correlation_id)?;
 
     Ok(record)
 }
@@ -158,26 +149,16 @@ async fn list_commands(
     let mut conn = state.db_pool.get()?;
 
     // Verify device exists
-    devices::table
-        .find(&id)
-        .select(devices::id)
-        .first::<String>(&mut conn)?;
+    device_repo::device_exists(&mut conn, &id)?;
 
     let limit = params.limit.unwrap_or(50).min(500);
 
-    let mut query = command_history::table
-        .filter(command_history::device_id.eq(&id))
-        .into_boxed();
-
-    if let Some(ref status) = params.status {
-        query = query.filter(command_history::status.eq(status));
-    }
-
-    let records: Vec<CommandRecord> = query
-        .order(command_history::created_at.desc())
-        .limit(limit)
-        .select(CommandRecord::as_select())
-        .load(&mut conn)?;
+    let records = command_repo::list_commands(
+        &mut conn,
+        &id,
+        params.status.as_deref(),
+        limit,
+    )?;
 
     Ok(Json(records.into_iter().map(to_command_response).collect()))
 }

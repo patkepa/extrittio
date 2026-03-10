@@ -4,13 +4,12 @@ use axum::{
     Json, Router,
 };
 use chrono::NaiveDateTime;
-use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::db::models::DeviceLog;
-use crate::db::schema::{device_logs, devices};
 use crate::error::AppError;
+use crate::repositories::{device_repo, log_repo};
 use crate::state::AppState;
 
 // ---------------------------------------------------------------------------
@@ -69,36 +68,31 @@ async fn get_device_logs(
     let mut conn = state.db_pool.get()?;
 
     // Verify device exists
-    devices::table
-        .find(&id)
-        .select(devices::id)
-        .first::<String>(&mut conn)?;
+    device_repo::device_exists(&mut conn, &id)?;
 
     let limit = params.limit.unwrap_or(100).clamp(1, 1000);
 
-    let mut query = device_logs::table
-        .filter(device_logs::device_id.eq(&id))
-        .into_boxed();
+    // Normalize level to uppercase for the query
+    let level = params.level.as_deref().map(str::to_uppercase);
 
-    // Filter by log level
-    if let Some(ref level) = params.level {
-        query = query.filter(device_logs::level.eq(level.to_uppercase()));
-    }
-
-    // Filter by timestamp
-    if let Some(ref since) = params.since {
-        let since_dt = since
+    // Parse timestamp filter
+    let since = if let Some(ref since_str) = params.since {
+        let since_dt = since_str
             .parse::<NaiveDateTime>()
-            .or_else(|_| chrono::DateTime::parse_from_rfc3339(since).map(|dt| dt.naive_utc()))
+            .or_else(|_| chrono::DateTime::parse_from_rfc3339(since_str).map(|dt| dt.naive_utc()))
             .map_err(|_| AppError::BadRequest("Invalid date format, expected YYYY-MM-DDTHH:MM:SS".into()))?;
-        query = query.filter(device_logs::created_at.gt(since_dt));
-    }
+        Some(since_dt)
+    } else {
+        None
+    };
 
-    let results: Vec<DeviceLog> = query
-        .order(device_logs::created_at.desc())
-        .limit(limit)
-        .select(DeviceLog::as_select())
-        .load(&mut conn)?;
+    let results = log_repo::list_logs(
+        &mut conn,
+        &id,
+        level.as_deref(),
+        since,
+        limit,
+    )?;
 
     let response: Vec<LogResponse> = results.into_iter().map(LogResponse::from).collect();
 

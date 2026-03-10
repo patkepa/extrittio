@@ -4,14 +4,12 @@ use axum::{
     Json, Router,
 };
 use chrono::Utc;
-use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
 
-use crate::db::models::{DeviceConfig, NewDeviceConfig};
-use crate::db::schema::{device_configs, devices};
 use crate::error::AppError;
+use crate::repositories::{config_repo, device_repo};
 use crate::state::AppState;
 
 // ---------------------------------------------------------------------------
@@ -53,17 +51,10 @@ async fn get_config(
     let mut conn = state.db_pool.get()?;
 
     // Verify device exists
-    devices::table
-        .find(&id)
-        .select(devices::id)
-        .first::<String>(&mut conn)?;
+    device_repo::device_exists(&mut conn, &id)?;
 
     // Get or create config
-    let config = device_configs::table
-        .find(&id)
-        .select(DeviceConfig::as_select())
-        .first(&mut conn)
-        .optional()?;
+    let config = config_repo::find_config(&mut conn, &id)?;
 
     match config {
         Some(c) => {
@@ -94,17 +85,10 @@ async fn update_config(
     let mut conn = state.db_pool.get()?;
 
     // Verify device exists
-    devices::table
-        .find(&id)
-        .select(devices::id)
-        .first::<String>(&mut conn)?;
+    device_repo::device_exists(&mut conn, &id)?;
 
     // Read current config
-    let existing = device_configs::table
-        .find(&id)
-        .select(DeviceConfig::as_select())
-        .first(&mut conn)
-        .optional()?;
+    let existing = config_repo::find_config(&mut conn, &id)?;
 
     let current: Value = existing
         .as_ref()
@@ -124,27 +108,7 @@ async fn update_config(
 
     let config_str = serde_json::to_string(&merged)?;
 
-    if existing.is_some() {
-        diesel::update(device_configs::table.find(&id))
-            .set((
-                device_configs::config.eq(&config_str),
-                device_configs::updated_at.eq(now),
-            ))
-            .execute(&mut conn)?;
-    } else {
-        diesel::insert_into(device_configs::table)
-            .values(&NewDeviceConfig {
-                device_id: id.clone(),
-                config: config_str,
-            })
-            .execute(&mut conn)?;
-    }
-
-    // Re-read
-    let updated = device_configs::table
-        .find(&id)
-        .select(DeviceConfig::as_select())
-        .first(&mut conn)?;
+    let updated = config_repo::upsert_config(&mut conn, &id, &config_str, now)?;
 
     let config_val: Value =
         serde_json::from_str(&updated.config).unwrap_or(Value::Object(serde_json::Map::default()));

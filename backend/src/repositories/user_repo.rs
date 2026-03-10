@@ -1,1 +1,69 @@
 // Repository functions for users
+
+use diesel::prelude::*;
+use diesel::SqliteConnection;
+
+use crate::db::models::{NewUser, User};
+use crate::db::schema::users;
+
+pub fn list_users(
+    conn: &mut SqliteConnection,
+) -> Result<Vec<User>, diesel::result::Error> {
+    users::table
+        .select(User::as_select())
+        .order(users::username.asc())
+        .load(conn)
+}
+
+pub fn find_user_by_username(
+    conn: &mut SqliteConnection,
+    username: &str,
+) -> Result<User, diesel::result::Error> {
+    users::table
+        .filter(users::username.eq(username))
+        .select(User::as_select())
+        .first(conn)
+}
+
+pub fn insert_user(
+    conn: &mut SqliteConnection,
+    user: &NewUser,
+) -> Result<User, diesel::result::Error> {
+    diesel::insert_into(users::table)
+        .values(user)
+        .execute(conn)?;
+
+    users::table
+        .filter(users::username.eq(&user.username))
+        .select(User::as_select())
+        .first(conn)
+}
+
+pub fn delete_user(
+    conn: &mut SqliteConnection,
+    id: i32,
+) -> Result<bool, diesel::result::Error> {
+    let rows = diesel::delete(users::table.find(id)).execute(conn)?;
+    Ok(rows > 0)
+}
+
+pub fn update_password(
+    conn: &mut SqliteConnection,
+    id: i32,
+    hash: &str,
+) -> Result<(), diesel::result::Error> {
+    diesel::update(users::table.find(id))
+        .set(users::password_hash.eq(hash))
+        .execute(conn)?;
+    Ok(())
+}
+
+pub fn find_user_by_id(
+    conn: &mut SqliteConnection,
+    id: i32,
+) -> Result<User, diesel::result::Error> {
+    users::table
+        .find(id)
+        .select(User::as_select())
+        .first(conn)
+}

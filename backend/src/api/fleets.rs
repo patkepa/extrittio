@@ -4,13 +4,12 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use crate::db::models::{Fleet, NewFleet};
-use crate::db::schema::{devices, fleets};
+use crate::db::models::NewFleet;
 use crate::error::AppError;
+use crate::repositories::fleet_repo;
 use crate::state::AppState;
 
 #[derive(Debug, Serialize)]
@@ -36,16 +35,7 @@ async fn list_fleets(
 ) -> Result<Json<Vec<FleetResponse>>, AppError> {
     let mut conn = state.db_pool.get()?;
 
-    // Load all fleets, then count devices per fleet
-    let all_fleets: Vec<Fleet> = fleets::table
-        .select(Fleet::as_select())
-        .order(fleets::name.asc())
-        .load(&mut conn)?;
-
-    let counts: Vec<(Option<i32>, i64)> = devices::table
-        .group_by(devices::fleet_id)
-        .select((devices::fleet_id, diesel::dsl::count(devices::id)))
-        .load(&mut conn)?;
+    let (all_fleets, counts) = fleet_repo::list_fleets(&mut conn)?;
 
     let count_map: std::collections::HashMap<i32, i64> = counts
         .into_iter()
@@ -70,14 +60,7 @@ async fn create_fleet(
 ) -> Result<(StatusCode, Json<FleetResponse>), AppError> {
     let mut conn = state.db_pool.get()?;
 
-    diesel::insert_into(fleets::table)
-        .values(NewFleet { name: body.name })
-        .execute(&mut conn)?;
-
-    let created: Fleet = fleets::table
-        .order(fleets::id.desc())
-        .select(Fleet::as_select())
-        .first(&mut conn)?;
+    let created = fleet_repo::insert_fleet(&mut conn, &NewFleet { name: body.name })?;
 
     Ok((
         StatusCode::CREATED,
@@ -96,10 +79,9 @@ async fn delete_fleet(
     let mut conn = state.db_pool.get()?;
 
     // ON DELETE SET NULL in the schema handles device unassignment
-    let rows = diesel::delete(fleets::table.find(id))
-        .execute(&mut conn)?;
+    let deleted = fleet_repo::delete_fleet(&mut conn, id)?;
 
-    if rows == 0 {
+    if !deleted {
         Err(AppError::NotFound(format!("Fleet {id} not found")))
     } else {
         Ok(StatusCode::NO_CONTENT)

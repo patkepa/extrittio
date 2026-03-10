@@ -4,14 +4,13 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use diesel::prelude::*;
 use serde::Deserialize;
 use std::sync::Arc;
 
 use crate::auth::hash_password;
-use crate::db::models::{NewUser, User};
-use crate::db::schema::users;
+use crate::db::models::NewUser;
 use crate::error::AppError;
+use crate::repositories::user_repo;
 use crate::state::AppState;
 
 use super::auth_routes::UserResponse;
@@ -45,10 +44,7 @@ async fn list_users(
 ) -> Result<Json<Vec<UserResponse>>, AppError> {
     let mut conn = state.db_pool.get()?;
 
-    let results: Vec<User> = users::table
-        .select(User::as_select())
-        .order(users::username.asc())
-        .load(&mut conn)?;
+    let results = user_repo::list_users(&mut conn)?;
 
     let response: Vec<UserResponse> = results
         .into_iter()
@@ -76,20 +72,13 @@ async fn create_user(
         password_hash,
     };
 
-    diesel::insert_into(users::table)
-        .values(&new_user)
-        .execute(&mut conn)
+    let user = user_repo::insert_user(&mut conn, &new_user)
         .map_err(|e| match e {
             diesel::result::Error::DatabaseError(diesel::result::DatabaseErrorKind::UniqueViolation, _) => {
                 AppError::Conflict(format!("Username '{}' already exists", body.username))
             }
             other => AppError::Database(other),
         })?;
-
-    let user: User = users::table
-        .filter(users::username.eq(&body.username))
-        .select(User::as_select())
-        .first(&mut conn)?;
 
     Ok((
         StatusCode::CREATED,
@@ -107,10 +96,9 @@ async fn delete_user(
 ) -> Result<StatusCode, AppError> {
     let mut conn = state.db_pool.get()?;
 
-    let rows = diesel::delete(users::table.find(id))
-        .execute(&mut conn)?;
+    let deleted = user_repo::delete_user(&mut conn, id)?;
 
-    if rows == 0 {
+    if !deleted {
         return Err(AppError::NotFound(format!("User {id} not found")));
     }
 
@@ -124,17 +112,13 @@ async fn change_password(
 ) -> Result<StatusCode, AppError> {
     let mut conn = state.db_pool.get()?;
 
-    users::table
-        .find(id)
-        .select(User::as_select())
-        .first(&mut conn)?;
+    // Verify user exists
+    user_repo::find_user_by_id(&mut conn, id)?;
 
     let password_hash = hash_password(&body.password)
         .map_err(|e| AppError::Auth(e.to_string()))?;
 
-    diesel::update(users::table.find(id))
-        .set(users::password_hash.eq(password_hash))
-        .execute(&mut conn)?;
+    user_repo::update_password(&mut conn, id, &password_hash)?;
 
     Ok(StatusCode::OK)
 }

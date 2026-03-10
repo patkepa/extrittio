@@ -3,14 +3,12 @@ use axum::{
     routing::{get, post},
     Extension, Json, Router,
 };
-use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::auth::{create_token, verify_password, Claims};
-use crate::db::models::User;
-use crate::db::schema::users;
 use crate::error::AppError;
+use crate::repositories::user_repo;
 use crate::state::AppState;
 
 #[derive(Debug, Deserialize)]
@@ -44,10 +42,7 @@ async fn login(
 ) -> Result<Json<LoginResponse>, AppError> {
     let mut conn = state.db_pool.get()?;
 
-    let user: User = users::table
-        .filter(users::username.eq(&body.username))
-        .select(User::as_select())
-        .first(&mut conn)
+    let user = user_repo::find_user_by_username(&mut conn, &body.username)
         .map_err(|e| match e {
             diesel::result::Error::NotFound => AppError::Unauthorized,
             other => AppError::Database(other),

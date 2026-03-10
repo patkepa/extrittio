@@ -4,13 +4,12 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::db::models::{DeviceType, NewDeviceType};
-use crate::db::schema::{device_types, devices};
 use crate::error::AppError;
+use crate::repositories::device_type_repo;
 use crate::state::AppState;
 
 #[derive(Debug, Serialize)]
@@ -50,10 +49,7 @@ async fn list_device_types(
 ) -> Result<Json<Vec<DeviceTypeResponse>>, AppError> {
     let mut conn = state.db_pool.get()?;
 
-    let results: Vec<DeviceType> = device_types::table
-        .select(DeviceType::as_select())
-        .order(device_types::name.asc())
-        .load(&mut conn)?;
+    let results = device_type_repo::list_device_types(&mut conn)?;
 
     Ok(Json(
         results.into_iter().map(DeviceTypeResponse::from).collect(),
@@ -66,14 +62,7 @@ async fn create_device_type(
 ) -> Result<(StatusCode, Json<DeviceTypeResponse>), AppError> {
     let mut conn = state.db_pool.get()?;
 
-    diesel::insert_into(device_types::table)
-        .values(NewDeviceType { name: body.name })
-        .execute(&mut conn)?;
-
-    let created: DeviceType = device_types::table
-        .order(device_types::id.desc())
-        .select(DeviceType::as_select())
-        .first(&mut conn)?;
+    let created = device_type_repo::insert_device_type(&mut conn, &NewDeviceType { name: body.name })?;
 
     Ok((StatusCode::CREATED, Json(DeviceTypeResponse::from(created))))
 }
@@ -90,10 +79,7 @@ async fn delete_device_type(
     }
 
     // Reject if any devices still reference this type
-    let count: i64 = devices::table
-        .filter(devices::device_type_id.eq(id))
-        .count()
-        .get_result(&mut conn)?;
+    let count = device_type_repo::count_devices_for_type(&mut conn, id)?;
 
     if count > 0 {
         return Err(AppError::Conflict(format!(
@@ -101,10 +87,9 @@ async fn delete_device_type(
         )));
     }
 
-    let rows = diesel::delete(device_types::table.find(id))
-        .execute(&mut conn)?;
+    let deleted = device_type_repo::delete_device_type(&mut conn, id)?;
 
-    if rows == 0 {
+    if !deleted {
         Err(AppError::NotFound(format!("Device type {id} not found")))
     } else {
         Ok(StatusCode::NO_CONTENT)

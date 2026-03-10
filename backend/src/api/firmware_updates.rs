@@ -6,14 +6,13 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 
-use crate::db::models::{DeviceType, FirmwareBlob, FirmwareUpdate, NewFirmwareBlob, NewFirmwareUpdate};
-use crate::db::schema::{device_types, firmware_blobs, firmware_updates};
+use crate::db::models::{NewFirmwareBlob, NewFirmwareUpdate};
 use crate::error::AppError;
+use crate::repositories::{device_type_repo, firmware_repo};
 use crate::state::AppState;
 
 // ---------------------------------------------------------------------------
@@ -92,24 +91,7 @@ async fn list_firmware_updates(
 ) -> Result<Json<Vec<FirmwareUpdateResponse>>, AppError> {
     let mut conn = state.db_pool.get()?;
 
-    let mut query = firmware_updates::table
-        .inner_join(device_types::table)
-        .left_join(firmware_blobs::table)
-        .select((
-            FirmwareUpdate::as_select(),
-            DeviceType::as_select(),
-            firmware_blobs::size.nullable(),
-            firmware_blobs::filename.nullable(),
-        ))
-        .into_boxed();
-
-    if let Some(dt_id) = params.device_type_id {
-        query = query.filter(firmware_updates::device_type_id.eq(dt_id));
-    }
-
-    let results: Vec<(FirmwareUpdate, DeviceType, Option<i32>, Option<String>)> = query
-        .order(firmware_updates::created_at.desc())
-        .load(&mut conn)?;
+    let results = firmware_repo::list_firmware_updates(&mut conn, params.device_type_id)?;
 
     Ok(Json(
         results
@@ -138,10 +120,10 @@ async fn create_firmware_update(
     let mut conn = state.db_pool.get()?;
 
     // Verify device type exists
-    let dt: DeviceType = device_types::table
-        .find(body.device_type_id)
-        .select(DeviceType::as_select())
-        .first(&mut conn)?;
+    let dt = device_type_repo::list_device_types(&mut conn)?
+        .into_iter()
+        .find(|d| d.id == body.device_type_id)
+        .ok_or_else(|| AppError::NotFound(format!("Device type {} not found", body.device_type_id)))?;
 
     // Auto-generate version if not provided
     let version = match body.version {
@@ -157,9 +139,7 @@ async fn create_firmware_update(
         description: body.description,
     };
 
-    diesel::insert_into(firmware_updates::table)
-        .values(&new_fw)
-        .execute(&mut conn)
+    let created = firmware_repo::insert_firmware_update(&mut conn, &new_fw)
         .map_err(|e| match e {
             diesel::result::Error::DatabaseError(
                 diesel::result::DatabaseErrorKind::UniqueViolation,
@@ -167,15 +147,6 @@ async fn create_firmware_update(
             ) => AppError::Conflict("Firmware version already exists for this device type".into()),
             other => AppError::Database(other),
         })?;
-
-    let created: FirmwareUpdate = firmware_updates::table
-        .filter(
-            firmware_updates::device_type_id
-                .eq(body.device_type_id)
-                .and(firmware_updates::version.eq(&version)),
-        )
-        .select(FirmwareUpdate::as_select())
-        .first(&mut conn)?;
 
     Ok((
         StatusCode::CREATED,
@@ -266,10 +237,10 @@ async fn upload_firmware_update(
     let mut conn = state.db_pool.get()?;
 
     // Verify device type exists
-    let dt: DeviceType = device_types::table
-        .find(device_type_id)
-        .select(DeviceType::as_select())
-        .first(&mut conn)?;
+    let dt = device_type_repo::list_device_types(&mut conn)?
+        .into_iter()
+        .find(|d| d.id == device_type_id)
+        .ok_or_else(|| AppError::NotFound(format!("Device type {device_type_id} not found")))?;
 
     // Auto-generate version if not provided
     let version = match version {
@@ -286,9 +257,7 @@ async fn upload_firmware_update(
         description,
     };
 
-    diesel::insert_into(firmware_updates::table)
-        .values(&new_fw)
-        .execute(&mut conn)
+    let created = firmware_repo::insert_firmware_update(&mut conn, &new_fw)
         .map_err(|e| match e {
             diesel::result::Error::DatabaseError(
                 diesel::result::DatabaseErrorKind::UniqueViolation,
@@ -297,21 +266,9 @@ async fn upload_firmware_update(
             other => AppError::Database(other),
         })?;
 
-    // Get the created record
-    let created: FirmwareUpdate = firmware_updates::table
-        .filter(
-            firmware_updates::device_type_id
-                .eq(device_type_id)
-                .and(firmware_updates::version.eq(&version)),
-        )
-        .select(FirmwareUpdate::as_select())
-        .first(&mut conn)?;
-
     // Update URL to point to download endpoint
     let download_url = format!("/api/firmware-updates/{}/download", created.id);
-    diesel::update(firmware_updates::table.find(created.id))
-        .set(firmware_updates::url.eq(&download_url))
-        .execute(&mut conn)?;
+    firmware_repo::update_firmware_url(&mut conn, created.id, &download_url)?;
 
     // Store the blob
     let new_blob = NewFirmwareBlob {
@@ -321,9 +278,7 @@ async fn upload_firmware_update(
         filename: filename.clone(),
     };
 
-    diesel::insert_into(firmware_blobs::table)
-        .values(&new_blob)
-        .execute(&mut conn)?;
+    firmware_repo::insert_firmware_blob(&mut conn, &new_blob)?;
 
     Ok((
         StatusCode::CREATED,
@@ -349,10 +304,7 @@ async fn download_firmware_blob(
 ) -> Result<Response, AppError> {
     let mut conn = state.db_pool.get()?;
 
-    let blob: FirmwareBlob = firmware_blobs::table
-        .find(id)
-        .select(FirmwareBlob::as_select())
-        .first(&mut conn)?;
+    let blob = firmware_repo::find_firmware_blob(&mut conn, id)?;
 
     let content_disposition = format!("attachment; filename=\"{}\"", blob.filename);
 
@@ -370,10 +322,9 @@ async fn delete_firmware_update(
 ) -> Result<StatusCode, AppError> {
     let mut conn = state.db_pool.get()?;
 
-    let rows = diesel::delete(firmware_updates::table.find(id))
-        .execute(&mut conn)?;
+    let deleted = firmware_repo::delete_firmware_update(&mut conn, id)?;
 
-    if rows == 0 {
+    if !deleted {
         Err(AppError::NotFound(format!("Firmware update {id} not found")))
     } else {
         Ok(StatusCode::NO_CONTENT)
@@ -398,15 +349,10 @@ async fn get_next_version(
 // ---------------------------------------------------------------------------
 
 fn next_version_for_type(
-    conn: &mut SqliteConnection,
+    conn: &mut diesel::SqliteConnection,
     device_type_id: i32,
 ) -> Result<String, diesel::result::Error> {
-    let latest: Option<String> = firmware_updates::table
-        .filter(firmware_updates::device_type_id.eq(device_type_id))
-        .select(firmware_updates::version)
-        .order(firmware_updates::created_at.desc())
-        .first(conn)
-        .optional()?;
+    let latest = firmware_repo::find_next_version(conn, device_type_id)?;
 
     Ok(match latest {
         Some(v) => increment_version(&v),

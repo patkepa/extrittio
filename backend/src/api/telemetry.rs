@@ -4,13 +4,12 @@ use axum::{
     Json, Router,
 };
 use chrono::NaiveDateTime;
-use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::db::models::TelemetryRecord;
-use crate::db::schema::{devices, telemetry};
 use crate::error::AppError;
+use crate::repositories::{device_repo, telemetry_repo};
 use crate::state::AppState;
 
 // ---------------------------------------------------------------------------
@@ -72,35 +71,25 @@ async fn get_device_telemetry(
     let mut conn = state.db_pool.get()?;
 
     // Verify device exists (404 if not)
-    let _device: crate::db::models::Device = devices::table
-        .find(&id)
-        .select(crate::db::models::Device::as_select())
-        .first(&mut conn)?;
+    device_repo::find_device(&mut conn, &id)?;
 
     // Determine limit (default 50, max 1000)
     let limit = params.limit.unwrap_or(50).clamp(1, 1000);
 
-    // Build telemetry query
-    let mut query = telemetry::table
-        .filter(telemetry::device_id.eq(&id))
-        .into_boxed();
-
-    // Apply `since` filter if provided
-    if let Some(ref since) = params.since {
-        let since_dt = since
+    // Parse `since` filter if provided
+    let since = if let Some(ref since_str) = params.since {
+        let since_dt = since_str
             .parse::<NaiveDateTime>()
             .or_else(|_| {
-                chrono::DateTime::parse_from_rfc3339(since).map(|dt| dt.naive_utc())
+                chrono::DateTime::parse_from_rfc3339(since_str).map(|dt| dt.naive_utc())
             })
             .map_err(|_| AppError::BadRequest("Invalid date format, expected YYYY-MM-DDTHH:MM:SS".into()))?;
-        query = query.filter(telemetry::received_at.gt(since_dt));
-    }
+        Some(since_dt)
+    } else {
+        None
+    };
 
-    let results: Vec<TelemetryRecord> = query
-        .order(telemetry::received_at.desc())
-        .limit(limit)
-        .select(TelemetryRecord::as_select())
-        .load(&mut conn)?;
+    let results = telemetry_repo::list_telemetry(&mut conn, &id, since, limit)?;
 
     let response: Vec<TelemetryResponse> =
         results.into_iter().map(TelemetryResponse::from).collect();

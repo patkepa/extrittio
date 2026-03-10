@@ -6,16 +6,14 @@ use axum::{
 };
 use chrono::{NaiveDateTime, Utc};
 use serde_json::Value;
-use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::api::commands;
-use crate::db::models::{Device, DeviceShadow, DeviceType, Fleet, FirmwareUpdate, NewDevice, NewDeviceShadow, NewOtaDeployment, OtaDeployment, UpdateDevice, UpdateShadow};
-use crate::db::schema::{device_shadows, firmware_updates, ota_deployments};
+use crate::db::models::{Device, DeviceType, Fleet, FirmwareUpdate, NewDevice, NewDeviceShadow, NewOtaDeployment, UpdateDevice, UpdateShadow};
 use crate::error::AppError;
-use crate::repositories::device_repo;
+use crate::repositories::{device_repo, firmware_repo, shadow_repo};
 use crate::shadow_utils::compute_shadow_delta;
 use crate::state::AppState;
 use extrittio_proto::extrittio::ShadowDelta;
@@ -224,9 +222,7 @@ async fn create_device(
     let new_shadow = NewDeviceShadow {
         device_id: new_id.clone(),
     };
-    diesel::insert_into(device_shadows::table)
-        .values(&new_shadow)
-        .execute(&mut conn)?;
+    shadow_repo::insert_shadow(&mut conn, &new_shadow)?;
 
     let (device, device_type, fleet) =
         device_repo::find_device_with_joins(&mut conn, &new_id)?;
@@ -299,10 +295,7 @@ async fn trigger_ota(
     let device = device_repo::find_device(&mut conn, &id)?;
 
     // Fetch firmware update
-    let fw: FirmwareUpdate = firmware_updates::table
-        .find(body.firmware_update_id)
-        .select(FirmwareUpdate::as_select())
-        .first(&mut conn)?;
+    let fw: FirmwareUpdate = firmware_repo::find_firmware_update(&mut conn, body.firmware_update_id)?;
 
     if fw.device_type_id != device.device_type_id {
         return Err(AppError::BadRequest(
@@ -311,10 +304,7 @@ async fn trigger_ota(
     }
 
     // Load current shadow
-    let shadow: DeviceShadow = device_shadows::table
-        .find(&id)
-        .select(DeviceShadow::as_select())
-        .first(&mut conn)?;
+    let shadow = shadow_repo::find_shadow(&mut conn, &id)?;
 
     // Build OTA desired state: merge firmware update info into desired
     let mut desired: Value =
@@ -351,18 +341,14 @@ async fn trigger_ota(
         ..Default::default()
     };
 
-    diesel::update(device_shadows::table.find(&id))
-        .set(&changeset)
-        .execute(&mut conn)?;
+    shadow_repo::update_shadow(&mut conn, &id, &changeset)?;
 
     // Create OTA deployment record for tracking
     let new_deployment = NewOtaDeployment {
         device_id: id.clone(),
         firmware_update_id: fw.id,
     };
-    diesel::insert_into(ota_deployments::table)
-        .values(&new_deployment)
-        .execute(&mut conn)?;
+    firmware_repo::insert_ota_deployment(&mut conn, &new_deployment)?;
 
     // Publish delta to device via Zenoh
     if new_delta.as_object().is_some_and(|obj| !obj.is_empty()) {
@@ -409,12 +395,7 @@ async fn list_ota_deployments(
     // Verify device exists
     device_repo::find_device(&mut conn, &id)?;
 
-    let results: Vec<(OtaDeployment, FirmwareUpdate)> = ota_deployments::table
-        .inner_join(firmware_updates::table)
-        .filter(ota_deployments::device_id.eq(&id))
-        .select((OtaDeployment::as_select(), FirmwareUpdate::as_select()))
-        .order(ota_deployments::initiated_at.desc())
-        .load(&mut conn)?;
+    let results = firmware_repo::list_ota_deployments(&mut conn, &id)?;
 
     Ok(Json(
         results
