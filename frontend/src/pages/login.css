@@ -1,0 +1,35 @@
+.login-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: hsl(var(--background));
+}
+
+.login-card {
+  width: 380px;
+  padding: 32px;
+}
+
+.login-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.login-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: hsl(var(--accent));
+  color: #fff;
+  margin-bottom: 12px;
+}
+
+.login-subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  opacity: 0.6;
+}
