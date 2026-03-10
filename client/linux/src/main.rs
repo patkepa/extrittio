@@ -7,6 +7,7 @@ use extrittio_proto::extrittio::{
 };
 use prost::Message;
 use rand::Rng;
+use sha2::{Digest, Sha256};
 use tokio::sync::Mutex;
 use tracing::info;
 
@@ -90,22 +91,26 @@ async fn main() {
     let reported_state: Arc<Mutex<serde_json::Map<String, serde_json::Value>>> =
         Arc::new(Mutex::new(serde_json::Map::new()));
 
+    let firmware_version: Arc<Mutex<String>> = Arc::new(Mutex::new("v1.0.0".to_string()));
+
     let start = Instant::now();
 
     // Spawn heartbeat task
     let hb_session = session.clone();
     let hb_device_id = args.device_id.clone();
     let hb_interval = args.heartbeat_interval;
+    let hb_firmware = firmware_version.clone();
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(hb_interval));
         loop {
             interval.tick().await;
 
+            let fw = hb_firmware.lock().await.clone();
             let heartbeat = DeviceHeartbeat {
                 device_id: hb_device_id.clone(),
                 timestamp: chrono_now_millis(),
                 status: "online".to_string(),
-                firmware: "v1.0.0".to_string(),
+                firmware: fw,
                 uptime_seconds: start.elapsed().as_secs() as i64,
             };
 
@@ -136,6 +141,7 @@ async fn main() {
     let shadow_session = session.clone();
     let shadow_device_id = args.device_id.clone();
     let shadow_reported = reported_state.clone();
+    let shadow_firmware = firmware_version.clone();
     tokio::spawn(async move {
         let subscriber = shadow_session
             .declare_subscriber(&shadow_delta_topic)
@@ -155,31 +161,48 @@ async fn main() {
 
                             // Parse delta JSON and merge into reported state
                             match serde_json::from_str::<serde_json::Value>(&delta.delta_json) {
-                                Ok(serde_json::Value::Object(delta_map)) => {
-                                    let mut state = shadow_reported.lock().await;
-                                    for (key, value) in delta_map {
-                                        state.insert(key, value);
+                                Ok(serde_json::Value::Object(mut delta_map)) => {
+                                    // Extract OTA payload before merging
+                                    let ota_payload = delta_map.remove("ota");
+
+                                    // Merge remaining keys into reported state
+                                    {
+                                        let mut state = shadow_reported.lock().await;
+                                        for (key, value) in delta_map {
+                                            state.insert(key, value);
+                                        }
                                     }
 
-                                    let state_json = serde_json::to_string(&*state)
-                                        .unwrap_or_else(|_| "{}".to_string());
-                                    info!("Applied. Reported state: {}", state_json);
+                                    // Send report for non-OTA keys
+                                    send_shadow_report(
+                                        &shadow_device_id,
+                                        &shadow_session,
+                                        &shadow_report_topic,
+                                        &shadow_reported,
+                                        delta.version,
+                                    )
+                                    .await;
 
-                                    let report = ShadowReport {
-                                        device_id: shadow_device_id.clone(),
-                                        timestamp: chrono_now_millis(),
-                                        state_json,
-                                        version: delta.version,
-                                    };
-
-                                    let payload = report.encode_to_vec();
-                                    if let Err(e) = shadow_session
-                                        .put(&shadow_report_topic, payload)
-                                        .await
-                                    {
-                                        tracing::warn!("Failed to send ShadowReport: {}", e);
-                                    } else {
-                                        info!("ShadowReport sent (version: {})", delta.version);
+                                    // If OTA payload present, spawn OTA handler
+                                    if let Some(ota_val) = ota_payload {
+                                        let ota_device_id = shadow_device_id.clone();
+                                        let ota_session = shadow_session.clone();
+                                        let ota_topic = shadow_report_topic.clone();
+                                        let ota_reported = shadow_reported.clone();
+                                        let ota_fw = shadow_firmware.clone();
+                                        let ota_version = delta.version;
+                                        tokio::spawn(async move {
+                                            handle_ota(
+                                                ota_val,
+                                                ota_device_id,
+                                                ota_session,
+                                                ota_topic,
+                                                ota_reported,
+                                                ota_fw,
+                                                ota_version,
+                                            )
+                                            .await;
+                                        });
                                     }
                                 }
                                 Ok(_) => {
@@ -239,6 +262,219 @@ async fn main() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Shadow helpers
+// ---------------------------------------------------------------------------
+
+async fn send_shadow_report(
+    device_id: &str,
+    session: &zenoh::Session,
+    topic: &str,
+    reported_state: &Arc<Mutex<serde_json::Map<String, serde_json::Value>>>,
+    version: i64,
+) {
+    let state = reported_state.lock().await;
+    let state_json = serde_json::to_string(&*state).unwrap_or_else(|_| "{}".to_string());
+    info!("Applied. Reported state: {}", state_json);
+
+    let report = ShadowReport {
+        device_id: device_id.to_string(),
+        timestamp: chrono_now_millis(),
+        state_json,
+        version,
+    };
+
+    let payload = report.encode_to_vec();
+    if let Err(e) = session.put(topic, payload).await {
+        tracing::warn!("Failed to send ShadowReport: {}", e);
+    } else {
+        info!("ShadowReport sent (version: {})", version);
+    }
+}
+
+async fn report_ota_status(
+    reported_state: &Arc<Mutex<serde_json::Map<String, serde_json::Value>>>,
+    device_id: &str,
+    session: &zenoh::Session,
+    topic: &str,
+    version: i64,
+    fw_version: &str,
+    fw_update_id: Option<i64>,
+    status: &str,
+    error: Option<&str>,
+) {
+    let mut ota_obj = serde_json::json!({
+        "status": status,
+        "firmware_version": fw_version,
+    });
+    if let Some(id) = fw_update_id {
+        ota_obj["firmware_update_id"] = serde_json::json!(id);
+    }
+    if let Some(err) = error {
+        ota_obj["error"] = serde_json::json!(err);
+    }
+
+    {
+        let mut state = reported_state.lock().await;
+        state.insert("ota".to_string(), ota_obj);
+    }
+
+    send_shadow_report(device_id, session, topic, reported_state, version).await;
+}
+
+// ---------------------------------------------------------------------------
+// OTA handler (simulated)
+// ---------------------------------------------------------------------------
+
+async fn handle_ota(
+    ota_payload: serde_json::Value,
+    device_id: String,
+    session: Arc<zenoh::Session>,
+    report_topic: String,
+    reported_state: Arc<Mutex<serde_json::Map<String, serde_json::Value>>>,
+    firmware_version: Arc<Mutex<String>>,
+    shadow_version: i64,
+) {
+    // Parse required fields
+    let fw_version = match ota_payload.get("firmware_version").and_then(|v| v.as_str()) {
+        Some(v) => v.to_string(),
+        None => {
+            tracing::warn!("OTA payload missing firmware_version");
+            return;
+        }
+    };
+    let fw_url = match ota_payload.get("firmware_url").and_then(|v| v.as_str()) {
+        Some(v) => v.to_string(),
+        None => {
+            tracing::warn!("OTA payload missing firmware_url");
+            return;
+        }
+    };
+    let fw_update_id = ota_payload
+        .get("firmware_update_id")
+        .and_then(|v| v.as_i64());
+    let expected_sha256 = ota_payload
+        .get("sha256")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    // Check if we're already running the requested version
+    {
+        let current = firmware_version.lock().await;
+        if current.contains(&fw_version) {
+            info!("OTA: already running v{}, skipping", fw_version);
+            report_ota_status(
+                &reported_state, &device_id, &session, &report_topic, shadow_version,
+                &fw_version, fw_update_id, "success", None,
+            )
+            .await;
+            return;
+        }
+    }
+
+    // -- Report "downloading" --
+    info!("OTA: downloading firmware v{} from {}", fw_version, fw_url);
+    report_ota_status(
+        &reported_state, &device_id, &session, &report_topic, shadow_version,
+        &fw_version, fw_update_id, "downloading", None,
+    )
+    .await;
+
+    // -- Download --
+    let bytes = match reqwest::get(&fw_url).await {
+        Ok(resp) => {
+            if !resp.status().is_success() {
+                let err = format!("HTTP {}", resp.status());
+                tracing::warn!("OTA: download failed: {}", err);
+                report_ota_status(
+                    &reported_state, &device_id, &session, &report_topic, shadow_version,
+                    &fw_version, fw_update_id, "failed", Some(&err),
+                )
+                .await;
+                return;
+            }
+            match resp.bytes().await {
+                Ok(b) => b,
+                Err(e) => {
+                    let err = format!("download read error: {}", e);
+                    tracing::warn!("OTA: {}", err);
+                    report_ota_status(
+                        &reported_state, &device_id, &session, &report_topic, shadow_version,
+                        &fw_version, fw_update_id, "failed", Some(&err),
+                    )
+                    .await;
+                    return;
+                }
+            }
+        }
+        Err(e) => {
+            let err = format!("download error: {}", e);
+            tracing::warn!("OTA: {}", err);
+            report_ota_status(
+                &reported_state, &device_id, &session, &report_topic, shadow_version,
+                &fw_version, fw_update_id, "failed", Some(&err),
+            )
+            .await;
+            return;
+        }
+    };
+
+    info!("OTA: downloaded {} bytes", bytes.len());
+
+    // -- Verify SHA-256 (if provided) --
+    if let Some(ref expected) = expected_sha256 {
+        report_ota_status(
+            &reported_state, &device_id, &session, &report_topic, shadow_version,
+            &fw_version, fw_update_id, "verifying", None,
+        )
+        .await;
+
+        let mut hasher = Sha256::new();
+        hasher.update(&bytes);
+        let actual = format!("{:x}", hasher.finalize());
+
+        if actual.to_lowercase() != expected.to_lowercase() {
+            let err = format!("hash mismatch: expected={} got={}", expected, actual);
+            tracing::warn!("OTA: {}", err);
+            report_ota_status(
+                &reported_state, &device_id, &session, &report_topic, shadow_version,
+                &fw_version, fw_update_id, "failed", Some(&err),
+            )
+            .await;
+            return;
+        }
+        info!("OTA: SHA-256 verified");
+    }
+
+    // -- "Install" (simulated) --
+    report_ota_status(
+        &reported_state, &device_id, &session, &report_topic, shadow_version,
+        &fw_version, fw_update_id, "installing", None,
+    )
+    .await;
+
+    // Simulate installation delay
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
+    // -- Success --
+    {
+        let mut fw = firmware_version.lock().await;
+        *fw = format!("v{}", fw_version);
+    }
+
+    report_ota_status(
+        &reported_state, &device_id, &session, &report_topic, shadow_version,
+        &fw_version, fw_update_id, "success", None,
+    )
+    .await;
+
+    info!("OTA: firmware updated to v{} (simulated)", fw_version);
+}
+
+// ---------------------------------------------------------------------------
+// Utilities
+// ---------------------------------------------------------------------------
 
 fn chrono_now_millis() -> i64 {
     std::time::SystemTime::now()

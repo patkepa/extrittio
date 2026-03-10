@@ -5,7 +5,7 @@ use std::sync::Arc;
 use tracing::{info, warn};
 
 use crate::db::models::{Device, DeviceShadow, NewTelemetryRecord, UpdateDevice, UpdateShadow};
-use crate::db::schema::{device_shadows, devices, telemetry};
+use crate::db::schema::{device_shadows, devices, ota_deployments, telemetry};
 use crate::shadow_utils::compute_shadow_delta;
 use crate::state::DbPool;
 
@@ -379,6 +379,47 @@ fn handle_shadow_report(db_pool: &DbPool, payload: &[u8]) {
     }
 
     info!("Shadow report from device {}: version={}", report.device_id, shadow.version + 1);
+
+    // Update OTA deployment status if reported state contains ota.status
+    if let Some(ota_obj) = merged_reported.get("ota").and_then(|v| v.as_object()) {
+        if let Some(ota_status) = ota_obj.get("status").and_then(|v| v.as_str()) {
+            let is_terminal = ota_status == "success" || ota_status == "failed";
+            let completed_at = if is_terminal { Some(now) } else { None };
+            let error_message = ota_obj.get("error").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+            // Find the latest pending/in-progress deployment for this device and update it
+            let deployment = ota_deployments::table
+                .filter(ota_deployments::device_id.eq(&report.device_id))
+                .filter(ota_deployments::status.ne("success"))
+                .filter(ota_deployments::status.ne("failed"))
+                .order(ota_deployments::initiated_at.desc())
+                .select(ota_deployments::id)
+                .first::<i32>(&mut conn)
+                .optional();
+
+            if let Ok(Some(dep_id)) = deployment {
+                if is_terminal {
+                    if let Err(e) = diesel::update(ota_deployments::table.find(dep_id))
+                        .set((
+                            ota_deployments::status.eq(ota_status),
+                            ota_deployments::error_message.eq(error_message),
+                            ota_deployments::completed_at.eq(completed_at),
+                        ))
+                        .execute(&mut conn)
+                    {
+                        warn!("Failed to update OTA deployment status: {}", e);
+                    } else {
+                        info!("OTA deployment {} for device {} -> {}", dep_id, report.device_id, ota_status);
+                    }
+                } else if let Err(e) = diesel::update(ota_deployments::table.find(dep_id))
+                    .set(ota_deployments::status.eq(ota_status))
+                    .execute(&mut conn)
+                {
+                    warn!("Failed to update OTA deployment status: {}", e);
+                }
+            }
+        }
+    }
 }
 
 async fn handle_shadow_get(db_pool: &DbPool, session: &zenoh::Session, payload: &[u8]) {
