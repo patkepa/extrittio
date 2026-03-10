@@ -149,9 +149,12 @@ async fn update_desired(
     let new_delta = compute_shadow_delta(&new_desired, &current_reported);
     let now = Utc::now().naive_utc();
 
+    let desired_str = serde_json::to_string(&new_desired).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let delta_str = serde_json::to_string(&new_delta).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
     let changeset = UpdateShadow {
-        desired: Some(serde_json::to_string(&new_desired).unwrap()),
-        delta: Some(serde_json::to_string(&new_delta).unwrap()),
+        desired: Some(desired_str),
+        delta: Some(delta_str.clone()),
         version: Some(shadow.version + 1),
         updated_at: Some(now),
         ..Default::default()
@@ -163,18 +166,16 @@ async fn update_desired(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Publish delta to device via Zenoh if non-empty
-    if let Some(delta_obj) = new_delta.as_object() {
-        if !delta_obj.is_empty() {
-            let delta_msg = extrittio_proto::extrittio::ShadowDelta {
-                device_id: id.clone(),
-                delta_json: serde_json::to_string(&new_delta).unwrap(),
-                version: (shadow.version + 1) as i64,
-            };
-            let payload = prost::Message::encode_to_vec(&delta_msg);
-            let topic = format!("extrittio/devices/{}/shadow/delta", id);
-            if let Err(e) = state.zenoh_session.put(&topic, payload).await {
-                warn!("Failed to publish shadow delta to device {}: {}", id, e);
-            }
+    if new_delta.as_object().is_some_and(|obj| !obj.is_empty()) {
+        let delta_msg = extrittio_proto::extrittio::ShadowDelta {
+            device_id: id.clone(),
+            delta_json: delta_str,
+            version: (shadow.version + 1) as i64,
+        };
+        let payload = prost::Message::encode_to_vec(&delta_msg);
+        let topic = format!("extrittio/devices/{}/shadow/delta", id);
+        if let Err(e) = state.zenoh_session.put(&topic, payload).await {
+            warn!("Failed to publish shadow delta to device {}: {}", id, e);
         }
     }
 
@@ -216,9 +217,12 @@ async fn update_reported(
     let new_delta = compute_shadow_delta(&current_desired, &new_reported);
     let now = Utc::now().naive_utc();
 
+    let reported_str = serde_json::to_string(&new_reported).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let delta_str = serde_json::to_string(&new_delta).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
     let changeset = UpdateShadow {
-        reported: Some(serde_json::to_string(&new_reported).unwrap()),
-        delta: Some(serde_json::to_string(&new_delta).unwrap()),
+        reported: Some(reported_str),
+        delta: Some(delta_str),
         version: Some(shadow.version + 1),
         updated_at: Some(now),
         ..Default::default()
@@ -254,7 +258,6 @@ async fn delete_shadow(
         delta: Some("{}".to_string()),
         version: Some(1),
         updated_at: Some(now),
-        ..Default::default()
     };
 
     let rows = diesel::update(device_shadows::table.find(&id))

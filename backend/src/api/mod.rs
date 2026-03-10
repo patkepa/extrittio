@@ -1,3 +1,4 @@
+pub mod commands;
 pub mod configs;
 pub mod dashboard;
 pub mod device_types;
@@ -24,4 +25,5 @@ pub fn router() -> Router<Arc<AppState>> {
         .merge(firmware_updates::router())
         .merge(logs::router())
         .merge(configs::router())
+        .merge(commands::router())
 }

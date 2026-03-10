@@ -12,14 +12,3 @@ export interface NavGroup {
   items: NavItem[];
 }
 
-export interface Project {
-  name: string;
-  environment: 'Production' | 'Development' | 'Testing';
-  icon: IconName;
-}
-
-export interface User {
-  name: string;
-  email: string;
-  avatar?: string;
-}

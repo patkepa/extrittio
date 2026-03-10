@@ -369,7 +369,6 @@ export const Devices = () => {
                     </td>
                     <td className="actions-column" onClick={(e) => e.stopPropagation()}>
                       <Button icon="eye-open" minimal small onClick={() => handleViewDevice(device)} title="View Details" />
-                      <Button icon="edit" minimal small title="Edit Device" />
                       <Button
                         icon="trash"
                         minimal

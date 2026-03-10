@@ -7,16 +7,16 @@ use axum::{
 use chrono::{NaiveDateTime, Utc};
 use serde_json::Value;
 use diesel::prelude::*;
-use prost::Message;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::warn;
 
+use crate::api::commands;
 use crate::db::models::{Device, DeviceShadow, DeviceType, Fleet, FirmwareUpdate, NewDevice, NewDeviceShadow, NewOtaDeployment, UpdateDevice, UpdateShadow};
 use crate::db::schema::{device_shadows, device_types, devices, firmware_updates, fleets, ota_deployments};
 use crate::shadow_utils::compute_shadow_delta;
 use crate::state::AppState;
-use extrittio_proto::extrittio::{DeviceCommand, ShadowDelta};
+use extrittio_proto::extrittio::ShadowDelta;
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -369,36 +369,7 @@ async fn restart_device(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
-    let mut conn = state
-        .db_pool
-        .get()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    // Verify device exists
-    let _device: Device = devices::table
-        .find(&id)
-        .select(Device::as_select())
-        .first(&mut conn)
-        .map_err(|e| match e {
-            diesel::result::Error::NotFound => StatusCode::NOT_FOUND,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        })?;
-
-    // Build and publish the DeviceCommand protobuf via zenoh
-    let command = DeviceCommand {
-        command: "restart".to_string(),
-        params: Default::default(),
-    };
-
-    let payload = command.encode_to_vec();
-    let topic = format!("extrittio/devices/{}/commands", id);
-
-    state
-        .zenoh_session
-        .put(&topic, payload)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
+    commands::send_command_internal(&state, &id, "restart", Default::default()).await?;
     Ok(StatusCode::OK)
 }
 
@@ -432,7 +403,6 @@ async fn trigger_ota(
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         })?;
 
-    // FIX: Verify firmware is compatible with the device's type
     if fw.device_type_id != device.device_type_id {
         return Err(StatusCode::BAD_REQUEST);
     }
@@ -450,7 +420,9 @@ async fn trigger_ota(
     // Build OTA desired state: merge firmware update info into desired
     let mut desired: Value =
         serde_json::from_str(&shadow.desired).unwrap_or(Value::Object(Default::default()));
-    let desired_obj = desired.as_object_mut().unwrap();
+    let desired_obj = desired
+        .as_object_mut()
+        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let mut ota_payload = serde_json::json!({
         "firmware_version": fw.version,
@@ -469,9 +441,12 @@ async fn trigger_ota(
     let new_delta = compute_shadow_delta(&desired, &reported);
     let now = Utc::now().naive_utc();
 
+    let desired_str = serde_json::to_string(&desired).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let delta_str = serde_json::to_string(&new_delta).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
     let changeset = UpdateShadow {
-        desired: Some(serde_json::to_string(&desired).unwrap()),
-        delta: Some(serde_json::to_string(&new_delta).unwrap()),
+        desired: Some(desired_str),
+        delta: Some(delta_str),
         version: Some(shadow.version + 1),
         updated_at: Some(now),
         ..Default::default()
@@ -493,19 +468,18 @@ async fn trigger_ota(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Publish delta to device via Zenoh
-    if let Some(delta_obj) = new_delta.as_object() {
-        if !delta_obj.is_empty() {
-            let delta_msg = ShadowDelta {
-                device_id: id.clone(),
-                delta_json: serde_json::to_string(&new_delta).unwrap(),
-                version: (shadow.version + 1) as i64,
-            };
-            let payload = prost::Message::encode_to_vec(&delta_msg);
-            let topic = format!("extrittio/devices/{}/shadow/delta", id);
-            if let Err(e) = state.zenoh_session.put(&topic, payload).await {
-                warn!("Failed to publish OTA shadow delta to device {}: {}", id, e);
-                return Err(StatusCode::BAD_GATEWAY);
-            }
+    if new_delta.as_object().is_some_and(|obj| !obj.is_empty()) {
+        let delta_json = serde_json::to_string(&new_delta).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let delta_msg = ShadowDelta {
+            device_id: id.clone(),
+            delta_json,
+            version: (shadow.version + 1) as i64,
+        };
+        let payload = prost::Message::encode_to_vec(&delta_msg);
+        let topic = format!("extrittio/devices/{}/shadow/delta", id);
+        if let Err(e) = state.zenoh_session.put(&topic, payload).await {
+            warn!("Failed to publish OTA shadow delta to device {}: {}", id, e);
+            return Err(StatusCode::BAD_GATEWAY);
         }
     }
 

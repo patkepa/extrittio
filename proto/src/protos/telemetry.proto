@@ -21,6 +21,15 @@ message DeviceHeartbeat {
 message DeviceCommand {
     string command = 1;
     map<string, string> params = 2;
+    string correlation_id = 3;
+}
+
+message DeviceCommandResponse {
+    string correlation_id = 1;
+    string device_id = 2;
+    string status = 3;
+    string payload = 4;
+    int64 timestamp = 5;
 }
 
 message ShadowReport {

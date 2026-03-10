@@ -1,6 +1,19 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    command_history (id) {
+        id -> Text,
+        device_id -> Text,
+        command -> Text,
+        params -> Text,
+        status -> Text,
+        response_payload -> Nullable<Text>,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     device_configs (device_id) {
         device_id -> Text,
         config -> Text,
@@ -107,6 +120,7 @@ diesel::table! {
     }
 }
 
+diesel::joinable!(command_history -> devices (device_id));
 diesel::joinable!(device_configs -> devices (device_id));
 diesel::joinable!(device_logs -> devices (device_id));
 diesel::joinable!(device_shadows -> devices (device_id));
@@ -119,6 +133,7 @@ diesel::joinable!(ota_deployments -> firmware_updates (firmware_update_id));
 diesel::joinable!(telemetry -> devices (device_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
+    command_history,
     device_configs,
     device_logs,
     device_shadows,

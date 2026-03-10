@@ -1,7 +1,7 @@
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 
-use super::schema::{device_configs, device_logs, device_types, devices, firmware_blobs, firmware_updates, fleets, ota_deployments, telemetry, device_shadows};
+use super::schema::{command_history, device_configs, device_logs, device_types, devices, firmware_blobs, firmware_updates, fleets, ota_deployments, telemetry, device_shadows};
 
 // ---------------------------------------------------------------------------
 // Device Types
@@ -263,4 +263,31 @@ pub struct DeviceConfig {
 pub struct NewDeviceConfig {
     pub device_id: String,
     pub config: String,
+}
+
+// ---------------------------------------------------------------------------
+// Command History
+// ---------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug)]
+#[diesel(table_name = command_history)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct CommandRecord {
+    pub id: String,
+    pub device_id: String,
+    pub command: String,
+    pub params: String,
+    pub status: String,
+    pub response_payload: Option<String>,
+    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = command_history)]
+pub struct NewCommandRecord {
+    pub id: String,
+    pub device_id: String,
+    pub command: String,
+    pub params: String,
 }

@@ -180,6 +180,31 @@ export interface DeviceConfigResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Device Commands
+// ---------------------------------------------------------------------------
+
+export interface CommandRecord {
+  id: string;
+  device_id: string;
+  command: string;
+  params: Record<string, string>;
+  status: 'sent' | 'delivered' | 'succeeded' | 'failed' | 'timed_out';
+  response_payload: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SendCommandRequest {
+  command: string;
+  params?: Record<string, string>;
+}
+
+export interface CommandsParams {
+  limit?: number;
+  status?: string;
+}
+
+// ---------------------------------------------------------------------------
 // Device Shadows
 // ---------------------------------------------------------------------------
 

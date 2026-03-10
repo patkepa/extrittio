@@ -11,6 +11,8 @@ export const OverviewTab = ({ device }: OverviewTabProps) => {
   const restartDeviceMutation = useRestartDevice();
   const [, setSearchParams] = useSearchParams();
 
+  const navigateToTab = (tab: string) => setSearchParams({ tab });
+
   return (
     <>
       {device.status === 'offline' && (
@@ -62,9 +64,9 @@ export const OverviewTab = ({ device }: OverviewTabProps) => {
         >
           Restart
         </Button>
-        <Button icon="cloud-upload" fill onClick={() => setSearchParams({ tab: 'ota' })}>Update FW</Button>
-        <Button icon="chart" fill>Telemetry</Button>
-        <Button icon="cog" fill>Configure</Button>
+        <Button icon="cloud-upload" fill onClick={() => navigateToTab('ota')}>Update FW</Button>
+        <Button icon="chart" fill onClick={() => navigateToTab('telemetry')}>Telemetry</Button>
+        <Button icon="cog" fill onClick={() => navigateToTab('config')}>Configure</Button>
       </div>
     </>
   );

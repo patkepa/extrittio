@@ -67,7 +67,11 @@ export function useDeleteDevice() {
 }
 
 export function useRestartDevice() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => restartDevice(id),
+    onSuccess: (_data, id) => {
+      void queryClient.invalidateQueries({ queryKey: ["command-history", id] });
+    },
   });
 }

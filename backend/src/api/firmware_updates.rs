@@ -179,7 +179,6 @@ async fn create_firmware_update(
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         })?;
 
-    // FIX: Query by unique constraint instead of MAX(id) to avoid race condition
     let created: FirmwareUpdate = firmware_updates::table
         .filter(
             firmware_updates::device_type_id
@@ -435,7 +434,6 @@ fn next_version_for_type(
     conn: &mut SqliteConnection,
     device_type_id: i32,
 ) -> Result<String, diesel::result::Error> {
-    // FIX: Sort by created_at DESC instead of id DESC for correct ordering
     let latest: Option<String> = firmware_updates::table
         .filter(firmware_updates::device_type_id.eq(device_type_id))
         .select(firmware_updates::version)

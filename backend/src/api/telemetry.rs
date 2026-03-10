@@ -85,7 +85,7 @@ async fn get_device_telemetry(
         })?;
 
     // Determine limit (default 50, max 1000)
-    let limit = params.limit.unwrap_or(50).min(1000).max(1);
+    let limit = params.limit.unwrap_or(50).clamp(1, 1000);
 
     // Build telemetry query
     let mut query = telemetry::table

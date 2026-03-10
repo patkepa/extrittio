@@ -49,6 +49,7 @@ mod tests {
         let command = DeviceCommand {
             command: "restart".to_string(),
             params: [("delay".to_string(), "5".to_string())].into(),
+            correlation_id: "abc-123".to_string(),
         };
 
         let bytes = command.encode_to_vec();
@@ -56,5 +57,25 @@ mod tests {
 
         assert_eq!(decoded.command, "restart");
         assert_eq!(decoded.params.get("delay").unwrap(), "5");
+        assert_eq!(decoded.correlation_id, "abc-123");
+    }
+
+    #[test]
+    fn test_command_response_roundtrip() {
+        let response = DeviceCommandResponse {
+            correlation_id: "abc-123".to_string(),
+            device_id: "dev-001".to_string(),
+            status: "succeeded".to_string(),
+            payload: r#"{"result":"ok"}"#.to_string(),
+            timestamp: 1709900000000,
+        };
+
+        let bytes = response.encode_to_vec();
+        let decoded = DeviceCommandResponse::decode(bytes.as_slice()).unwrap();
+
+        assert_eq!(decoded.correlation_id, "abc-123");
+        assert_eq!(decoded.device_id, "dev-001");
+        assert_eq!(decoded.status, "succeeded");
+        assert_eq!(decoded.payload, r#"{"result":"ok"}"#);
     }
 }

@@ -81,7 +81,7 @@ async fn get_device_logs(
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         })?;
 
-    let limit = params.limit.unwrap_or(100).min(1000).max(1);
+    let limit = params.limit.unwrap_or(100).clamp(1, 1000);
 
     let mut query = device_logs::table
         .filter(device_logs::device_id.eq(&id))
