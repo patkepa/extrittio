@@ -4,16 +4,15 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use prost::Message;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::db::models::{CommandRecord, NewCommandRecord};
+use crate::db::models::CommandRecord;
 use crate::error::AppError;
 use crate::repositories::{command_repo, device_repo};
+use crate::services::command_service;
 use crate::state::AppState;
-use extrittio_proto::extrittio::DeviceCommand;
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -62,60 +61,6 @@ fn to_command_response(record: CommandRecord) -> CommandResponse {
     }
 }
 
-/// Shared internal logic for sending a command to a device.
-/// Used by both the generic POST endpoint and the legacy restart endpoint.
-///
-/// # Errors
-///
-/// Returns `AppError::NotFound` if the device does not exist, or other
-/// `AppError` variants on database/Zenoh failures.
-#[allow(clippy::implicit_hasher)]
-pub async fn send_command_internal(
-    state: &AppState,
-    device_id: &str,
-    command: &str,
-    params: HashMap<String, String>,
-) -> Result<CommandRecord, AppError> {
-    let mut conn = state.db_pool.get()?;
-
-    // Verify device exists
-    device_repo::find_device(&mut conn, device_id)?;
-
-    let correlation_id = uuid::Uuid::new_v4().to_string();
-    let params_json = serde_json::to_string(&params).unwrap_or_else(|_| "{}".to_string());
-
-    // Insert command record
-    let new_record = NewCommandRecord {
-        id: correlation_id.clone(),
-        device_id: device_id.to_string(),
-        command: command.to_string(),
-        params: params_json,
-    };
-
-    command_repo::insert_command(&mut conn, &new_record)?;
-
-    // Build and publish protobuf
-    let proto_command = DeviceCommand {
-        command: command.to_string(),
-        params,
-        correlation_id: correlation_id.clone(),
-    };
-
-    let payload = proto_command.encode_to_vec();
-    let topic = format!("extrittio/devices/{device_id}/commands");
-
-    state
-        .zenoh_session
-        .put(&topic, payload)
-        .await
-        .map_err(|e| AppError::Zenoh(e.to_string()))?;
-
-    // Re-read the record to get the DB-generated timestamps
-    let record = command_repo::find_command(&mut conn, &correlation_id)?;
-
-    Ok(record)
-}
-
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
@@ -137,7 +82,8 @@ async fn send_command(
     Json(body): Json<SendCommandRequest>,
 ) -> Result<(StatusCode, Json<CommandResponse>), AppError> {
     let params = body.params.unwrap_or_default();
-    let record = send_command_internal(&state, &id, &body.command, params).await?;
+    let mut conn = state.db_pool.get()?;
+    let record = command_service::send_command(&mut conn, &state.zenoh_session, &id, &body.command, params).await?;
     Ok((StatusCode::CREATED, Json(to_command_response(record))))
 }
 

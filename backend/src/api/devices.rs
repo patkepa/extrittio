@@ -10,8 +10,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::api::commands;
 use crate::db::models::{Device, DeviceType, Fleet, FirmwareUpdate, NewDevice, NewDeviceShadow, NewOtaDeployment, UpdateDevice, UpdateShadow};
+use crate::services::command_service;
 use crate::error::AppError;
 use crate::repositories::{device_repo, firmware_repo, shadow_repo};
 use crate::shadow_utils::compute_shadow_delta;
@@ -280,7 +280,8 @@ async fn restart_device(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
-    commands::send_command_internal(&state, &id, "restart", HashMap::default()).await?;
+    let mut conn = state.db_pool.get()?;
+    command_service::send_command(&mut conn, &state.zenoh_session, &id, "restart", HashMap::default()).await?;
     Ok(StatusCode::OK)
 }
 
