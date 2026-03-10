@@ -6,6 +6,7 @@ pub mod db;
 pub mod error;
 pub mod middleware;
 pub mod repositories;
+pub mod services;
 pub mod shadow_utils;
 pub mod state;
 pub mod zenoh_handler;

@@ -14,7 +14,7 @@ use crate::db::models::{DeviceShadow, UpdateShadow};
 use crate::db::schema::devices;
 use crate::error::AppError;
 use crate::repositories::shadow_repo;
-use crate::shadow_utils::compute_shadow_delta;
+use crate::services::shadow_service;
 use crate::state::AppState;
 
 // ---------------------------------------------------------------------------
@@ -40,18 +40,6 @@ pub struct UpdateShadowRequest {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-fn merge_json(existing: &Value, patch: &serde_json::Map<String, Value>) -> Value {
-    let mut obj = existing.as_object().cloned().unwrap_or_default();
-    for (key, val) in patch {
-        if val.is_null() {
-            obj.remove(key);
-        } else {
-            obj.insert(key.clone(), val.clone());
-        }
-    }
-    Value::Object(obj)
-}
 
 fn to_shadow_response(shadow: DeviceShadow) -> ShadowResponse {
     ShadowResponse {
@@ -115,49 +103,9 @@ async fn update_desired(
 ) -> Result<Json<ShadowResponse>, AppError> {
     let mut conn = state.db_pool.get()?;
 
-    let shadow = shadow_repo::find_shadow(&mut conn, &id)?;
+    shadow_service::update_desired(&mut conn, &state.zenoh_session, &id, &body.state).await?;
 
-    let current_desired: Value =
-        serde_json::from_str(&shadow.desired).unwrap_or(Value::Object(serde_json::Map::default()));
-    let current_reported: Value =
-        serde_json::from_str(&shadow.reported).unwrap_or(Value::Object(serde_json::Map::default()));
-
-    let new_desired = merge_json(&current_desired, &body.state);
-    let new_delta = compute_shadow_delta(&new_desired, &current_reported);
-    let now = Utc::now().naive_utc();
-
-    let desired_str = serde_json::to_string(&new_desired)?;
-    let delta_str = serde_json::to_string(&new_delta)?;
-
-    let changeset = UpdateShadow {
-        desired: Some(desired_str),
-        delta: Some(delta_str.clone()),
-        version: Some(shadow.version + 1),
-        updated_at: Some(now),
-        ..UpdateShadow::default()
-    };
-
-    shadow_repo::update_shadow(&mut conn, &id, &changeset)?;
-
-    // Publish delta to device via Zenoh if non-empty
-    if new_delta.as_object().is_some_and(|obj| !obj.is_empty()) {
-        let delta_msg = extrittio_proto::extrittio::ShadowDelta {
-            device_id: id.clone(),
-            delta_json: delta_str,
-            version: i64::from(shadow.version + 1),
-        };
-        let payload = prost::Message::encode_to_vec(&delta_msg);
-        let topic = format!("extrittio/devices/{id}/shadow/delta");
-        state
-            .zenoh_session
-            .put(&topic, payload)
-            .await
-            .map_err(|e| AppError::Zenoh(e.to_string()))?;
-    }
-
-    // Re-read updated shadow
     let updated = shadow_repo::find_shadow(&mut conn, &id)?;
-
     Ok(Json(to_shadow_response(updated)))
 }
 
@@ -168,32 +116,9 @@ async fn update_reported(
 ) -> Result<Json<ShadowResponse>, AppError> {
     let mut conn = state.db_pool.get()?;
 
-    let shadow = shadow_repo::find_shadow(&mut conn, &id)?;
-
-    let current_desired: Value =
-        serde_json::from_str(&shadow.desired).unwrap_or(Value::Object(serde_json::Map::default()));
-    let current_reported: Value =
-        serde_json::from_str(&shadow.reported).unwrap_or(Value::Object(serde_json::Map::default()));
-
-    let new_reported = merge_json(&current_reported, &body.state);
-    let new_delta = compute_shadow_delta(&current_desired, &new_reported);
-    let now = Utc::now().naive_utc();
-
-    let reported_str = serde_json::to_string(&new_reported)?;
-    let delta_str = serde_json::to_string(&new_delta)?;
-
-    let changeset = UpdateShadow {
-        reported: Some(reported_str),
-        delta: Some(delta_str),
-        version: Some(shadow.version + 1),
-        updated_at: Some(now),
-        ..UpdateShadow::default()
-    };
-
-    shadow_repo::update_shadow(&mut conn, &id, &changeset)?;
+    shadow_service::update_reported(&mut conn, &id, &body.state)?;
 
     let updated = shadow_repo::find_shadow(&mut conn, &id)?;
-
     Ok(Json(to_shadow_response(updated)))
 }
 
