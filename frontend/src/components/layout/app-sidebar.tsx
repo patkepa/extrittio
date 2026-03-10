@@ -58,7 +58,6 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
   };
 
   const navBadges: Record<string, { count?: number; status?: 'online' | 'warning' | 'offline' }> = {
-    'Dashboard': { status: 'online' },
     ...(dashboardStats && { 'Devices': { count: dashboardStats.total_devices } }),
     'Alerts': { count: 3 },
   };
