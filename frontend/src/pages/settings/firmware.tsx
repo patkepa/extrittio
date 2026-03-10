@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { showSuccessToast, showErrorToast } from '../../utils/toaster';
 import {
   Card,
   Elevation,
@@ -156,7 +157,10 @@ export const FirmwareSettings = () => {
                       loading={deleteMutation.isPending && deleteMutation.variables === fw.id}
                       onClick={(e) => {
                         e.stopPropagation();
-                        deleteMutation.mutate(fw.id);
+                        deleteMutation.mutate(fw.id, {
+                          onSuccess: () => void showSuccessToast('Firmware deleted'),
+                          onError: () => void showErrorToast('Failed to delete firmware'),
+                        });
                       }}
                       title="Delete"
                     />

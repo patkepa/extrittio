@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { showSuccessToast, showErrorToast } from '../../utils/toaster';
 import {
   Card,
   Elevation,
@@ -30,7 +31,9 @@ export const UsersSettings = () => {
           setIsDialogOpen(false);
           setNewUsername('');
           setNewPassword('');
+          void showSuccessToast('User created');
         },
+        onError: () => { void showErrorToast('Failed to create user'); },
       }
     );
   };
@@ -72,7 +75,12 @@ export const UsersSettings = () => {
                       intent="danger"
                       disabled={users.length <= 1}
                       loading={deleteUserMutation.isPending && deleteUserMutation.variables === user.id}
-                      onClick={() => deleteUserMutation.mutate(user.id)}
+                      onClick={() =>
+                        deleteUserMutation.mutate(user.id, {
+                          onSuccess: () => void showSuccessToast('User deleted'),
+                          onError: () => void showErrorToast('Failed to delete user'),
+                        })
+                      }
                     />
                   </td>
                 </tr>

@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { showSuccessToast, showErrorToast } from '../../utils/toaster';
 import {
   Button,
   Callout,
@@ -63,7 +64,7 @@ export const AddFirmwareDialog = ({ isOpen, onClose }: AddFirmwareDialogProps) =
           description: description.trim() || undefined,
           file: selectedFile,
         },
-        { onSuccess: () => onClose() }
+        { onSuccess: () => { onClose(); void showSuccessToast('Firmware uploaded'); }, onError: () => void showErrorToast('Failed to upload firmware') }
       );
     } else {
       if (!url.trim()) return;
@@ -75,7 +76,7 @@ export const AddFirmwareDialog = ({ isOpen, onClose }: AddFirmwareDialogProps) =
           sha256: sha256.trim() || undefined,
           description: description.trim() || undefined,
         },
-        { onSuccess: () => onClose() }
+        { onSuccess: () => { onClose(); void showSuccessToast('Firmware registered'); }, onError: () => void showErrorToast('Failed to register firmware') }
       );
     }
   };

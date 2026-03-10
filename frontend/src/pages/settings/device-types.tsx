@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { showSuccessToast, showErrorToast } from '../../utils/toaster';
 import {
   Card,
   Elevation,
@@ -36,7 +37,9 @@ export const DeviceTypesSettings = () => {
         onSuccess: () => {
           setIsAddDialogOpen(false);
           setNewName('');
+          void showSuccessToast('Device type created');
         },
+        onError: () => { void showErrorToast('Failed to create device type'); },
       }
     );
   };
@@ -105,7 +108,12 @@ export const DeviceTypesSettings = () => {
                       intent="danger"
                       disabled={dt.id === 1}
                       loading={deleteMutation.isPending && deleteMutation.variables === dt.id}
-                      onClick={() => deleteMutation.mutate(dt.id)}
+                      onClick={() =>
+                        deleteMutation.mutate(dt.id, {
+                          onSuccess: () => void showSuccessToast('Device type deleted'),
+                          onError: () => void showErrorToast('Failed to delete device type'),
+                        })
+                      }
                       title={dt.id === 1 ? 'Cannot delete default type' : 'Delete'}
                     />
                   </td>

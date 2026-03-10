@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { showSuccessToast, showErrorToast } from '../../utils/toaster';
 import {
   Card,
   Elevation,
@@ -38,7 +39,9 @@ export const FleetsSettings = () => {
         onSuccess: () => {
           setIsAddDialogOpen(false);
           setNewName('');
+          void showSuccessToast('Fleet created');
         },
+        onError: () => { void showErrorToast('Failed to create fleet'); },
       }
     );
   };
@@ -120,7 +123,12 @@ export const FleetsSettings = () => {
                       intent="danger"
                       title="Delete Fleet"
                       loading={deleteMutation.isPending && deleteMutation.variables === fleet.id}
-                      onClick={() => deleteMutation.mutate(fleet.id)}
+                      onClick={() =>
+                        deleteMutation.mutate(fleet.id, {
+                          onSuccess: () => void showSuccessToast('Fleet deleted'),
+                          onError: () => void showErrorToast('Failed to delete fleet'),
+                        })
+                      }
                     />
                   </td>
                 </tr>
