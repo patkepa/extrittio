@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Card,
@@ -20,7 +19,7 @@ import { useDevices, useDeleteDevice } from '../hooks/use-devices';
 import { useFleets } from '../hooks/use-fleets';
 import { useUIStore } from '../stores/ui-store';
 import { AddDeviceDialog } from '../components/devices/add-device-dialog';
-import { DeviceSummaryCard } from '../components/devices/device-summary-card';
+import { useDeviceHoverTooltip, DeviceHoverTooltip } from '../components/devices/device-hover-tooltip';
 import type { Device } from '../types/api';
 import './devices.css';
 
@@ -45,17 +44,8 @@ export const Devices = () => {
   // Delete confirmation state
   const [deviceToDelete, setDeviceToDelete] = useState<Device | null>(null);
 
-  // Hover tooltip state
-  const [hoveredDevice, setHoveredDevice] = useState<Device | null>(null);
-  const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
-  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Cleanup hover timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
-    };
-  }, []);
+  // Hover tooltip
+  const { hoveredDevice, hoverPos, onMouseEnter, onMouseLeave } = useDeviceHoverTooltip();
 
   // Fleet filter from URL query param
   const filterFleetId = searchParams.get('fleet_id') ? Number(searchParams.get('fleet_id')) : null;
@@ -115,22 +105,6 @@ export const Devices = () => {
 
   const handleViewDevice = (device: Device) => {
     navigate(`/devices/${device.id}`);
-  };
-
-  const handleRowMouseEnter = (device: Device, e: React.MouseEvent) => {
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setHoverPos({ x: rect.left - 8, y: rect.top + rect.height / 2 });
-    hoverTimeoutRef.current = setTimeout(() => {
-      setHoveredDevice(device);
-    }, 300);
-  };
-
-  const handleRowMouseLeave = () => {
-    if (hoverTimeoutRef.current) {
-      clearTimeout(hoverTimeoutRef.current);
-      hoverTimeoutRef.current = null;
-    }
-    setHoveredDevice(null);
   };
 
   const statusCounts = {
@@ -285,8 +259,8 @@ export const Devices = () => {
                     key={device.id}
                     className="device-row"
                     onClick={() => handleViewDevice(device)}
-                    onMouseEnter={(e) => handleRowMouseEnter(device, e)}
-                    onMouseLeave={handleRowMouseLeave}
+                    onMouseEnter={(e) => onMouseEnter(device, e)}
+                    onMouseLeave={onMouseLeave}
                     style={{ animationDelay: `${idx * 30}ms` }}
                   >
                     <td>
@@ -356,21 +330,7 @@ export const Devices = () => {
       </Card>
 
       {/* Hover Summary Card */}
-      {hoveredDevice && createPortal(
-        <div
-          className="device-hover-tooltip"
-          style={{
-            position: 'fixed',
-            left: hoverPos.x,
-            top: hoverPos.y,
-            transform: 'translate(-100%, -50%)',
-            zIndex: 30,
-          }}
-        >
-          <DeviceSummaryCard device={hoveredDevice} />
-        </div>,
-        document.body
-      )}
+      <DeviceHoverTooltip device={hoveredDevice} position={hoverPos} />
 
       {/* Delete Confirmation */}
       <Alert
