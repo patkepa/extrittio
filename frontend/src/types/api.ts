@@ -111,3 +111,32 @@ export interface DeviceShadow {
   version: number;
   updated_at: string;
 }
+
+// ---------------------------------------------------------------------------
+// Auth
+// ---------------------------------------------------------------------------
+
+export interface LoginRequest {
+  username: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  token: string;
+  user: AuthUser;
+}
+
+export interface AuthUser {
+  id: number;
+  username: string;
+  role: string;
+}
+
+export interface CreateUserRequest {
+  username: string;
+  password: string;
+}
+
+export interface ChangePasswordRequest {
+  password: string;
+}
