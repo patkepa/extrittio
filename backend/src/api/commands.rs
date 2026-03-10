@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use crate::db::models::{CommandRecord, Device, NewCommandRecord};
 use crate::db::schema::{command_history, devices};
+use crate::error::AppError;
 use crate::state::AppState;
 use extrittio_proto::extrittio::DeviceCommand;
 
@@ -67,29 +68,22 @@ fn to_command_response(record: CommandRecord) -> CommandResponse {
 ///
 /// # Errors
 ///
-/// Returns `StatusCode::NOT_FOUND` if the device does not exist, or
-/// `StatusCode::INTERNAL_SERVER_ERROR` on database/Zenoh failures.
+/// Returns `AppError::NotFound` if the device does not exist, or other
+/// `AppError` variants on database/Zenoh failures.
 #[allow(clippy::implicit_hasher)]
 pub async fn send_command_internal(
     state: &AppState,
     device_id: &str,
     command: &str,
     params: HashMap<String, String>,
-) -> Result<CommandRecord, StatusCode> {
-    let mut conn = state
-        .db_pool
-        .get()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+) -> Result<CommandRecord, AppError> {
+    let mut conn = state.db_pool.get()?;
 
     // Verify device exists
     devices::table
         .find(device_id)
         .select(Device::as_select())
-        .first(&mut conn)
-        .map_err(|e| match e {
-            diesel::result::Error::NotFound => StatusCode::NOT_FOUND,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        })?;
+        .first(&mut conn)?;
 
     let correlation_id = uuid::Uuid::new_v4().to_string();
     let params_json = serde_json::to_string(&params).unwrap_or_else(|_| "{}".to_string());
@@ -104,8 +98,7 @@ pub async fn send_command_internal(
 
     diesel::insert_into(command_history::table)
         .values(&new_record)
-        .execute(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .execute(&mut conn)?;
 
     // Build and publish protobuf
     let proto_command = DeviceCommand {
@@ -121,14 +114,13 @@ pub async fn send_command_internal(
         .zenoh_session
         .put(&topic, payload)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| AppError::Zenoh(e.to_string()))?;
 
     // Re-read the record to get the DB-generated timestamps
     let record = command_history::table
         .find(&correlation_id)
         .select(CommandRecord::as_select())
-        .first(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .first(&mut conn)?;
 
     Ok(record)
 }
@@ -152,7 +144,7 @@ async fn send_command(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(body): Json<SendCommandRequest>,
-) -> Result<(StatusCode, Json<CommandResponse>), StatusCode> {
+) -> Result<(StatusCode, Json<CommandResponse>), AppError> {
     let params = body.params.unwrap_or_default();
     let record = send_command_internal(&state, &id, &body.command, params).await?;
     Ok((StatusCode::CREATED, Json(to_command_response(record))))
@@ -162,21 +154,14 @@ async fn list_commands(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Query(params): Query<CommandsQuery>,
-) -> Result<Json<Vec<CommandResponse>>, StatusCode> {
-    let mut conn = state
-        .db_pool
-        .get()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+) -> Result<Json<Vec<CommandResponse>>, AppError> {
+    let mut conn = state.db_pool.get()?;
 
     // Verify device exists
     devices::table
         .find(&id)
         .select(devices::id)
-        .first::<String>(&mut conn)
-        .map_err(|e| match e {
-            diesel::result::Error::NotFound => StatusCode::NOT_FOUND,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        })?;
+        .first::<String>(&mut conn)?;
 
     let limit = params.limit.unwrap_or(50).min(500);
 
@@ -192,8 +177,7 @@ async fn list_commands(
         .order(command_history::created_at.desc())
         .limit(limit)
         .select(CommandRecord::as_select())
-        .load(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .load(&mut conn)?;
 
     Ok(Json(records.into_iter().map(to_command_response).collect()))
 }

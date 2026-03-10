@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Menu,
@@ -27,11 +27,35 @@ const envColors: Record<string, string> = {
   'Production': 'hsl(var(--success))',
 };
 
+/** Check if any child route is currently active */
+const hasActiveChild = (item: NavItem, pathname: string): boolean => {
+  if (!item.children) return false;
+  return item.children.some((child) =>
+    child.href === '/' ? pathname === '/' : pathname.startsWith(child.href)
+  );
+};
+
 export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { data: dashboardStats } = useDashboardStats();
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+
+  // Auto-expand parent items when a child route is active
+  useEffect(() => {
+    for (const group of navGroups) {
+      for (const item of group.items) {
+        if (item.children && hasActiveChild(item, location.pathname)) {
+          setExpandedItems((prev) => {
+            if (prev.has(item.label)) return prev;
+            const next = new Set(prev);
+            next.add(item.label);
+            return next;
+          });
+        }
+      }
+    }
+  }, [location.pathname]);
   const [selectedProject, setSelectedProject] = useState(projects[0]!);
   const [projectSwitcherOpen, setProjectSwitcherOpen] = useState(false);
   const logout = useAuthStore((s) => s.logout);
@@ -65,7 +89,8 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
   const renderNavItem = (item: NavItem, depth: number = 0) => {
     const hasChildren = item.children && item.children.length > 0;
     const isExpanded = expandedItems.has(item.label);
-    const active = isActive(item.href);
+    // Don't highlight parent items — only leaf items should show active state
+    const active = hasChildren ? false : isActive(item.href);
     const badge = navBadges[item.label];
 
     const menuItem = (
@@ -97,7 +122,10 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
           ) : undefined
         }
         aria-expanded={hasChildren ? isExpanded : undefined}
-        className={active ? 'sidebar-item-active' : ''}
+        className={[
+          active && 'sidebar-item-active',
+          hasChildren && isExpanded && 'sidebar-item-expanded',
+        ].filter(Boolean).join(' ') || undefined}
       />
     );
 

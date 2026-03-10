@@ -233,6 +233,11 @@
   line-height: 18px;
 }
 
+/* Expanded parent — subtle indicator, doesn't compete with active child */
+.sidebar-menu .bp6-menu-item.sidebar-item-expanded {
+  color: var(--sidebar-foreground);
+}
+
 /* Submenu */
 .sidebar-submenu {
   margin-left: 20px;

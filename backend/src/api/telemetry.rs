@@ -1,6 +1,5 @@
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
     routing::get,
     Json, Router,
 };
@@ -11,6 +10,7 @@ use std::sync::Arc;
 
 use crate::db::models::TelemetryRecord;
 use crate::db::schema::{devices, telemetry};
+use crate::error::AppError;
 use crate::state::AppState;
 
 // ---------------------------------------------------------------------------
@@ -68,21 +68,14 @@ async fn get_device_telemetry(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Query(params): Query<TelemetryQuery>,
-) -> Result<Json<Vec<TelemetryResponse>>, StatusCode> {
-    let mut conn = state
-        .db_pool
-        .get()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+) -> Result<Json<Vec<TelemetryResponse>>, AppError> {
+    let mut conn = state.db_pool.get()?;
 
     // Verify device exists (404 if not)
     let _device: crate::db::models::Device = devices::table
         .find(&id)
         .select(crate::db::models::Device::as_select())
-        .first(&mut conn)
-        .map_err(|e| match e {
-            diesel::result::Error::NotFound => StatusCode::NOT_FOUND,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        })?;
+        .first(&mut conn)?;
 
     // Determine limit (default 50, max 1000)
     let limit = params.limit.unwrap_or(50).clamp(1, 1000);
@@ -99,7 +92,7 @@ async fn get_device_telemetry(
             .or_else(|_| {
                 chrono::DateTime::parse_from_rfc3339(since).map(|dt| dt.naive_utc())
             })
-            .map_err(|_| StatusCode::BAD_REQUEST)?;
+            .map_err(|_| AppError::BadRequest("Invalid date format, expected YYYY-MM-DDTHH:MM:SS".into()))?;
         query = query.filter(telemetry::received_at.gt(since_dt));
     }
 
@@ -107,8 +100,7 @@ async fn get_device_telemetry(
         .order(telemetry::received_at.desc())
         .limit(limit)
         .select(TelemetryRecord::as_select())
-        .load(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .load(&mut conn)?;
 
     let response: Vec<TelemetryResponse> =
         results.into_iter().map(TelemetryResponse::from).collect();

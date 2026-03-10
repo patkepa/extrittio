@@ -340,9 +340,7 @@ async fn restart_device(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
-    commands::send_command_internal(&state, &id, "restart", HashMap::default())
-        .await
-        .map_err(|_| AppError::Internal("Command failed".into()))?;
+    commands::send_command_internal(&state, &id, "restart", HashMap::default()).await?;
     Ok(StatusCode::OK)
 }
 
