@@ -99,6 +99,56 @@ export interface TelemetryParams {
 }
 
 // ---------------------------------------------------------------------------
+// Firmware Updates
+// ---------------------------------------------------------------------------
+
+export interface FirmwareUpdate {
+  id: number;
+  device_type_id: number;
+  device_type_name: string;
+  version: string;
+  url: string;
+  sha256: string | null;
+  description: string | null;
+  created_at: string;
+}
+
+export interface CreateFirmwareUpdateRequest {
+  device_type_id: number;
+  version?: string;
+  url: string;
+  sha256?: string;
+  description?: string;
+}
+
+export interface FirmwareUpdatesParams {
+  device_type_id?: number;
+}
+
+export interface NextVersionResponse {
+  next_version: string;
+}
+
+export interface TriggerOtaRequest {
+  firmware_update_id: number;
+}
+
+// ---------------------------------------------------------------------------
+// OTA Deployments
+// ---------------------------------------------------------------------------
+
+export interface OtaDeployment {
+  id: number;
+  device_id: string;
+  firmware_update_id: number;
+  firmware_version: string;
+  status: string;
+  error_message: string | null;
+  initiated_at: string;
+  completed_at: string | null;
+}
+
+// ---------------------------------------------------------------------------
 // Device Shadows
 // ---------------------------------------------------------------------------
 

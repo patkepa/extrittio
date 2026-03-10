@@ -6,6 +6,7 @@ use tracing::{info, warn};
 
 use crate::db::models::{Device, DeviceShadow, NewTelemetryRecord, UpdateDevice, UpdateShadow};
 use crate::db::schema::{device_shadows, devices, telemetry};
+use crate::shadow_utils::compute_shadow_delta;
 use crate::state::DbPool;
 
 use extrittio_proto::extrittio::{DeviceHeartbeat, DeviceTelemetry, ShadowDelta, ShadowGet, ShadowReport};
@@ -434,23 +435,3 @@ async fn handle_shadow_get(db_pool: &DbPool, session: &zenoh::Session, payload: 
     info!("Shadow get from device {}: sent delta", get_msg.device_id);
 }
 
-fn compute_shadow_delta(desired: &serde_json::Value, reported: &serde_json::Value) -> serde_json::Value {
-    let desired_obj = desired.as_object();
-    let reported_obj = reported.as_object();
-
-    match (desired_obj, reported_obj) {
-        (Some(d), Some(r)) => {
-            let mut delta = serde_json::Map::new();
-            for (key, val) in d {
-                match r.get(key) {
-                    Some(reported_val) if reported_val == val => {}
-                    _ => {
-                        delta.insert(key.clone(), val.clone());
-                    }
-                }
-            }
-            serde_json::Value::Object(delta)
-        }
-        _ => desired.clone(),
-    }
-}

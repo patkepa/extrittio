@@ -7,9 +7,10 @@ import { TelemetryTab } from '../components/devices/telemetry-tab';
 import { LogsTab } from '../components/devices/logs-tab';
 import { ConfigTab } from '../components/devices/config-tab';
 import { ShadowTab } from '../components/devices/shadow-tab';
+import { OtaTab } from '../components/devices/ota-tab';
 import './device-detail.css';
 
-const VALID_TABS = ['overview', 'telemetry', 'logs', 'config', 'shadow'];
+const VALID_TABS = ['overview', 'telemetry', 'logs', 'config', 'shadow', 'ota'];
 
 export const DeviceDetail = () => {
   const { deviceId } = useParams<{ deviceId: string }>();
@@ -64,6 +65,7 @@ export const DeviceDetail = () => {
           <Tab id="logs" title="Logs" />
           <Tab id="config" title="Config" />
           <Tab id="shadow" title="Shadow" />
+          <Tab id="ota" title="OTA" />
         </Tabs>
       </div>
 
@@ -73,6 +75,7 @@ export const DeviceDetail = () => {
         {currentTab === 'logs' && <LogsTab />}
         {currentTab === 'config' && <ConfigTab />}
         {currentTab === 'shadow' && <ShadowTab deviceId={device.id} />}
+        {currentTab === 'ota' && <OtaTab device={device} />}
       </div>
     </div>
   );

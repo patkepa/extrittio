@@ -1,7 +1,7 @@
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 
-use super::schema::{device_types, devices, fleets, telemetry, device_shadows};
+use super::schema::{device_types, devices, firmware_updates, fleets, ota_deployments, telemetry, device_shadows};
 
 // ---------------------------------------------------------------------------
 // Device Types
@@ -20,6 +20,57 @@ pub struct DeviceType {
 #[diesel(table_name = device_types)]
 pub struct NewDeviceType {
     pub name: String,
+}
+
+// ---------------------------------------------------------------------------
+// Firmware Updates
+// ---------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug, Clone)]
+#[diesel(table_name = firmware_updates)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct FirmwareUpdate {
+    pub id: i32,
+    pub device_type_id: i32,
+    pub version: String,
+    pub url: String,
+    pub description: Option<String>,
+    pub created_at: NaiveDateTime,
+    pub sha256: Option<String>,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = firmware_updates)]
+pub struct NewFirmwareUpdate {
+    pub device_type_id: i32,
+    pub version: String,
+    pub url: String,
+    pub description: Option<String>,
+    pub sha256: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// OTA Deployments
+// ---------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug, Clone)]
+#[diesel(table_name = ota_deployments)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct OtaDeployment {
+    pub id: i32,
+    pub device_id: String,
+    pub firmware_update_id: i32,
+    pub status: String,
+    pub error_message: Option<String>,
+    pub initiated_at: NaiveDateTime,
+    pub completed_at: Option<NaiveDateTime>,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = ota_deployments)]
+pub struct NewOtaDeployment {
+    pub device_id: String,
+    pub firmware_update_id: i32,
 }
 
 // ---------------------------------------------------------------------------

@@ -5,15 +5,18 @@ use axum::{
     Json, Router,
 };
 use chrono::{NaiveDateTime, Utc};
+use serde_json::Value;
 use diesel::prelude::*;
 use prost::Message;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tracing::warn;
 
-use crate::db::models::{Device, DeviceType, Fleet, NewDevice, NewDeviceShadow, UpdateDevice};
-use crate::db::schema::{device_shadows, device_types, devices, fleets};
+use crate::db::models::{Device, DeviceShadow, DeviceType, Fleet, FirmwareUpdate, NewDevice, NewDeviceShadow, NewOtaDeployment, UpdateDevice, UpdateShadow};
+use crate::db::schema::{device_shadows, device_types, devices, firmware_updates, fleets, ota_deployments};
+use crate::shadow_utils::compute_shadow_delta;
 use crate::state::AppState;
-use extrittio_proto::extrittio::DeviceCommand;
+use extrittio_proto::extrittio::{DeviceCommand, ShadowDelta};
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -57,6 +60,11 @@ pub struct ListDevicesQuery {
     pub status: Option<String>,
     pub search: Option<String>,
     pub fleet_id: Option<i32>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TriggerOtaRequest {
+    pub firmware_update_id: i32,
 }
 
 // ---------------------------------------------------------------------------
@@ -148,6 +156,11 @@ pub fn router() -> Router<Arc<AppState>> {
             get(get_device).put(update_device).delete(delete_device),
         )
         .route("/api/devices/{id}/restart", post(restart_device))
+        .route("/api/devices/{id}/ota", post(trigger_ota))
+        .route(
+            "/api/devices/{id}/ota-deployments",
+            get(list_ota_deployments),
+        )
 }
 
 // ---------------------------------------------------------------------------
@@ -387,4 +400,176 @@ async fn restart_device(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(StatusCode::OK)
+}
+
+async fn trigger_ota(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Json(body): Json<TriggerOtaRequest>,
+) -> Result<StatusCode, StatusCode> {
+    let mut conn = state
+        .db_pool
+        .get()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Verify device exists and get its device_type_id
+    let device: Device = devices::table
+        .find(&id)
+        .select(Device::as_select())
+        .first(&mut conn)
+        .map_err(|e| match e {
+            diesel::result::Error::NotFound => StatusCode::NOT_FOUND,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        })?;
+
+    // Fetch firmware update
+    let fw: FirmwareUpdate = firmware_updates::table
+        .find(body.firmware_update_id)
+        .select(FirmwareUpdate::as_select())
+        .first(&mut conn)
+        .map_err(|e| match e {
+            diesel::result::Error::NotFound => StatusCode::NOT_FOUND,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        })?;
+
+    // FIX: Verify firmware is compatible with the device's type
+    if fw.device_type_id != device.device_type_id {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    // Load current shadow
+    let shadow: DeviceShadow = device_shadows::table
+        .find(&id)
+        .select(DeviceShadow::as_select())
+        .first(&mut conn)
+        .map_err(|e| match e {
+            diesel::result::Error::NotFound => StatusCode::NOT_FOUND,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        })?;
+
+    // Build OTA desired state: merge firmware update info into desired
+    let mut desired: Value =
+        serde_json::from_str(&shadow.desired).unwrap_or(Value::Object(Default::default()));
+    let desired_obj = desired.as_object_mut().unwrap();
+
+    let mut ota_payload = serde_json::json!({
+        "firmware_version": fw.version,
+        "firmware_url": fw.url,
+        "firmware_update_id": fw.id,
+    });
+    if let Some(ref hash) = fw.sha256 {
+        ota_payload["sha256"] = Value::String(hash.clone());
+    }
+    desired_obj.insert("ota".to_string(), ota_payload);
+
+    let reported: Value =
+        serde_json::from_str(&shadow.reported).unwrap_or(Value::Object(Default::default()));
+
+    // Compute delta using shared utility
+    let new_delta = compute_shadow_delta(&desired, &reported);
+    let now = Utc::now().naive_utc();
+
+    let changeset = UpdateShadow {
+        desired: Some(serde_json::to_string(&desired).unwrap()),
+        delta: Some(serde_json::to_string(&new_delta).unwrap()),
+        version: Some(shadow.version + 1),
+        updated_at: Some(now),
+        ..Default::default()
+    };
+
+    diesel::update(device_shadows::table.find(&id))
+        .set(&changeset)
+        .execute(&mut conn)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Create OTA deployment record for tracking
+    let new_deployment = NewOtaDeployment {
+        device_id: id.clone(),
+        firmware_update_id: fw.id,
+    };
+    diesel::insert_into(ota_deployments::table)
+        .values(&new_deployment)
+        .execute(&mut conn)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Publish delta to device via Zenoh
+    if let Some(delta_obj) = new_delta.as_object() {
+        if !delta_obj.is_empty() {
+            let delta_msg = ShadowDelta {
+                device_id: id.clone(),
+                delta_json: serde_json::to_string(&new_delta).unwrap(),
+                version: (shadow.version + 1) as i64,
+            };
+            let payload = prost::Message::encode_to_vec(&delta_msg);
+            let topic = format!("extrittio/devices/{}/shadow/delta", id);
+            // FIX: Log Zenoh publish errors instead of silently discarding
+            if let Err(e) = state.zenoh_session.put(&topic, payload).await {
+                warn!("Failed to publish OTA shadow delta to device {}: {}", id, e);
+            }
+        }
+    }
+
+    Ok(StatusCode::OK)
+}
+
+// ---------------------------------------------------------------------------
+// OTA Deployment history
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+pub struct OtaDeploymentResponse {
+    pub id: i32,
+    pub device_id: String,
+    pub firmware_update_id: i32,
+    pub firmware_version: String,
+    pub status: String,
+    pub error_message: Option<String>,
+    pub initiated_at: String,
+    pub completed_at: Option<String>,
+}
+
+async fn list_ota_deployments(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<OtaDeploymentResponse>>, StatusCode> {
+    let mut conn = state
+        .db_pool
+        .get()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Verify device exists
+    devices::table
+        .find(&id)
+        .select(devices::id)
+        .first::<String>(&mut conn)
+        .map_err(|e| match e {
+            diesel::result::Error::NotFound => StatusCode::NOT_FOUND,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        })?;
+
+    use crate::db::models::OtaDeployment;
+
+    let results: Vec<(OtaDeployment, FirmwareUpdate)> = ota_deployments::table
+        .inner_join(firmware_updates::table)
+        .filter(ota_deployments::device_id.eq(&id))
+        .select((OtaDeployment::as_select(), FirmwareUpdate::as_select()))
+        .order(ota_deployments::initiated_at.desc())
+        .load(&mut conn)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(
+        results
+            .into_iter()
+            .map(|(dep, fw)| OtaDeploymentResponse {
+                id: dep.id,
+                device_id: dep.device_id,
+                firmware_update_id: dep.firmware_update_id,
+                firmware_version: fw.version,
+                status: dep.status,
+                error_message: dep.error_message,
+                initiated_at: dep.initiated_at.to_string(),
+                completed_at: dep.completed_at.map(|t| t.to_string()),
+            })
+            .collect(),
+    ))
 }

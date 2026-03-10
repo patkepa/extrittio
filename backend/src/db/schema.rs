@@ -36,10 +36,34 @@ diesel::table! {
 }
 
 diesel::table! {
+    firmware_updates (id) {
+        id -> Integer,
+        device_type_id -> Integer,
+        version -> Text,
+        url -> Text,
+        description -> Nullable<Text>,
+        created_at -> Timestamp,
+        sha256 -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
     fleets (id) {
         id -> Integer,
         name -> Text,
         created_at -> Timestamp,
+    }
+}
+
+diesel::table! {
+    ota_deployments (id) {
+        id -> Integer,
+        device_id -> Text,
+        firmware_update_id -> Integer,
+        status -> Text,
+        error_message -> Nullable<Text>,
+        initiated_at -> Timestamp,
+        completed_at -> Nullable<Timestamp>,
     }
 }
 
@@ -59,12 +83,17 @@ diesel::table! {
 diesel::joinable!(device_shadows -> devices (device_id));
 diesel::joinable!(devices -> device_types (device_type_id));
 diesel::joinable!(devices -> fleets (fleet_id));
+diesel::joinable!(firmware_updates -> device_types (device_type_id));
+diesel::joinable!(ota_deployments -> devices (device_id));
+diesel::joinable!(ota_deployments -> firmware_updates (firmware_update_id));
 diesel::joinable!(telemetry -> devices (device_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     device_shadows,
     device_types,
     devices,
+    firmware_updates,
     fleets,
+    ota_deployments,
     telemetry,
 );

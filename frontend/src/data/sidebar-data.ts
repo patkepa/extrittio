@@ -39,6 +39,11 @@ export const navGroups: NavGroup[] = [
             icon: 'layers',
             href: '/settings/fleets',
           },
+          {
+            label: 'Firmware',
+            icon: 'upload',
+            href: '/settings/firmware',
+          },
         ],
       },
     ],

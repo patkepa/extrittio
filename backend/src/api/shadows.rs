@@ -8,10 +8,12 @@ use chrono::Utc;
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tracing::warn;
 use std::sync::Arc;
 
 use crate::db::models::{DeviceShadow, UpdateShadow};
 use crate::db::schema::{device_shadows, devices};
+use crate::shadow_utils::compute_shadow_delta;
 use crate::state::AppState;
 
 // ---------------------------------------------------------------------------
@@ -37,27 +39,6 @@ pub struct UpdateShadowRequest {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-fn compute_delta(desired: &Value, reported: &Value) -> Value {
-    let desired_obj = desired.as_object();
-    let reported_obj = reported.as_object();
-
-    match (desired_obj, reported_obj) {
-        (Some(d), Some(r)) => {
-            let mut delta = serde_json::Map::new();
-            for (key, val) in d {
-                match r.get(key) {
-                    Some(reported_val) if reported_val == val => {}
-                    _ => {
-                        delta.insert(key.clone(), val.clone());
-                    }
-                }
-            }
-            Value::Object(delta)
-        }
-        _ => desired.clone(),
-    }
-}
 
 fn merge_json(existing: &Value, patch: &serde_json::Map<String, Value>) -> Value {
     let mut obj = existing.as_object().cloned().unwrap_or_default();
@@ -165,7 +146,7 @@ async fn update_desired(
         serde_json::from_str(&shadow.reported).unwrap_or(Value::Object(Default::default()));
 
     let new_desired = merge_json(&current_desired, &body.state);
-    let new_delta = compute_delta(&new_desired, &current_reported);
+    let new_delta = compute_shadow_delta(&new_desired, &current_reported);
     let now = Utc::now().naive_utc();
 
     let changeset = UpdateShadow {
@@ -191,7 +172,9 @@ async fn update_desired(
             };
             let payload = prost::Message::encode_to_vec(&delta_msg);
             let topic = format!("extrittio/devices/{}/shadow/delta", id);
-            let _ = state.zenoh_session.put(&topic, payload).await;
+            if let Err(e) = state.zenoh_session.put(&topic, payload).await {
+                warn!("Failed to publish shadow delta to device {}: {}", id, e);
+            }
         }
     }
 
@@ -230,7 +213,7 @@ async fn update_reported(
         serde_json::from_str(&shadow.reported).unwrap_or(Value::Object(Default::default()));
 
     let new_reported = merge_json(&current_reported, &body.state);
-    let new_delta = compute_delta(&current_desired, &new_reported);
+    let new_delta = compute_shadow_delta(&current_desired, &new_reported);
     let now = Utc::now().naive_utc();
 
     let changeset = UpdateShadow {
