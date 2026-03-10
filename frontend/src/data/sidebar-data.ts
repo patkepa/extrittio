@@ -39,6 +39,11 @@ export const navGroups: NavGroup[] = [
             icon: 'layers',
             href: '/settings/fleets',
           },
+          {
+            label: 'Users',
+            icon: 'people',
+            href: '/settings/users',
+          },
         ],
       },
     ],
