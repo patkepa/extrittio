@@ -8,12 +8,20 @@ interface ConfigTabProps {
 }
 
 export const ConfigTab = ({ deviceId }: ConfigTabProps) => {
-  const { data: configData, isLoading } = useDeviceConfig(deviceId);
+  const { data: configData, isLoading, isError } = useDeviceConfig(deviceId);
   const updateMutation = useUpdateDeviceConfig();
   const [newKey, setNewKey] = useState('');
   const [newValue, setNewValue] = useState('');
 
   if (isLoading) return <Spinner />;
+
+  if (isError) {
+    return (
+      <Callout intent="danger" icon="error">
+        Failed to load configuration. Try refreshing the page.
+      </Callout>
+    );
+  }
 
   const config = configData?.config ?? {};
   const entries = Object.entries(config).sort(([a], [b]) => a.localeCompare(b));
@@ -90,7 +98,7 @@ export const ConfigTab = ({ deviceId }: ConfigTabProps) => {
         </div>
       )}
 
-      <Divider style={{ margin: '16px 0' }} />
+      <Divider className="tab-divider" />
 
       <span className="section-label">Add Configuration Entry</span>
       <div className="config-add-form">
@@ -118,7 +126,7 @@ export const ConfigTab = ({ deviceId }: ConfigTabProps) => {
       </div>
 
       {updateMutation.isError && (
-        <Callout intent="danger" icon="error" style={{ marginTop: 12 }}>
+        <Callout intent="danger" icon="error" className="tab-callout">
           Failed to update configuration.
         </Callout>
       )}

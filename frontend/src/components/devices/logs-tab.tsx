@@ -27,9 +27,17 @@ export const LogsTab = ({ deviceId }: LogsTabProps) => {
     limit: 200,
     ...(levelFilter ? { level: levelFilter } : {}),
   };
-  const { data: logs = [], isLoading } = useDeviceLogs(deviceId, params);
+  const { data: logs = [], isLoading, isError } = useDeviceLogs(deviceId, params);
 
   if (isLoading) return <Spinner />;
+
+  if (isError) {
+    return (
+      <Callout intent="danger" icon="error">
+        Failed to load logs. Try refreshing the page.
+      </Callout>
+    );
+  }
 
   return (
     <div className="logs-tab">
@@ -40,13 +48,13 @@ export const LogsTab = ({ deviceId }: LogsTabProps) => {
           options={LEVEL_OPTIONS}
           minimal
         />
-        <span className="mono-data" style={{ fontSize: 12, opacity: 0.5 }}>
+        <span className="mono-data tab-cell-muted">
           {logs.length} entries
         </span>
       </div>
 
       {logs.length === 0 ? (
-        <Callout icon="info-sign" intent="primary" style={{ marginTop: 12 }}>
+        <Callout icon="info-sign" intent="primary" className="tab-callout">
           No log entries found{levelFilter ? ` for level ${levelFilter}` : ''}.
         </Callout>
       ) : (

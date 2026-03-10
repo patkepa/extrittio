@@ -19,7 +19,7 @@ interface CommandsTabProps {
 }
 
 export const CommandsTab = ({ deviceId }: CommandsTabProps) => {
-  const { data: commands = [], isLoading } = useCommandHistory(deviceId);
+  const { data: commands = [], isLoading, isError } = useCommandHistory(deviceId);
   const sendCommandMutation = useSendCommand();
 
   const [commandName, setCommandName] = useState('');
@@ -82,11 +82,19 @@ export const CommandsTab = ({ deviceId }: CommandsTabProps) => {
 
   if (isLoading) return <Spinner />;
 
+  if (isError) {
+    return (
+      <Callout intent="danger" icon="error">
+        Failed to load command history. Try refreshing the page.
+      </Callout>
+    );
+  }
+
   return (
     <div className="commands-tab">
-      <Card elevation={Elevation.ONE} style={{ marginBottom: 16, padding: 16, backgroundColor: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
+      <Card elevation={Elevation.ONE} className="tab-card">
         <span className="section-label">Send Command</span>
-        <p style={{ fontSize: 12, opacity: 0.6, margin: '4px 0 12px' }}>
+        <p className="tab-help-text">
           Send a direct command to the device via Zenoh. The device must be online and listening.
         </p>
 
@@ -94,11 +102,11 @@ export const CommandsTab = ({ deviceId }: CommandsTabProps) => {
           placeholder="e.g. restart, get_diagnostics, set_mode"
           value={commandName}
           onChange={(e) => setCommandName(e.target.value)}
-          style={{ marginBottom: 12 }}
+          className="tab-input-spacing"
         />
 
         {params.map((p, i) => (
-          <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+          <div key={i} className="tab-param-row">
             <InputGroup
               placeholder="Key"
               value={p.key}
@@ -115,13 +123,13 @@ export const CommandsTab = ({ deviceId }: CommandsTabProps) => {
           </div>
         ))}
 
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div className="tab-actions">
           <Button minimal icon="plus" onClick={addParam}>
             Add Parameter
           </Button>
         </div>
 
-        <div style={{ marginTop: 12 }}>
+        <div className="tab-callout">
           <Button
             intent="primary"
             icon="send-message"
@@ -155,20 +163,20 @@ export const CommandsTab = ({ deviceId }: CommandsTabProps) => {
 
       </Card>
 
-      <Divider style={{ margin: '16px 0' }} />
+      <Divider className="tab-divider" />
 
       <span className="section-label">Command History</span>
-      <p style={{ fontSize: 12, opacity: 0.6, margin: '4px 0 12px' }}>
+      <p className="tab-help-text">
         Auto-refreshes every 5 seconds.
       </p>
 
       {commands.length === 0 ? (
-        <Callout icon="info-sign" intent="primary" style={{ marginTop: 8 }}>
+        <Callout icon="info-sign" intent="primary" className="tab-callout">
           No commands have been sent to this device yet.
         </Callout>
       ) : (
-        <Card elevation={Elevation.ONE} style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
-          <HTMLTable compact style={{ width: '100%' }}>
+        <Card elevation={Elevation.ONE} className="tab-card">
+          <HTMLTable compact className="tab-table">
             <thead>
               <tr>
                 <th>Command</th>
@@ -186,7 +194,7 @@ export const CommandsTab = ({ deviceId }: CommandsTabProps) => {
                       {cmd.command}
                     </Tag>
                     {cmd.params && Object.keys(cmd.params).length > 0 && (
-                      <span style={{ fontSize: 11, opacity: 0.6, marginLeft: 6 }}>
+                      <span className="tab-text-secondary">
                         {Object.entries(cmd.params).map(([k, v]) => `${k}=${v}`).join(', ')}
                       </span>
                     )}
@@ -196,9 +204,9 @@ export const CommandsTab = ({ deviceId }: CommandsTabProps) => {
                       {cmd.status}
                     </Tag>
                   </td>
-                  <td style={{ fontSize: 12, opacity: 0.8 }}>{cmd.created_at}</td>
-                  <td style={{ fontSize: 12, opacity: 0.8 }}>{cmd.updated_at}</td>
-                  <td style={{ fontSize: 12, opacity: 0.8 }}>
+                  <td className="tab-cell-muted">{cmd.created_at}</td>
+                  <td className="tab-cell-muted">{cmd.updated_at}</td>
+                  <td className="tab-cell-muted">
                     {cmd.response_payload ? (
                       <code style={{ fontSize: 11 }}>
                         {JSON.stringify(cmd.response_payload)}

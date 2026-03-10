@@ -8,12 +8,20 @@ interface ShadowTabProps {
 }
 
 export const ShadowTab = ({ deviceId }: ShadowTabProps) => {
-  const { data: shadow, isLoading } = useDeviceShadow(deviceId);
+  const { data: shadow, isLoading, isError } = useDeviceShadow(deviceId);
   const updateDesiredMutation = useUpdateDesiredState();
   const deleteShadowMutation = useDeleteDeviceShadow();
   const [desiredInput, setDesiredInput] = useState('');
 
   if (isLoading) return <Spinner />;
+
+  if (isError) {
+    return (
+      <Callout intent="danger" icon="error">
+        Failed to load device shadow. Try refreshing the page.
+      </Callout>
+    );
+  }
 
   if (!shadow) {
     return <Callout icon="info-sign">No shadow data available.</Callout>;
@@ -53,10 +61,10 @@ export const ShadowTab = ({ deviceId }: ShadowTabProps) => {
         </div>
       </div>
 
-      <Divider style={{ margin: '16px 0' }} />
+      <Divider className="tab-divider" />
 
       <span className="section-label">Update Desired State</span>
-      <p style={{ fontSize: 12, opacity: 0.6, margin: '4px 0 8px' }}>
+      <p className="tab-help-text">
         Enter JSON to merge into desired state (e.g. {`{"interval": 30}`})
       </p>
       <InputGroup
@@ -65,7 +73,7 @@ export const ShadowTab = ({ deviceId }: ShadowTabProps) => {
         onChange={(e) => setDesiredInput(e.target.value)}
         className="mono-data"
       />
-      <div className="shadow-actions" style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+      <div className="shadow-actions tab-actions">
         <Button
           intent="primary"
           icon="cloud-upload"

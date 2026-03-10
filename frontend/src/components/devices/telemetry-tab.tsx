@@ -1,4 +1,4 @@
-import { Callout } from '@blueprintjs/core';
+import { Callout, Spinner } from '@blueprintjs/core';
 import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 import { useDeviceTelemetry } from '../../hooks/use-telemetry';
 
@@ -13,7 +13,7 @@ const metrics = [
 ];
 
 export const TelemetryTab = ({ deviceId }: TelemetryTabProps) => {
-  const { data: telemetryRecords = [] } = useDeviceTelemetry(deviceId, { limit: 50 });
+  const { data: telemetryRecords = [], isLoading, isError } = useDeviceTelemetry(deviceId, { limit: 50 });
 
   const chartData = telemetryRecords
     .slice()
@@ -23,6 +23,16 @@ export const TelemetryTab = ({ deviceId }: TelemetryTabProps) => {
       humidity: r.humidity,
       battery: r.battery_level,
     }));
+
+  if (isLoading) return <Spinner />;
+
+  if (isError) {
+    return (
+      <Callout intent="danger" icon="error">
+        Failed to load telemetry data. Try refreshing the page.
+      </Callout>
+    );
+  }
 
   if (chartData.length === 0) {
     return (

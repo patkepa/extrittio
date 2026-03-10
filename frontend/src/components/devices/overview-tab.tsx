@@ -53,7 +53,7 @@ export const OverviewTab = ({ device }: OverviewTabProps) => {
         </div>
       </div>
 
-      <Divider style={{ margin: '16px 0' }} />
+      <Divider className="tab-divider" />
 
       <span className="section-label">Quick Actions</span>
       <div className="quick-actions">

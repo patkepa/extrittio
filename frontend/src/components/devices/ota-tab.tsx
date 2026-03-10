@@ -21,7 +21,7 @@ interface OtaTabProps {
 }
 
 export const OtaTab = ({ device }: OtaTabProps) => {
-  const { data: firmwareUpdates = [], isLoading } = useFirmwareUpdates({
+  const { data: firmwareUpdates = [], isLoading, isError } = useFirmwareUpdates({
     device_type_id: device.device_type_id,
   });
   const { data: shadow } = useDeviceShadow(device.id);
@@ -41,6 +41,14 @@ export const OtaTab = ({ device }: OtaTabProps) => {
   const otaInDelta = shadow?.delta?.ota !== undefined;
 
   if (isLoading) return <Spinner />;
+
+  if (isError) {
+    return (
+      <Callout intent="danger" icon="error">
+        Failed to load firmware data. Try refreshing the page.
+      </Callout>
+    );
+  }
 
   const selectedFw = firmwareUpdates.find((f) => f.id === selectedFwId);
 
@@ -74,7 +82,7 @@ export const OtaTab = ({ device }: OtaTabProps) => {
   return (
     <div className="ota-tab">
       {/* Current firmware status */}
-      <Card elevation={Elevation.ONE} style={{ marginBottom: 16, padding: 16, backgroundColor: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
+      <Card elevation={Elevation.ONE} className="tab-card">
         <span className="section-label">Current Firmware</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
           <Tag minimal large className="mono-data">
@@ -97,17 +105,17 @@ export const OtaTab = ({ device }: OtaTabProps) => {
 
         {hasPendingOta && (
           <div style={{ marginTop: 12, fontSize: 13 }}>
-            <span style={{ opacity: 0.6 }}>Target version: </span>
+            <span className="tab-label-muted">Target version: </span>
             <span className="mono-data">{pendingOta!.firmware_version}</span>
           </div>
         )}
       </Card>
 
-      <Divider style={{ margin: '16px 0' }} />
+      <Divider className="tab-divider" />
 
       {/* Deploy new firmware */}
       <span className="section-label">Deploy Firmware Update</span>
-      <p style={{ fontSize: 12, opacity: 0.6, margin: '4px 0 12px' }}>
+      <p className="tab-help-text">
         Select a firmware release to push via device shadow. The device will receive the update URL in its shadow delta.
       </p>
 
@@ -124,7 +132,7 @@ export const OtaTab = ({ device }: OtaTabProps) => {
               setSelectedFwId(e.target.value ? Number(e.target.value) : null)
             }
             fill
-            style={{ marginBottom: 12 }}
+            className="tab-input-spacing"
           >
             <option value="">Select firmware version...</option>
             {firmwareUpdates.map((fw) => (
@@ -136,19 +144,19 @@ export const OtaTab = ({ device }: OtaTabProps) => {
           </HTMLSelect>
 
           {selectedFw && (
-            <Card elevation={Elevation.ONE} style={{ marginBottom: 12, padding: 12, backgroundColor: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
+            <Card elevation={Elevation.ONE} className="tab-card-sm">
               <div style={{ fontSize: 13 }}>
-                <div><span style={{ opacity: 0.6 }}>Version: </span><span className="mono-data">v{selectedFw.version}</span></div>
+                <div><span className="tab-label-muted">Version: </span><span className="mono-data">v{selectedFw.version}</span></div>
                 {selectedFw.has_blob ? (
-                  <div><span style={{ opacity: 0.6 }}>Source: </span><Tag minimal intent="success" icon="document" style={{ verticalAlign: 'middle' }}>{selectedFw.filename}</Tag></div>
+                  <div><span className="tab-label-muted">Source: </span><Tag minimal intent="success" icon="document" style={{ verticalAlign: 'middle' }}>{selectedFw.filename}</Tag></div>
                 ) : (
-                  <div><span style={{ opacity: 0.6 }}>URL: </span><span className="mono-data" style={{ fontSize: 12 }}>{selectedFw.url}</span></div>
+                  <div><span className="tab-label-muted">URL: </span><span className="mono-data" style={{ fontSize: 12 }}>{selectedFw.url}</span></div>
                 )}
                 {selectedFw.sha256 && (
-                  <div><span style={{ opacity: 0.6 }}>SHA-256: </span><span className="mono-data" style={{ fontSize: 12 }}>{selectedFw.sha256}</span></div>
+                  <div><span className="tab-label-muted">SHA-256: </span><span className="mono-data" style={{ fontSize: 12 }}>{selectedFw.sha256}</span></div>
                 )}
                 {selectedFw.description && (
-                  <div style={{ marginTop: 4 }}><span style={{ opacity: 0.6 }}>Notes: </span>{selectedFw.description}</div>
+                  <div style={{ marginTop: 4 }}><span className="tab-label-muted">Notes: </span>{selectedFw.description}</div>
                 )}
               </div>
             </Card>
@@ -188,10 +196,10 @@ export const OtaTab = ({ device }: OtaTabProps) => {
       {/* Deployment History */}
       {deployments.length > 0 && (
         <>
-          <Divider style={{ margin: '24px 0 16px' }} />
+          <Divider className="tab-divider-lg" />
           <span className="section-label">Deployment History</span>
-          <Card elevation={Elevation.ONE} style={{ marginTop: 8, backgroundColor: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
-            <HTMLTable compact style={{ width: '100%' }}>
+          <Card elevation={Elevation.ONE} className="tab-card" style={{ marginTop: 8 }}>
+            <HTMLTable compact className="tab-table">
               <thead>
                 <tr>
                   <th>Version</th>
@@ -213,13 +221,13 @@ export const OtaTab = ({ device }: OtaTabProps) => {
                         {dep.status}
                       </Tag>
                       {dep.error_message && (
-                        <span style={{ fontSize: 11, opacity: 0.7, marginLeft: 6 }}>
+                        <span className="tab-text-secondary">
                           {dep.error_message}
                         </span>
                       )}
                     </td>
-                    <td style={{ fontSize: 12, opacity: 0.8 }}>{dep.initiated_at}</td>
-                    <td style={{ fontSize: 12, opacity: 0.8 }}>{dep.completed_at ?? '—'}</td>
+                    <td className="tab-cell-muted">{dep.initiated_at}</td>
+                    <td className="tab-cell-muted">{dep.completed_at ?? '—'}</td>
                   </tr>
                 ))}
               </tbody>
