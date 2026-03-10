@@ -1,0 +1,11 @@
+pub mod command_repo;
+pub mod config_repo;
+pub mod dashboard_repo;
+pub mod device_repo;
+pub mod device_type_repo;
+pub mod firmware_repo;
+pub mod fleet_repo;
+pub mod log_repo;
+pub mod shadow_repo;
+pub mod telemetry_repo;
+pub mod user_repo;

@@ -13,8 +13,9 @@ use std::sync::Arc;
 
 use crate::api::commands;
 use crate::db::models::{Device, DeviceShadow, DeviceType, Fleet, FirmwareUpdate, NewDevice, NewDeviceShadow, NewOtaDeployment, OtaDeployment, UpdateDevice, UpdateShadow};
-use crate::db::schema::{device_shadows, device_types, devices, firmware_updates, fleets, ota_deployments};
+use crate::db::schema::{device_shadows, firmware_updates, ota_deployments};
 use crate::error::AppError;
+use crate::repositories::device_repo;
 use crate::shadow_utils::compute_shadow_delta;
 use crate::state::AppState;
 use extrittio_proto::extrittio::ShadowDelta;
@@ -174,36 +175,12 @@ async fn list_devices(
 ) -> Result<Json<Vec<DeviceResponse>>, AppError> {
     let mut conn = state.db_pool.get()?;
 
-    let mut query = devices::table
-        .inner_join(device_types::table)
-        .left_join(fleets::table)
-        .into_boxed();
-
-    if let Some(ref status) = params.status {
-        query = query.filter(devices::status.eq(status));
-    }
-
-    if let Some(ref search) = params.search {
-        let pattern = format!("%{search}%");
-        query = query.filter(
-            devices::name
-                .like(pattern.clone())
-                .or(device_types::name.like(pattern.clone()))
-                .or(devices::location.like(pattern)),
-        );
-    }
-
-    if let Some(fleet_id) = params.fleet_id {
-        query = query.filter(devices::fleet_id.eq(fleet_id));
-    }
-
-    let results: Vec<(Device, DeviceType, Option<Fleet>)> = query
-        .select((
-            Device::as_select(),
-            DeviceType::as_select(),
-            Option::<Fleet>::as_select(),
-        ))
-        .load(&mut conn)?;
+    let results = device_repo::list_devices(
+        &mut conn,
+        params.status.as_deref(),
+        params.search.as_deref(),
+        params.fleet_id,
+    )?;
 
     let response: Vec<DeviceResponse> = results
         .into_iter()
@@ -219,16 +196,7 @@ async fn get_device(
 ) -> Result<Json<DeviceResponse>, AppError> {
     let mut conn = state.db_pool.get()?;
 
-    let (device, device_type, fleet): (Device, DeviceType, Option<Fleet>) = devices::table
-        .inner_join(device_types::table)
-        .left_join(fleets::table)
-        .filter(devices::id.eq(&id))
-        .select((
-            Device::as_select(),
-            DeviceType::as_select(),
-            Option::<Fleet>::as_select(),
-        ))
-        .first(&mut conn)?;
+    let (device, device_type, fleet) = device_repo::find_device_with_joins(&mut conn, &id)?;
 
     Ok(Json(to_device_response(device, device_type, fleet)))
 }
@@ -250,9 +218,7 @@ async fn create_device(
         firmware: body.firmware.unwrap_or_else(|| "unknown".to_string()),
     };
 
-    diesel::insert_into(devices::table)
-        .values(&new_device)
-        .execute(&mut conn)?;
+    device_repo::insert_device(&mut conn, &new_device)?;
 
     // Create shadow record for the new device
     let new_shadow = NewDeviceShadow {
@@ -262,16 +228,8 @@ async fn create_device(
         .values(&new_shadow)
         .execute(&mut conn)?;
 
-    let (device, device_type, fleet): (Device, DeviceType, Option<Fleet>) = devices::table
-        .inner_join(device_types::table)
-        .left_join(fleets::table)
-        .filter(devices::id.eq(&new_id))
-        .select((
-            Device::as_select(),
-            DeviceType::as_select(),
-            Option::<Fleet>::as_select(),
-        ))
-        .first(&mut conn)?;
+    let (device, device_type, fleet) =
+        device_repo::find_device_with_joins(&mut conn, &new_id)?;
 
     Ok((
         StatusCode::CREATED,
@@ -287,10 +245,7 @@ async fn update_device(
     let mut conn = state.db_pool.get()?;
 
     // Verify device exists
-    let _existing: Device = devices::table
-        .find(&id)
-        .select(Device::as_select())
-        .first(&mut conn)?;
+    let _existing = device_repo::find_device(&mut conn, &id)?;
 
     let changeset = UpdateDevice {
         name: body.name,
@@ -302,20 +257,10 @@ async fn update_device(
         ..Default::default()
     };
 
-    diesel::update(devices::table.find(&id))
-        .set(&changeset)
-        .execute(&mut conn)?;
+    device_repo::update_device(&mut conn, &id, &changeset)?;
 
-    let (device, device_type, fleet): (Device, DeviceType, Option<Fleet>) = devices::table
-        .inner_join(device_types::table)
-        .left_join(fleets::table)
-        .filter(devices::id.eq(&id))
-        .select((
-            Device::as_select(),
-            DeviceType::as_select(),
-            Option::<Fleet>::as_select(),
-        ))
-        .first(&mut conn)?;
+    let (device, device_type, fleet) =
+        device_repo::find_device_with_joins(&mut conn, &id)?;
 
     Ok(Json(to_device_response(device, device_type, fleet)))
 }
@@ -326,10 +271,9 @@ async fn delete_device(
 ) -> Result<StatusCode, AppError> {
     let mut conn = state.db_pool.get()?;
 
-    let rows_deleted = diesel::delete(devices::table.find(&id))
-        .execute(&mut conn)?;
+    let deleted = device_repo::delete_device(&mut conn, &id)?;
 
-    if rows_deleted == 0 {
+    if !deleted {
         return Err(AppError::NotFound(format!("Device '{id}' not found")));
     }
 
@@ -352,10 +296,7 @@ async fn trigger_ota(
     let mut conn = state.db_pool.get()?;
 
     // Verify device exists and get its device_type_id
-    let device: Device = devices::table
-        .find(&id)
-        .select(Device::as_select())
-        .first(&mut conn)?;
+    let device = device_repo::find_device(&mut conn, &id)?;
 
     // Fetch firmware update
     let fw: FirmwareUpdate = firmware_updates::table
@@ -466,10 +407,7 @@ async fn list_ota_deployments(
     let mut conn = state.db_pool.get()?;
 
     // Verify device exists
-    devices::table
-        .find(&id)
-        .select(devices::id)
-        .first::<String>(&mut conn)?;
+    device_repo::find_device(&mut conn, &id)?;
 
     let results: Vec<(OtaDeployment, FirmwareUpdate)> = ota_deployments::table
         .inner_join(firmware_updates::table)
