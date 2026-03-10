@@ -12,7 +12,7 @@ import { CommandsTab } from '../components/devices/commands-tab';
 import { ErrorBoundary } from '../components/error-boundary';
 import './device-detail.css';
 
-const VALID_TABS = ['overview', 'telemetry', 'logs', 'config', 'shadow', 'commands', 'ota'];
+const VALID_TABS = ['overview', 'shadow', 'commands', 'telemetry', 'ota', 'config', 'logs'];
 
 export const DeviceDetail = () => {
   const { deviceId } = useParams<{ deviceId: string }>();
@@ -63,12 +63,12 @@ export const DeviceDetail = () => {
           large
         >
           <Tab id="overview" title="Overview" />
-          <Tab id="telemetry" title="Telemetry" />
-          <Tab id="logs" title="Logs" />
-          <Tab id="config" title="Config" />
           <Tab id="shadow" title="Shadow" />
           <Tab id="commands" title="Commands" />
+          <Tab id="telemetry" title="Telemetry" />
           <Tab id="ota" title="OTA" />
+          <Tab id="config" title="Config" />
+          <Tab id="logs" title="Logs" />
         </Tabs>
       </div>
 
