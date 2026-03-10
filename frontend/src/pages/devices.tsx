@@ -18,6 +18,7 @@ import {
   DialogFooter,
   FormGroup,
   HTMLSelect,
+  Alert,
 } from '@blueprintjs/core';
 import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 import { useDevices, useCreateDevice, useDeleteDevice } from '../hooks/use-devices';
@@ -52,6 +53,9 @@ export const Devices = () => {
     location: '',
     firmware: '',
   });
+
+  // Delete confirmation state
+  const [deviceToDelete, setDeviceToDelete] = useState<Device | null>(null);
 
   // Hover tooltip state
   const [hoveredDevice, setHoveredDevice] = useState<Device | null>(null);
@@ -376,9 +380,7 @@ export const Devices = () => {
                         intent="danger"
                         title="Delete Device"
                         loading={deleteDeviceMutation.isPending && deleteDeviceMutation.variables === device.id}
-                        onClick={() => {
-                          deleteDeviceMutation.mutate(device.id);
-                        }}
+                        onClick={() => setDeviceToDelete(device)}
                       />
                     </td>
                   </tr>
@@ -404,6 +406,24 @@ export const Devices = () => {
         </div>,
         document.body
       )}
+
+      {/* Delete Confirmation */}
+      <Alert
+        isOpen={deviceToDelete !== null}
+        icon="trash"
+        intent="danger"
+        confirmButtonText="Delete"
+        cancelButtonText="Cancel"
+        onConfirm={() => {
+          if (deviceToDelete) {
+            deleteDeviceMutation.mutate(deviceToDelete.id);
+          }
+          setDeviceToDelete(null);
+        }}
+        onCancel={() => setDeviceToDelete(null)}
+      >
+        <p>Are you sure you want to delete <strong>{deviceToDelete?.name}</strong>? This action cannot be undone.</p>
+      </Alert>
 
       {/* Add Device Dialog */}
       <Dialog
