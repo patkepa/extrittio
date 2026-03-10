@@ -9,6 +9,7 @@ import { ConfigTab } from '../components/devices/config-tab';
 import { ShadowTab } from '../components/devices/shadow-tab';
 import { OtaTab } from '../components/devices/ota-tab';
 import { CommandsTab } from '../components/devices/commands-tab';
+import { ErrorBoundary } from '../components/error-boundary';
 import './device-detail.css';
 
 const VALID_TABS = ['overview', 'telemetry', 'logs', 'config', 'shadow', 'commands', 'ota'];
@@ -72,13 +73,13 @@ export const DeviceDetail = () => {
       </div>
 
       <div className="detail-tab-content">
-        {currentTab === 'overview' && <OverviewTab device={device} />}
-        {currentTab === 'telemetry' && <TelemetryTab deviceId={device.id} />}
-        {currentTab === 'logs' && <LogsTab deviceId={device.id} />}
-        {currentTab === 'config' && <ConfigTab deviceId={device.id} />}
-        {currentTab === 'shadow' && <ShadowTab deviceId={device.id} />}
-        {currentTab === 'commands' && <CommandsTab deviceId={device.id} />}
-        {currentTab === 'ota' && <OtaTab device={device} />}
+        {currentTab === 'overview' && <ErrorBoundary><OverviewTab device={device} /></ErrorBoundary>}
+        {currentTab === 'telemetry' && <ErrorBoundary><TelemetryTab deviceId={device.id} /></ErrorBoundary>}
+        {currentTab === 'logs' && <ErrorBoundary><LogsTab deviceId={device.id} /></ErrorBoundary>}
+        {currentTab === 'config' && <ErrorBoundary><ConfigTab deviceId={device.id} /></ErrorBoundary>}
+        {currentTab === 'shadow' && <ErrorBoundary><ShadowTab deviceId={device.id} /></ErrorBoundary>}
+        {currentTab === 'commands' && <ErrorBoundary><CommandsTab deviceId={device.id} /></ErrorBoundary>}
+        {currentTab === 'ota' && <ErrorBoundary><OtaTab device={device} /></ErrorBoundary>}
       </div>
     </div>
   );

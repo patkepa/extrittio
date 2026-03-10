@@ -5,6 +5,7 @@ import { Button, Navbar, NavbarGroup } from '@blueprintjs/core';
 import { AppSidebar } from './app-sidebar';
 import { CommandPalette } from '../command-palette/command-palette';
 import { useUIStore } from '../../stores/ui-store';
+import { ErrorBoundary } from '../error-boundary';
 import './main-layout.css';
 
 interface MainLayoutProps {
@@ -79,7 +80,9 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
         </Navbar>
 
         <div className="page-content">
-          {children}
+          <ErrorBoundary>
+            {children}
+          </ErrorBoundary>
         </div>
       </div>
 
