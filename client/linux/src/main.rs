@@ -28,7 +28,7 @@ const EMBED_MARKER_LEN: usize = 23; // b"<<EXTRITTIO_DEVICE_ID>>"
 const EMBED_ID_CAPACITY: usize = 64;
 
 #[used]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static DEVICE_ID_EMBED: [u8; 88] = {
     let marker = b"<<EXTRITTIO_DEVICE_ID>>";
     let mut buf = [0u8; 88];
@@ -54,13 +54,16 @@ fn read_embedded_device_id() -> Option<String> {
 /// The marker is assembled from two halves at runtime so the search literal
 /// does not create a second match inside the binary's `.rodata` section.
 fn patch_device_id_in_binary(binary: &mut [u8], device_id: &str) -> bool {
-    let mut marker = Vec::with_capacity(EMBED_MARKER_LEN);
-    marker.extend_from_slice(b"<<EXTRITTIO_");
-    marker.extend_from_slice(b"DEVICE_ID>>");
+    // Search for marker + trailing null bytes to match the actual slot
+    // (not a string literal copy that may also exist in the binary).
+    let mut needle = Vec::with_capacity(EMBED_MARKER_LEN + 8);
+    needle.extend_from_slice(b"<<EXTRITTIO_");
+    needle.extend_from_slice(b"DEVICE_ID>>");
+    needle.extend_from_slice(&[0u8; 8]);
 
     if let Some(pos) = binary
-        .windows(marker.len())
-        .position(|w| w == marker.as_slice())
+        .windows(needle.len())
+        .position(|w| w == needle.as_slice())
     {
         let id_start = pos + EMBED_MARKER_LEN;
         let id_bytes = device_id.as_bytes();
@@ -79,9 +82,9 @@ fn patch_device_id_in_binary(binary: &mut [u8], device_id: &str) -> bool {
 #[derive(Parser)]
 #[command(name = "extrittio-client", about = "Simulated IoT device client")]
 struct Args {
-    /// Device ID (must match a device registered in the backend)
-    #[arg(long, default_value = "dev-001")]
-    device_id: String,
+    /// Device ID (reads from embedded firmware ID if omitted)
+    #[arg(long)]
+    device_id: Option<String>,
 
     /// Seconds between telemetry messages
     #[arg(long, default_value_t = 5)]
@@ -135,9 +138,20 @@ async fn main() {
 
     let args = Args::parse();
 
+    let device_id = args
+        .device_id
+        .or_else(read_embedded_device_id)
+        .unwrap_or_else(|| {
+            eprintln!(
+                "Error: no device ID available.\n\
+                 Provide --device-id on first run. After OTA the ID is embedded automatically."
+            );
+            std::process::exit(1);
+        });
+
     info!(
-        "Starting simulated device '{}' (telemetry every {}s, heartbeat every {}s)",
-        args.device_id, args.interval, args.heartbeat_interval
+        "Starting device '{}' (telemetry every {}s, heartbeat every {}s)",
+        device_id, args.interval, args.heartbeat_interval
     );
 
     let session = zenoh::open(zenoh::Config::default())
@@ -147,11 +161,11 @@ async fn main() {
 
     info!("Zenoh session opened");
 
-    let telemetry_topic = format!("extrittio/devices/{}/telemetry", args.device_id);
-    let heartbeat_topic = format!("extrittio/devices/{}/heartbeat", args.device_id);
-    let shadow_get_topic = format!("extrittio/devices/{}/shadow/get", args.device_id);
-    let shadow_delta_topic = format!("extrittio/devices/{}/shadow/delta", args.device_id);
-    let shadow_report_topic = format!("extrittio/devices/{}/shadow/report", args.device_id);
+    let telemetry_topic = format!("extrittio/devices/{}/telemetry", device_id);
+    let heartbeat_topic = format!("extrittio/devices/{}/heartbeat", device_id);
+    let shadow_get_topic = format!("extrittio/devices/{}/shadow/get", device_id);
+    let shadow_delta_topic = format!("extrittio/devices/{}/shadow/delta", device_id);
+    let shadow_report_topic = format!("extrittio/devices/{}/shadow/report", device_id);
 
     let reported_state: Arc<Mutex<serde_json::Map<String, serde_json::Value>>> =
         Arc::new(Mutex::new(serde_json::Map::new()));
@@ -164,7 +178,7 @@ async fn main() {
 
     // Spawn heartbeat task
     let hb_session = session.clone();
-    let hb_device_id = args.device_id.clone();
+    let hb_device_id = device_id.clone();
     let hb_interval = args.heartbeat_interval;
     let hb_firmware = firmware_version.clone();
     tokio::spawn(async move {
@@ -195,7 +209,7 @@ async fn main() {
 
     // Request any pending shadow delta on startup
     let shadow_get = ShadowGet {
-        device_id: args.device_id.clone(),
+        device_id: device_id.clone(),
     };
     let payload = shadow_get.encode_to_vec();
     if let Err(e) = session.put(&shadow_get_topic, payload).await {
@@ -206,7 +220,7 @@ async fn main() {
 
     // Spawn shadow subscriber task
     let shadow_session = session.clone();
-    let shadow_device_id = args.device_id.clone();
+    let shadow_device_id = device_id.clone();
     let shadow_reported = reported_state.clone();
     let shadow_firmware = firmware_version.clone();
     let shadow_ota_flag = ota_in_progress.clone();
@@ -321,7 +335,7 @@ async fn main() {
         sensor.step();
 
         let telemetry = DeviceTelemetry {
-            device_id: args.device_id.clone(),
+            device_id: device_id.clone(),
             timestamp: chrono_now_millis(),
             temperature: sensor.temperature,
             humidity: sensor.humidity,
@@ -530,6 +544,14 @@ async fn handle_ota(
         info!("OTA: SHA-256 verified");
     }
 
+    // -- Patch device ID into the downloaded binary --
+    let mut firmware_bytes = bytes.to_vec();
+    if patch_device_id_in_binary(&mut firmware_bytes, &device_id) {
+        info!("OTA: embedded device ID '{}' into firmware", device_id);
+    } else {
+        tracing::warn!("OTA: device ID marker not found in firmware — ID will not be embedded");
+    }
+
     // -- Install: replace current executable --
     report_ota_status(
         &reported_state, &device_id, &session, &report_topic, shadow_version,
@@ -554,7 +576,7 @@ async fn handle_ota(
     // Write to a temp file next to the current binary, then atomically rename
     let tmp_path = current_exe.with_extension("ota_tmp");
 
-    if let Err(e) = tokio::fs::write(&tmp_path, &bytes).await {
+    if let Err(e) = tokio::fs::write(&tmp_path, &firmware_bytes).await {
         let err = format!("failed to write firmware to {}: {}", tmp_path.display(), e);
         tracing::warn!("OTA: {}", err);
         let _ = tokio::fs::remove_file(&tmp_path).await;
