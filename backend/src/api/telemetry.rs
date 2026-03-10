@@ -56,7 +56,7 @@ impl From<TelemetryRecord> for TelemetryResponse {
 // ---------------------------------------------------------------------------
 
 pub fn router() -> Router<Arc<AppState>> {
-    Router::new().route("/api/devices/{id}/telemetry", get(get_device_telemetry))
+    Router::new().route("/api/v1/devices/{id}/telemetry", get(get_device_telemetry))
 }
 
 // ---------------------------------------------------------------------------

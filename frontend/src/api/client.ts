@@ -2,7 +2,7 @@ import axios from "axios";
 import { useAuthStore } from "../stores/auth-store";
 
 const client = axios.create({
-  baseURL: "/api",
+  baseURL: "/api/v1",
 });
 
 // Request interceptor: attach JWT token

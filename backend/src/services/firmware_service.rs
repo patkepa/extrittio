@@ -31,7 +31,7 @@ pub fn upload_firmware(
     firmware_repo::insert_firmware_blob(conn, &blob_with_id)?;
 
     // Update URL to point to download endpoint
-    let url = format!("/api/firmware-updates/{}/download", fw.id);
+    let url = format!("/api/v1/firmware-updates/{}/download", fw.id);
     firmware_repo::update_firmware_url(conn, fw.id, &url)?;
 
     // Re-read to get updated URL

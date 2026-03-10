@@ -26,8 +26,8 @@ pub struct NewFleetRequest {
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
-        .route("/api/fleets", get(list_fleets).post(create_fleet))
-        .route("/api/fleets/{id}", axum::routing::delete(delete_fleet))
+        .route("/api/v1/fleets", get(list_fleets).post(create_fleet))
+        .route("/api/v1/fleets/{id}", axum::routing::delete(delete_fleet))
 }
 
 async fn list_fleets(

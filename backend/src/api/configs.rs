@@ -35,7 +35,7 @@ pub struct UpdateConfigRequest {
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new().route(
-        "/api/devices/{id}/config",
+        "/api/v1/devices/{id}/config",
         get(get_config).put(update_config),
     )
 }

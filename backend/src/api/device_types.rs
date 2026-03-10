@@ -35,11 +35,11 @@ pub struct NewDeviceTypeRequest {
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route(
-            "/api/device-types",
+            "/api/v1/device-types",
             get(list_device_types).post(create_device_type),
         )
         .route(
-            "/api/device-types/{id}",
+            "/api/v1/device-types/{id}",
             axum::routing::delete(delete_device_type),
         )
 }

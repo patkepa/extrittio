@@ -28,13 +28,13 @@ pub struct ChangePasswordRequest {
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
-        .route("/api/users", get(list_users).post(create_user))
+        .route("/api/v1/users", get(list_users).post(create_user))
         .route(
-            "/api/users/{id}",
+            "/api/v1/users/{id}",
             axum::routing::delete(delete_user),
         )
         .route(
-            "/api/users/{id}/password",
+            "/api/v1/users/{id}/password",
             axum::routing::put(change_password),
         )
 }

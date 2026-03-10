@@ -61,23 +61,23 @@ pub struct NextVersionResponse {
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route(
-            "/api/firmware-updates",
+            "/api/v1/firmware-updates",
             get(list_firmware_updates).post(create_firmware_update),
         )
         .route(
-            "/api/firmware-updates/upload",
+            "/api/v1/firmware-updates/upload",
             axum::routing::post(upload_firmware_update),
         )
         .route(
-            "/api/firmware-updates/{id}",
+            "/api/v1/firmware-updates/{id}",
             axum::routing::delete(delete_firmware_update),
         )
         .route(
-            "/api/firmware-updates/{id}/download",
+            "/api/v1/firmware-updates/{id}/download",
             get(download_firmware_blob),
         )
         .route(
-            "/api/firmware-updates/next-version/{device_type_id}",
+            "/api/v1/firmware-updates/next-version/{device_type_id}",
             get(get_next_version),
         )
 }

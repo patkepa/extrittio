@@ -53,7 +53,7 @@ impl From<DeviceLog> for LogResponse {
 // ---------------------------------------------------------------------------
 
 pub fn router() -> Router<Arc<AppState>> {
-    Router::new().route("/api/devices/{id}/logs", get(get_device_logs))
+    Router::new().route("/api/v1/devices/{id}/logs", get(get_device_logs))
 }
 
 // ---------------------------------------------------------------------------

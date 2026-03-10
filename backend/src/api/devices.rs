@@ -147,15 +147,15 @@ fn to_device_response(
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
-        .route("/api/devices", get(list_devices).post(create_device))
+        .route("/api/v1/devices", get(list_devices).post(create_device))
         .route(
-            "/api/devices/{id}",
+            "/api/v1/devices/{id}",
             get(get_device).put(update_device).delete(delete_device),
         )
-        .route("/api/devices/{id}/restart", post(restart_device))
-        .route("/api/devices/{id}/ota", post(trigger_ota))
+        .route("/api/v1/devices/{id}/restart", post(restart_device))
+        .route("/api/v1/devices/{id}/ota", post(trigger_ota))
         .route(
-            "/api/devices/{id}/ota-deployments",
+            "/api/v1/devices/{id}/ota-deployments",
             get(list_ota_deployments),
         )
 }

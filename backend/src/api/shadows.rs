@@ -62,15 +62,15 @@ fn to_shadow_response(shadow: DeviceShadow) -> ShadowResponse {
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route(
-            "/api/devices/{id}/shadow",
+            "/api/v1/devices/{id}/shadow",
             get(get_shadow).delete(delete_shadow),
         )
         .route(
-            "/api/devices/{id}/shadow/desired",
+            "/api/v1/devices/{id}/shadow/desired",
             axum::routing::put(update_desired),
         )
         .route(
-            "/api/devices/{id}/shadow/reported",
+            "/api/v1/devices/{id}/shadow/reported",
             axum::routing::put(update_reported),
         )
 }

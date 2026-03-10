@@ -15,7 +15,7 @@ pub struct DashboardStats {
 }
 
 pub fn router() -> Router<Arc<AppState>> {
-    Router::new().route("/api/dashboard/stats", get(get_stats))
+    Router::new().route("/api/v1/dashboard/stats", get(get_stats))
 }
 
 async fn get_stats(

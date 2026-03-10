@@ -67,7 +67,7 @@ fn to_command_response(record: CommandRecord) -> CommandResponse {
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new().route(
-        "/api/devices/{id}/commands",
+        "/api/v1/devices/{id}/commands",
         get(list_commands).post(send_command),
     )
 }

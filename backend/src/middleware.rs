@@ -15,7 +15,7 @@ pub async fn auth_middleware(
     next: Next,
 ) -> Result<Response, AppError> {
     let path = request.uri().path();
-    if path == "/api/auth/login" {
+    if path == "/api/v1/auth/login" {
         return Ok(next.run(request).await);
     }
 

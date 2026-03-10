@@ -32,8 +32,8 @@ pub struct UserResponse {
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
-        .route("/api/auth/login", post(login))
-        .route("/api/auth/me", get(me))
+        .route("/api/v1/auth/login", post(login))
+        .route("/api/v1/auth/me", get(me))
 }
 
 async fn login(
