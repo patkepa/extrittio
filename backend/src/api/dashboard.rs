@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::error::AppError;
 use crate::repositories::dashboard_repo;
-use crate::state::AppState;
+use crate::state::{run_db, AppState};
 
 #[derive(Serialize)]
 pub struct DashboardStats {
@@ -21,17 +21,20 @@ pub fn router() -> Router<Arc<AppState>> {
 async fn get_stats(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<DashboardStats>, AppError> {
-    let mut conn = state.db_pool.get()?;
+    let stats = run_db(&state.db_pool, move |conn| {
+        let total_devices = dashboard_repo::get_total_devices(conn)?;
+        let active_devices = dashboard_repo::get_online_devices(conn)?;
+        let offline_devices = dashboard_repo::get_offline_devices(conn)?;
+        let total_messages = dashboard_repo::get_total_firmware(conn)?;
 
-    let total_devices = dashboard_repo::get_total_devices(&mut conn)?;
-    let active_devices = dashboard_repo::get_online_devices(&mut conn)?;
-    let offline_devices = dashboard_repo::get_offline_devices(&mut conn)?;
-    let total_messages = dashboard_repo::get_total_firmware(&mut conn)?;
+        Ok(DashboardStats {
+            total_devices,
+            active_devices,
+            offline_devices,
+            total_messages,
+        })
+    })
+    .await?;
 
-    Ok(Json(DashboardStats {
-        total_devices,
-        active_devices,
-        offline_devices,
-        total_messages,
-    }))
+    Ok(Json(stats))
 }

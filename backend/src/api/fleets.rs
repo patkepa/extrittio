@@ -10,7 +10,7 @@ use std::sync::Arc;
 use crate::db::models::NewFleet;
 use crate::error::AppError;
 use crate::repositories::fleet_repo;
-use crate::state::AppState;
+use crate::state::{run_db, AppState};
 
 #[derive(Debug, Serialize)]
 pub struct FleetResponse {
@@ -33,23 +33,24 @@ pub fn router() -> Router<Arc<AppState>> {
 async fn list_fleets(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<FleetResponse>>, AppError> {
-    let mut conn = state.db_pool.get()?;
+    let response = run_db(&state.db_pool, move |conn| {
+        let (all_fleets, counts) = fleet_repo::list_fleets(conn)?;
 
-    let (all_fleets, counts) = fleet_repo::list_fleets(&mut conn)?;
+        let count_map: std::collections::HashMap<i32, i64> = counts
+            .into_iter()
+            .filter_map(|(fleet_id, count)| fleet_id.map(|fid| (fid, count)))
+            .collect();
 
-    let count_map: std::collections::HashMap<i32, i64> = counts
-        .into_iter()
-        .filter_map(|(fleet_id, count)| fleet_id.map(|fid| (fid, count)))
-        .collect();
-
-    let response: Vec<FleetResponse> = all_fleets
-        .into_iter()
-        .map(|f| FleetResponse {
-            id: f.id,
-            name: f.name,
-            device_count: count_map.get(&f.id).copied().unwrap_or(0),
-        })
-        .collect();
+        Ok(all_fleets
+            .into_iter()
+            .map(|f| FleetResponse {
+                id: f.id,
+                name: f.name,
+                device_count: count_map.get(&f.id).copied().unwrap_or(0),
+            })
+            .collect())
+    })
+    .await?;
 
     Ok(Json(response))
 }
@@ -58,32 +59,37 @@ async fn create_fleet(
     State(state): State<Arc<AppState>>,
     Json(body): Json<NewFleetRequest>,
 ) -> Result<(StatusCode, Json<FleetResponse>), AppError> {
-    let mut conn = state.db_pool.get()?;
+    if body.name.trim().is_empty() {
+        return Err(AppError::BadRequest("Fleet name must not be empty".into()));
+    }
 
-    let created = fleet_repo::insert_fleet(&mut conn, &NewFleet { name: body.name })?;
-
-    Ok((
-        StatusCode::CREATED,
-        Json(FleetResponse {
+    let response = run_db(&state.db_pool, move |conn| {
+        let created = fleet_repo::insert_fleet(conn, &NewFleet { name: body.name })?;
+        Ok(FleetResponse {
             id: created.id,
             name: created.name,
             device_count: 0,
-        }),
-    ))
+        })
+    })
+    .await?;
+
+    Ok((StatusCode::CREATED, Json(response)))
 }
 
 async fn delete_fleet(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i32>,
 ) -> Result<StatusCode, AppError> {
-    let mut conn = state.db_pool.get()?;
+    run_db(&state.db_pool, move |conn| {
+        // ON DELETE SET NULL in the schema handles device unassignment
+        let deleted = fleet_repo::delete_fleet(conn, id)?;
+        if !deleted {
+            Err(AppError::NotFound(format!("Fleet {id} not found")))
+        } else {
+            Ok(())
+        }
+    })
+    .await?;
 
-    // ON DELETE SET NULL in the schema handles device unassignment
-    let deleted = fleet_repo::delete_fleet(&mut conn, id)?;
-
-    if !deleted {
-        Err(AppError::NotFound(format!("Fleet {id} not found")))
-    } else {
-        Ok(StatusCode::NO_CONTENT)
-    }
+    Ok(StatusCode::NO_CONTENT)
 }

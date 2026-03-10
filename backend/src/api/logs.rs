@@ -10,7 +10,7 @@ use std::sync::Arc;
 use crate::db::models::DeviceLog;
 use crate::error::AppError;
 use crate::repositories::{device_repo, log_repo};
-use crate::state::AppState;
+use crate::state::{run_db, AppState};
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -65,36 +65,38 @@ async fn get_device_logs(
     Path(id): Path<String>,
     Query(params): Query<LogsQuery>,
 ) -> Result<Json<Vec<LogResponse>>, AppError> {
-    let mut conn = state.db_pool.get()?;
+    // Parse timestamp filter before entering the blocking closure
+    let since = parse_since(params.since.as_deref())?;
 
-    // Verify device exists
-    device_repo::device_exists(&mut conn, &id)?;
+    let response = run_db(&state.db_pool, move |conn| {
+        // Verify device exists
+        device_repo::device_exists(conn, &id)?;
 
-    let limit = params.limit.unwrap_or(100).clamp(1, 1000);
+        let limit = params.limit.unwrap_or(100).clamp(1, 1000);
 
-    // Normalize level to uppercase for the query
-    let level = params.level.as_deref().map(str::to_uppercase);
+        // Normalize level to uppercase for the query
+        let level = params.level.as_deref().map(str::to_uppercase);
 
-    // Parse timestamp filter
-    let since = if let Some(ref since_str) = params.since {
-        let since_dt = since_str
-            .parse::<NaiveDateTime>()
-            .or_else(|_| chrono::DateTime::parse_from_rfc3339(since_str).map(|dt| dt.naive_utc()))
-            .map_err(|_| AppError::BadRequest("Invalid date format, expected YYYY-MM-DDTHH:MM:SS".into()))?;
-        Some(since_dt)
-    } else {
-        None
-    };
+        let results = log_repo::list_logs(conn, &id, level.as_deref(), since, limit)?;
 
-    let results = log_repo::list_logs(
-        &mut conn,
-        &id,
-        level.as_deref(),
-        since,
-        limit,
-    )?;
-
-    let response: Vec<LogResponse> = results.into_iter().map(LogResponse::from).collect();
+        Ok(results.into_iter().map(LogResponse::from).collect())
+    })
+    .await?;
 
     Ok(Json(response))
+}
+
+/// Parse an optional `since` timestamp string, accepting both NaiveDateTime
+/// and RFC 3339 formats.
+fn parse_since(since_str: Option<&str>) -> Result<Option<NaiveDateTime>, AppError> {
+    let Some(s) = since_str else {
+        return Ok(None);
+    };
+    let dt = s
+        .parse::<NaiveDateTime>()
+        .or_else(|_| chrono::DateTime::parse_from_rfc3339(s).map(|dt| dt.naive_utc()))
+        .map_err(|_| {
+            AppError::BadRequest("Invalid date format, expected YYYY-MM-DDTHH:MM:SS".into())
+        })?;
+    Ok(Some(dt))
 }

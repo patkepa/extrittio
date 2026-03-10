@@ -10,7 +10,7 @@ use std::sync::Arc;
 use crate::db::models::TelemetryRecord;
 use crate::error::AppError;
 use crate::repositories::{device_repo, telemetry_repo};
-use crate::state::AppState;
+use crate::state::{run_db, AppState};
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -68,31 +68,39 @@ async fn get_device_telemetry(
     Path(id): Path<String>,
     Query(params): Query<TelemetryQuery>,
 ) -> Result<Json<Vec<TelemetryResponse>>, AppError> {
-    let mut conn = state.db_pool.get()?;
+    // Parse `since` filter before entering the blocking closure
+    let since = parse_since(params.since.as_deref())?;
 
-    // Verify device exists (404 if not)
-    device_repo::find_device(&mut conn, &id)?;
+    let response = run_db(&state.db_pool, move |conn| {
+        // Verify device exists (404 if not)
+        device_repo::find_device(conn, &id)?;
 
-    // Determine limit (default 50, max 1000)
-    let limit = params.limit.unwrap_or(50).clamp(1, 1000);
+        // Determine limit (default 50, max 1000)
+        let limit = params.limit.unwrap_or(50).clamp(1, 1000);
 
-    // Parse `since` filter if provided
-    let since = if let Some(ref since_str) = params.since {
-        let since_dt = since_str
-            .parse::<NaiveDateTime>()
-            .or_else(|_| {
-                chrono::DateTime::parse_from_rfc3339(since_str).map(|dt| dt.naive_utc())
-            })
-            .map_err(|_| AppError::BadRequest("Invalid date format, expected YYYY-MM-DDTHH:MM:SS".into()))?;
-        Some(since_dt)
-    } else {
-        None
-    };
+        let results = telemetry_repo::list_telemetry(conn, &id, since, limit)?;
 
-    let results = telemetry_repo::list_telemetry(&mut conn, &id, since, limit)?;
-
-    let response: Vec<TelemetryResponse> =
-        results.into_iter().map(TelemetryResponse::from).collect();
+        Ok(results
+            .into_iter()
+            .map(TelemetryResponse::from)
+            .collect())
+    })
+    .await?;
 
     Ok(Json(response))
+}
+
+/// Parse an optional `since` timestamp string, accepting both NaiveDateTime
+/// and RFC 3339 formats.
+fn parse_since(since_str: Option<&str>) -> Result<Option<NaiveDateTime>, AppError> {
+    let Some(s) = since_str else {
+        return Ok(None);
+    };
+    let dt = s
+        .parse::<NaiveDateTime>()
+        .or_else(|_| chrono::DateTime::parse_from_rfc3339(s).map(|dt| dt.naive_utc()))
+        .map_err(|_| {
+            AppError::BadRequest("Invalid date format, expected YYYY-MM-DDTHH:MM:SS".into())
+        })?;
+    Ok(Some(dt))
 }

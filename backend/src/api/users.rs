@@ -11,7 +11,7 @@ use crate::auth::hash_password;
 use crate::db::models::NewUser;
 use crate::error::AppError;
 use crate::repositories::user_repo;
-use crate::state::AppState;
+use crate::state::{run_db, AppState};
 
 use super::auth_routes::UserResponse;
 
@@ -42,18 +42,18 @@ pub fn router() -> Router<Arc<AppState>> {
 async fn list_users(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<UserResponse>>, AppError> {
-    let mut conn = state.db_pool.get()?;
-
-    let results = user_repo::list_users(&mut conn)?;
-
-    let response: Vec<UserResponse> = results
-        .into_iter()
-        .map(|u| UserResponse {
-            id: u.id,
-            username: u.username,
-            role: u.role,
-        })
-        .collect();
+    let response = run_db(&state.db_pool, move |conn| {
+        let results = user_repo::list_users(conn)?;
+        Ok(results
+            .into_iter()
+            .map(|u| UserResponse {
+                id: u.id,
+                username: u.username,
+                role: u.role,
+            })
+            .collect())
+    })
+    .await?;
 
     Ok(Json(response))
 }
@@ -62,23 +62,35 @@ async fn create_user(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreateUserRequest>,
 ) -> Result<(StatusCode, Json<UserResponse>), AppError> {
-    let mut conn = state.db_pool.get()?;
+    if body.username.trim().is_empty() {
+        return Err(AppError::BadRequest("Username must not be empty".into()));
+    }
+    if body.password.len() < 4 {
+        return Err(AppError::BadRequest(
+            "Password must be at least 4 characters".into(),
+        ));
+    }
 
-    let password_hash = hash_password(&body.password)
-        .map_err(|e| AppError::Auth(e.to_string()))?;
+    let password_hash =
+        hash_password(&body.password).map_err(|e| AppError::Auth(e.to_string()))?;
 
-    let new_user = NewUser {
-        username: body.username.clone(),
-        password_hash,
-    };
+    let username = body.username;
 
-    let user = user_repo::insert_user(&mut conn, &new_user)
-        .map_err(|e| match e {
-            diesel::result::Error::DatabaseError(diesel::result::DatabaseErrorKind::UniqueViolation, _) => {
-                AppError::Conflict(format!("Username '{}' already exists", body.username))
-            }
+    let user = run_db(&state.db_pool, move |conn| {
+        let new_user = NewUser {
+            username: username.clone(),
+            password_hash,
+        };
+
+        user_repo::insert_user(conn, &new_user).map_err(|e| match e {
+            diesel::result::Error::DatabaseError(
+                diesel::result::DatabaseErrorKind::UniqueViolation,
+                _,
+            ) => AppError::Conflict(format!("Username '{username}' already exists")),
             other => AppError::Database(other),
-        })?;
+        })
+    })
+    .await?;
 
     Ok((
         StatusCode::CREATED,
@@ -94,13 +106,14 @@ async fn delete_user(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i32>,
 ) -> Result<StatusCode, AppError> {
-    let mut conn = state.db_pool.get()?;
-
-    let deleted = user_repo::delete_user(&mut conn, id)?;
-
-    if !deleted {
-        return Err(AppError::NotFound(format!("User {id} not found")));
-    }
+    run_db(&state.db_pool, move |conn| {
+        let deleted = user_repo::delete_user(conn, id)?;
+        if !deleted {
+            return Err(AppError::NotFound(format!("User {id} not found")));
+        }
+        Ok(())
+    })
+    .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -110,15 +123,22 @@ async fn change_password(
     Path(id): Path<i32>,
     Json(body): Json<ChangePasswordRequest>,
 ) -> Result<StatusCode, AppError> {
-    let mut conn = state.db_pool.get()?;
+    if body.password.len() < 4 {
+        return Err(AppError::BadRequest(
+            "Password must be at least 4 characters".into(),
+        ));
+    }
 
-    // Verify user exists
-    user_repo::find_user_by_id(&mut conn, id)?;
+    let password_hash =
+        hash_password(&body.password).map_err(|e| AppError::Auth(e.to_string()))?;
 
-    let password_hash = hash_password(&body.password)
-        .map_err(|e| AppError::Auth(e.to_string()))?;
-
-    user_repo::update_password(&mut conn, id, &password_hash)?;
+    run_db(&state.db_pool, move |conn| {
+        // Verify user exists
+        user_repo::find_user_by_id(conn, id)?;
+        user_repo::update_password(conn, id, &password_hash)?;
+        Ok(())
+    })
+    .await?;
 
     Ok(StatusCode::OK)
 }

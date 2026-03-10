@@ -40,26 +40,29 @@ export const ShadowTab = ({ deviceId }: ShadowTabProps) => {
         </span>
       </div>
 
-      {hasDelta && (
-        <Callout intent="warning" icon="info-sign" style={{ marginBottom: 16 }}>
-          Delta: {Object.keys(shadow.delta).join(', ')}
-        </Callout>
-      )}
-
       <div className="shadow-panes-horizontal">
-        <div className="shadow-pane">
-          <span className="section-label">Reported State</span>
-          <pre className="shadow-json mono-data">
-            {JSON.stringify(shadow.reported, null, 2)}
-          </pre>
-        </div>
         <div className="shadow-pane">
           <span className="section-label">Desired State</span>
           <pre className="shadow-json mono-data">
             {JSON.stringify(shadow.desired, null, 2)}
           </pre>
         </div>
+        <div className="shadow-pane">
+          <span className="section-label">Reported State</span>
+          <pre className="shadow-json mono-data">
+            {JSON.stringify(shadow.reported, null, 2)}
+          </pre>
+        </div>
       </div>
+
+      {hasDelta && (
+        <div className="shadow-pane" style={{ marginTop: 12 }}>
+          <span className="section-label">Delta</span>
+          <pre className="shadow-json mono-data">
+            {JSON.stringify(shadow.delta, null, 2)}
+          </pre>
+        </div>
+      )}
 
       <Divider className="tab-divider" />
 

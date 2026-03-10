@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use crate::error::AppError;
 use crate::repositories::{config_repo, device_repo};
-use crate::state::AppState;
+use crate::state::{run_db, AppState};
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -48,33 +48,36 @@ async fn get_config(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<ConfigResponse>, AppError> {
-    let mut conn = state.db_pool.get()?;
+    let response = run_db(&state.db_pool, move |conn| {
+        // Verify device exists
+        device_repo::device_exists(conn, &id)?;
 
-    // Verify device exists
-    device_repo::device_exists(&mut conn, &id)?;
+        // Get or create config
+        let config = config_repo::find_config(conn, &id)?;
 
-    // Get or create config
-    let config = config_repo::find_config(&mut conn, &id)?;
-
-    match config {
-        Some(c) => {
-            let config_val: Value =
-                serde_json::from_str(&c.config).unwrap_or(Value::Object(serde_json::Map::default()));
-            Ok(Json(ConfigResponse {
-                device_id: c.device_id,
-                config: config_val,
-                updated_at: c.updated_at.and_utc().to_rfc3339(),
-            }))
+        match config {
+            Some(c) => {
+                let config_val: Value = serde_json::from_str(&c.config)
+                    .unwrap_or(Value::Object(serde_json::Map::default()));
+                Ok(ConfigResponse {
+                    device_id: c.device_id,
+                    config: config_val,
+                    updated_at: c.updated_at.and_utc().to_rfc3339(),
+                })
+            }
+            None => {
+                // Return empty config if none exists yet
+                Ok(ConfigResponse {
+                    device_id: id,
+                    config: Value::Object(serde_json::Map::default()),
+                    updated_at: Utc::now().to_rfc3339(),
+                })
+            }
         }
-        None => {
-            // Return empty config if none exists yet
-            Ok(Json(ConfigResponse {
-                device_id: id,
-                config: Value::Object(serde_json::Map::default()),
-                updated_at: Utc::now().to_rfc3339(),
-            }))
-        }
-    }
+    })
+    .await?;
+
+    Ok(Json(response))
 }
 
 async fn update_config(
@@ -82,40 +85,47 @@ async fn update_config(
     Path(id): Path<String>,
     Json(body): Json<UpdateConfigRequest>,
 ) -> Result<Json<ConfigResponse>, AppError> {
-    let mut conn = state.db_pool.get()?;
+    let response = run_db(&state.db_pool, move |conn| {
+        // Verify device exists
+        device_repo::device_exists(conn, &id)?;
 
-    // Verify device exists
-    device_repo::device_exists(&mut conn, &id)?;
+        // Read current config
+        let existing = config_repo::find_config(conn, &id)?;
 
-    // Read current config
-    let existing = config_repo::find_config(&mut conn, &id)?;
+        let current: Value = existing.as_ref().map_or(
+            Value::Object(serde_json::Map::default()),
+            |c| {
+                serde_json::from_str(&c.config)
+                    .unwrap_or(Value::Object(serde_json::Map::default()))
+            },
+        );
 
-    let current: Value = existing
-        .as_ref()
-        .map_or(Value::Object(serde_json::Map::default()), |c| serde_json::from_str(&c.config).unwrap_or(Value::Object(serde_json::Map::default())));
-
-    // Merge: null values remove keys, others upsert
-    let mut obj = current.as_object().cloned().unwrap_or_default();
-    for (key, val) in &body.entries {
-        if val.is_null() {
-            obj.remove(key);
-        } else {
-            obj.insert(key.clone(), val.clone());
+        // Merge: null values remove keys, others upsert
+        let mut obj = current.as_object().cloned().unwrap_or_default();
+        for (key, val) in &body.entries {
+            if val.is_null() {
+                obj.remove(key);
+            } else {
+                obj.insert(key.clone(), val.clone());
+            }
         }
-    }
-    let merged = Value::Object(obj);
-    let now = Utc::now().naive_utc();
+        let merged = Value::Object(obj);
+        let now = Utc::now().naive_utc();
 
-    let config_str = serde_json::to_string(&merged)?;
+        let config_str = serde_json::to_string(&merged)?;
 
-    let updated = config_repo::upsert_config(&mut conn, &id, &config_str, now)?;
+        let updated = config_repo::upsert_config(conn, &id, &config_str, now)?;
 
-    let config_val: Value =
-        serde_json::from_str(&updated.config).unwrap_or(Value::Object(serde_json::Map::default()));
+        let config_val: Value = serde_json::from_str(&updated.config)
+            .unwrap_or(Value::Object(serde_json::Map::default()));
 
-    Ok(Json(ConfigResponse {
-        device_id: updated.device_id,
-        config: config_val,
-        updated_at: updated.updated_at.and_utc().to_rfc3339(),
-    }))
+        Ok(ConfigResponse {
+            device_id: updated.device_id,
+            config: config_val,
+            updated_at: updated.updated_at.and_utc().to_rfc3339(),
+        })
+    })
+    .await?;
+
+    Ok(Json(response))
 }
