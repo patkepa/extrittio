@@ -12,6 +12,7 @@ import {
   Tag,
 } from '@blueprintjs/core';
 import { useCommandHistory, useSendCommand } from '../../hooks/use-commands';
+import { showSuccessToast, showErrorToast } from '../../utils/toaster';
 
 interface CommandsTabProps {
   deviceId: string;
@@ -58,9 +59,11 @@ export const CommandsTab = ({ deviceId }: CommandsTabProps) => {
           setCommandName('');
           setParams([]);
           setIsConfirmOpen(false);
+          void showSuccessToast('Command sent');
         },
         onError: () => {
           setIsConfirmOpen(false);
+          void showErrorToast('Failed to send command');
         },
       }
     );
@@ -150,17 +153,6 @@ export const CommandsTab = ({ deviceId }: CommandsTabProps) => {
           )}
         </Alert>
 
-        {sendCommandMutation.isError && (
-          <Callout intent="danger" icon="error" style={{ marginTop: 12 }}>
-            Failed to send command. The device may be offline.
-          </Callout>
-        )}
-
-        {sendCommandMutation.isSuccess && (
-          <Callout intent="success" icon="tick" style={{ marginTop: 12 }}>
-            Command sent. Check the history below for status updates.
-          </Callout>
-        )}
       </Card>
 
       <Divider style={{ margin: '16px 0' }} />

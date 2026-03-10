@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Button, Callout, Divider, InputGroup, Spinner } from '@blueprintjs/core';
 import { useDeviceConfig, useUpdateDeviceConfig } from '../../hooks/use-config';
+import { showSuccessToast, showErrorToast } from '../../utils/toaster';
 
 interface ConfigTabProps {
   deviceId: string;
@@ -36,13 +37,21 @@ export const ConfigTab = ({ deviceId }: ConfigTabProps) => {
         onSuccess: () => {
           setNewKey('');
           setNewValue('');
+          void showSuccessToast('Config updated');
         },
+        onError: () => { void showErrorToast('Failed to update config'); },
       }
     );
   };
 
   const handleRemove = (key: string) => {
-    updateMutation.mutate({ deviceId, config: { [key]: null } });
+    updateMutation.mutate(
+      { deviceId, config: { [key]: null } },
+      {
+        onSuccess: () => void showSuccessToast('Config entry removed'),
+        onError: () => void showErrorToast('Failed to update config'),
+      }
+    );
   };
 
   return (

@@ -1,6 +1,7 @@
 import { Button, Callout, Divider } from '@blueprintjs/core';
 import { useSearchParams } from 'react-router-dom';
 import { useRestartDevice } from '../../hooks/use-devices';
+import { showSuccessToast, showErrorToast } from '../../utils/toaster';
 import type { Device } from '../../types/api';
 
 interface OverviewTabProps {
@@ -60,7 +61,12 @@ export const OverviewTab = ({ device }: OverviewTabProps) => {
           icon="refresh"
           fill
           loading={restartDeviceMutation.isPending}
-          onClick={() => restartDeviceMutation.mutate(device.id)}
+          onClick={() =>
+            restartDeviceMutation.mutate(device.id, {
+              onSuccess: () => void showSuccessToast('Restart command sent'),
+              onError: () => void showErrorToast('Failed to restart device'),
+            })
+          }
         >
           Restart
         </Button>

@@ -12,6 +12,7 @@ import {
   Tag,
 } from '@blueprintjs/core';
 import { useFirmwareUpdates, useOtaDeployments, useTriggerOta } from '../../hooks/use-firmware-updates';
+import { showSuccessToast, showErrorToast } from '../../utils/toaster';
 import { useDeviceShadow } from '../../hooks/use-shadow';
 import type { Device } from '../../types/api';
 
@@ -51,9 +52,11 @@ export const OtaTab = ({ device }: OtaTabProps) => {
         onSuccess: () => {
           setSelectedFwId(null);
           setIsConfirmOpen(false);
+          void showSuccessToast('OTA update pushed');
         },
         onError: () => {
           setIsConfirmOpen(false);
+          void showErrorToast('Failed to trigger OTA update');
         },
       }
     );
@@ -179,17 +182,6 @@ export const OtaTab = ({ device }: OtaTabProps) => {
             </p>
           </Alert>
 
-          {triggerOtaMutation.isError && (
-            <Callout intent="danger" icon="error" style={{ marginTop: 12 }}>
-              Failed to trigger OTA update. Please try again.
-            </Callout>
-          )}
-
-          {triggerOtaMutation.isSuccess && (
-            <Callout intent="success" icon="tick" style={{ marginTop: 12 }}>
-              OTA update pushed to device shadow. The device will pick it up on next shadow sync.
-            </Callout>
-          )}
         </>
       )}
 

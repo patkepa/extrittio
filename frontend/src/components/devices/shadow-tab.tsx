@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Button, Callout, Divider, InputGroup, Spinner, Tag } from '@blueprintjs/core';
 import { useDeviceShadow, useUpdateDesiredState, useDeleteDeviceShadow } from '../../hooks/use-shadow';
+import { showSuccessToast, showErrorToast } from '../../utils/toaster';
 
 interface ShadowTabProps {
   deviceId: string;
@@ -75,7 +76,13 @@ export const ShadowTab = ({ deviceId }: ShadowTabProps) => {
               const parsed = JSON.parse(desiredInput);
               updateDesiredMutation.mutate(
                 { deviceId, state: parsed },
-                { onSuccess: () => setDesiredInput('') }
+                {
+                  onSuccess: () => {
+                    setDesiredInput('');
+                    void showSuccessToast('Desired state updated');
+                  },
+                  onError: () => void showErrorToast('Failed to update desired state'),
+                }
               );
             } catch {
               // Invalid JSON - ignore
@@ -89,7 +96,12 @@ export const ShadowTab = ({ deviceId }: ShadowTabProps) => {
           icon="trash"
           minimal
           loading={deleteShadowMutation.isPending}
-          onClick={() => deleteShadowMutation.mutate(deviceId)}
+          onClick={() =>
+            deleteShadowMutation.mutate(deviceId, {
+              onSuccess: () => void showSuccessToast('Shadow cleared'),
+              onError: () => void showErrorToast('Failed to clear shadow'),
+            })
+          }
         >
           Clear Shadow
         </Button>
