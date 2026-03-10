@@ -1,6 +1,5 @@
 // Command service — business logic for device commands
 
-use diesel::SqliteConnection;
 use prost::Message;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -8,10 +7,14 @@ use std::sync::Arc;
 use crate::db::models::{CommandRecord, NewCommandRecord};
 use crate::error::AppError;
 use crate::repositories::{command_repo, device_repo};
+use crate::state::{run_db, DbPool};
 use extrittio_proto::extrittio::DeviceCommand;
 
 /// Send a command to a device: verify it exists, persist the record, publish via
 /// Zenoh, then return the persisted record (with DB-generated timestamps).
+///
+/// DB operations run on blocking threads via `run_db` so the Tokio runtime is
+/// not starved by synchronous Diesel calls.
 ///
 /// # Errors
 ///
@@ -19,28 +22,33 @@ use extrittio_proto::extrittio::DeviceCommand;
 /// `AppError` variants on database/Zenoh failures.
 #[allow(clippy::implicit_hasher)]
 pub async fn send_command(
-    conn: &mut SqliteConnection,
+    pool: &DbPool,
     zenoh_session: &Arc<zenoh::Session>,
     device_id: &str,
     command: &str,
     params: HashMap<String, String>,
 ) -> Result<CommandRecord, AppError> {
-    // Verify device exists
-    device_repo::find_device(conn, device_id)?;
-
     let correlation_id = uuid::Uuid::new_v4().to_string();
     let params_json = serde_json::to_string(&params).unwrap_or_else(|_| "{}".to_string());
+    let d_id = device_id.to_string();
+    let cmd = command.to_string();
+    let corr_id = correlation_id.clone();
 
-    let new_record = NewCommandRecord {
-        id: correlation_id.clone(),
-        device_id: device_id.to_string(),
-        command: command.to_string(),
-        params: params_json,
-    };
+    // Verify device exists and persist the command record
+    run_db(pool, move |conn| {
+        device_repo::find_device(conn, &d_id)?;
+        let new_record = NewCommandRecord {
+            id: corr_id,
+            device_id: d_id,
+            command: cmd,
+            params: params_json,
+        };
+        command_repo::insert_command(conn, &new_record)?;
+        Ok(())
+    })
+    .await?;
 
-    command_repo::insert_command(conn, &new_record)?;
-
-    // Build and publish protobuf
+    // Build and publish protobuf (async, outside spawn_blocking)
     let proto_command = DeviceCommand {
         command: command.to_string(),
         params,
@@ -56,6 +64,9 @@ pub async fn send_command(
         .map_err(|e| AppError::Zenoh(e.to_string()))?;
 
     // Re-read the record to get the DB-generated timestamps
-    let record = command_repo::find_command(conn, &correlation_id)?;
-    Ok(record)
+    let corr_id = correlation_id;
+    run_db(pool, move |conn| {
+        Ok(command_repo::find_command(conn, &corr_id)?)
+    })
+    .await
 }

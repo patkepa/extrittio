@@ -2,6 +2,7 @@ use prost::Message;
 use std::sync::Arc;
 use tracing::{info, warn};
 
+use crate::db::models::DeviceShadow;
 use crate::repositories::{device_repo, firmware_repo, shadow_repo};
 use crate::services::shadow_service;
 use crate::state::DbPool;
@@ -136,7 +137,7 @@ pub fn handle_shadow_report(db_pool: &DbPool, payload: &[u8]) {
 }
 
 /// Decode a `ShadowGet` protobuf message and publish the shadow delta back to
-/// the device if non-empty.
+/// the device if non-empty. DB access runs on a blocking thread.
 pub async fn handle_shadow_get(
     db_pool: &DbPool,
     session: &Arc<zenoh::Session>,
@@ -150,21 +151,26 @@ pub async fn handle_shadow_get(
         }
     };
 
-    let mut conn = match db_pool.get() {
-        Ok(c) => c,
-        Err(e) => {
-            warn!("Failed to get DB connection: {}", e);
+    let device_id = get_msg.device_id.clone();
+    let pool = db_pool.clone();
+
+    let shadow: DeviceShadow = match tokio::task::spawn_blocking(move || {
+        let mut conn = match pool.get() {
+            Ok(c) => c,
+            Err(e) => return Err(format!("Failed to get DB connection: {e}")),
+        };
+        shadow_repo::find_shadow(&mut conn, &device_id)
+            .map_err(|e| format!("Shadow not found for device {device_id}: {e}"))
+    })
+    .await
+    {
+        Ok(Ok(shadow)) => shadow,
+        Ok(Err(msg)) => {
+            warn!("{}", msg);
             return;
         }
-    };
-
-    let shadow = match shadow_repo::find_shadow(&mut conn, &get_msg.device_id) {
-        Ok(s) => s,
         Err(e) => {
-            warn!(
-                "Shadow not found for device {}: {}",
-                get_msg.device_id, e
-            );
+            warn!("Shadow get handler task panicked: {}", e);
             return;
         }
     };

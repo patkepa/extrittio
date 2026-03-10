@@ -1,9 +1,8 @@
 use chrono::Utc;
-use diesel::prelude::*;
 use std::time::Duration;
 use tracing::{info, warn};
 
-use crate::db::schema::{command_history, devices};
+use crate::repositories::{command_repo, device_repo};
 use crate::state::DbPool;
 
 pub async fn run_offline_checker(db_pool: DbPool, timeout_secs: u64) {
@@ -16,29 +15,24 @@ pub async fn run_offline_checker(db_pool: DbPool, timeout_secs: u64) {
         #[allow(clippy::cast_possible_wrap)]
         let cutoff = Utc::now().naive_utc() - chrono::TimeDelta::seconds(timeout_secs as i64);
 
-        let mut conn = match db_pool.get() {
-            Ok(conn) => conn,
-            Err(e) => {
-                warn!("DB pool error in offline checker: {}", e);
-                continue;
-            }
-        };
+        let pool = db_pool.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            let mut conn = pool.get().map_err(|e| e.to_string())?;
+            device_repo::mark_devices_offline(&mut conn, cutoff).map_err(|e| e.to_string())
+        })
+        .await;
 
-        match diesel::update(
-            devices::table
-                .filter(devices::status.ne("offline"))
-                .filter(devices::last_seen.lt(cutoff)),
-        )
-        .set(devices::status.eq("offline"))
-        .execute(&mut conn)
-        {
-            Ok(count) => {
+        match result {
+            Ok(Ok(count)) => {
                 if count > 0 {
                     info!("Marked {} devices as offline", count);
                 }
             }
+            Ok(Err(msg)) => {
+                warn!("Offline checker error: {}", msg);
+            }
             Err(e) => {
-                warn!("Offline checker error: {}", e);
+                warn!("Offline checker task panicked: {}", e);
             }
         }
     }
@@ -53,33 +47,27 @@ pub async fn run_command_timeout_checker(db_pool: DbPool, timeout_secs: u64) {
 
         #[allow(clippy::cast_possible_wrap)]
         let cutoff = Utc::now().naive_utc() - chrono::TimeDelta::seconds(timeout_secs as i64);
+        let now = Utc::now().naive_utc();
 
-        let mut conn = match db_pool.get() {
-            Ok(conn) => conn,
-            Err(e) => {
-                warn!("DB pool error in command timeout checker: {}", e);
-                continue;
-            }
-        };
+        let pool = db_pool.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            let mut conn = pool.get().map_err(|e| e.to_string())?;
+            command_repo::timeout_stale_commands(&mut conn, cutoff, now)
+                .map_err(|e| e.to_string())
+        })
+        .await;
 
-        match diesel::update(
-            command_history::table
-                .filter(command_history::status.eq_any(&["sent", "delivered"]))
-                .filter(command_history::created_at.lt(cutoff)),
-        )
-        .set((
-            command_history::status.eq("timed_out"),
-            command_history::updated_at.eq(Utc::now().naive_utc()),
-        ))
-        .execute(&mut conn)
-        {
-            Ok(count) => {
+        match result {
+            Ok(Ok(count)) => {
                 if count > 0 {
                     info!("Marked {} commands as timed_out", count);
                 }
             }
+            Ok(Err(msg)) => {
+                warn!("Command timeout checker error: {}", msg);
+            }
             Err(e) => {
-                warn!("Command timeout checker error: {}", e);
+                warn!("Command timeout checker task panicked: {}", e);
             }
         }
     }

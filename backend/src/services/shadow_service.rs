@@ -1,3 +1,4 @@
+use diesel::Connection;
 use diesel::SqliteConnection;
 use serde_json::Value;
 use std::sync::Arc;
@@ -7,38 +8,58 @@ use crate::db::models::UpdateShadow;
 use crate::error::AppError;
 use crate::repositories::shadow_repo;
 use crate::shadow_utils::compute_shadow_delta;
+use crate::state::{run_db, DbPool};
+
+/// Transactional DB-only part of update_desired. Returns the new delta and
+/// version so the caller can publish via Zenoh after the transaction commits.
+pub fn update_desired_db(
+    conn: &mut SqliteConnection,
+    device_id: &str,
+    patch: &serde_json::Map<String, Value>,
+) -> Result<(Value, i32), AppError> {
+    conn.transaction(|conn| {
+        let shadow = shadow_repo::find_shadow(conn, device_id)?;
+
+        let current_desired: Value =
+            serde_json::from_str(&shadow.desired).unwrap_or(Value::Object(Default::default()));
+        let current_reported: Value =
+            serde_json::from_str(&shadow.reported).unwrap_or(Value::Object(Default::default()));
+
+        let new_desired = merge_json(&current_desired, patch);
+        let new_delta = compute_shadow_delta(&new_desired, &current_reported);
+        let new_version = shadow.version + 1;
+        let now = chrono::Utc::now().naive_utc();
+
+        let changeset = UpdateShadow {
+            desired: Some(serde_json::to_string(&new_desired)?),
+            delta: Some(serde_json::to_string(&new_delta)?),
+            version: Some(new_version),
+            updated_at: Some(now),
+            ..Default::default()
+        };
+
+        shadow_repo::update_shadow(conn, device_id, &changeset)?;
+
+        Ok((new_delta, new_version))
+    })
+}
 
 /// Merge a JSON patch into the desired state, recompute delta, persist, and publish.
 pub async fn update_desired(
-    conn: &mut SqliteConnection,
+    pool: &DbPool,
     zenoh_session: &Arc<zenoh::Session>,
     device_id: &str,
     patch: &serde_json::Map<String, Value>,
 ) -> Result<(), AppError> {
-    let shadow = shadow_repo::find_shadow(conn, device_id)?;
+    let d_id = device_id.to_string();
+    let p = patch.clone();
 
-    let current_desired: Value =
-        serde_json::from_str(&shadow.desired).unwrap_or(Value::Object(Default::default()));
-    let current_reported: Value =
-        serde_json::from_str(&shadow.reported).unwrap_or(Value::Object(Default::default()));
+    let (delta, version) = run_db(pool, move |conn| {
+        update_desired_db(conn, &d_id, &p)
+    })
+    .await?;
 
-    let new_desired = merge_json(&current_desired, patch);
-    let new_delta = compute_shadow_delta(&new_desired, &current_reported);
-    let now = chrono::Utc::now().naive_utc();
-
-    let changeset = UpdateShadow {
-        desired: Some(serde_json::to_string(&new_desired)?),
-        delta: Some(serde_json::to_string(&new_delta)?),
-        version: Some(shadow.version + 1),
-        updated_at: Some(now),
-        ..Default::default()
-    };
-
-    shadow_repo::update_shadow(conn, device_id, &changeset)?;
-
-    // Note: We hold `conn` across this `.await` point. This works because
-    // r2d2::PooledConnection<SqliteConnection> is Send.
-    publish_delta_if_nonempty(zenoh_session, device_id, &new_delta, shadow.version + 1).await;
+    publish_delta_if_nonempty(zenoh_session, device_id, &delta, version).await;
     Ok(())
 }
 
@@ -48,27 +69,29 @@ pub fn update_reported(
     device_id: &str,
     patch: &serde_json::Map<String, Value>,
 ) -> Result<(), AppError> {
-    let shadow = shadow_repo::find_shadow(conn, device_id)?;
+    conn.transaction(|conn| {
+        let shadow = shadow_repo::find_shadow(conn, device_id)?;
 
-    let current_desired: Value =
-        serde_json::from_str(&shadow.desired).unwrap_or(Value::Object(Default::default()));
-    let current_reported: Value =
-        serde_json::from_str(&shadow.reported).unwrap_or(Value::Object(Default::default()));
+        let current_desired: Value =
+            serde_json::from_str(&shadow.desired).unwrap_or(Value::Object(Default::default()));
+        let current_reported: Value =
+            serde_json::from_str(&shadow.reported).unwrap_or(Value::Object(Default::default()));
 
-    let new_reported = merge_json(&current_reported, patch);
-    let new_delta = compute_shadow_delta(&current_desired, &new_reported);
-    let now = chrono::Utc::now().naive_utc();
+        let new_reported = merge_json(&current_reported, patch);
+        let new_delta = compute_shadow_delta(&current_desired, &new_reported);
+        let now = chrono::Utc::now().naive_utc();
 
-    let changeset = UpdateShadow {
-        reported: Some(serde_json::to_string(&new_reported)?),
-        delta: Some(serde_json::to_string(&new_delta)?),
-        version: Some(shadow.version + 1),
-        updated_at: Some(now),
-        ..Default::default()
-    };
+        let changeset = UpdateShadow {
+            reported: Some(serde_json::to_string(&new_reported)?),
+            delta: Some(serde_json::to_string(&new_delta)?),
+            version: Some(shadow.version + 1),
+            updated_at: Some(now),
+            ..Default::default()
+        };
 
-    shadow_repo::update_shadow(conn, device_id, &changeset)?;
-    Ok(())
+        shadow_repo::update_shadow(conn, device_id, &changeset)?;
+        Ok(())
+    })
 }
 
 /// Merge a JSON patch into an existing JSON object.

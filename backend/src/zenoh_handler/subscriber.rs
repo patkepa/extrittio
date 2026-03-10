@@ -11,6 +11,9 @@ use super::handlers;
 /// in the current task. Both loop indefinitely, receiving messages and
 /// dispatching them to the appropriate handler function.
 ///
+/// All synchronous handler functions (DB-touching) are dispatched via
+/// `spawn_blocking` to avoid starving the Tokio runtime.
+///
 /// # Errors
 ///
 /// Returns an error if any Zenoh subscriber declaration fails.
@@ -50,8 +53,12 @@ pub async fn run_subscriber(
         loop {
             match heartbeat_sub.recv_async().await {
                 Ok(sample) => {
-                    let payload = sample.payload().to_bytes();
-                    handlers::heartbeat::handle_heartbeat(&heartbeat_pool, &payload);
+                    let payload = sample.payload().to_bytes().to_vec();
+                    let pool = heartbeat_pool.clone();
+                    let _ = tokio::task::spawn_blocking(move || {
+                        handlers::heartbeat::handle_heartbeat(&pool, &payload);
+                    })
+                    .await;
                 }
                 Err(e) => {
                     warn!("Heartbeat subscriber channel closed: {}", e);
@@ -67,8 +74,12 @@ pub async fn run_subscriber(
         loop {
             match shadow_report_sub.recv_async().await {
                 Ok(sample) => {
-                    let payload = sample.payload().to_bytes();
-                    handlers::shadow::handle_shadow_report(&shadow_report_pool, &payload);
+                    let payload = sample.payload().to_bytes().to_vec();
+                    let pool = shadow_report_pool.clone();
+                    let _ = tokio::task::spawn_blocking(move || {
+                        handlers::shadow::handle_shadow_report(&pool, &payload);
+                    })
+                    .await;
                 }
                 Err(e) => {
                     warn!("Shadow report subscriber channel closed: {}", e);
@@ -78,14 +89,14 @@ pub async fn run_subscriber(
         }
     });
 
-    // Spawn shadow get handler
+    // Spawn shadow get handler (async — DB part uses spawn_blocking internally)
     let shadow_get_pool = db_pool.clone();
     let shadow_get_session = session.clone();
     tokio::spawn(async move {
         loop {
             match shadow_get_sub.recv_async().await {
                 Ok(sample) => {
-                    let payload = sample.payload().to_bytes();
+                    let payload = sample.payload().to_bytes().to_vec();
                     handlers::shadow::handle_shadow_get(
                         &shadow_get_pool,
                         &shadow_get_session,
@@ -107,8 +118,12 @@ pub async fn run_subscriber(
         loop {
             match log_sub.recv_async().await {
                 Ok(sample) => {
-                    let payload = sample.payload().to_bytes();
-                    handlers::log::handle_device_log(&log_pool, &payload);
+                    let payload = sample.payload().to_bytes().to_vec();
+                    let pool = log_pool.clone();
+                    let _ = tokio::task::spawn_blocking(move || {
+                        handlers::log::handle_device_log(&pool, &payload);
+                    })
+                    .await;
                 }
                 Err(e) => {
                     warn!("Log subscriber channel closed: {}", e);
@@ -124,11 +139,12 @@ pub async fn run_subscriber(
         loop {
             match cmd_response_sub.recv_async().await {
                 Ok(sample) => {
-                    let payload = sample.payload().to_bytes();
-                    handlers::command_response::handle_command_response(
-                        &cmd_response_pool,
-                        &payload,
-                    );
+                    let payload = sample.payload().to_bytes().to_vec();
+                    let pool = cmd_response_pool.clone();
+                    let _ = tokio::task::spawn_blocking(move || {
+                        handlers::command_response::handle_command_response(&pool, &payload);
+                    })
+                    .await;
                 }
                 Err(e) => {
                     warn!("Command response subscriber channel closed: {}", e);
@@ -142,8 +158,12 @@ pub async fn run_subscriber(
     loop {
         match telemetry_sub.recv_async().await {
             Ok(sample) => {
-                let payload = sample.payload().to_bytes();
-                handlers::telemetry::handle_telemetry(&db_pool, &payload);
+                let payload = sample.payload().to_bytes().to_vec();
+                let pool = db_pool.clone();
+                let _ = tokio::task::spawn_blocking(move || {
+                    handlers::telemetry::handle_telemetry(&pool, &payload);
+                })
+                .await;
             }
             Err(e) => {
                 warn!("Telemetry subscriber channel closed: {}", e);

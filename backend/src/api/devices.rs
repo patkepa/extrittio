@@ -13,7 +13,7 @@ use crate::db::models::{Device, DeviceType, Fleet, NewDevice, UpdateDevice};
 use crate::error::AppError;
 use crate::repositories::{device_repo, firmware_repo};
 use crate::services::{command_service, device_service};
-use crate::state::AppState;
+use crate::state::{run_db, AppState};
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -168,19 +168,20 @@ async fn list_devices(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ListDevicesQuery>,
 ) -> Result<Json<Vec<DeviceResponse>>, AppError> {
-    let mut conn = state.db_pool.get()?;
+    let response = run_db(&state.db_pool, move |conn| {
+        let results = device_repo::list_devices(
+            conn,
+            params.status.as_deref(),
+            params.search.as_deref(),
+            params.fleet_id,
+        )?;
 
-    let results = device_repo::list_devices(
-        &mut conn,
-        params.status.as_deref(),
-        params.search.as_deref(),
-        params.fleet_id,
-    )?;
-
-    let response: Vec<DeviceResponse> = results
-        .into_iter()
-        .map(|(d, dt, f)| to_device_response(d, dt, f))
-        .collect();
+        Ok(results
+            .into_iter()
+            .map(|(d, dt, f)| to_device_response(d, dt, f))
+            .collect())
+    })
+    .await?;
 
     Ok(Json(response))
 }
@@ -189,39 +190,46 @@ async fn get_device(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<DeviceResponse>, AppError> {
-    let mut conn = state.db_pool.get()?;
+    let response = run_db(&state.db_pool, move |conn| {
+        let (device, device_type, fleet) = device_repo::find_device_with_joins(conn, &id)?;
+        Ok(to_device_response(device, device_type, fleet))
+    })
+    .await?;
 
-    let (device, device_type, fleet) = device_repo::find_device_with_joins(&mut conn, &id)?;
-
-    Ok(Json(to_device_response(device, device_type, fleet)))
+    Ok(Json(response))
 }
 
 async fn create_device(
     State(state): State<Arc<AppState>>,
     Json(body): Json<NewDeviceRequest>,
 ) -> Result<(StatusCode, Json<DeviceResponse>), AppError> {
-    let mut conn = state.db_pool.get()?;
+    if body.name.trim().is_empty() {
+        return Err(AppError::BadRequest("Device name must not be empty".into()));
+    }
 
     let new_id = uuid::Uuid::new_v4().to_string();
+    let id_for_read = new_id.clone();
 
-    let new_device = NewDevice {
-        id: new_id.clone(),
-        name: body.name,
-        device_type_id: body.device_type_id,
-        fleet_id: body.fleet_id,
-        location: body.location.unwrap_or_default(),
-        firmware: body.firmware.unwrap_or_else(|| "unknown".to_string()),
-    };
+    let response = run_db(&state.db_pool, move |conn| {
+        let new_device = NewDevice {
+            id: new_id,
+            name: body.name,
+            device_type_id: body.device_type_id,
+            fleet_id: body.fleet_id,
+            location: body.location.unwrap_or_default(),
+            firmware: body.firmware.unwrap_or_else(|| "unknown".to_string()),
+        };
 
-    device_service::create_device(&mut conn, &new_device)?;
+        device_service::create_device(conn, &new_device)?;
 
-    let (device, device_type, fleet) =
-        device_repo::find_device_with_joins(&mut conn, &new_id)?;
+        let (device, device_type, fleet) =
+            device_repo::find_device_with_joins(conn, &id_for_read)?;
 
-    Ok((
-        StatusCode::CREATED,
-        Json(to_device_response(device, device_type, fleet)),
-    ))
+        Ok(to_device_response(device, device_type, fleet))
+    })
+    .await?;
+
+    Ok((StatusCode::CREATED, Json(response)))
 }
 
 async fn update_device(
@@ -229,40 +237,49 @@ async fn update_device(
     Path(id): Path<String>,
     Json(body): Json<UpdateDeviceRequest>,
 ) -> Result<Json<DeviceResponse>, AppError> {
-    let mut conn = state.db_pool.get()?;
+    if let Some(ref name) = body.name {
+        if name.trim().is_empty() {
+            return Err(AppError::BadRequest("Device name must not be empty".into()));
+        }
+    }
 
-    // Verify device exists
-    let _existing = device_repo::find_device(&mut conn, &id)?;
+    let response = run_db(&state.db_pool, move |conn| {
+        // Verify device exists
+        device_repo::find_device(conn, &id)?;
 
-    let changeset = UpdateDevice {
-        name: body.name,
-        device_type_id: body.device_type_id,
-        fleet_id: body.fleet_id,
-        location: body.location,
-        firmware: body.firmware,
-        updated_at: Some(Utc::now().naive_utc()),
-        ..Default::default()
-    };
+        let changeset = UpdateDevice {
+            name: body.name,
+            device_type_id: body.device_type_id,
+            fleet_id: body.fleet_id,
+            location: body.location,
+            firmware: body.firmware,
+            updated_at: Some(Utc::now().naive_utc()),
+            ..Default::default()
+        };
 
-    device_repo::update_device(&mut conn, &id, &changeset)?;
+        device_repo::update_device(conn, &id, &changeset)?;
 
-    let (device, device_type, fleet) =
-        device_repo::find_device_with_joins(&mut conn, &id)?;
+        let (device, device_type, fleet) = device_repo::find_device_with_joins(conn, &id)?;
 
-    Ok(Json(to_device_response(device, device_type, fleet)))
+        Ok(to_device_response(device, device_type, fleet))
+    })
+    .await?;
+
+    Ok(Json(response))
 }
 
 async fn delete_device(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
-    let mut conn = state.db_pool.get()?;
-
-    let deleted = device_repo::delete_device(&mut conn, &id)?;
-
-    if !deleted {
-        return Err(AppError::NotFound(format!("Device '{id}' not found")));
-    }
+    run_db(&state.db_pool, move |conn| {
+        let deleted = device_repo::delete_device(conn, &id)?;
+        if !deleted {
+            return Err(AppError::NotFound(format!("Device '{id}' not found")));
+        }
+        Ok(())
+    })
+    .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -271,8 +288,14 @@ async fn restart_device(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
-    let mut conn = state.db_pool.get()?;
-    command_service::send_command(&mut conn, &state.zenoh_session, &id, "restart", HashMap::default()).await?;
+    command_service::send_command(
+        &state.db_pool,
+        &state.zenoh_session,
+        &id,
+        "restart",
+        HashMap::default(),
+    )
+    .await?;
     Ok(StatusCode::OK)
 }
 
@@ -281,8 +304,13 @@ async fn trigger_ota(
     Path(id): Path<String>,
     Json(body): Json<TriggerOtaRequest>,
 ) -> Result<StatusCode, AppError> {
-    let mut conn = state.db_pool.get()?;
-    device_service::trigger_ota(&mut conn, &state.zenoh_session, &id, body.firmware_update_id).await?;
+    device_service::trigger_ota(
+        &state.db_pool,
+        &state.zenoh_session,
+        &id,
+        body.firmware_update_id,
+    )
+    .await?;
     Ok(StatusCode::OK)
 }
 
@@ -306,15 +334,13 @@ async fn list_ota_deployments(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<Vec<OtaDeploymentResponse>>, AppError> {
-    let mut conn = state.db_pool.get()?;
+    let response = run_db(&state.db_pool, move |conn| {
+        // Verify device exists
+        device_repo::find_device(conn, &id)?;
 
-    // Verify device exists
-    device_repo::find_device(&mut conn, &id)?;
+        let results = firmware_repo::list_ota_deployments(conn, &id)?;
 
-    let results = firmware_repo::list_ota_deployments(&mut conn, &id)?;
-
-    Ok(Json(
-        results
+        Ok(results
             .into_iter()
             .map(|(dep, fw)| OtaDeploymentResponse {
                 id: dep.id,
@@ -326,6 +352,9 @@ async fn list_ota_deployments(
                 initiated_at: dep.initiated_at.to_string(),
                 completed_at: dep.completed_at.map(|t| t.to_string()),
             })
-            .collect(),
-    ))
+            .collect())
+    })
+    .await?;
+
+    Ok(Json(response))
 }

@@ -42,6 +42,24 @@ pub fn update_command_status(
         .execute(conn)
 }
 
+/// Bulk-update stale sent/delivered commands to "timed_out".
+pub fn timeout_stale_commands(
+    conn: &mut SqliteConnection,
+    cutoff: chrono::NaiveDateTime,
+    now: chrono::NaiveDateTime,
+) -> Result<usize, diesel::result::Error> {
+    diesel::update(
+        command_history::table
+            .filter(command_history::status.eq_any(&["sent", "delivered"]))
+            .filter(command_history::created_at.lt(cutoff)),
+    )
+    .set((
+        command_history::status.eq("timed_out"),
+        command_history::updated_at.eq(now),
+    ))
+    .execute(conn)
+}
+
 pub fn list_commands(
     conn: &mut SqliteConnection,
     device_id: &str,

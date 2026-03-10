@@ -106,3 +106,17 @@ pub fn delete_device(
     let rows = diesel::delete(devices::table.find(id)).execute(conn)?;
     Ok(rows > 0)
 }
+
+/// Bulk-update devices that haven't been seen since `cutoff` to "offline".
+pub fn mark_devices_offline(
+    conn: &mut SqliteConnection,
+    cutoff: chrono::NaiveDateTime,
+) -> Result<usize, diesel::result::Error> {
+    diesel::update(
+        devices::table
+            .filter(devices::status.ne("offline"))
+            .filter(devices::last_seen.lt(cutoff)),
+    )
+    .set(devices::status.eq("offline"))
+    .execute(conn)
+}

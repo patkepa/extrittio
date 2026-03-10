@@ -13,7 +13,7 @@ use crate::db::models::{DeviceShadow, UpdateShadow};
 use crate::error::AppError;
 use crate::repositories::{device_repo, shadow_repo};
 use crate::services::shadow_service;
-use crate::state::AppState;
+use crate::state::{run_db, AppState};
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -81,14 +81,15 @@ async fn get_shadow(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<ShadowResponse>, AppError> {
-    let mut conn = state.db_pool.get()?;
+    let response = run_db(&state.db_pool, move |conn| {
+        // Verify device exists
+        device_repo::find_device(conn, &id)?;
+        let shadow = shadow_repo::find_shadow(conn, &id)?;
+        Ok(to_shadow_response(shadow))
+    })
+    .await?;
 
-    // Verify device exists
-    device_repo::find_device(&mut conn, &id)?;
-
-    let shadow = shadow_repo::find_shadow(&mut conn, &id)?;
-
-    Ok(Json(to_shadow_response(shadow)))
+    Ok(Json(response))
 }
 
 async fn update_desired(
@@ -96,12 +97,16 @@ async fn update_desired(
     Path(id): Path<String>,
     Json(body): Json<UpdateShadowRequest>,
 ) -> Result<Json<ShadowResponse>, AppError> {
-    let mut conn = state.db_pool.get()?;
+    shadow_service::update_desired(&state.db_pool, &state.zenoh_session, &id, &body.state).await?;
 
-    shadow_service::update_desired(&mut conn, &state.zenoh_session, &id, &body.state).await?;
+    let id_clone = id;
+    let response = run_db(&state.db_pool, move |conn| {
+        let updated = shadow_repo::find_shadow(conn, &id_clone)?;
+        Ok(to_shadow_response(updated))
+    })
+    .await?;
 
-    let updated = shadow_repo::find_shadow(&mut conn, &id)?;
-    Ok(Json(to_shadow_response(updated)))
+    Ok(Json(response))
 }
 
 async fn update_reported(
@@ -109,34 +114,41 @@ async fn update_reported(
     Path(id): Path<String>,
     Json(body): Json<UpdateShadowRequest>,
 ) -> Result<Json<ShadowResponse>, AppError> {
-    let mut conn = state.db_pool.get()?;
+    let response = run_db(&state.db_pool, move |conn| {
+        shadow_service::update_reported(conn, &id, &body.state)?;
+        let updated = shadow_repo::find_shadow(conn, &id)?;
+        Ok(to_shadow_response(updated))
+    })
+    .await?;
 
-    shadow_service::update_reported(&mut conn, &id, &body.state)?;
-
-    let updated = shadow_repo::find_shadow(&mut conn, &id)?;
-    Ok(Json(to_shadow_response(updated)))
+    Ok(Json(response))
 }
 
 async fn delete_shadow(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
-    let mut conn = state.db_pool.get()?;
+    run_db(&state.db_pool, move |conn| {
+        let now = Utc::now().naive_utc();
+        let changeset = UpdateShadow {
+            desired: Some("{}".to_string()),
+            reported: Some("{}".to_string()),
+            delta: Some("{}".to_string()),
+            version: Some(1),
+            updated_at: Some(now),
+        };
 
-    let now = Utc::now().naive_utc();
-    let changeset = UpdateShadow {
-        desired: Some("{}".to_string()),
-        reported: Some("{}".to_string()),
-        delta: Some("{}".to_string()),
-        version: Some(1),
-        updated_at: Some(now),
-    };
+        let rows = shadow_repo::update_shadow(conn, &id, &changeset)?;
 
-    let rows = shadow_repo::update_shadow(&mut conn, &id, &changeset)?;
+        if rows == 0 {
+            return Err(AppError::NotFound(format!(
+                "Shadow for device '{id}' not found"
+            )));
+        }
 
-    if rows == 0 {
-        return Err(AppError::NotFound(format!("Shadow for device '{id}' not found")));
-    }
+        Ok(())
+    })
+    .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

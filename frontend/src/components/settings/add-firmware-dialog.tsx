@@ -106,11 +106,13 @@ export const AddFirmwareDialog = ({ isOpen, onClose }: AddFirmwareDialogProps) =
           <HTMLSelect
             value={selectedDeviceTypeId ?? ''}
             onChange={(e) => {
-              setSelectedDeviceTypeId(Number(e.target.value));
+              const val = e.target.value;
+              setSelectedDeviceTypeId(val ? Number(val) : null);
               setVersion('');
             }}
             fill
           >
+            <option value="">Select a device type...</option>
             {deviceTypes.map((dt) => (
               <option key={dt.id} value={dt.id}>
                 {dt.name}

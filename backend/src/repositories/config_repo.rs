@@ -24,23 +24,18 @@ pub fn upsert_config(
     config: &str,
     now: NaiveDateTime,
 ) -> Result<DeviceConfig, diesel::result::Error> {
-    let existing = find_config(conn, device_id)?;
-
-    if existing.is_some() {
-        diesel::update(device_configs::table.find(device_id))
-            .set((
-                device_configs::config.eq(config),
-                device_configs::updated_at.eq(now),
-            ))
-            .execute(conn)?;
-    } else {
-        diesel::insert_into(device_configs::table)
-            .values(&NewDeviceConfig {
-                device_id: device_id.to_string(),
-                config: config.to_string(),
-            })
-            .execute(conn)?;
-    }
+    diesel::insert_into(device_configs::table)
+        .values(&NewDeviceConfig {
+            device_id: device_id.to_string(),
+            config: config.to_string(),
+        })
+        .on_conflict(device_configs::device_id)
+        .do_update()
+        .set((
+            device_configs::config.eq(config),
+            device_configs::updated_at.eq(now),
+        ))
+        .execute(conn)?;
 
     device_configs::table
         .find(device_id)

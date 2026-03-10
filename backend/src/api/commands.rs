@@ -12,7 +12,7 @@ use crate::db::models::CommandRecord;
 use crate::error::AppError;
 use crate::repositories::{command_repo, device_repo};
 use crate::services::command_service;
-use crate::state::AppState;
+use crate::state::{run_db, AppState};
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -81,9 +81,19 @@ async fn send_command(
     Path(id): Path<String>,
     Json(body): Json<SendCommandRequest>,
 ) -> Result<(StatusCode, Json<CommandResponse>), AppError> {
+    if body.command.trim().is_empty() {
+        return Err(AppError::BadRequest("Command must not be empty".into()));
+    }
+
     let params = body.params.unwrap_or_default();
-    let mut conn = state.db_pool.get()?;
-    let record = command_service::send_command(&mut conn, &state.zenoh_session, &id, &body.command, params).await?;
+    let record = command_service::send_command(
+        &state.db_pool,
+        &state.zenoh_session,
+        &id,
+        &body.command,
+        params,
+    )
+    .await?;
     Ok((StatusCode::CREATED, Json(to_command_response(record))))
 }
 
@@ -92,19 +102,17 @@ async fn list_commands(
     Path(id): Path<String>,
     Query(params): Query<CommandsQuery>,
 ) -> Result<Json<Vec<CommandResponse>>, AppError> {
-    let mut conn = state.db_pool.get()?;
+    let response = run_db(&state.db_pool, move |conn| {
+        // Verify device exists
+        device_repo::device_exists(conn, &id)?;
 
-    // Verify device exists
-    device_repo::device_exists(&mut conn, &id)?;
+        let limit = params.limit.unwrap_or(50).min(500);
 
-    let limit = params.limit.unwrap_or(50).min(500);
+        let records = command_repo::list_commands(conn, &id, params.status.as_deref(), limit)?;
 
-    let records = command_repo::list_commands(
-        &mut conn,
-        &id,
-        params.status.as_deref(),
-        limit,
-    )?;
+        Ok(records.into_iter().map(to_command_response).collect())
+    })
+    .await?;
 
-    Ok(Json(records.into_iter().map(to_command_response).collect()))
+    Ok(Json(response))
 }
