@@ -12,6 +12,7 @@ import {
   Button,
 } from '@blueprintjs/core';
 import { navGroups, projects, currentUser } from '../../data/sidebar-data';
+import { useAuthStore } from '../../stores/auth-store';
 import { useDashboardStats } from '../../hooks/use-dashboard';
 import type { NavItem } from '../../types/navigation';
 import './app-sidebar.css';
@@ -35,6 +36,7 @@ export const AppSidebar = ({ isCollapsed = false, isMobileOpen = false, onMobile
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [selectedProject, setSelectedProject] = useState(projects[0]!);
   const [projectSwitcherOpen, setProjectSwitcherOpen] = useState(false);
+  const logout = useAuthStore((s) => s.logout);
 
   const toggleExpanded = (label: string) => {
     setExpandedItems((prev) => {
@@ -161,7 +163,7 @@ export const AppSidebar = ({ isCollapsed = false, isMobileOpen = false, onMobile
                   <div className="user-name">{currentUser.name}</div>
                   <div className="user-email">{currentUser.email}</div>
                 </div>
-                <Button icon="log-out" minimal small className="user-logout" title="Sign out" />
+                <Button icon="log-out" minimal small className="user-logout" title="Sign out" onClick={logout} />
               </div>
             </div>
             <div className="sidebar-env-switcher">
