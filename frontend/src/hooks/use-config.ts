@@ -1,9 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getDeviceConfig, updateDeviceConfig } from "../api/configs";
+import { queryKeys } from "./query-keys";
 
 export function useDeviceConfig(deviceId: string | null) {
   return useQuery({
-    queryKey: ["device-config", deviceId],
+    queryKey: queryKeys.config.detail(deviceId ?? ""),
     queryFn: () => getDeviceConfig(deviceId!),
     enabled: !!deviceId,
     staleTime: 30_000,
@@ -22,7 +23,7 @@ export function useUpdateDeviceConfig() {
     }) => updateDeviceConfig(deviceId, config),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: ["device-config", variables.deviceId],
+        queryKey: queryKeys.config.detail(variables.deviceId),
       });
     },
   });

@@ -14,10 +14,11 @@ import {
   uploadFirmwareUpdate,
 } from "../api/firmware-updates";
 import type { UploadFirmwareRequest } from "../api/firmware-updates";
+import { queryKeys } from "./query-keys";
 
 export function useFirmwareUpdates(params?: FirmwareUpdatesParams) {
   return useQuery({
-    queryKey: ["firmware-updates", params],
+    queryKey: queryKeys.firmware.list(params),
     queryFn: () => getFirmwareUpdates(params),
     staleTime: 30_000,
   });
@@ -25,7 +26,7 @@ export function useFirmwareUpdates(params?: FirmwareUpdatesParams) {
 
 export function useNextVersion(deviceTypeId: number | null) {
   return useQuery({
-    queryKey: ["firmware-next-version", deviceTypeId],
+    queryKey: queryKeys.firmware.nextVersion(deviceTypeId ?? 0),
     queryFn: () => getNextVersion(deviceTypeId!),
     enabled: !!deviceTypeId,
     staleTime: 5_000,
@@ -34,7 +35,7 @@ export function useNextVersion(deviceTypeId: number | null) {
 
 export function useOtaDeployments(deviceId: string) {
   return useQuery({
-    queryKey: ["ota-deployments", deviceId],
+    queryKey: queryKeys.firmware.deployments(deviceId),
     queryFn: () => getOtaDeployments(deviceId),
     staleTime: 10_000,
   });
@@ -46,7 +47,7 @@ export function useCreateFirmwareUpdate() {
     mutationFn: (body: CreateFirmwareUpdateRequest) =>
       createFirmwareUpdate(body),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["firmware-updates"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.firmware.all });
       void queryClient.invalidateQueries({
         queryKey: ["firmware-next-version"],
       });
@@ -59,7 +60,7 @@ export function useUploadFirmwareUpdate() {
   return useMutation({
     mutationFn: (req: UploadFirmwareRequest) => uploadFirmwareUpdate(req),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["firmware-updates"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.firmware.all });
       void queryClient.invalidateQueries({
         queryKey: ["firmware-next-version"],
       });
@@ -72,7 +73,7 @@ export function useDeleteFirmwareUpdate() {
   return useMutation({
     mutationFn: (id: number) => deleteFirmwareUpdate(id),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["firmware-updates"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.firmware.all });
       void queryClient.invalidateQueries({
         queryKey: ["firmware-next-version"],
       });
@@ -92,10 +93,10 @@ export function useTriggerOta() {
     }) => triggerOta(deviceId, body),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: ["device-shadow", variables.deviceId],
+        queryKey: queryKeys.shadow.detail(variables.deviceId),
       });
       void queryClient.invalidateQueries({
-        queryKey: ["ota-deployments", variables.deviceId],
+        queryKey: queryKeys.firmware.deployments(variables.deviceId),
       });
     },
   });

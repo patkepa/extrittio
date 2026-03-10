@@ -12,10 +12,11 @@ import {
   deleteDevice,
   restartDevice,
 } from "../api/devices";
+import { queryKeys } from "./query-keys";
 
 export function useDevices(params?: ListDevicesParams) {
   return useQuery({
-    queryKey: ["devices", params],
+    queryKey: queryKeys.devices.list(params),
     queryFn: () => getDevices(params),
     staleTime: 30_000,
   });
@@ -23,7 +24,7 @@ export function useDevices(params?: ListDevicesParams) {
 
 export function useDevice(id: string | null) {
   return useQuery({
-    queryKey: ["device", id],
+    queryKey: queryKeys.devices.detail(id ?? ""),
     queryFn: () => getDevice(id!),
     enabled: !!id,
     staleTime: 30_000,
@@ -35,9 +36,9 @@ export function useCreateDevice() {
   return useMutation({
     mutationFn: (body: CreateDeviceRequest) => createDevice(body),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["devices"] });
-      void queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
-      void queryClient.invalidateQueries({ queryKey: ["fleets"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.devices.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.stats });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.fleets.all });
     },
   });
 }
@@ -48,7 +49,7 @@ export function useUpdateDevice() {
     mutationFn: ({ id, body }: { id: string; body: UpdateDeviceRequest }) =>
       updateDevice(id, body),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["devices"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.devices.all });
       void queryClient.invalidateQueries({ queryKey: ["device"] });
     },
   });
@@ -59,9 +60,9 @@ export function useDeleteDevice() {
   return useMutation({
     mutationFn: (id: string) => deleteDevice(id),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["devices"] });
-      void queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
-      void queryClient.invalidateQueries({ queryKey: ["fleets"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.devices.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.stats });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.fleets.all });
     },
   });
 }
@@ -71,7 +72,7 @@ export function useRestartDevice() {
   return useMutation({
     mutationFn: (id: string) => restartDevice(id),
     onSuccess: (_data, id) => {
-      void queryClient.invalidateQueries({ queryKey: ["command-history", id] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.commands.list(id) });
     },
   });
 }

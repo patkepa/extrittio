@@ -1,10 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { SendCommandRequest, CommandsParams } from "../types/api";
 import { sendCommand, getCommandHistory } from "../api/commands";
+import { queryKeys } from "./query-keys";
 
 export function useCommandHistory(deviceId: string | null, params?: CommandsParams) {
   return useQuery({
-    queryKey: ["command-history", deviceId, params],
+    queryKey: queryKeys.commands.list(deviceId ?? "", params),
     queryFn: () => getCommandHistory(deviceId!, params),
     enabled: !!deviceId,
     staleTime: 5_000,
@@ -19,7 +20,7 @@ export function useSendCommand() {
       sendCommand(deviceId, body),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
-        queryKey: ["command-history", variables.deviceId],
+        queryKey: queryKeys.commands.list(variables.deviceId),
       });
     },
   });

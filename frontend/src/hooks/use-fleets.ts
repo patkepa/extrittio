@@ -1,10 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { CreateFleetRequest } from "../types/api";
 import { getFleets, createFleet, deleteFleet } from "../api/fleets";
+import { queryKeys } from "./query-keys";
 
 export function useFleets() {
   return useQuery({
-    queryKey: ["fleets"],
+    queryKey: queryKeys.fleets.all,
     queryFn: getFleets,
     staleTime: 60_000,
   });
@@ -15,7 +16,7 @@ export function useCreateFleet() {
   return useMutation({
     mutationFn: (body: CreateFleetRequest) => createFleet(body),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["fleets"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.fleets.all });
     },
   });
 }
@@ -25,8 +26,8 @@ export function useDeleteFleet() {
   return useMutation({
     mutationFn: (id: number) => deleteFleet(id),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["fleets"] });
-      void queryClient.invalidateQueries({ queryKey: ["devices"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.fleets.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.devices.all });
     },
   });
 }
