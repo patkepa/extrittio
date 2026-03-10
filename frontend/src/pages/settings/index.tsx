@@ -3,6 +3,7 @@ import { ProfileSettings } from './profile';
 import { DeviceTypesSettings } from './device-types';
 import { FleetsSettings } from './fleets';
 import { UsersSettings } from './users';
+import { FirmwareSettings } from './firmware';
 
 export const Settings = () => (
   <Routes>
@@ -11,6 +12,7 @@ export const Settings = () => (
     <Route path="device-types" element={<DeviceTypesSettings />} />
     <Route path="fleets" element={<FleetsSettings />} />
     <Route path="users" element={<UsersSettings />} />
+    <Route path="firmware" element={<FirmwareSettings />} />
     <Route path="*" element={<Navigate to="profile" replace />} />
   </Routes>
 );

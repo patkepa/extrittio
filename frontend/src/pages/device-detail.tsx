@@ -7,9 +7,11 @@ import { TelemetryTab } from '../components/devices/telemetry-tab';
 import { LogsTab } from '../components/devices/logs-tab';
 import { ConfigTab } from '../components/devices/config-tab';
 import { ShadowTab } from '../components/devices/shadow-tab';
+import { OtaTab } from '../components/devices/ota-tab';
+import { CommandsTab } from '../components/devices/commands-tab';
 import './device-detail.css';
 
-const VALID_TABS = ['overview', 'telemetry', 'logs', 'config', 'shadow'];
+const VALID_TABS = ['overview', 'telemetry', 'logs', 'config', 'shadow', 'commands', 'ota'];
 
 export const DeviceDetail = () => {
   const { deviceId } = useParams<{ deviceId: string }>();
@@ -64,15 +66,19 @@ export const DeviceDetail = () => {
           <Tab id="logs" title="Logs" />
           <Tab id="config" title="Config" />
           <Tab id="shadow" title="Shadow" />
+          <Tab id="commands" title="Commands" />
+          <Tab id="ota" title="OTA" />
         </Tabs>
       </div>
 
       <div className="detail-tab-content">
         {currentTab === 'overview' && <OverviewTab device={device} />}
         {currentTab === 'telemetry' && <TelemetryTab deviceId={device.id} />}
-        {currentTab === 'logs' && <LogsTab />}
-        {currentTab === 'config' && <ConfigTab />}
+        {currentTab === 'logs' && <LogsTab deviceId={device.id} />}
+        {currentTab === 'config' && <ConfigTab deviceId={device.id} />}
         {currentTab === 'shadow' && <ShadowTab deviceId={device.id} />}
+        {currentTab === 'commands' && <CommandsTab deviceId={device.id} />}
+        {currentTab === 'ota' && <OtaTab device={device} />}
       </div>
     </div>
   );

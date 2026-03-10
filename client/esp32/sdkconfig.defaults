@@ -1,8 +1,8 @@
 # Increase main task stack size (Zenoh needs more stack)
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=32768
 
-# Use larger single-app partition to fit Zenoh + protobuf
-CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+# Use OTA-capable partition table with two app slots for firmware updates
+CONFIG_PARTITION_TABLE_TWO_OTA=y
 
 # Enable pthread support (required by Zenoh runtime)
 CONFIG_PTHREAD_TASK_STACK_SIZE_DEFAULT=8192

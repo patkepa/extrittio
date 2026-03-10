@@ -1,7 +1,7 @@
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 
-use super::schema::{device_types, devices, fleets, telemetry, device_shadows, users, server_config};
+use super::schema::{command_history, device_configs, device_logs, device_types, devices, firmware_blobs, firmware_updates, fleets, ota_deployments, telemetry, device_shadows, users, server_config};
 
 // ---------------------------------------------------------------------------
 // Device Types
@@ -20,6 +20,80 @@ pub struct DeviceType {
 #[diesel(table_name = device_types)]
 pub struct NewDeviceType {
     pub name: String,
+}
+
+// ---------------------------------------------------------------------------
+// Firmware Updates
+// ---------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug, Clone)]
+#[diesel(table_name = firmware_updates)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct FirmwareUpdate {
+    pub id: i32,
+    pub device_type_id: i32,
+    pub version: String,
+    pub url: String,
+    pub description: Option<String>,
+    pub created_at: NaiveDateTime,
+    pub sha256: Option<String>,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = firmware_updates)]
+pub struct NewFirmwareUpdate {
+    pub device_type_id: i32,
+    pub version: String,
+    pub url: String,
+    pub description: Option<String>,
+    pub sha256: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Firmware Blobs
+// ---------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug)]
+#[diesel(table_name = firmware_blobs)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct FirmwareBlob {
+    pub firmware_update_id: i32,
+    pub data: Vec<u8>,
+    pub size: i32,
+    pub filename: String,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = firmware_blobs)]
+pub struct NewFirmwareBlob {
+    pub firmware_update_id: i32,
+    pub data: Vec<u8>,
+    pub size: i32,
+    pub filename: String,
+}
+
+// ---------------------------------------------------------------------------
+// OTA Deployments
+// ---------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug, Clone)]
+#[diesel(table_name = ota_deployments)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct OtaDeployment {
+    pub id: i32,
+    pub device_id: String,
+    pub firmware_update_id: i32,
+    pub status: String,
+    pub error_message: Option<String>,
+    pub initiated_at: NaiveDateTime,
+    pub completed_at: Option<NaiveDateTime>,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = ota_deployments)]
+pub struct NewOtaDeployment {
+    pub device_id: String,
+    pub firmware_update_id: i32,
 }
 
 // ---------------------------------------------------------------------------
@@ -187,4 +261,74 @@ pub struct ServerConfigEntry {
 pub struct NewServerConfigEntry {
     pub key: String,
     pub value: String,
+}
+
+// ---------------------------------------------------------------------------
+// Device Logs
+// ---------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug)]
+#[diesel(table_name = device_logs)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct DeviceLog {
+    pub id: i32,
+    pub device_id: String,
+    pub level: String,
+    pub message: String,
+    pub created_at: NaiveDateTime,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = device_logs)]
+pub struct NewDeviceLog {
+    pub device_id: String,
+    pub level: String,
+    pub message: String,
+}
+
+// ---------------------------------------------------------------------------
+// Device Configs
+// ---------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug)]
+#[diesel(table_name = device_configs)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct DeviceConfig {
+    pub device_id: String,
+    pub config: String,
+    pub updated_at: NaiveDateTime,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = device_configs)]
+pub struct NewDeviceConfig {
+    pub device_id: String,
+    pub config: String,
+}
+
+// ---------------------------------------------------------------------------
+// Command History
+// ---------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug)]
+#[diesel(table_name = command_history)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct CommandRecord {
+    pub id: String,
+    pub device_id: String,
+    pub command: String,
+    pub params: String,
+    pub status: String,
+    pub response_payload: Option<String>,
+    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = command_history)]
+pub struct NewCommandRecord {
+    pub id: String,
+    pub device_id: String,
+    pub command: String,
+    pub params: String,
 }

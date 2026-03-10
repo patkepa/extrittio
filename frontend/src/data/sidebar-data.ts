@@ -44,6 +44,11 @@ export const navGroups: NavGroup[] = [
             icon: 'people',
             href: '/settings/users',
           },
+          {
+            label: 'Firmware',
+            icon: 'upload',
+            href: '/settings/firmware',
+          },
         ],
       },
     ],

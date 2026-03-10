@@ -8,10 +8,12 @@ use chrono::Utc;
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tracing::warn;
 use std::sync::Arc;
 
 use crate::db::models::{DeviceShadow, UpdateShadow};
 use crate::db::schema::{device_shadows, devices};
+use crate::shadow_utils::compute_shadow_delta;
 use crate::state::AppState;
 
 // ---------------------------------------------------------------------------
@@ -38,27 +40,6 @@ pub struct UpdateShadowRequest {
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn compute_delta(desired: &Value, reported: &Value) -> Value {
-    let desired_obj = desired.as_object();
-    let reported_obj = reported.as_object();
-
-    match (desired_obj, reported_obj) {
-        (Some(d), Some(r)) => {
-            let mut delta = serde_json::Map::new();
-            for (key, val) in d {
-                match r.get(key) {
-                    Some(reported_val) if reported_val == val => {}
-                    _ => {
-                        delta.insert(key.clone(), val.clone());
-                    }
-                }
-            }
-            Value::Object(delta)
-        }
-        _ => desired.clone(),
-    }
-}
-
 fn merge_json(existing: &Value, patch: &serde_json::Map<String, Value>) -> Value {
     let mut obj = existing.as_object().cloned().unwrap_or_default();
     for (key, val) in patch {
@@ -75,11 +56,11 @@ fn to_shadow_response(shadow: DeviceShadow) -> ShadowResponse {
     ShadowResponse {
         device_id: shadow.device_id,
         desired: serde_json::from_str(&shadow.desired)
-            .unwrap_or(Value::Object(Default::default())),
+            .unwrap_or(Value::Object(serde_json::Map::default())),
         reported: serde_json::from_str(&shadow.reported)
-            .unwrap_or(Value::Object(Default::default())),
+            .unwrap_or(Value::Object(serde_json::Map::default())),
         delta: serde_json::from_str(&shadow.delta)
-            .unwrap_or(Value::Object(Default::default())),
+            .unwrap_or(Value::Object(serde_json::Map::default())),
         version: shadow.version,
         updated_at: shadow.updated_at.to_string(),
     }
@@ -160,20 +141,23 @@ async fn update_desired(
         })?;
 
     let current_desired: Value =
-        serde_json::from_str(&shadow.desired).unwrap_or(Value::Object(Default::default()));
+        serde_json::from_str(&shadow.desired).unwrap_or(Value::Object(serde_json::Map::default()));
     let current_reported: Value =
-        serde_json::from_str(&shadow.reported).unwrap_or(Value::Object(Default::default()));
+        serde_json::from_str(&shadow.reported).unwrap_or(Value::Object(serde_json::Map::default()));
 
     let new_desired = merge_json(&current_desired, &body.state);
-    let new_delta = compute_delta(&new_desired, &current_reported);
+    let new_delta = compute_shadow_delta(&new_desired, &current_reported);
     let now = Utc::now().naive_utc();
 
+    let desired_str = serde_json::to_string(&new_desired).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let delta_str = serde_json::to_string(&new_delta).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
     let changeset = UpdateShadow {
-        desired: Some(serde_json::to_string(&new_desired).unwrap()),
-        delta: Some(serde_json::to_string(&new_delta).unwrap()),
+        desired: Some(desired_str),
+        delta: Some(delta_str.clone()),
         version: Some(shadow.version + 1),
         updated_at: Some(now),
-        ..Default::default()
+        ..UpdateShadow::default()
     };
 
     diesel::update(device_shadows::table.find(&id))
@@ -182,16 +166,16 @@ async fn update_desired(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Publish delta to device via Zenoh if non-empty
-    if let Some(delta_obj) = new_delta.as_object() {
-        if !delta_obj.is_empty() {
-            let delta_msg = extrittio_proto::extrittio::ShadowDelta {
-                device_id: id.clone(),
-                delta_json: serde_json::to_string(&new_delta).unwrap(),
-                version: (shadow.version + 1) as i64,
-            };
-            let payload = prost::Message::encode_to_vec(&delta_msg);
-            let topic = format!("extrittio/devices/{}/shadow/delta", id);
-            let _ = state.zenoh_session.put(&topic, payload).await;
+    if new_delta.as_object().is_some_and(|obj| !obj.is_empty()) {
+        let delta_msg = extrittio_proto::extrittio::ShadowDelta {
+            device_id: id.clone(),
+            delta_json: delta_str,
+            version: i64::from(shadow.version + 1),
+        };
+        let payload = prost::Message::encode_to_vec(&delta_msg);
+        let topic = format!("extrittio/devices/{id}/shadow/delta");
+        if let Err(e) = state.zenoh_session.put(&topic, payload).await {
+            warn!("Failed to publish shadow delta to device {}: {}", id, e);
         }
     }
 
@@ -225,20 +209,23 @@ async fn update_reported(
         })?;
 
     let current_desired: Value =
-        serde_json::from_str(&shadow.desired).unwrap_or(Value::Object(Default::default()));
+        serde_json::from_str(&shadow.desired).unwrap_or(Value::Object(serde_json::Map::default()));
     let current_reported: Value =
-        serde_json::from_str(&shadow.reported).unwrap_or(Value::Object(Default::default()));
+        serde_json::from_str(&shadow.reported).unwrap_or(Value::Object(serde_json::Map::default()));
 
     let new_reported = merge_json(&current_reported, &body.state);
-    let new_delta = compute_delta(&current_desired, &new_reported);
+    let new_delta = compute_shadow_delta(&current_desired, &new_reported);
     let now = Utc::now().naive_utc();
 
+    let reported_str = serde_json::to_string(&new_reported).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let delta_str = serde_json::to_string(&new_delta).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
     let changeset = UpdateShadow {
-        reported: Some(serde_json::to_string(&new_reported).unwrap()),
-        delta: Some(serde_json::to_string(&new_delta).unwrap()),
+        reported: Some(reported_str),
+        delta: Some(delta_str),
         version: Some(shadow.version + 1),
         updated_at: Some(now),
-        ..Default::default()
+        ..UpdateShadow::default()
     };
 
     diesel::update(device_shadows::table.find(&id))
@@ -271,7 +258,6 @@ async fn delete_shadow(
         delta: Some("{}".to_string()),
         version: Some(1),
         updated_at: Some(now),
-        ..Default::default()
     };
 
     let rows = diesel::update(device_shadows::table.find(&id))

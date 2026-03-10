@@ -1,22 +1,78 @@
-const logEntries = [
-  { time: '14:32:01', level: 'INFO', message: 'Device heartbeat received' },
-  { time: '14:30:45', level: 'INFO', message: 'Telemetry data uploaded (128 bytes)' },
-  { time: '14:28:12', level: 'WARN', message: 'Signal strength below threshold' },
-  { time: '14:25:00', level: 'INFO', message: 'Configuration sync completed' },
-  { time: '14:20:33', level: 'ERROR', message: 'Connection timeout — retrying' },
-  { time: '14:18:15', level: 'INFO', message: 'Firmware check: up to date' },
+import { useState } from 'react';
+import { Callout, HTMLSelect, Spinner, Tag } from '@blueprintjs/core';
+import { useDeviceLogs } from '../../hooks/use-logs';
+
+interface LogsTabProps {
+  deviceId: string;
+}
+
+const LEVEL_OPTIONS = [
+  { label: 'All Levels', value: '' },
+  { label: 'DEBUG', value: 'DEBUG' },
+  { label: 'INFO', value: 'INFO' },
+  { label: 'WARN', value: 'WARN' },
+  { label: 'ERROR', value: 'ERROR' },
 ];
 
-export const LogsTab = () => (
-  <div className="logs-tab">
-    {logEntries.map((entry, i) => (
-      <div key={i} className="log-entry">
-        <span className="log-time mono-data">{entry.time}</span>
-        <span className={`log-level log-level--${entry.level.toLowerCase()} mono-data`}>
-          {entry.level}
+const LEVEL_INTENT: Record<string, 'none' | 'primary' | 'warning' | 'danger' | 'success'> = {
+  DEBUG: 'none',
+  INFO: 'primary',
+  WARN: 'warning',
+  ERROR: 'danger',
+};
+
+export const LogsTab = ({ deviceId }: LogsTabProps) => {
+  const [levelFilter, setLevelFilter] = useState('');
+  const params = {
+    limit: 200,
+    ...(levelFilter ? { level: levelFilter } : {}),
+  };
+  const { data: logs = [], isLoading } = useDeviceLogs(deviceId, params);
+
+  if (isLoading) return <Spinner />;
+
+  return (
+    <div className="logs-tab">
+      <div className="logs-toolbar">
+        <HTMLSelect
+          value={levelFilter}
+          onChange={(e) => setLevelFilter(e.target.value)}
+          options={LEVEL_OPTIONS}
+          minimal
+        />
+        <span className="mono-data" style={{ fontSize: 12, opacity: 0.5 }}>
+          {logs.length} entries
         </span>
-        <span className="log-message">{entry.message}</span>
       </div>
-    ))}
-  </div>
-);
+
+      {logs.length === 0 ? (
+        <Callout icon="info-sign" intent="primary" style={{ marginTop: 12 }}>
+          No log entries found{levelFilter ? ` for level ${levelFilter}` : ''}.
+        </Callout>
+      ) : (
+        <div className="logs-list">
+          {logs.map((entry) => {
+            const time = new Date(entry.created_at).toLocaleTimeString('en-GB', {
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+            });
+            return (
+              <div key={entry.id} className="log-entry">
+                <span className="log-time mono-data">{time}</span>
+                <Tag
+                  minimal
+                  intent={LEVEL_INTENT[entry.level] ?? 'none'}
+                  className="log-level-tag"
+                >
+                  {entry.level}
+                </Tag>
+                <span className="log-message">{entry.message}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};

@@ -5,9 +5,11 @@ pub struct AppConfig {
     pub database_url: String,
     pub allowed_origin: String,
     pub offline_timeout_secs: u64,
+    pub command_timeout_secs: u64,
 }
 
 impl AppConfig {
+    #[must_use] 
     pub fn from_env() -> Self {
         Self {
             port: env::var("PORT")
@@ -20,6 +22,10 @@ impl AppConfig {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(300),
+            command_timeout_secs: env::var("COMMAND_TIMEOUT_SECS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(30),
         }
     }
 }

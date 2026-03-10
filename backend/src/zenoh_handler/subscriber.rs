@@ -4,17 +4,23 @@ use prost::Message;
 use std::sync::Arc;
 use tracing::{info, warn};
 
-use crate::db::models::{Device, DeviceShadow, NewTelemetryRecord, UpdateDevice, UpdateShadow};
-use crate::db::schema::{device_shadows, devices, telemetry};
+use crate::db::models::{CommandRecord, Device, DeviceShadow, NewDeviceLog, NewTelemetryRecord, UpdateDevice, UpdateShadow};
+use crate::db::schema::{command_history, device_logs, device_shadows, devices, ota_deployments, telemetry};
+use crate::shadow_utils::compute_shadow_delta;
 use crate::state::DbPool;
 
-use extrittio_proto::extrittio::{DeviceHeartbeat, DeviceTelemetry, ShadowDelta, ShadowGet, ShadowReport};
+use extrittio_proto::extrittio::{DeviceCommandResponse, DeviceHeartbeat, DeviceLog, DeviceTelemetry, ShadowDelta, ShadowGet, ShadowReport};
 
 /// Start zenoh subscribers for telemetry and heartbeat topics.
 ///
 /// Spawns one subscriber handler in a background tokio task and runs the other
 /// in the current task. Both loop indefinitely, receiving messages and
 /// dispatching them to the appropriate handler function.
+///
+/// # Errors
+///
+/// Returns an error if any Zenoh subscriber declaration fails.
+#[allow(clippy::too_many_lines)]
 pub async fn run_subscriber(
     session: Arc<zenoh::Session>,
     db_pool: DbPool,
@@ -35,7 +41,15 @@ pub async fn run_subscriber(
         .declare_subscriber("extrittio/devices/*/shadow/get")
         .await?;
 
-    info!("Zenoh subscribers declared for telemetry, heartbeat, and shadow topics");
+    let log_sub = session
+        .declare_subscriber("extrittio/devices/*/logs")
+        .await?;
+
+    let cmd_response_sub = session
+        .declare_subscriber("extrittio/devices/*/commands/response")
+        .await?;
+
+    info!("Zenoh subscribers declared for telemetry, heartbeat, shadow, log, and command response topics");
 
     // Spawn heartbeat handler in a background task
     let heartbeat_pool = db_pool.clone();
@@ -89,6 +103,40 @@ pub async fn run_subscriber(
         }
     });
 
+    // Spawn log handler
+    let log_pool = db_pool.clone();
+    tokio::spawn(async move {
+        loop {
+            match log_sub.recv_async().await {
+                Ok(sample) => {
+                    let payload = sample.payload().to_bytes();
+                    handle_device_log(&log_pool, &payload);
+                }
+                Err(e) => {
+                    warn!("Log subscriber channel closed: {}", e);
+                    break;
+                }
+            }
+        }
+    });
+
+    // Spawn command response handler
+    let cmd_response_pool = db_pool.clone();
+    tokio::spawn(async move {
+        loop {
+            match cmd_response_sub.recv_async().await {
+                Ok(sample) => {
+                    let payload = sample.payload().to_bytes();
+                    handle_command_response(&cmd_response_pool, &payload);
+                }
+                Err(e) => {
+                    warn!("Command response subscriber channel closed: {}", e);
+                    break;
+                }
+            }
+        }
+    });
+
     // Run telemetry handler in the current task
     loop {
         match telemetry_sub.recv_async().await {
@@ -106,7 +154,7 @@ pub async fn run_subscriber(
     Ok(())
 }
 
-/// Decode a DeviceTelemetry protobuf message, insert a telemetry record, and
+/// Decode a `DeviceTelemetry` protobuf message, insert a telemetry record, and
 /// update the device's `last_seen` timestamp.
 ///
 /// Logs and drops messages from unregistered devices or malformed payloads.
@@ -203,7 +251,7 @@ fn handle_telemetry(db_pool: &DbPool, payload: &[u8]) {
     );
 }
 
-/// Decode a DeviceHeartbeat protobuf message and update the device's status,
+/// Decode a `DeviceHeartbeat` protobuf message and update the device's status,
 /// firmware, uptime, and `last_seen` timestamp.
 ///
 /// Logs and drops messages from unregistered devices or malformed payloads.
@@ -258,6 +306,7 @@ fn handle_heartbeat(db_pool: &DbPool, payload: &[u8]) {
     let changeset = UpdateDevice {
         status: Some(status),
         firmware: Some(heartbeat_msg.firmware.clone()),
+        #[allow(clippy::cast_possible_truncation)]
         uptime_seconds: Some(heartbeat_msg.uptime_seconds as i32),
         last_seen: Some(now),
         updated_at: Some(now),
@@ -281,6 +330,7 @@ fn handle_heartbeat(db_pool: &DbPool, payload: &[u8]) {
     );
 }
 
+#[allow(clippy::too_many_lines)]
 fn handle_shadow_report(db_pool: &DbPool, payload: &[u8]) {
     let report = match ShadowReport::decode(payload) {
         Ok(msg) => msg,
@@ -361,9 +411,18 @@ fn handle_shadow_report(db_pool: &DbPool, payload: &[u8]) {
     let new_delta = compute_shadow_delta(&current_desired, &merged_reported);
     let now = chrono::Utc::now().naive_utc();
 
+    let Ok(reported_str) = serde_json::to_string(&merged_reported) else {
+        warn!("Failed to serialize reported state for device {}", report.device_id);
+        return;
+    };
+    let Ok(delta_str) = serde_json::to_string(&new_delta) else {
+        warn!("Failed to serialize delta for device {}", report.device_id);
+        return;
+    };
+
     let changeset = UpdateShadow {
-        reported: Some(serde_json::to_string(&merged_reported).unwrap()),
-        delta: Some(serde_json::to_string(&new_delta).unwrap()),
+        reported: Some(reported_str),
+        delta: Some(delta_str),
         version: Some(shadow.version + 1),
         updated_at: Some(now),
         ..Default::default()
@@ -378,6 +437,67 @@ fn handle_shadow_report(db_pool: &DbPool, payload: &[u8]) {
     }
 
     info!("Shadow report from device {}: version={}", report.device_id, shadow.version + 1);
+
+    // Update OTA deployment status if reported state contains ota.status
+    if let Some(ota_obj) = merged_reported.get("ota").and_then(|v| v.as_object())
+        && let Some(ota_status_raw) = ota_obj.get("status").and_then(|v| v.as_str())
+    {
+        // Normalize status to lowercase to avoid case-sensitivity mismatches
+        let ota_status = ota_status_raw.to_lowercase();
+        let is_terminal = ota_status == "success" || ota_status == "failed";
+        let completed_at = if is_terminal { Some(now) } else { None };
+        let error_message = ota_obj.get("error").and_then(|v| v.as_str()).map(std::string::ToString::to_string);
+
+        // Match deployment by firmware_update_id when available for precise targeting,
+        // fall back to latest non-terminal deployment otherwise
+        let fw_update_id = ota_obj
+            .get("firmware_update_id")
+            .and_then(serde_json::Value::as_i64)
+            .and_then(|id| i32::try_from(id).ok());
+
+        let deployment = if let Some(fwid) = fw_update_id {
+            ota_deployments::table
+                .filter(ota_deployments::device_id.eq(&report.device_id))
+                .filter(ota_deployments::firmware_update_id.eq(fwid))
+                .filter(ota_deployments::status.ne("success"))
+                .filter(ota_deployments::status.ne("failed"))
+                .order(ota_deployments::initiated_at.desc())
+                .select(ota_deployments::id)
+                .first::<i32>(&mut conn)
+                .optional()
+        } else {
+            ota_deployments::table
+                .filter(ota_deployments::device_id.eq(&report.device_id))
+                .filter(ota_deployments::status.ne("success"))
+                .filter(ota_deployments::status.ne("failed"))
+                .order(ota_deployments::initiated_at.desc())
+                .select(ota_deployments::id)
+                .first::<i32>(&mut conn)
+                .optional()
+        };
+
+        if let Ok(Some(dep_id)) = deployment {
+            if is_terminal {
+                if let Err(e) = diesel::update(ota_deployments::table.find(dep_id))
+                    .set((
+                        ota_deployments::status.eq(&ota_status),
+                        ota_deployments::error_message.eq(error_message),
+                        ota_deployments::completed_at.eq(completed_at),
+                    ))
+                    .execute(&mut conn)
+                {
+                    warn!("Failed to update OTA deployment status: {}", e);
+                } else {
+                    info!("OTA deployment {} for device {} -> {}", dep_id, report.device_id, ota_status);
+                }
+            } else if let Err(e) = diesel::update(ota_deployments::table.find(dep_id))
+                .set(ota_deployments::status.eq(&ota_status))
+                .execute(&mut conn)
+            {
+                warn!("Failed to update OTA deployment status: {}", e);
+            }
+        }
+    }
 }
 
 async fn handle_shadow_get(db_pool: &DbPool, session: &zenoh::Session, payload: &[u8]) {
@@ -411,17 +531,15 @@ async fn handle_shadow_get(db_pool: &DbPool, session: &zenoh::Session, payload: 
 
     // Only send delta if non-empty
     let delta: serde_json::Value = serde_json::from_str(&shadow.delta).unwrap_or_default();
-    if let Some(obj) = delta.as_object() {
-        if obj.is_empty() {
-            info!("Shadow get from device {}: already in sync", get_msg.device_id);
-            return;
-        }
+    if delta.as_object().is_some_and(serde_json::Map::is_empty) {
+        info!("Shadow get from device {}: already in sync", get_msg.device_id);
+        return;
     }
 
     let delta_msg = ShadowDelta {
         device_id: get_msg.device_id.clone(),
         delta_json: shadow.delta,
-        version: shadow.version as i64,
+        version: i64::from(shadow.version),
     };
 
     let response_payload = prost::Message::encode_to_vec(&delta_msg);
@@ -434,23 +552,162 @@ async fn handle_shadow_get(db_pool: &DbPool, session: &zenoh::Session, payload: 
     info!("Shadow get from device {}: sent delta", get_msg.device_id);
 }
 
-fn compute_shadow_delta(desired: &serde_json::Value, reported: &serde_json::Value) -> serde_json::Value {
-    let desired_obj = desired.as_object();
-    let reported_obj = reported.as_object();
-
-    match (desired_obj, reported_obj) {
-        (Some(d), Some(r)) => {
-            let mut delta = serde_json::Map::new();
-            for (key, val) in d {
-                match r.get(key) {
-                    Some(reported_val) if reported_val == val => {}
-                    _ => {
-                        delta.insert(key.clone(), val.clone());
-                    }
-                }
-            }
-            serde_json::Value::Object(delta)
+fn handle_command_response(db_pool: &DbPool, payload: &[u8]) {
+    let response = match DeviceCommandResponse::decode(payload) {
+        Ok(msg) => msg,
+        Err(e) => {
+            warn!("Failed to decode DeviceCommandResponse: {}", e);
+            return;
         }
-        _ => desired.clone(),
+    };
+
+    if response.correlation_id.is_empty() {
+        warn!("Received command response with empty correlation_id");
+        return;
     }
+
+    let mut conn = match db_pool.get() {
+        Ok(c) => c,
+        Err(e) => {
+            warn!("Failed to get DB connection: {}", e);
+            return;
+        }
+    };
+
+    // Look up the command record by correlation_id
+    let record: CommandRecord = match command_history::table
+        .find(&response.correlation_id)
+        .select(CommandRecord::as_select())
+        .first(&mut conn)
+    {
+        Ok(r) => r,
+        Err(diesel::result::Error::NotFound) => {
+            warn!(
+                "No command record found for correlation_id: {}",
+                response.correlation_id
+            );
+            return;
+        }
+        Err(e) => {
+            warn!("DB error looking up command record: {}", e);
+            return;
+        }
+    };
+
+    // Verify device_id matches
+    if record.device_id != response.device_id {
+        warn!(
+            "Command response device_id mismatch: expected {}, got {}",
+            record.device_id, response.device_id
+        );
+        return;
+    }
+
+    // Only update if command is still in a non-terminal state
+    let terminal_states = ["succeeded", "failed", "timed_out"];
+    if terminal_states.contains(&record.status.as_str()) {
+        info!(
+            "Command {} already in terminal state '{}', ignoring response",
+            response.correlation_id, record.status
+        );
+        return;
+    }
+
+    // Map response status
+    let new_status = match response.status.as_str() {
+        "ack" => "delivered",
+        "succeeded" => "succeeded",
+        "failed" => "failed",
+        other => {
+            warn!("Unknown command response status '{}', treating as 'delivered'", other);
+            "delivered"
+        }
+    };
+
+    let response_payload = if response.payload.is_empty() {
+        None
+    } else {
+        Some(response.payload)
+    };
+
+    let now = Utc::now().naive_utc();
+
+    if let Err(e) = diesel::update(command_history::table.find(&response.correlation_id))
+        .set((
+            command_history::status.eq(new_status),
+            command_history::response_payload.eq(&response_payload),
+            command_history::updated_at.eq(now),
+        ))
+        .execute(&mut conn)
+    {
+        warn!("Failed to update command record: {}", e);
+        return;
+    }
+
+    info!(
+        "Command {} for device {} -> {}",
+        response.correlation_id, response.device_id, new_status
+    );
 }
+
+fn handle_device_log(db_pool: &DbPool, payload: &[u8]) {
+    let log_msg = match DeviceLog::decode(payload) {
+        Ok(msg) => msg,
+        Err(e) => {
+            warn!("Failed to decode DeviceLog: {}", e);
+            return;
+        }
+    };
+
+    let mut conn = match db_pool.get() {
+        Ok(c) => c,
+        Err(e) => {
+            warn!("Failed to get DB connection: {}", e);
+            return;
+        }
+    };
+
+    // Verify device exists
+    let device_exists = devices::table
+        .find(&log_msg.device_id)
+        .select(Device::as_select())
+        .first(&mut conn)
+        .optional();
+
+    match device_exists {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            warn!("Dropping log from unregistered device: {}", log_msg.device_id);
+            return;
+        }
+        Err(e) => {
+            warn!("DB error checking device: {}", e);
+            return;
+        }
+    }
+
+    let valid_levels = ["DEBUG", "INFO", "WARN", "ERROR"];
+    let level = log_msg.level.to_uppercase();
+    let level = if valid_levels.contains(&level.as_str()) {
+        level
+    } else {
+        "INFO".to_string()
+    };
+
+    let new_log = NewDeviceLog {
+        device_id: log_msg.device_id.clone(),
+        level,
+        message: log_msg.message.clone(),
+    };
+
+    if let Err(e) = diesel::insert_into(device_logs::table)
+        .values(&new_log)
+        .execute(&mut conn)
+    {
+        warn!("Failed to insert device log: {}", e);
+        return;
+    }
+
+    info!("Log from device {}: [{}] {}", log_msg.device_id, new_log.level, log_msg.message);
+}
+

@@ -5,15 +5,19 @@ use axum::{
     Json, Router,
 };
 use chrono::{NaiveDateTime, Utc};
+use serde_json::Value;
 use diesel::prelude::*;
-use prost::Message;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
+use tracing::warn;
 
-use crate::db::models::{Device, DeviceType, Fleet, NewDevice, NewDeviceShadow, UpdateDevice};
-use crate::db::schema::{device_shadows, device_types, devices, fleets};
+use crate::api::commands;
+use crate::db::models::{Device, DeviceShadow, DeviceType, Fleet, FirmwareUpdate, NewDevice, NewDeviceShadow, NewOtaDeployment, OtaDeployment, UpdateDevice, UpdateShadow};
+use crate::db::schema::{device_shadows, device_types, devices, firmware_updates, fleets, ota_deployments};
+use crate::shadow_utils::compute_shadow_delta;
 use crate::state::AppState;
-use extrittio_proto::extrittio::DeviceCommand;
+use extrittio_proto::extrittio::ShadowDelta;
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -59,6 +63,11 @@ pub struct ListDevicesQuery {
     pub fleet_id: Option<i32>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct TriggerOtaRequest {
+    pub firmware_update_id: i32,
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -72,11 +81,11 @@ fn format_uptime(seconds: i32) -> String {
     let minutes = (seconds % 3600) / 60;
 
     if days > 0 {
-        format!("{}d {}h", days, hours)
+        format!("{days}d {hours}h")
     } else if hours > 0 {
-        format!("{}h", hours)
+        format!("{hours}h")
     } else {
-        format!("{}m", minutes)
+        format!("{minutes}m")
     }
 }
 
@@ -95,21 +104,21 @@ fn format_last_seen(last_seen: Option<NaiveDateTime>) -> String {
                 if mins == 1 {
                     "1 minute ago".to_string()
                 } else {
-                    format!("{} minutes ago", mins)
+                    format!("{mins} minutes ago")
                 }
             } else if secs < 86400 {
                 let hours = secs / 3600;
                 if hours == 1 {
                     "1 hour ago".to_string()
                 } else {
-                    format!("{} hours ago", hours)
+                    format!("{hours} hours ago")
                 }
             } else {
                 let days = secs / 86400;
                 if days == 1 {
                     "1 day ago".to_string()
                 } else {
-                    format!("{} days ago", days)
+                    format!("{days} days ago")
                 }
             }
         }
@@ -148,6 +157,11 @@ pub fn router() -> Router<Arc<AppState>> {
             get(get_device).put(update_device).delete(delete_device),
         )
         .route("/api/devices/{id}/restart", post(restart_device))
+        .route("/api/devices/{id}/ota", post(trigger_ota))
+        .route(
+            "/api/devices/{id}/ota-deployments",
+            get(list_ota_deployments),
+        )
 }
 
 // ---------------------------------------------------------------------------
@@ -173,7 +187,7 @@ async fn list_devices(
     }
 
     if let Some(ref search) = params.search {
-        let pattern = format!("%{}%", search);
+        let pattern = format!("%{search}%");
         query = query.filter(
             devices::name
                 .like(pattern.clone())
@@ -356,13 +370,22 @@ async fn restart_device(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
+    commands::send_command_internal(&state, &id, "restart", HashMap::default()).await?;
+    Ok(StatusCode::OK)
+}
+
+async fn trigger_ota(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Json(body): Json<TriggerOtaRequest>,
+) -> Result<StatusCode, StatusCode> {
     let mut conn = state
         .db_pool
         .get()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // Verify device exists
-    let _device: Device = devices::table
+    // Verify device exists and get its device_type_id
+    let device: Device = devices::table
         .find(&id)
         .select(Device::as_select())
         .first(&mut conn)
@@ -371,20 +394,155 @@ async fn restart_device(
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         })?;
 
-    // Build and publish the DeviceCommand protobuf via zenoh
-    let command = DeviceCommand {
-        command: "restart".to_string(),
-        params: Default::default(),
+    // Fetch firmware update
+    let fw: FirmwareUpdate = firmware_updates::table
+        .find(body.firmware_update_id)
+        .select(FirmwareUpdate::as_select())
+        .first(&mut conn)
+        .map_err(|e| match e {
+            diesel::result::Error::NotFound => StatusCode::NOT_FOUND,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        })?;
+
+    if fw.device_type_id != device.device_type_id {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    // Load current shadow
+    let shadow: DeviceShadow = device_shadows::table
+        .find(&id)
+        .select(DeviceShadow::as_select())
+        .first(&mut conn)
+        .map_err(|e| match e {
+            diesel::result::Error::NotFound => StatusCode::NOT_FOUND,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        })?;
+
+    // Build OTA desired state: merge firmware update info into desired
+    let mut desired: Value =
+        serde_json::from_str(&shadow.desired).unwrap_or(Value::Object(serde_json::Map::default()));
+    let desired_obj = desired
+        .as_object_mut()
+        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let mut ota_payload = serde_json::json!({
+        "firmware_version": fw.version,
+        "firmware_url": fw.url,
+        "firmware_update_id": fw.id,
+    });
+    if let Some(ref hash) = fw.sha256 {
+        ota_payload["sha256"] = Value::String(hash.clone());
+    }
+    desired_obj.insert("ota".to_string(), ota_payload);
+
+    let reported: Value =
+        serde_json::from_str(&shadow.reported).unwrap_or(Value::Object(serde_json::Map::default()));
+
+    // Compute delta using shared utility
+    let new_delta = compute_shadow_delta(&desired, &reported);
+    let now = Utc::now().naive_utc();
+
+    let desired_str = serde_json::to_string(&desired).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let delta_str = serde_json::to_string(&new_delta).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let changeset = UpdateShadow {
+        desired: Some(desired_str),
+        delta: Some(delta_str),
+        version: Some(shadow.version + 1),
+        updated_at: Some(now),
+        ..Default::default()
     };
 
-    let payload = command.encode_to_vec();
-    let topic = format!("extrittio/devices/{}/commands", id);
-
-    state
-        .zenoh_session
-        .put(&topic, payload)
-        .await
+    diesel::update(device_shadows::table.find(&id))
+        .set(&changeset)
+        .execute(&mut conn)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    // Create OTA deployment record for tracking
+    let new_deployment = NewOtaDeployment {
+        device_id: id.clone(),
+        firmware_update_id: fw.id,
+    };
+    diesel::insert_into(ota_deployments::table)
+        .values(&new_deployment)
+        .execute(&mut conn)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Publish delta to device via Zenoh
+    if new_delta.as_object().is_some_and(|obj| !obj.is_empty()) {
+        let delta_json = serde_json::to_string(&new_delta).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let delta_msg = ShadowDelta {
+            device_id: id.clone(),
+            delta_json,
+            version: i64::from(shadow.version + 1),
+        };
+        let payload = prost::Message::encode_to_vec(&delta_msg);
+        let topic = format!("extrittio/devices/{id}/shadow/delta");
+        if let Err(e) = state.zenoh_session.put(&topic, payload).await {
+            warn!("Failed to publish OTA shadow delta to device {}: {}", id, e);
+            return Err(StatusCode::BAD_GATEWAY);
+        }
+    }
+
     Ok(StatusCode::OK)
+}
+
+// ---------------------------------------------------------------------------
+// OTA Deployment history
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+pub struct OtaDeploymentResponse {
+    pub id: i32,
+    pub device_id: String,
+    pub firmware_update_id: i32,
+    pub firmware_version: String,
+    pub status: String,
+    pub error_message: Option<String>,
+    pub initiated_at: String,
+    pub completed_at: Option<String>,
+}
+
+async fn list_ota_deployments(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<OtaDeploymentResponse>>, StatusCode> {
+    let mut conn = state
+        .db_pool
+        .get()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Verify device exists
+    devices::table
+        .find(&id)
+        .select(devices::id)
+        .first::<String>(&mut conn)
+        .map_err(|e| match e {
+            diesel::result::Error::NotFound => StatusCode::NOT_FOUND,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        })?;
+
+    let results: Vec<(OtaDeployment, FirmwareUpdate)> = ota_deployments::table
+        .inner_join(firmware_updates::table)
+        .filter(ota_deployments::device_id.eq(&id))
+        .select((OtaDeployment::as_select(), FirmwareUpdate::as_select()))
+        .order(ota_deployments::initiated_at.desc())
+        .load(&mut conn)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(
+        results
+            .into_iter()
+            .map(|(dep, fw)| OtaDeploymentResponse {
+                id: dep.id,
+                device_id: dep.device_id,
+                firmware_update_id: dep.firmware_update_id,
+                firmware_version: fw.version,
+                status: dep.status,
+                error_message: dep.error_message,
+                initiated_at: dep.initiated_at.to_string(),
+                completed_at: dep.completed_at.map(|t| t.to_string()),
+            })
+            .collect(),
+    ))
 }

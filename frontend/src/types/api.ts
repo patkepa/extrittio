@@ -99,6 +99,112 @@ export interface TelemetryParams {
 }
 
 // ---------------------------------------------------------------------------
+// Firmware Updates
+// ---------------------------------------------------------------------------
+
+export interface FirmwareUpdate {
+  id: number;
+  device_type_id: number;
+  device_type_name: string;
+  version: string;
+  url: string;
+  sha256: string | null;
+  description: string | null;
+  created_at: string;
+  has_blob: boolean;
+  file_size: number | null;
+  filename: string | null;
+}
+
+export interface CreateFirmwareUpdateRequest {
+  device_type_id: number;
+  version?: string;
+  url: string;
+  sha256?: string;
+  description?: string;
+}
+
+export interface FirmwareUpdatesParams {
+  device_type_id?: number;
+}
+
+export interface NextVersionResponse {
+  next_version: string;
+}
+
+export interface TriggerOtaRequest {
+  firmware_update_id: number;
+}
+
+// ---------------------------------------------------------------------------
+// OTA Deployments
+// ---------------------------------------------------------------------------
+
+export interface OtaDeployment {
+  id: number;
+  device_id: string;
+  firmware_update_id: number;
+  firmware_version: string;
+  status: string;
+  error_message: string | null;
+  initiated_at: string;
+  completed_at: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Device Logs
+// ---------------------------------------------------------------------------
+
+export interface LogRecord {
+  id: number;
+  device_id: string;
+  level: string;
+  message: string;
+  created_at: string;
+}
+
+export interface LogsParams {
+  limit?: number;
+  level?: string;
+  since?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Device Configs
+// ---------------------------------------------------------------------------
+
+export interface DeviceConfigResponse {
+  device_id: string;
+  config: Record<string, unknown>;
+  updated_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Device Commands
+// ---------------------------------------------------------------------------
+
+export interface CommandRecord {
+  id: string;
+  device_id: string;
+  command: string;
+  params: Record<string, string>;
+  status: 'sent' | 'delivered' | 'succeeded' | 'failed' | 'timed_out';
+  response_payload: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SendCommandRequest {
+  command: string;
+  params?: Record<string, string>;
+}
+
+export interface CommandsParams {
+  limit?: number;
+  status?: string;
+}
+
+// ---------------------------------------------------------------------------
 // Device Shadows
 // ---------------------------------------------------------------------------
 

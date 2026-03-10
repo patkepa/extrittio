@@ -19,8 +19,6 @@ import './app-sidebar.css';
 
 interface AppSidebarProps {
   isCollapsed?: boolean;
-  isMobileOpen?: boolean;
-  onMobileClose?: () => void;
 }
 
 const envColors: Record<string, string> = {
@@ -29,7 +27,7 @@ const envColors: Record<string, string> = {
   'Production': 'hsl(var(--success))',
 };
 
-export const AppSidebar = ({ isCollapsed = false, isMobileOpen = false, onMobileClose }: AppSidebarProps) => {
+export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { data: dashboardStats } = useDashboardStats();
@@ -57,7 +55,6 @@ export const AppSidebar = ({ isCollapsed = false, isMobileOpen = false, onMobile
 
   const handleNavigation = (href: string) => {
     navigate(href);
-    onMobileClose?.();
   };
 
   const navBadges: Record<string, { count?: number; status?: 'online' | 'warning' | 'offline' }> = {
@@ -126,7 +123,7 @@ export const AppSidebar = ({ isCollapsed = false, isMobileOpen = false, onMobile
   };
 
   return (
-    <div className={`app-sidebar ${isCollapsed ? 'collapsed' : ''} ${isMobileOpen ? 'mobile-open' : ''}`}>
+    <div className={`app-sidebar ${isCollapsed ? 'collapsed' : ''}`}>
       {/* Header */}
       <div className="sidebar-header">
         <div className="sidebar-logo">

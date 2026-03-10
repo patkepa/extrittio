@@ -25,7 +25,7 @@ impl CustomizeConnection<SqliteConnection, diesel::r2d2::Error> for SqlitePragma
     fn on_acquire(&self, conn: &mut SqliteConnection) -> Result<(), diesel::r2d2::Error> {
         diesel::sql_query("PRAGMA foreign_keys = ON")
             .execute(conn)
-            .map_err(|e| diesel::r2d2::Error::QueryError(e))?;
+            .map_err(diesel::r2d2::Error::QueryError)?;
         Ok(())
     }
 }
@@ -158,6 +158,13 @@ async fn main() {
     let offline_timeout = config.offline_timeout_secs;
     tokio::spawn(async move {
         background::run_offline_checker(checker_pool, offline_timeout).await;
+    });
+
+    // Spawn command timeout checker task
+    let cmd_timeout_pool = db_pool.clone();
+    let cmd_timeout = config.command_timeout_secs;
+    tokio::spawn(async move {
+        background::run_command_timeout_checker(cmd_timeout_pool, cmd_timeout).await;
     });
 
     // Set up CORS

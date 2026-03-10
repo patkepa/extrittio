@@ -69,10 +69,6 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
           </NavbarGroup>
 
           <NavbarGroup align="right">
-            <div className="notification-wrapper">
-              <Button icon="notifications" minimal title="Notifications" />
-              <span className="notification-badge">3</span>
-            </div>
             <Button
               icon="search"
               minimal
