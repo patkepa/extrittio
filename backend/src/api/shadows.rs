@@ -5,15 +5,13 @@ use axum::{
     Json, Router,
 };
 use chrono::Utc;
-use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
 
 use crate::db::models::{DeviceShadow, UpdateShadow};
-use crate::db::schema::devices;
 use crate::error::AppError;
-use crate::repositories::shadow_repo;
+use crate::repositories::{device_repo, shadow_repo};
 use crate::services::shadow_service;
 use crate::state::AppState;
 
@@ -86,10 +84,7 @@ async fn get_shadow(
     let mut conn = state.db_pool.get()?;
 
     // Verify device exists
-    devices::table
-        .find(&id)
-        .select(devices::id)
-        .first::<String>(&mut conn)?;
+    device_repo::find_device(&mut conn, &id)?;
 
     let shadow = shadow_repo::find_shadow(&mut conn, &id)?;
 

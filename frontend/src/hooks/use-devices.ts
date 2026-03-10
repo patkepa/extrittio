@@ -50,7 +50,7 @@ export function useUpdateDevice() {
       updateDevice(id, body),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.devices.all });
-      void queryClient.invalidateQueries({ queryKey: ["device"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.devices.detailAll });
     },
   });
 }

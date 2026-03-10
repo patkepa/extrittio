@@ -26,6 +26,22 @@ pub fn find_command(
         .first(conn)
 }
 
+pub fn update_command_status(
+    conn: &mut SqliteConnection,
+    id: &str,
+    status: &str,
+    response_payload: Option<&str>,
+    updated_at: chrono::NaiveDateTime,
+) -> Result<usize, diesel::result::Error> {
+    diesel::update(command_history::table.find(id))
+        .set((
+            command_history::status.eq(status),
+            command_history::response_payload.eq(response_payload),
+            command_history::updated_at.eq(updated_at),
+        ))
+        .execute(conn)
+}
+
 pub fn list_commands(
     conn: &mut SqliteConnection,
     device_id: &str,

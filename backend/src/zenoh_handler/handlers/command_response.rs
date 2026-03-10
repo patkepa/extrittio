@@ -1,9 +1,7 @@
 use chrono::Utc;
-use diesel::prelude::*;
 use prost::Message;
 use tracing::{info, warn};
 
-use crate::db::schema::command_history;
 use crate::repositories::command_repo;
 use crate::state::DbPool;
 
@@ -90,14 +88,13 @@ pub fn handle_command_response(db_pool: &DbPool, payload: &[u8]) {
 
     let now = Utc::now().naive_utc();
 
-    if let Err(e) = diesel::update(command_history::table.find(&response.correlation_id))
-        .set((
-            command_history::status.eq(new_status),
-            command_history::response_payload.eq(&response_payload),
-            command_history::updated_at.eq(now),
-        ))
-        .execute(&mut conn)
-    {
+    if let Err(e) = command_repo::update_command_status(
+        &mut conn,
+        &response.correlation_id,
+        new_status,
+        response_payload.as_deref(),
+        now,
+    ) {
         warn!("Failed to update command record: {}", e);
         return;
     }

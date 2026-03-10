@@ -2,6 +2,7 @@ export const queryKeys = {
   devices: {
     all: ["devices"] as const,
     list: (params?: unknown) => ["devices", params] as const,
+    detailAll: ["device"] as const,
     detail: (id: string) => ["device", id] as const,
   },
   dashboard: {
@@ -28,6 +29,7 @@ export const queryKeys = {
   firmware: {
     all: ["firmware-updates"] as const,
     list: (params?: unknown) => ["firmware-updates", params] as const,
+    nextVersionAll: ["firmware-next-version"] as const,
     nextVersion: (deviceTypeId: number) => ["firmware-next-version", deviceTypeId] as const,
     deployments: (deviceId: string) => ["ota-deployments", deviceId] as const,
   },

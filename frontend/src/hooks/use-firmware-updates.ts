@@ -49,7 +49,7 @@ export function useCreateFirmwareUpdate() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.firmware.all });
       void queryClient.invalidateQueries({
-        queryKey: ["firmware-next-version"],
+        queryKey: queryKeys.firmware.nextVersionAll,
       });
     },
   });
@@ -62,7 +62,7 @@ export function useUploadFirmwareUpdate() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.firmware.all });
       void queryClient.invalidateQueries({
-        queryKey: ["firmware-next-version"],
+        queryKey: queryKeys.firmware.nextVersionAll,
       });
     },
   });
@@ -75,7 +75,7 @@ export function useDeleteFirmwareUpdate() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.firmware.all });
       void queryClient.invalidateQueries({
-        queryKey: ["firmware-next-version"],
+        queryKey: queryKeys.firmware.nextVersionAll,
       });
     },
   });

@@ -124,6 +124,46 @@ pub fn list_ota_deployments(
         .load(conn)
 }
 
+/// Find the ID of the active (non-terminal) OTA deployment for the given device,
+/// optionally filtered by firmware_update_id for precise targeting.
+pub fn find_active_ota_deployment(
+    conn: &mut SqliteConnection,
+    device_id: &str,
+    firmware_update_id: Option<i32>,
+) -> Result<Option<i32>, diesel::result::Error> {
+    let mut query = ota_deployments::table
+        .filter(ota_deployments::device_id.eq(device_id))
+        .filter(ota_deployments::status.ne("success"))
+        .filter(ota_deployments::status.ne("failed"))
+        .order(ota_deployments::initiated_at.desc())
+        .select(ota_deployments::id)
+        .into_boxed();
+
+    if let Some(fwid) = firmware_update_id {
+        query = query.filter(ota_deployments::firmware_update_id.eq(fwid));
+    }
+
+    query.first(conn).optional()
+}
+
+/// Update OTA deployment status. If terminal (success/failed), also set
+/// completed_at and optional error_message.
+pub fn update_ota_deployment_status(
+    conn: &mut SqliteConnection,
+    deployment_id: i32,
+    status: &str,
+    error_message: Option<&str>,
+    completed_at: Option<chrono::NaiveDateTime>,
+) -> Result<usize, diesel::result::Error> {
+    diesel::update(ota_deployments::table.find(deployment_id))
+        .set((
+            ota_deployments::status.eq(status),
+            ota_deployments::error_message.eq(error_message),
+            ota_deployments::completed_at.eq(completed_at),
+        ))
+        .execute(conn)
+}
+
 pub fn insert_ota_deployment(
     conn: &mut SqliteConnection,
     deployment: &NewOtaDeployment,

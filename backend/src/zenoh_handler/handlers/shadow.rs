@@ -1,10 +1,8 @@
-use diesel::prelude::*;
 use prost::Message;
 use std::sync::Arc;
 use tracing::{info, warn};
 
-use crate::db::schema::ota_deployments;
-use crate::repositories::{device_repo, shadow_repo};
+use crate::repositories::{device_repo, firmware_repo, shadow_repo};
 use crate::services::shadow_service;
 use crate::state::DbPool;
 
@@ -12,7 +10,6 @@ use extrittio_proto::extrittio::{ShadowGet, ShadowReport};
 
 /// Decode a `ShadowReport` protobuf message, merge the reported state into the
 /// device shadow, and update OTA deployment status if applicable.
-#[allow(clippy::too_many_lines)]
 pub fn handle_shadow_report(db_pool: &DbPool, payload: &[u8]) {
     let report = match ShadowReport::decode(payload) {
         Ok(msg) => msg,
@@ -113,49 +110,26 @@ pub fn handle_shadow_report(db_pool: &DbPool, payload: &[u8]) {
             .and_then(serde_json::Value::as_i64)
             .and_then(|id| i32::try_from(id).ok());
 
-        let deployment = if let Some(fwid) = fw_update_id {
-            ota_deployments::table
-                .filter(ota_deployments::device_id.eq(&report.device_id))
-                .filter(ota_deployments::firmware_update_id.eq(fwid))
-                .filter(ota_deployments::status.ne("success"))
-                .filter(ota_deployments::status.ne("failed"))
-                .order(ota_deployments::initiated_at.desc())
-                .select(ota_deployments::id)
-                .first::<i32>(&mut conn)
-                .optional()
-        } else {
-            ota_deployments::table
-                .filter(ota_deployments::device_id.eq(&report.device_id))
-                .filter(ota_deployments::status.ne("success"))
-                .filter(ota_deployments::status.ne("failed"))
-                .order(ota_deployments::initiated_at.desc())
-                .select(ota_deployments::id)
-                .first::<i32>(&mut conn)
-                .optional()
-        };
+        let deployment =
+            firmware_repo::find_active_ota_deployment(&mut conn, &report.device_id, fw_update_id);
 
         if let Ok(Some(dep_id)) = deployment {
-            if is_terminal {
-                if let Err(e) = diesel::update(ota_deployments::table.find(dep_id))
-                    .set((
-                        ota_deployments::status.eq(&ota_status),
-                        ota_deployments::error_message.eq(error_message),
-                        ota_deployments::completed_at.eq(completed_at),
-                    ))
-                    .execute(&mut conn)
-                {
-                    warn!("Failed to update OTA deployment status: {}", e);
-                } else {
+            match firmware_repo::update_ota_deployment_status(
+                &mut conn,
+                dep_id,
+                &ota_status,
+                error_message.as_deref(),
+                completed_at,
+            ) {
+                Ok(_) => {
                     info!(
                         "OTA deployment {} for device {} -> {}",
                         dep_id, report.device_id, ota_status
                     );
                 }
-            } else if let Err(e) = diesel::update(ota_deployments::table.find(dep_id))
-                .set(ota_deployments::status.eq(&ota_status))
-                .execute(&mut conn)
-            {
-                warn!("Failed to update OTA deployment status: {}", e);
+                Err(e) => {
+                    warn!("Failed to update OTA deployment status: {}", e);
+                }
             }
         }
     }
