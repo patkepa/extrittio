@@ -11,8 +11,9 @@ use serde_json::Value;
 use std::sync::Arc;
 
 use crate::db::models::{DeviceShadow, UpdateShadow};
-use crate::db::schema::{device_shadows, devices};
+use crate::db::schema::devices;
 use crate::error::AppError;
+use crate::repositories::shadow_repo;
 use crate::shadow_utils::compute_shadow_delta;
 use crate::state::AppState;
 
@@ -102,10 +103,7 @@ async fn get_shadow(
         .select(devices::id)
         .first::<String>(&mut conn)?;
 
-    let shadow: DeviceShadow = device_shadows::table
-        .find(&id)
-        .select(DeviceShadow::as_select())
-        .first(&mut conn)?;
+    let shadow = shadow_repo::find_shadow(&mut conn, &id)?;
 
     Ok(Json(to_shadow_response(shadow)))
 }
@@ -117,10 +115,7 @@ async fn update_desired(
 ) -> Result<Json<ShadowResponse>, AppError> {
     let mut conn = state.db_pool.get()?;
 
-    let shadow: DeviceShadow = device_shadows::table
-        .find(&id)
-        .select(DeviceShadow::as_select())
-        .first(&mut conn)?;
+    let shadow = shadow_repo::find_shadow(&mut conn, &id)?;
 
     let current_desired: Value =
         serde_json::from_str(&shadow.desired).unwrap_or(Value::Object(serde_json::Map::default()));
@@ -142,9 +137,7 @@ async fn update_desired(
         ..UpdateShadow::default()
     };
 
-    diesel::update(device_shadows::table.find(&id))
-        .set(&changeset)
-        .execute(&mut conn)?;
+    shadow_repo::update_shadow(&mut conn, &id, &changeset)?;
 
     // Publish delta to device via Zenoh if non-empty
     if new_delta.as_object().is_some_and(|obj| !obj.is_empty()) {
@@ -163,10 +156,7 @@ async fn update_desired(
     }
 
     // Re-read updated shadow
-    let updated: DeviceShadow = device_shadows::table
-        .find(&id)
-        .select(DeviceShadow::as_select())
-        .first(&mut conn)?;
+    let updated = shadow_repo::find_shadow(&mut conn, &id)?;
 
     Ok(Json(to_shadow_response(updated)))
 }
@@ -178,10 +168,7 @@ async fn update_reported(
 ) -> Result<Json<ShadowResponse>, AppError> {
     let mut conn = state.db_pool.get()?;
 
-    let shadow: DeviceShadow = device_shadows::table
-        .find(&id)
-        .select(DeviceShadow::as_select())
-        .first(&mut conn)?;
+    let shadow = shadow_repo::find_shadow(&mut conn, &id)?;
 
     let current_desired: Value =
         serde_json::from_str(&shadow.desired).unwrap_or(Value::Object(serde_json::Map::default()));
@@ -203,14 +190,9 @@ async fn update_reported(
         ..UpdateShadow::default()
     };
 
-    diesel::update(device_shadows::table.find(&id))
-        .set(&changeset)
-        .execute(&mut conn)?;
+    shadow_repo::update_shadow(&mut conn, &id, &changeset)?;
 
-    let updated: DeviceShadow = device_shadows::table
-        .find(&id)
-        .select(DeviceShadow::as_select())
-        .first(&mut conn)?;
+    let updated = shadow_repo::find_shadow(&mut conn, &id)?;
 
     Ok(Json(to_shadow_response(updated)))
 }
@@ -230,9 +212,7 @@ async fn delete_shadow(
         updated_at: Some(now),
     };
 
-    let rows = diesel::update(device_shadows::table.find(&id))
-        .set(&changeset)
-        .execute(&mut conn)?;
+    let rows = shadow_repo::update_shadow(&mut conn, &id, &changeset)?;
 
     if rows == 0 {
         return Err(AppError::NotFound(format!("Shadow for device '{id}' not found")));
