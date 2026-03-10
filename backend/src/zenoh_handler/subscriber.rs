@@ -4,12 +4,12 @@ use prost::Message;
 use std::sync::Arc;
 use tracing::{info, warn};
 
-use crate::db::models::{Device, DeviceShadow, NewTelemetryRecord, UpdateDevice, UpdateShadow};
-use crate::db::schema::{device_shadows, devices, ota_deployments, telemetry};
+use crate::db::models::{Device, DeviceShadow, NewDeviceLog, NewTelemetryRecord, UpdateDevice, UpdateShadow};
+use crate::db::schema::{device_logs, device_shadows, devices, ota_deployments, telemetry};
 use crate::shadow_utils::compute_shadow_delta;
 use crate::state::DbPool;
 
-use extrittio_proto::extrittio::{DeviceHeartbeat, DeviceTelemetry, ShadowDelta, ShadowGet, ShadowReport};
+use extrittio_proto::extrittio::{DeviceHeartbeat, DeviceLog, DeviceTelemetry, ShadowDelta, ShadowGet, ShadowReport};
 
 /// Start zenoh subscribers for telemetry and heartbeat topics.
 ///
@@ -36,7 +36,11 @@ pub async fn run_subscriber(
         .declare_subscriber("extrittio/devices/*/shadow/get")
         .await?;
 
-    info!("Zenoh subscribers declared for telemetry, heartbeat, and shadow topics");
+    let log_sub = session
+        .declare_subscriber("extrittio/devices/*/logs")
+        .await?;
+
+    info!("Zenoh subscribers declared for telemetry, heartbeat, shadow, and log topics");
 
     // Spawn heartbeat handler in a background task
     let heartbeat_pool = db_pool.clone();
@@ -84,6 +88,23 @@ pub async fn run_subscriber(
                 }
                 Err(e) => {
                     warn!("Shadow get subscriber channel closed: {}", e);
+                    break;
+                }
+            }
+        }
+    });
+
+    // Spawn log handler
+    let log_pool = db_pool.clone();
+    tokio::spawn(async move {
+        loop {
+            match log_sub.recv_async().await {
+                Ok(sample) => {
+                    let payload = sample.payload().to_bytes();
+                    handle_device_log(&log_pool, &payload);
+                }
+                Err(e) => {
+                    warn!("Log subscriber channel closed: {}", e);
                     break;
                 }
             }
@@ -494,5 +515,66 @@ async fn handle_shadow_get(db_pool: &DbPool, session: &zenoh::Session, payload: 
     }
 
     info!("Shadow get from device {}: sent delta", get_msg.device_id);
+}
+
+fn handle_device_log(db_pool: &DbPool, payload: &[u8]) {
+    let log_msg = match DeviceLog::decode(payload) {
+        Ok(msg) => msg,
+        Err(e) => {
+            warn!("Failed to decode DeviceLog: {}", e);
+            return;
+        }
+    };
+
+    let mut conn = match db_pool.get() {
+        Ok(c) => c,
+        Err(e) => {
+            warn!("Failed to get DB connection: {}", e);
+            return;
+        }
+    };
+
+    // Verify device exists
+    let device_exists = devices::table
+        .find(&log_msg.device_id)
+        .select(Device::as_select())
+        .first(&mut conn)
+        .optional();
+
+    match device_exists {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            warn!("Dropping log from unregistered device: {}", log_msg.device_id);
+            return;
+        }
+        Err(e) => {
+            warn!("DB error checking device: {}", e);
+            return;
+        }
+    }
+
+    let valid_levels = ["DEBUG", "INFO", "WARN", "ERROR"];
+    let level = log_msg.level.to_uppercase();
+    let level = if valid_levels.contains(&level.as_str()) {
+        level
+    } else {
+        "INFO".to_string()
+    };
+
+    let new_log = NewDeviceLog {
+        device_id: log_msg.device_id.clone(),
+        level,
+        message: log_msg.message.clone(),
+    };
+
+    if let Err(e) = diesel::insert_into(device_logs::table)
+        .values(&new_log)
+        .execute(&mut conn)
+    {
+        warn!("Failed to insert device log: {}", e);
+        return;
+    }
+
+    info!("Log from device {}: [{}] {}", log_msg.device_id, new_log.level, log_msg.message);
 }
 

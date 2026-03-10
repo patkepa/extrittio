@@ -152,6 +152,34 @@ export interface OtaDeployment {
 }
 
 // ---------------------------------------------------------------------------
+// Device Logs
+// ---------------------------------------------------------------------------
+
+export interface LogRecord {
+  id: number;
+  device_id: string;
+  level: string;
+  message: string;
+  created_at: string;
+}
+
+export interface LogsParams {
+  limit?: number;
+  level?: string;
+  since?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Device Configs
+// ---------------------------------------------------------------------------
+
+export interface DeviceConfigResponse {
+  device_id: string;
+  config: Record<string, unknown>;
+  updated_at: string;
+}
+
+// ---------------------------------------------------------------------------
 // Device Shadows
 // ---------------------------------------------------------------------------
 

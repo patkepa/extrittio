@@ -1,8 +1,10 @@
+pub mod configs;
 pub mod dashboard;
 pub mod device_types;
 pub mod devices;
 pub mod firmware_updates;
 pub mod fleets;
+pub mod logs;
 pub mod shadows;
 pub mod telemetry;
 
@@ -20,4 +22,6 @@ pub fn router() -> Router<Arc<AppState>> {
         .merge(fleets::router())
         .merge(shadows::router())
         .merge(firmware_updates::router())
+        .merge(logs::router())
+        .merge(configs::router())
 }

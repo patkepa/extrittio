@@ -58,6 +58,96 @@
   padding: 16px;
 }
 
+/* Logs tab */
+.logs-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.logs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.log-entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.log-entry:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.log-time {
+  flex-shrink: 0;
+  font-size: 12px;
+  opacity: 0.5;
+  min-width: 70px;
+}
+
+.log-level-tag {
+  flex-shrink: 0;
+  min-width: 56px;
+  text-align: center;
+  font-size: 11px !important;
+}
+
+.log-message {
+  flex: 1;
+  word-break: break-word;
+}
+
+/* Config tab */
+.config-table {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.config-row {
+  display: grid;
+  grid-template-columns: 1fr 2fr 40px;
+  align-items: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.config-row:last-child {
+  border-bottom: none;
+}
+
+.config-row.config-header {
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 12px;
+}
+
+.config-key {
+  font-size: 13px;
+}
+
+.config-value {
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.config-add-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  align-items: flex-start;
+}
+
+.config-add-form .bp6-input-group {
+  flex: 1;
+}
+
 /* Animations */
 @keyframes fadeIn {
   from { opacity: 0; }

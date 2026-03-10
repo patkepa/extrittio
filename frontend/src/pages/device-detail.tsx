@@ -72,8 +72,8 @@ export const DeviceDetail = () => {
       <div className="detail-tab-content">
         {currentTab === 'overview' && <OverviewTab device={device} />}
         {currentTab === 'telemetry' && <TelemetryTab deviceId={device.id} />}
-        {currentTab === 'logs' && <LogsTab />}
-        {currentTab === 'config' && <ConfigTab />}
+        {currentTab === 'logs' && <LogsTab deviceId={device.id} />}
+        {currentTab === 'config' && <ConfigTab deviceId={device.id} />}
         {currentTab === 'shadow' && <ShadowTab deviceId={device.id} />}
         {currentTab === 'ota' && <OtaTab device={device} />}
       </div>

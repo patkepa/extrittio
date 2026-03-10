@@ -1,7 +1,7 @@
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 
-use super::schema::{device_types, devices, firmware_blobs, firmware_updates, fleets, ota_deployments, telemetry, device_shadows};
+use super::schema::{device_configs, device_logs, device_types, devices, firmware_blobs, firmware_updates, fleets, ota_deployments, telemetry, device_shadows};
 
 // ---------------------------------------------------------------------------
 // Device Types
@@ -220,4 +220,47 @@ pub struct UpdateShadow {
     pub delta: Option<String>,
     pub version: Option<i32>,
     pub updated_at: Option<NaiveDateTime>,
+}
+
+// ---------------------------------------------------------------------------
+// Device Logs
+// ---------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug)]
+#[diesel(table_name = device_logs)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct DeviceLog {
+    pub id: i32,
+    pub device_id: String,
+    pub level: String,
+    pub message: String,
+    pub created_at: NaiveDateTime,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = device_logs)]
+pub struct NewDeviceLog {
+    pub device_id: String,
+    pub level: String,
+    pub message: String,
+}
+
+// ---------------------------------------------------------------------------
+// Device Configs
+// ---------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug)]
+#[diesel(table_name = device_configs)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct DeviceConfig {
+    pub device_id: String,
+    pub config: String,
+    pub updated_at: NaiveDateTime,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = device_configs)]
+pub struct NewDeviceConfig {
+    pub device_id: String,
+    pub config: String,
 }
