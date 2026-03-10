@@ -4,12 +4,14 @@ import {
   Card,
   Elevation,
   H3,
+  H4,
   HTMLTable,
   Button,
   Callout,
   Tag,
   Spinner,
   HTMLSelect,
+  Icon,
 } from '@blueprintjs/core';
 import { useDeviceTypes } from '../../hooks/use-device-types';
 import {
@@ -89,7 +91,9 @@ export const FirmwareSettings = () => {
       <Card elevation={Elevation.TWO} className="settings-table-card">
         {firmwareUpdates.length === 0 ? (
           <div className="settings-empty">
-            <p>No firmware updates found. Add one to get started.</p>
+            <Icon icon="updated" size={48} />
+            <H4>No firmware updates</H4>
+            <p>Upload firmware to enable OTA updates</p>
           </div>
         ) : (
           <HTMLTable interactive className="settings-table">

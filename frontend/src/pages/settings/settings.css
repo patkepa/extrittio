@@ -101,12 +101,24 @@
 
 .settings-empty {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 48px 20px;
   text-align: center;
   color: hsl(var(--muted));
   font-size: 13px;
+  gap: 8px;
+}
+
+.settings-empty .bp6-icon {
+  opacity: 0.4;
+  margin-bottom: 4px;
+}
+
+.settings-empty h4 {
+  margin: 0;
+  color: hsl(var(--muted));
 }
 
 .fleet-row:hover {

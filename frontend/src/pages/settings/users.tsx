@@ -4,6 +4,7 @@ import {
   Card,
   Elevation,
   H3,
+  H4,
   HTMLTable,
   Button,
   Dialog,
@@ -12,11 +13,14 @@ import {
   FormGroup,
   InputGroup,
   Callout,
+  Spinner,
+  Icon,
 } from '@blueprintjs/core';
 import { useUsers, useCreateUser, useDeleteUser } from '../../hooks/use-users';
+import './settings.css';
 
 export const UsersSettings = () => {
-  const { data: users = [], isLoading } = useUsers();
+  const { data: users = [], isLoading, error } = useUsers();
   const createUserMutation = useCreateUser();
   const deleteUserMutation = useDeleteUser();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -38,28 +42,50 @@ export const UsersSettings = () => {
     );
   };
 
+  if (error) {
+    return (
+      <div className="settings-page">
+        <Callout intent="danger" icon="error">
+          Failed to load users. Is the backend running?
+        </Callout>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="settings-page">
+        <Spinner />
+      </div>
+    );
+  }
+
   return (
-    <div>
+    <div className="settings-page">
       <div className="page-header">
         <div>
           <H3>Users</H3>
-          <p className="page-description">Manage user accounts</p>
+          <p className="page-description">{users.length} user{users.length !== 1 ? 's' : ''}</p>
         </div>
         <Button intent="primary" icon="add" onClick={() => setIsDialogOpen(true)}>
           Add User
         </Button>
       </div>
 
-      <Card elevation={Elevation.ONE}>
-        {isLoading ? (
-          <p>Loading...</p>
+      <Card elevation={Elevation.TWO} className="settings-table-card">
+        {users.length === 0 ? (
+          <div className="settings-empty">
+            <Icon icon="people" size={48} />
+            <H4>No users found</H4>
+            <p>Add users to grant access to the platform</p>
+          </div>
         ) : (
-          <HTMLTable interactive style={{ width: '100%' }}>
+          <HTMLTable interactive className="settings-table">
             <thead>
               <tr>
                 <th>Username</th>
                 <th>Role</th>
-                <th style={{ width: 80 }}>Actions</th>
+                <th className="actions-column">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -67,7 +93,7 @@ export const UsersSettings = () => {
                 <tr key={user.id}>
                   <td><strong>{user.username}</strong></td>
                   <td>{user.role}</td>
-                  <td>
+                  <td className="actions-column">
                     <Button
                       icon="trash"
                       minimal

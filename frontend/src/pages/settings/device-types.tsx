@@ -4,6 +4,7 @@ import {
   Card,
   Elevation,
   H3,
+  H4,
   HTMLTable,
   Button,
   Dialog,
@@ -14,6 +15,7 @@ import {
   Callout,
   Tag,
   Spinner,
+  Icon,
 } from '@blueprintjs/core';
 import {
   useDeviceTypes,
@@ -79,7 +81,9 @@ export const DeviceTypesSettings = () => {
       <Card elevation={Elevation.TWO} className="settings-table-card">
         {deviceTypes.length === 0 ? (
           <div className="settings-empty">
-            <p>No device types found. Add one to get started.</p>
+            <Icon icon="cube" size={48} />
+            <H4>No device types</H4>
+            <p>Add a device type to categorize your devices</p>
           </div>
         ) : (
           <HTMLTable interactive className="settings-table">

@@ -5,6 +5,7 @@ import {
   Card,
   Elevation,
   H3,
+  H4,
   HTMLTable,
   Button,
   Dialog,
@@ -15,6 +16,7 @@ import {
   Callout,
   Tag,
   Spinner,
+  Icon,
 } from '@blueprintjs/core';
 import {
   useFleets,
@@ -81,7 +83,9 @@ export const FleetsSettings = () => {
       <Card elevation={Elevation.TWO} className="settings-table-card">
         {fleets.length === 0 ? (
           <div className="settings-empty">
-            <p>No fleets yet. Create one to start grouping devices.</p>
+            <Icon icon="group-objects" size={48} />
+            <H4>No fleets yet</H4>
+            <p>Create a fleet to start grouping devices</p>
           </div>
         ) : (
           <HTMLTable interactive className="settings-table">
