@@ -53,6 +53,39 @@
   overflow-y: auto;
 }
 
+/* Delta diff pane */
+.shadow-delta-pane {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 16px;
+}
+
+.shadow-diff {
+  font-size: 12px;
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.diff-line {
+  display: block;
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.diff-removed {
+  color: #f97583;
+  background: rgba(248, 81, 73, 0.1);
+}
+
+.diff-added {
+  color: #85e89d;
+  background: rgba(63, 185, 80, 0.1);
+}
+
 /* Wider telemetry charts on full page */
 .device-detail-page .telemetry-chart {
   padding: 16px;

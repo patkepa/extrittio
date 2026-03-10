@@ -56,10 +56,26 @@ export const ShadowTab = ({ deviceId }: ShadowTabProps) => {
       </div>
 
       {hasDelta && (
-        <div className="shadow-pane" style={{ marginTop: 12 }}>
+        <div className="shadow-pane shadow-delta-pane" style={{ marginTop: 12 }}>
           <span className="section-label">Delta</span>
-          <pre className="shadow-json mono-data">
-            {JSON.stringify(shadow.delta, null, 2)}
+          <pre className="shadow-diff mono-data">
+            {Object.entries(shadow.delta).map(([key, desiredVal]) => {
+              const reportedVal = (shadow.reported as Record<string, unknown>)[key];
+              const lines: React.ReactNode[] = [];
+              if (reportedVal !== undefined) {
+                lines.push(
+                  <span key={`${key}-old`} className="diff-line diff-removed">
+                    {`- "${key}": ${JSON.stringify(reportedVal)}`}
+                  </span>
+                );
+              }
+              lines.push(
+                <span key={`${key}-new`} className="diff-line diff-added">
+                  {`+ "${key}": ${JSON.stringify(desiredVal)}`}
+                </span>
+              );
+              return lines;
+            })}
           </pre>
         </div>
       )}
