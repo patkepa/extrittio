@@ -502,9 +502,9 @@ async fn trigger_ota(
             };
             let payload = prost::Message::encode_to_vec(&delta_msg);
             let topic = format!("extrittio/devices/{}/shadow/delta", id);
-            // FIX: Log Zenoh publish errors instead of silently discarding
             if let Err(e) = state.zenoh_session.put(&topic, payload).await {
                 warn!("Failed to publish OTA shadow delta to device {}: {}", id, e);
+                return Err(StatusCode::BAD_GATEWAY);
             }
         }
     }

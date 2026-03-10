@@ -556,8 +556,8 @@ fn handle_ota(
     );
     info!("OTA: firmware v{} installed, rebooting...", fw_version);
 
-    // Give Zenoh a moment to flush the shadow report
-    thread::sleep(Duration::from_millis(500));
+    // Give Zenoh enough time to flush the shadow report before reboot
+    thread::sleep(Duration::from_secs(2));
 
     // Reboot into the new firmware
     esp_idf_svc::hal::reset::restart();

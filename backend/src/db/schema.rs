@@ -36,6 +36,15 @@ diesel::table! {
 }
 
 diesel::table! {
+    firmware_blobs (firmware_update_id) {
+        firmware_update_id -> Integer,
+        data -> Binary,
+        size -> Integer,
+        filename -> Text,
+    }
+}
+
+diesel::table! {
     firmware_updates (id) {
         id -> Integer,
         device_type_id -> Integer,
@@ -83,6 +92,7 @@ diesel::table! {
 diesel::joinable!(device_shadows -> devices (device_id));
 diesel::joinable!(devices -> device_types (device_type_id));
 diesel::joinable!(devices -> fleets (fleet_id));
+diesel::joinable!(firmware_blobs -> firmware_updates (firmware_update_id));
 diesel::joinable!(firmware_updates -> device_types (device_type_id));
 diesel::joinable!(ota_deployments -> devices (device_id));
 diesel::joinable!(ota_deployments -> firmware_updates (firmware_update_id));
@@ -92,6 +102,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     device_shadows,
     device_types,
     devices,
+    firmware_blobs,
     firmware_updates,
     fleets,
     ota_deployments,

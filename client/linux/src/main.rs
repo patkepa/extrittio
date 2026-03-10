@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -93,6 +94,8 @@ async fn main() {
 
     let firmware_version: Arc<Mutex<String>> = Arc::new(Mutex::new("v1.0.0".to_string()));
 
+    let ota_in_progress: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+
     let start = Instant::now();
 
     // Spawn heartbeat task
@@ -142,6 +145,7 @@ async fn main() {
     let shadow_device_id = args.device_id.clone();
     let shadow_reported = reported_state.clone();
     let shadow_firmware = firmware_version.clone();
+    let shadow_ota_flag = ota_in_progress.clone();
     tokio::spawn(async move {
         let subscriber = shadow_session
             .declare_subscriber(&shadow_delta_topic)
@@ -185,12 +189,21 @@ async fn main() {
 
                                     // If OTA payload present, spawn OTA handler
                                     if let Some(ota_val) = ota_payload {
+                                        // Guard: skip if another OTA is already running
+                                        if shadow_ota_flag.compare_exchange(
+                                            false, true, Ordering::SeqCst, Ordering::SeqCst,
+                                        ).is_err() {
+                                            tracing::warn!("OTA: update already in progress, ignoring new delta");
+                                            continue;
+                                        }
+
                                         let ota_device_id = shadow_device_id.clone();
                                         let ota_session = shadow_session.clone();
                                         let ota_topic = shadow_report_topic.clone();
                                         let ota_reported = shadow_reported.clone();
                                         let ota_fw = shadow_firmware.clone();
                                         let ota_version = delta.version;
+                                        let ota_flag = shadow_ota_flag.clone();
                                         tokio::spawn(async move {
                                             handle_ota(
                                                 ota_val,
@@ -202,6 +215,7 @@ async fn main() {
                                                 ota_version,
                                             )
                                             .await;
+                                            ota_flag.store(false, Ordering::SeqCst);
                                         });
                                     }
                                 }
@@ -324,7 +338,7 @@ async fn report_ota_status(
 }
 
 // ---------------------------------------------------------------------------
-// OTA handler (simulated)
+// OTA handler (real binary replacement for Linux)
 // ---------------------------------------------------------------------------
 
 async fn handle_ota(
@@ -381,8 +395,13 @@ async fn handle_ota(
     )
     .await;
 
-    // -- Download --
-    let bytes = match reqwest::get(&fw_url).await {
+    // -- Download with timeout --
+    let http_client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(300))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
+
+    let bytes = match http_client.get(&fw_url).send().await {
         Ok(resp) => {
             if !resp.status().is_success() {
                 let err = format!("HTTP {}", resp.status());
@@ -447,17 +466,78 @@ async fn handle_ota(
         info!("OTA: SHA-256 verified");
     }
 
-    // -- "Install" (simulated) --
+    // -- Install: replace current executable --
     report_ota_status(
         &reported_state, &device_id, &session, &report_topic, shadow_version,
         &fw_version, fw_update_id, "installing", None,
     )
     .await;
 
-    // Simulate installation delay
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    let current_exe = match std::env::current_exe() {
+        Ok(p) => p,
+        Err(e) => {
+            let err = format!("cannot resolve current executable path: {}", e);
+            tracing::warn!("OTA: {}", err);
+            report_ota_status(
+                &reported_state, &device_id, &session, &report_topic, shadow_version,
+                &fw_version, fw_update_id, "failed", Some(&err),
+            )
+            .await;
+            return;
+        }
+    };
 
-    // -- Success --
+    // Write to a temp file next to the current binary, then atomically rename
+    let tmp_path = current_exe.with_extension("ota_tmp");
+
+    if let Err(e) = tokio::fs::write(&tmp_path, &bytes).await {
+        let err = format!("failed to write firmware to {}: {}", tmp_path.display(), e);
+        tracing::warn!("OTA: {}", err);
+        let _ = tokio::fs::remove_file(&tmp_path).await;
+        report_ota_status(
+            &reported_state, &device_id, &session, &report_topic, shadow_version,
+            &fw_version, fw_update_id, "failed", Some(&err),
+        )
+        .await;
+        return;
+    }
+
+    // Set executable permissions
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Err(e) = tokio::fs::set_permissions(
+            &tmp_path,
+            std::fs::Permissions::from_mode(0o755),
+        )
+        .await
+        {
+            let err = format!("failed to set permissions: {}", e);
+            tracing::warn!("OTA: {}", err);
+            let _ = tokio::fs::remove_file(&tmp_path).await;
+            report_ota_status(
+                &reported_state, &device_id, &session, &report_topic, shadow_version,
+                &fw_version, fw_update_id, "failed", Some(&err),
+            )
+            .await;
+            return;
+        }
+    }
+
+    // Atomic rename: tmp -> current executable
+    if let Err(e) = tokio::fs::rename(&tmp_path, &current_exe).await {
+        let err = format!("failed to replace binary: {}", e);
+        tracing::warn!("OTA: {}", err);
+        let _ = tokio::fs::remove_file(&tmp_path).await;
+        report_ota_status(
+            &reported_state, &device_id, &session, &report_topic, shadow_version,
+            &fw_version, fw_update_id, "failed", Some(&err),
+        )
+        .await;
+        return;
+    }
+
+    // -- Success: report and exit so the process manager (systemd) restarts us --
     {
         let mut fw = firmware_version.lock().await;
         *fw = format!("v{}", fw_version);
@@ -469,7 +549,16 @@ async fn handle_ota(
     )
     .await;
 
-    info!("OTA: firmware updated to v{} (simulated)", fw_version);
+    info!(
+        "OTA: binary replaced at {}. Exiting for process manager restart.",
+        current_exe.display()
+    );
+
+    // Give Zenoh time to flush the success report
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
+    // Exit with code 0 — systemd Restart=always will relaunch the new binary
+    std::process::exit(0);
 }
 
 // ---------------------------------------------------------------------------

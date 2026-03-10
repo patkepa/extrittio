@@ -382,26 +382,46 @@ fn handle_shadow_report(db_pool: &DbPool, payload: &[u8]) {
 
     // Update OTA deployment status if reported state contains ota.status
     if let Some(ota_obj) = merged_reported.get("ota").and_then(|v| v.as_object()) {
-        if let Some(ota_status) = ota_obj.get("status").and_then(|v| v.as_str()) {
+        if let Some(ota_status_raw) = ota_obj.get("status").and_then(|v| v.as_str()) {
+            // Normalize status to lowercase to avoid case-sensitivity mismatches
+            let ota_status = ota_status_raw.to_lowercase();
             let is_terminal = ota_status == "success" || ota_status == "failed";
             let completed_at = if is_terminal { Some(now) } else { None };
             let error_message = ota_obj.get("error").and_then(|v| v.as_str()).map(|s| s.to_string());
 
-            // Find the latest pending/in-progress deployment for this device and update it
-            let deployment = ota_deployments::table
-                .filter(ota_deployments::device_id.eq(&report.device_id))
-                .filter(ota_deployments::status.ne("success"))
-                .filter(ota_deployments::status.ne("failed"))
-                .order(ota_deployments::initiated_at.desc())
-                .select(ota_deployments::id)
-                .first::<i32>(&mut conn)
-                .optional();
+            // Match deployment by firmware_update_id when available for precise targeting,
+            // fall back to latest non-terminal deployment otherwise
+            let fw_update_id = ota_obj
+                .get("firmware_update_id")
+                .and_then(|v| v.as_i64())
+                .map(|id| id as i32);
+
+            let deployment = if let Some(fwid) = fw_update_id {
+                ota_deployments::table
+                    .filter(ota_deployments::device_id.eq(&report.device_id))
+                    .filter(ota_deployments::firmware_update_id.eq(fwid))
+                    .filter(ota_deployments::status.ne("success"))
+                    .filter(ota_deployments::status.ne("failed"))
+                    .order(ota_deployments::initiated_at.desc())
+                    .select(ota_deployments::id)
+                    .first::<i32>(&mut conn)
+                    .optional()
+            } else {
+                ota_deployments::table
+                    .filter(ota_deployments::device_id.eq(&report.device_id))
+                    .filter(ota_deployments::status.ne("success"))
+                    .filter(ota_deployments::status.ne("failed"))
+                    .order(ota_deployments::initiated_at.desc())
+                    .select(ota_deployments::id)
+                    .first::<i32>(&mut conn)
+                    .optional()
+            };
 
             if let Ok(Some(dep_id)) = deployment {
                 if is_terminal {
                     if let Err(e) = diesel::update(ota_deployments::table.find(dep_id))
                         .set((
-                            ota_deployments::status.eq(ota_status),
+                            ota_deployments::status.eq(&ota_status),
                             ota_deployments::error_message.eq(error_message),
                             ota_deployments::completed_at.eq(completed_at),
                         ))
@@ -412,7 +432,7 @@ fn handle_shadow_report(db_pool: &DbPool, payload: &[u8]) {
                         info!("OTA deployment {} for device {} -> {}", dep_id, report.device_id, ota_status);
                     }
                 } else if let Err(e) = diesel::update(ota_deployments::table.find(dep_id))
-                    .set(ota_deployments::status.eq(ota_status))
+                    .set(ota_deployments::status.eq(&ota_status))
                     .execute(&mut conn)
                 {
                     warn!("Failed to update OTA deployment status: {}", e);

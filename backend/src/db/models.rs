@@ -1,7 +1,7 @@
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 
-use super::schema::{device_types, devices, firmware_updates, fleets, ota_deployments, telemetry, device_shadows};
+use super::schema::{device_types, devices, firmware_blobs, firmware_updates, fleets, ota_deployments, telemetry, device_shadows};
 
 // ---------------------------------------------------------------------------
 // Device Types
@@ -47,6 +47,29 @@ pub struct NewFirmwareUpdate {
     pub url: String,
     pub description: Option<String>,
     pub sha256: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Firmware Blobs
+// ---------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug)]
+#[diesel(table_name = firmware_blobs)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct FirmwareBlob {
+    pub firmware_update_id: i32,
+    pub data: Vec<u8>,
+    pub size: i32,
+    pub filename: String,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = firmware_blobs)]
+pub struct NewFirmwareBlob {
+    pub firmware_update_id: i32,
+    pub data: Vec<u8>,
+    pub size: i32,
+    pub filename: String,
 }
 
 // ---------------------------------------------------------------------------
