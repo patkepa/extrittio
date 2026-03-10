@@ -10,11 +10,11 @@ use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::warn;
 
 use crate::api::commands;
 use crate::db::models::{Device, DeviceShadow, DeviceType, Fleet, FirmwareUpdate, NewDevice, NewDeviceShadow, NewOtaDeployment, OtaDeployment, UpdateDevice, UpdateShadow};
 use crate::db::schema::{device_shadows, device_types, devices, firmware_updates, fleets, ota_deployments};
+use crate::error::AppError;
 use crate::shadow_utils::compute_shadow_delta;
 use crate::state::AppState;
 use extrittio_proto::extrittio::ShadowDelta;
@@ -171,11 +171,8 @@ pub fn router() -> Router<Arc<AppState>> {
 async fn list_devices(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ListDevicesQuery>,
-) -> Result<Json<Vec<DeviceResponse>>, StatusCode> {
-    let mut conn = state
-        .db_pool
-        .get()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+) -> Result<Json<Vec<DeviceResponse>>, AppError> {
+    let mut conn = state.db_pool.get()?;
 
     let mut query = devices::table
         .inner_join(device_types::table)
@@ -206,8 +203,7 @@ async fn list_devices(
             DeviceType::as_select(),
             Option::<Fleet>::as_select(),
         ))
-        .load(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .load(&mut conn)?;
 
     let response: Vec<DeviceResponse> = results
         .into_iter()
@@ -220,11 +216,8 @@ async fn list_devices(
 async fn get_device(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-) -> Result<Json<DeviceResponse>, StatusCode> {
-    let mut conn = state
-        .db_pool
-        .get()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+) -> Result<Json<DeviceResponse>, AppError> {
+    let mut conn = state.db_pool.get()?;
 
     let (device, device_type, fleet): (Device, DeviceType, Option<Fleet>) = devices::table
         .inner_join(device_types::table)
@@ -235,11 +228,7 @@ async fn get_device(
             DeviceType::as_select(),
             Option::<Fleet>::as_select(),
         ))
-        .first(&mut conn)
-        .map_err(|e| match e {
-            diesel::result::Error::NotFound => StatusCode::NOT_FOUND,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        })?;
+        .first(&mut conn)?;
 
     Ok(Json(to_device_response(device, device_type, fleet)))
 }
@@ -247,11 +236,8 @@ async fn get_device(
 async fn create_device(
     State(state): State<Arc<AppState>>,
     Json(body): Json<NewDeviceRequest>,
-) -> Result<(StatusCode, Json<DeviceResponse>), StatusCode> {
-    let mut conn = state
-        .db_pool
-        .get()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+) -> Result<(StatusCode, Json<DeviceResponse>), AppError> {
+    let mut conn = state.db_pool.get()?;
 
     let new_id = uuid::Uuid::new_v4().to_string();
 
@@ -266,8 +252,7 @@ async fn create_device(
 
     diesel::insert_into(devices::table)
         .values(&new_device)
-        .execute(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .execute(&mut conn)?;
 
     // Create shadow record for the new device
     let new_shadow = NewDeviceShadow {
@@ -275,8 +260,7 @@ async fn create_device(
     };
     diesel::insert_into(device_shadows::table)
         .values(&new_shadow)
-        .execute(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .execute(&mut conn)?;
 
     let (device, device_type, fleet): (Device, DeviceType, Option<Fleet>) = devices::table
         .inner_join(device_types::table)
@@ -287,8 +271,7 @@ async fn create_device(
             DeviceType::as_select(),
             Option::<Fleet>::as_select(),
         ))
-        .first(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .first(&mut conn)?;
 
     Ok((
         StatusCode::CREATED,
@@ -300,21 +283,14 @@ async fn update_device(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(body): Json<UpdateDeviceRequest>,
-) -> Result<Json<DeviceResponse>, StatusCode> {
-    let mut conn = state
-        .db_pool
-        .get()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+) -> Result<Json<DeviceResponse>, AppError> {
+    let mut conn = state.db_pool.get()?;
 
     // Verify device exists
     let _existing: Device = devices::table
         .find(&id)
         .select(Device::as_select())
-        .first(&mut conn)
-        .map_err(|e| match e {
-            diesel::result::Error::NotFound => StatusCode::NOT_FOUND,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        })?;
+        .first(&mut conn)?;
 
     let changeset = UpdateDevice {
         name: body.name,
@@ -328,8 +304,7 @@ async fn update_device(
 
     diesel::update(devices::table.find(&id))
         .set(&changeset)
-        .execute(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .execute(&mut conn)?;
 
     let (device, device_type, fleet): (Device, DeviceType, Option<Fleet>) = devices::table
         .inner_join(device_types::table)
@@ -340,8 +315,7 @@ async fn update_device(
             DeviceType::as_select(),
             Option::<Fleet>::as_select(),
         ))
-        .first(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .first(&mut conn)?;
 
     Ok(Json(to_device_response(device, device_type, fleet)))
 }
@@ -349,18 +323,14 @@ async fn update_device(
 async fn delete_device(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-) -> Result<StatusCode, StatusCode> {
-    let mut conn = state
-        .db_pool
-        .get()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+) -> Result<StatusCode, AppError> {
+    let mut conn = state.db_pool.get()?;
 
     let rows_deleted = diesel::delete(devices::table.find(&id))
-        .execute(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .execute(&mut conn)?;
 
     if rows_deleted == 0 {
-        return Err(StatusCode::NOT_FOUND);
+        return Err(AppError::NotFound(format!("Device '{id}' not found")));
     }
 
     Ok(StatusCode::NO_CONTENT)
@@ -369,8 +339,10 @@ async fn delete_device(
 async fn restart_device(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-) -> Result<StatusCode, StatusCode> {
-    commands::send_command_internal(&state, &id, "restart", HashMap::default()).await?;
+) -> Result<StatusCode, AppError> {
+    commands::send_command_internal(&state, &id, "restart", HashMap::default())
+        .await
+        .map_err(|_| AppError::Internal("Command failed".into()))?;
     Ok(StatusCode::OK)
 }
 
@@ -378,52 +350,39 @@ async fn trigger_ota(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(body): Json<TriggerOtaRequest>,
-) -> Result<StatusCode, StatusCode> {
-    let mut conn = state
-        .db_pool
-        .get()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+) -> Result<StatusCode, AppError> {
+    let mut conn = state.db_pool.get()?;
 
     // Verify device exists and get its device_type_id
     let device: Device = devices::table
         .find(&id)
         .select(Device::as_select())
-        .first(&mut conn)
-        .map_err(|e| match e {
-            diesel::result::Error::NotFound => StatusCode::NOT_FOUND,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        })?;
+        .first(&mut conn)?;
 
     // Fetch firmware update
     let fw: FirmwareUpdate = firmware_updates::table
         .find(body.firmware_update_id)
         .select(FirmwareUpdate::as_select())
-        .first(&mut conn)
-        .map_err(|e| match e {
-            diesel::result::Error::NotFound => StatusCode::NOT_FOUND,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        })?;
+        .first(&mut conn)?;
 
     if fw.device_type_id != device.device_type_id {
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(AppError::BadRequest(
+            "Firmware device type does not match device".into(),
+        ));
     }
 
     // Load current shadow
     let shadow: DeviceShadow = device_shadows::table
         .find(&id)
         .select(DeviceShadow::as_select())
-        .first(&mut conn)
-        .map_err(|e| match e {
-            diesel::result::Error::NotFound => StatusCode::NOT_FOUND,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        })?;
+        .first(&mut conn)?;
 
     // Build OTA desired state: merge firmware update info into desired
     let mut desired: Value =
         serde_json::from_str(&shadow.desired).unwrap_or(Value::Object(serde_json::Map::default()));
     let desired_obj = desired
         .as_object_mut()
-        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+        .ok_or_else(|| AppError::Internal("Shadow desired field is not an object".into()))?;
 
     let mut ota_payload = serde_json::json!({
         "firmware_version": fw.version,
@@ -442,8 +401,8 @@ async fn trigger_ota(
     let new_delta = compute_shadow_delta(&desired, &reported);
     let now = Utc::now().naive_utc();
 
-    let desired_str = serde_json::to_string(&desired).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let delta_str = serde_json::to_string(&new_delta).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let desired_str = serde_json::to_string(&desired)?;
+    let delta_str = serde_json::to_string(&new_delta)?;
 
     let changeset = UpdateShadow {
         desired: Some(desired_str),
@@ -455,8 +414,7 @@ async fn trigger_ota(
 
     diesel::update(device_shadows::table.find(&id))
         .set(&changeset)
-        .execute(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .execute(&mut conn)?;
 
     // Create OTA deployment record for tracking
     let new_deployment = NewOtaDeployment {
@@ -465,12 +423,11 @@ async fn trigger_ota(
     };
     diesel::insert_into(ota_deployments::table)
         .values(&new_deployment)
-        .execute(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .execute(&mut conn)?;
 
     // Publish delta to device via Zenoh
     if new_delta.as_object().is_some_and(|obj| !obj.is_empty()) {
-        let delta_json = serde_json::to_string(&new_delta).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let delta_json = serde_json::to_string(&new_delta)?;
         let delta_msg = ShadowDelta {
             device_id: id.clone(),
             delta_json,
@@ -478,10 +435,11 @@ async fn trigger_ota(
         };
         let payload = prost::Message::encode_to_vec(&delta_msg);
         let topic = format!("extrittio/devices/{id}/shadow/delta");
-        if let Err(e) = state.zenoh_session.put(&topic, payload).await {
-            warn!("Failed to publish OTA shadow delta to device {}: {}", id, e);
-            return Err(StatusCode::BAD_GATEWAY);
-        }
+        state
+            .zenoh_session
+            .put(&topic, payload)
+            .await
+            .map_err(|e| AppError::Zenoh(e.to_string()))?;
     }
 
     Ok(StatusCode::OK)
@@ -506,29 +464,21 @@ pub struct OtaDeploymentResponse {
 async fn list_ota_deployments(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-) -> Result<Json<Vec<OtaDeploymentResponse>>, StatusCode> {
-    let mut conn = state
-        .db_pool
-        .get()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+) -> Result<Json<Vec<OtaDeploymentResponse>>, AppError> {
+    let mut conn = state.db_pool.get()?;
 
     // Verify device exists
     devices::table
         .find(&id)
         .select(devices::id)
-        .first::<String>(&mut conn)
-        .map_err(|e| match e {
-            diesel::result::Error::NotFound => StatusCode::NOT_FOUND,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        })?;
+        .first::<String>(&mut conn)?;
 
     let results: Vec<(OtaDeployment, FirmwareUpdate)> = ota_deployments::table
         .inner_join(firmware_updates::table)
         .filter(ota_deployments::device_id.eq(&id))
         .select((OtaDeployment::as_select(), FirmwareUpdate::as_select()))
         .order(ota_deployments::initiated_at.desc())
-        .load(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .load(&mut conn)?;
 
     Ok(Json(
         results
