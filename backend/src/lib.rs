@@ -3,6 +3,7 @@ pub mod auth;
 pub mod background;
 pub mod config;
 pub mod db;
+pub mod error;
 pub mod middleware;
 pub mod shadow_utils;
 pub mod state;
