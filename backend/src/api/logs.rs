@@ -1,6 +1,5 @@
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
     routing::get,
     Json, Router,
 };
@@ -11,6 +10,7 @@ use std::sync::Arc;
 
 use crate::db::models::DeviceLog;
 use crate::db::schema::{device_logs, devices};
+use crate::error::AppError;
 use crate::state::AppState;
 
 // ---------------------------------------------------------------------------
@@ -65,21 +65,14 @@ async fn get_device_logs(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Query(params): Query<LogsQuery>,
-) -> Result<Json<Vec<LogResponse>>, StatusCode> {
-    let mut conn = state
-        .db_pool
-        .get()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+) -> Result<Json<Vec<LogResponse>>, AppError> {
+    let mut conn = state.db_pool.get()?;
 
     // Verify device exists
     devices::table
         .find(&id)
         .select(devices::id)
-        .first::<String>(&mut conn)
-        .map_err(|e| match e {
-            diesel::result::Error::NotFound => StatusCode::NOT_FOUND,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        })?;
+        .first::<String>(&mut conn)?;
 
     let limit = params.limit.unwrap_or(100).clamp(1, 1000);
 
@@ -97,7 +90,7 @@ async fn get_device_logs(
         let since_dt = since
             .parse::<NaiveDateTime>()
             .or_else(|_| chrono::DateTime::parse_from_rfc3339(since).map(|dt| dt.naive_utc()))
-            .map_err(|_| StatusCode::BAD_REQUEST)?;
+            .map_err(|_| AppError::BadRequest("Invalid date format, expected YYYY-MM-DDTHH:MM:SS".into()))?;
         query = query.filter(device_logs::created_at.gt(since_dt));
     }
 
@@ -105,8 +98,7 @@ async fn get_device_logs(
         .order(device_logs::created_at.desc())
         .limit(limit)
         .select(DeviceLog::as_select())
-        .load(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .load(&mut conn)?;
 
     let response: Vec<LogResponse> = results.into_iter().map(LogResponse::from).collect();
 

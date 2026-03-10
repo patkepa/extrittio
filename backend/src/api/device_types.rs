@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use crate::db::models::{DeviceType, NewDeviceType};
 use crate::db::schema::{device_types, devices};
+use crate::error::AppError;
 use crate::state::AppState;
 
 #[derive(Debug, Serialize)]
@@ -46,17 +47,13 @@ pub fn router() -> Router<Arc<AppState>> {
 
 async fn list_device_types(
     State(state): State<Arc<AppState>>,
-) -> Result<Json<Vec<DeviceTypeResponse>>, StatusCode> {
-    let mut conn = state
-        .db_pool
-        .get()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+) -> Result<Json<Vec<DeviceTypeResponse>>, AppError> {
+    let mut conn = state.db_pool.get()?;
 
     let results: Vec<DeviceType> = device_types::table
         .select(DeviceType::as_select())
         .order(device_types::name.asc())
-        .load(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .load(&mut conn)?;
 
     Ok(Json(
         results.into_iter().map(DeviceTypeResponse::from).collect(),
@@ -66,22 +63,17 @@ async fn list_device_types(
 async fn create_device_type(
     State(state): State<Arc<AppState>>,
     Json(body): Json<NewDeviceTypeRequest>,
-) -> Result<(StatusCode, Json<DeviceTypeResponse>), StatusCode> {
-    let mut conn = state
-        .db_pool
-        .get()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+) -> Result<(StatusCode, Json<DeviceTypeResponse>), AppError> {
+    let mut conn = state.db_pool.get()?;
 
     diesel::insert_into(device_types::table)
         .values(NewDeviceType { name: body.name })
-        .execute(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .execute(&mut conn)?;
 
     let created: DeviceType = device_types::table
         .order(device_types::id.desc())
         .select(DeviceType::as_select())
-        .first(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .first(&mut conn)?;
 
     Ok((StatusCode::CREATED, Json(DeviceTypeResponse::from(created))))
 }
@@ -89,34 +81,31 @@ async fn create_device_type(
 async fn delete_device_type(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i32>,
-) -> Result<StatusCode, StatusCode> {
-    let mut conn = state
-        .db_pool
-        .get()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+) -> Result<StatusCode, AppError> {
+    let mut conn = state.db_pool.get()?;
 
     // Prevent deleting the "default" device type (id=1)
     if id == 1 {
-        return Err(StatusCode::UNPROCESSABLE_ENTITY);
+        return Err(AppError::UnprocessableEntity("Cannot delete the default device type".into()));
     }
 
     // Reject if any devices still reference this type
     let count: i64 = devices::table
         .filter(devices::device_type_id.eq(id))
         .count()
-        .get_result(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .get_result(&mut conn)?;
 
     if count > 0 {
-        return Err(StatusCode::CONFLICT);
+        return Err(AppError::Conflict(format!(
+            "Cannot delete device type: {count} device(s) still reference it"
+        )));
     }
 
     let rows = diesel::delete(device_types::table.find(id))
-        .execute(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .execute(&mut conn)?;
 
     if rows == 0 {
-        Err(StatusCode::NOT_FOUND)
+        Err(AppError::NotFound(format!("Device type {id} not found")))
     } else {
         Ok(StatusCode::NO_CONTENT)
     }

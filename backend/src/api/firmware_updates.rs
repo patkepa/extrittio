@@ -13,6 +13,7 @@ use std::sync::Arc;
 
 use crate::db::models::{DeviceType, FirmwareBlob, FirmwareUpdate, NewFirmwareBlob, NewFirmwareUpdate};
 use crate::db::schema::{device_types, firmware_blobs, firmware_updates};
+use crate::error::AppError;
 use crate::state::AppState;
 
 // ---------------------------------------------------------------------------
@@ -88,11 +89,8 @@ pub fn router() -> Router<Arc<AppState>> {
 async fn list_firmware_updates(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ListFirmwareUpdatesQuery>,
-) -> Result<Json<Vec<FirmwareUpdateResponse>>, StatusCode> {
-    let mut conn = state
-        .db_pool
-        .get()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+) -> Result<Json<Vec<FirmwareUpdateResponse>>, AppError> {
+    let mut conn = state.db_pool.get()?;
 
     let mut query = firmware_updates::table
         .inner_join(device_types::table)
@@ -111,8 +109,7 @@ async fn list_firmware_updates(
 
     let results: Vec<(FirmwareUpdate, DeviceType, Option<i32>, Option<String>)> = query
         .order(firmware_updates::created_at.desc())
-        .load(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .load(&mut conn)?;
 
     Ok(Json(
         results
@@ -137,27 +134,19 @@ async fn list_firmware_updates(
 async fn create_firmware_update(
     State(state): State<Arc<AppState>>,
     Json(body): Json<NewFirmwareUpdateRequest>,
-) -> Result<(StatusCode, Json<FirmwareUpdateResponse>), StatusCode> {
-    let mut conn = state
-        .db_pool
-        .get()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+) -> Result<(StatusCode, Json<FirmwareUpdateResponse>), AppError> {
+    let mut conn = state.db_pool.get()?;
 
     // Verify device type exists
     let dt: DeviceType = device_types::table
         .find(body.device_type_id)
         .select(DeviceType::as_select())
-        .first(&mut conn)
-        .map_err(|e| match e {
-            diesel::result::Error::NotFound => StatusCode::NOT_FOUND,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        })?;
+        .first(&mut conn)?;
 
     // Auto-generate version if not provided
     let version = match body.version {
         Some(v) if !v.trim().is_empty() => v.trim().to_string(),
-        _ => next_version_for_type(&mut conn, body.device_type_id)
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
+        _ => next_version_for_type(&mut conn, body.device_type_id)?,
     };
 
     let new_fw = NewFirmwareUpdate {
@@ -175,8 +164,8 @@ async fn create_firmware_update(
             diesel::result::Error::DatabaseError(
                 diesel::result::DatabaseErrorKind::UniqueViolation,
                 _,
-            ) => StatusCode::CONFLICT,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
+            ) => AppError::Conflict("Firmware version already exists for this device type".into()),
+            other => AppError::Database(other),
         })?;
 
     let created: FirmwareUpdate = firmware_updates::table
@@ -186,8 +175,7 @@ async fn create_firmware_update(
                 .and(firmware_updates::version.eq(&version)),
         )
         .select(FirmwareUpdate::as_select())
-        .first(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .first(&mut conn)?;
 
     Ok((
         StatusCode::CREATED,
@@ -211,7 +199,7 @@ async fn create_firmware_update(
 async fn upload_firmware_update(
     State(state): State<Arc<AppState>>,
     mut multipart: Multipart,
-) -> Result<(StatusCode, Json<FirmwareUpdateResponse>), StatusCode> {
+) -> Result<(StatusCode, Json<FirmwareUpdateResponse>), AppError> {
     let mut device_type_id: Option<i32> = None;
     let mut version: Option<String> = None;
     let mut description: Option<String> = None;
@@ -221,22 +209,22 @@ async fn upload_firmware_update(
     while let Some(field) = multipart
         .next_field()
         .await
-        .map_err(|_| StatusCode::BAD_REQUEST)?
+        .map_err(|_| AppError::BadRequest("Invalid multipart upload".into()))?
     {
         let name = field.name().unwrap_or_default().to_string();
         match name.as_str() {
             "device_type_id" => {
-                let text = field.text().await.map_err(|_| StatusCode::BAD_REQUEST)?;
-                device_type_id = Some(text.parse().map_err(|_| StatusCode::BAD_REQUEST)?);
+                let text = field.text().await.map_err(|_| AppError::BadRequest("Invalid multipart upload".into()))?;
+                device_type_id = Some(text.parse().map_err(|_| AppError::BadRequest("Invalid device_type_id".into()))?);
             }
             "version" => {
-                let text = field.text().await.map_err(|_| StatusCode::BAD_REQUEST)?;
+                let text = field.text().await.map_err(|_| AppError::BadRequest("Invalid multipart upload".into()))?;
                 if !text.trim().is_empty() {
                     version = Some(text.trim().to_string());
                 }
             }
             "description" => {
-                let text = field.text().await.map_err(|_| StatusCode::BAD_REQUEST)?;
+                let text = field.text().await.map_err(|_| AppError::BadRequest("Invalid multipart upload".into()))?;
                 if !text.trim().is_empty() {
                     description = Some(text.trim().to_string());
                 }
@@ -247,7 +235,7 @@ async fn upload_firmware_update(
                     field
                         .bytes()
                         .await
-                        .map_err(|_| StatusCode::BAD_REQUEST)?
+                        .map_err(|_| AppError::BadRequest("Invalid multipart upload".into()))?
                         .to_vec(),
                 );
             }
@@ -255,12 +243,12 @@ async fn upload_firmware_update(
         }
     }
 
-    let device_type_id = device_type_id.ok_or(StatusCode::BAD_REQUEST)?;
-    let file_data = file_data.ok_or(StatusCode::BAD_REQUEST)?;
+    let device_type_id = device_type_id.ok_or_else(|| AppError::BadRequest("Missing device_type_id".into()))?;
+    let file_data = file_data.ok_or_else(|| AppError::BadRequest("Missing file".into()))?;
     let filename = filename.unwrap_or_else(|| "firmware.bin".to_string());
 
     if file_data.is_empty() {
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(AppError::BadRequest("File is empty".into()));
     }
 
     // Compute SHA-256
@@ -275,26 +263,18 @@ async fn upload_firmware_update(
     #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
     let file_size = file_data.len() as i32;
 
-    let mut conn = state
-        .db_pool
-        .get()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let mut conn = state.db_pool.get()?;
 
     // Verify device type exists
     let dt: DeviceType = device_types::table
         .find(device_type_id)
         .select(DeviceType::as_select())
-        .first(&mut conn)
-        .map_err(|e| match e {
-            diesel::result::Error::NotFound => StatusCode::NOT_FOUND,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        })?;
+        .first(&mut conn)?;
 
     // Auto-generate version if not provided
     let version = match version {
         Some(v) => v,
-        None => next_version_for_type(&mut conn, device_type_id)
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
+        None => next_version_for_type(&mut conn, device_type_id)?,
     };
 
     // Insert firmware update with placeholder URL (updated after we know the ID)
@@ -313,8 +293,8 @@ async fn upload_firmware_update(
             diesel::result::Error::DatabaseError(
                 diesel::result::DatabaseErrorKind::UniqueViolation,
                 _,
-            ) => StatusCode::CONFLICT,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
+            ) => AppError::Conflict("Firmware version already exists for this device type".into()),
+            other => AppError::Database(other),
         })?;
 
     // Get the created record
@@ -325,15 +305,13 @@ async fn upload_firmware_update(
                 .and(firmware_updates::version.eq(&version)),
         )
         .select(FirmwareUpdate::as_select())
-        .first(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .first(&mut conn)?;
 
     // Update URL to point to download endpoint
     let download_url = format!("/api/firmware-updates/{}/download", created.id);
     diesel::update(firmware_updates::table.find(created.id))
         .set(firmware_updates::url.eq(&download_url))
-        .execute(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .execute(&mut conn)?;
 
     // Store the blob
     let new_blob = NewFirmwareBlob {
@@ -345,8 +323,7 @@ async fn upload_firmware_update(
 
     diesel::insert_into(firmware_blobs::table)
         .values(&new_blob)
-        .execute(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .execute(&mut conn)?;
 
     Ok((
         StatusCode::CREATED,
@@ -369,20 +346,13 @@ async fn upload_firmware_update(
 async fn download_firmware_blob(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i32>,
-) -> Result<Response, StatusCode> {
-    let mut conn = state
-        .db_pool
-        .get()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+) -> Result<Response, AppError> {
+    let mut conn = state.db_pool.get()?;
 
     let blob: FirmwareBlob = firmware_blobs::table
         .find(id)
         .select(FirmwareBlob::as_select())
-        .first(&mut conn)
-        .map_err(|e| match e {
-            diesel::result::Error::NotFound => StatusCode::NOT_FOUND,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        })?;
+        .first(&mut conn)?;
 
     let content_disposition = format!("attachment; filename=\"{}\"", blob.filename);
 
@@ -397,18 +367,14 @@ async fn download_firmware_blob(
 async fn delete_firmware_update(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i32>,
-) -> Result<StatusCode, StatusCode> {
-    let mut conn = state
-        .db_pool
-        .get()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+) -> Result<StatusCode, AppError> {
+    let mut conn = state.db_pool.get()?;
 
     let rows = diesel::delete(firmware_updates::table.find(id))
-        .execute(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .execute(&mut conn)?;
 
     if rows == 0 {
-        Err(StatusCode::NOT_FOUND)
+        Err(AppError::NotFound(format!("Firmware update {id} not found")))
     } else {
         Ok(StatusCode::NO_CONTENT)
     }
@@ -417,14 +383,10 @@ async fn delete_firmware_update(
 async fn get_next_version(
     State(state): State<Arc<AppState>>,
     Path(device_type_id): Path<i32>,
-) -> Result<Json<NextVersionResponse>, StatusCode> {
-    let mut conn = state
-        .db_pool
-        .get()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+) -> Result<Json<NextVersionResponse>, AppError> {
+    let mut conn = state.db_pool.get()?;
 
-    let version = next_version_for_type(&mut conn, device_type_id)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let version = next_version_for_type(&mut conn, device_type_id)?;
 
     Ok(Json(NextVersionResponse {
         next_version: version,

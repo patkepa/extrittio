@@ -11,6 +11,7 @@ use std::sync::Arc;
 use crate::auth::hash_password;
 use crate::db::models::{NewUser, User};
 use crate::db::schema::users;
+use crate::error::AppError;
 use crate::state::AppState;
 
 use super::auth_routes::UserResponse;
@@ -41,14 +42,13 @@ pub fn router() -> Router<Arc<AppState>> {
 
 async fn list_users(
     State(state): State<Arc<AppState>>,
-) -> Result<Json<Vec<UserResponse>>, StatusCode> {
-    let mut conn = state.db_pool.get().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+) -> Result<Json<Vec<UserResponse>>, AppError> {
+    let mut conn = state.db_pool.get()?;
 
     let results: Vec<User> = users::table
         .select(User::as_select())
         .order(users::username.asc())
-        .load(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .load(&mut conn)?;
 
     let response: Vec<UserResponse> = results
         .into_iter()
@@ -65,11 +65,11 @@ async fn list_users(
 async fn create_user(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreateUserRequest>,
-) -> Result<(StatusCode, Json<UserResponse>), StatusCode> {
-    let mut conn = state.db_pool.get().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+) -> Result<(StatusCode, Json<UserResponse>), AppError> {
+    let mut conn = state.db_pool.get()?;
 
     let password_hash = hash_password(&body.password)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| AppError::Auth(e.to_string()))?;
 
     let new_user = NewUser {
         username: body.username.clone(),
@@ -81,16 +81,15 @@ async fn create_user(
         .execute(&mut conn)
         .map_err(|e| match e {
             diesel::result::Error::DatabaseError(diesel::result::DatabaseErrorKind::UniqueViolation, _) => {
-                StatusCode::CONFLICT
+                AppError::Conflict(format!("Username '{}' already exists", body.username))
             }
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
+            other => AppError::Database(other),
         })?;
 
     let user: User = users::table
         .filter(users::username.eq(&body.username))
         .select(User::as_select())
-        .first(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .first(&mut conn)?;
 
     Ok((
         StatusCode::CREATED,
@@ -105,15 +104,14 @@ async fn create_user(
 async fn delete_user(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i32>,
-) -> Result<StatusCode, StatusCode> {
-    let mut conn = state.db_pool.get().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+) -> Result<StatusCode, AppError> {
+    let mut conn = state.db_pool.get()?;
 
     let rows = diesel::delete(users::table.find(id))
-        .execute(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .execute(&mut conn)?;
 
     if rows == 0 {
-        return Err(StatusCode::NOT_FOUND);
+        return Err(AppError::NotFound(format!("User {id} not found")));
     }
 
     Ok(StatusCode::NO_CONTENT)
@@ -123,25 +121,20 @@ async fn change_password(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i32>,
     Json(body): Json<ChangePasswordRequest>,
-) -> Result<StatusCode, StatusCode> {
-    let mut conn = state.db_pool.get().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+) -> Result<StatusCode, AppError> {
+    let mut conn = state.db_pool.get()?;
 
     users::table
         .find(id)
         .select(User::as_select())
-        .first(&mut conn)
-        .map_err(|e| match e {
-            diesel::result::Error::NotFound => StatusCode::NOT_FOUND,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        })?;
+        .first(&mut conn)?;
 
     let password_hash = hash_password(&body.password)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| AppError::Auth(e.to_string()))?;
 
     diesel::update(users::table.find(id))
         .set(users::password_hash.eq(password_hash))
-        .execute(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .execute(&mut conn)?;
 
     Ok(StatusCode::OK)
 }

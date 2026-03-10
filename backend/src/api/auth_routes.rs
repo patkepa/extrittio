@@ -1,6 +1,5 @@
 use axum::{
     extract::State,
-    http::StatusCode,
     routing::{get, post},
     Extension, Json, Router,
 };
@@ -11,6 +10,7 @@ use std::sync::Arc;
 use crate::auth::{create_token, verify_password, Claims};
 use crate::db::models::User;
 use crate::db::schema::users;
+use crate::error::AppError;
 use crate::state::AppState;
 
 #[derive(Debug, Deserialize)]
@@ -41,24 +41,24 @@ pub fn router() -> Router<Arc<AppState>> {
 async fn login(
     State(state): State<Arc<AppState>>,
     Json(body): Json<LoginRequest>,
-) -> Result<Json<LoginResponse>, StatusCode> {
-    let mut conn = state.db_pool.get().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+) -> Result<Json<LoginResponse>, AppError> {
+    let mut conn = state.db_pool.get()?;
 
     let user: User = users::table
         .filter(users::username.eq(&body.username))
         .select(User::as_select())
         .first(&mut conn)
         .map_err(|e| match e {
-            diesel::result::Error::NotFound => StatusCode::UNAUTHORIZED,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
+            diesel::result::Error::NotFound => AppError::Unauthorized,
+            other => AppError::Database(other),
         })?;
 
     if !verify_password(&body.password, &user.password_hash) {
-        return Err(StatusCode::UNAUTHORIZED);
+        return Err(AppError::Unauthorized);
     }
 
     let token = create_token(user.id, &user.username, &user.role, &state.jwt_secret)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| AppError::Auth(e.to_string()))?;
 
     Ok(Json(LoginResponse {
         token,

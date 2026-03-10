@@ -1,19 +1,19 @@
 use axum::{
     extract::{Request, State},
-    http::StatusCode,
     middleware::Next,
     response::Response,
 };
 use std::sync::Arc;
 
 use crate::auth::validate_token;
+use crate::error::AppError;
 use crate::state::AppState;
 
 pub async fn auth_middleware(
     State(state): State<Arc<AppState>>,
     mut request: Request,
     next: Next,
-) -> Result<Response, StatusCode> {
+) -> Result<Response, AppError> {
     let path = request.uri().path();
     if path == "/api/auth/login" {
         return Ok(next.run(request).await);
@@ -30,11 +30,11 @@ pub async fn auth_middleware(
 
     let token = match auth_header {
         Some(header) if header.starts_with("Bearer ") => &header[7..],
-        _ => return Err(StatusCode::UNAUTHORIZED),
+        _ => return Err(AppError::Unauthorized),
     };
 
     let claims = validate_token(token, &state.jwt_secret)
-        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+        .map_err(|_| AppError::Unauthorized)?;
 
     request.extensions_mut().insert(claims);
 
