@@ -21,6 +21,7 @@ import { useUIStore } from '../stores/ui-store';
 import { AddDeviceDialog } from '../components/devices/add-device-dialog';
 import { useDeviceHoverTooltip, DeviceHoverTooltip } from '../components/devices/device-hover-tooltip';
 import type { Device } from '../types/api';
+import { showSuccessToast, showErrorToast } from '../utils/toaster';
 import './devices.css';
 
 type SortField = 'name' | 'status' | 'last_seen' | 'uptime';
@@ -341,7 +342,10 @@ export const Devices = () => {
         cancelButtonText="Cancel"
         onConfirm={() => {
           if (deviceToDelete) {
-            deleteDeviceMutation.mutate(deviceToDelete.id);
+            deleteDeviceMutation.mutate(deviceToDelete.id, {
+              onSuccess: () => void showSuccessToast('Device deleted'),
+              onError: () => void showErrorToast('Failed to delete device'),
+            });
           }
           setDeviceToDelete(null);
         }}

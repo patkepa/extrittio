@@ -13,6 +13,7 @@ import { useCreateDevice } from '../../hooks/use-devices';
 import { useDeviceTypes } from '../../hooks/use-device-types';
 import { useFleets } from '../../hooks/use-fleets';
 import { useUIStore } from '../../stores/ui-store';
+import { showSuccessToast, showErrorToast } from '../../utils/toaster';
 
 export function AddDeviceDialog() {
   const { isAddDeviceDialogOpen, closeAddDeviceDialog } = useUIStore();
@@ -43,6 +44,10 @@ export function AddDeviceDialog() {
         onSuccess: () => {
           closeAddDeviceDialog();
           setNewDevice({ name: '', device_type_id: 0, fleet_id: undefined, location: '', firmware: '' });
+          void showSuccessToast('Device added');
+        },
+        onError: () => {
+          void showErrorToast('Failed to add device');
         },
       }
     );
