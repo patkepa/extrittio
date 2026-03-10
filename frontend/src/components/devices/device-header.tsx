@@ -1,4 +1,5 @@
-import { H4 } from '@blueprintjs/core';
+import { H4, Tooltip } from '@blueprintjs/core';
+import { showSuccessToast } from '../../utils/toaster';
 import type { Device } from '../../types/api';
 
 interface DeviceHeaderProps {
@@ -11,7 +12,14 @@ export const DeviceHeader = ({ device }: DeviceHeaderProps) => (
     <div>
       <H4 style={{ margin: 0 }}>{device.name}</H4>
       <p style={{ margin: 0 }} className="banner-subtitle">
-        <span className="mono-data">{device.id}</span>
+        <Tooltip content="Click to copy" placement="top" compact minimal>
+          <span
+            className="mono-data copy-on-click"
+            onClick={() => void navigator.clipboard.writeText(device.id).then(() => showSuccessToast('Device ID copied'))}
+          >
+            {device.id}
+          </span>
+        </Tooltip>
         <span className="banner-sep">|</span>
         {device.device_type_name}
         {device.fleet_name && (

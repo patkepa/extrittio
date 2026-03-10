@@ -153,6 +153,10 @@ code {
   letter-spacing: 0.02em;
 }
 
+.copy-on-click {
+  cursor: pointer;
+}
+
 /* Section header labels — uppercase tracked */
 .section-label {
   font-size: 11px;
