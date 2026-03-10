@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -128,6 +129,7 @@ impl SensorState {
 }
 
 #[tokio::main]
+#[allow(clippy::too_many_lines)]
 async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -161,11 +163,11 @@ async fn main() {
 
     info!("Zenoh session opened");
 
-    let telemetry_topic = format!("extrittio/devices/{}/telemetry", device_id);
-    let heartbeat_topic = format!("extrittio/devices/{}/heartbeat", device_id);
-    let shadow_get_topic = format!("extrittio/devices/{}/shadow/get", device_id);
-    let shadow_delta_topic = format!("extrittio/devices/{}/shadow/delta", device_id);
-    let shadow_report_topic = format!("extrittio/devices/{}/shadow/report", device_id);
+    let telemetry_topic = format!("extrittio/devices/{device_id}/telemetry");
+    let heartbeat_topic = format!("extrittio/devices/{device_id}/heartbeat");
+    let shadow_get_topic = format!("extrittio/devices/{device_id}/shadow/get");
+    let shadow_delta_topic = format!("extrittio/devices/{device_id}/shadow/delta");
+    let shadow_report_topic = format!("extrittio/devices/{device_id}/shadow/report");
 
     let reported_state: Arc<Mutex<serde_json::Map<String, serde_json::Value>>> =
         Arc::new(Mutex::new(serde_json::Map::new()));
@@ -192,6 +194,7 @@ async fn main() {
                 timestamp: chrono_now_millis(),
                 status: "online".to_string(),
                 firmware: fw,
+                #[allow(clippy::cast_possible_wrap)]
                 uptime_seconds: start.elapsed().as_secs() as i64,
             };
 
@@ -340,7 +343,7 @@ async fn main() {
             temperature: sensor.temperature,
             humidity: sensor.humidity,
             battery_level: sensor.battery,
-            metadata: Default::default(),
+            metadata: HashMap::default(),
         };
 
         let payload = telemetry.encode_to_vec();
@@ -385,6 +388,7 @@ async fn send_shadow_report(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn report_ota_status(
     reported_state: &Arc<Mutex<serde_json::Map<String, serde_json::Value>>>,
     device_id: &str,
@@ -419,6 +423,7 @@ async fn report_ota_status(
 // OTA handler (real binary replacement for Linux)
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::too_many_lines)]
 async fn handle_ota(
     ota_payload: serde_json::Value,
     device_id: String,
@@ -429,27 +434,21 @@ async fn handle_ota(
     shadow_version: i64,
 ) {
     // Parse required fields
-    let fw_version = match ota_payload.get("firmware_version").and_then(|v| v.as_str()) {
-        Some(v) => v.to_string(),
-        None => {
-            tracing::warn!("OTA payload missing firmware_version");
-            return;
-        }
+    let fw_version = if let Some(v) = ota_payload.get("firmware_version").and_then(|v| v.as_str()) { v.to_string() } else {
+        tracing::warn!("OTA payload missing firmware_version");
+        return;
     };
-    let fw_url = match ota_payload.get("firmware_url").and_then(|v| v.as_str()) {
-        Some(v) => v.to_string(),
-        None => {
-            tracing::warn!("OTA payload missing firmware_url");
-            return;
-        }
+    let fw_url = if let Some(v) = ota_payload.get("firmware_url").and_then(|v| v.as_str()) { v.to_string() } else {
+        tracing::warn!("OTA payload missing firmware_url");
+        return;
     };
     let fw_update_id = ota_payload
         .get("firmware_update_id")
-        .and_then(|v| v.as_i64());
+        .and_then(serde_json::Value::as_i64);
     let expected_sha256 = ota_payload
         .get("sha256")
         .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
+        .map(std::string::ToString::to_string);
 
     // Check if we're already running the requested version
     {
@@ -494,7 +493,7 @@ async fn handle_ota(
             match resp.bytes().await {
                 Ok(b) => b,
                 Err(e) => {
-                    let err = format!("download read error: {}", e);
+                    let err = format!("download read error: {e}");
                     tracing::warn!("OTA: {}", err);
                     report_ota_status(
                         &reported_state, &device_id, &session, &report_topic, shadow_version,
@@ -506,7 +505,7 @@ async fn handle_ota(
             }
         }
         Err(e) => {
-            let err = format!("download error: {}", e);
+            let err = format!("download error: {e}");
             tracing::warn!("OTA: {}", err);
             report_ota_status(
                 &reported_state, &device_id, &session, &report_topic, shadow_version,
@@ -532,7 +531,7 @@ async fn handle_ota(
         let actual = format!("{:x}", hasher.finalize());
 
         if actual.to_lowercase() != expected.to_lowercase() {
-            let err = format!("hash mismatch: expected={} got={}", expected, actual);
+            let err = format!("hash mismatch: expected={expected} got={actual}");
             tracing::warn!("OTA: {}", err);
             report_ota_status(
                 &reported_state, &device_id, &session, &report_topic, shadow_version,
@@ -562,7 +561,7 @@ async fn handle_ota(
     let current_exe = match std::env::current_exe() {
         Ok(p) => p,
         Err(e) => {
-            let err = format!("cannot resolve current executable path: {}", e);
+            let err = format!("cannot resolve current executable path: {e}");
             tracing::warn!("OTA: {}", err);
             report_ota_status(
                 &reported_state, &device_id, &session, &report_topic, shadow_version,
@@ -598,7 +597,7 @@ async fn handle_ota(
         )
         .await
         {
-            let err = format!("failed to set permissions: {}", e);
+            let err = format!("failed to set permissions: {e}");
             tracing::warn!("OTA: {}", err);
             let _ = tokio::fs::remove_file(&tmp_path).await;
             report_ota_status(
@@ -612,7 +611,7 @@ async fn handle_ota(
 
     // Atomic rename: tmp -> current executable
     if let Err(e) = tokio::fs::rename(&tmp_path, &current_exe).await {
-        let err = format!("failed to replace binary: {}", e);
+        let err = format!("failed to replace binary: {e}");
         tracing::warn!("OTA: {}", err);
         let _ = tokio::fs::remove_file(&tmp_path).await;
         report_ota_status(
@@ -626,7 +625,7 @@ async fn handle_ota(
     // -- Success: report and exit so the process manager (systemd) restarts us --
     {
         let mut fw = firmware_version.lock().await;
-        *fw = format!("v{}", fw_version);
+        *fw = format!("v{fw_version}");
     }
 
     report_ota_status(
@@ -651,6 +650,7 @@ async fn handle_ota(
 // Utilities
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::cast_possible_truncation)]
 fn chrono_now_millis() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

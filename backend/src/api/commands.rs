@@ -64,6 +64,12 @@ fn to_command_response(record: CommandRecord) -> CommandResponse {
 
 /// Shared internal logic for sending a command to a device.
 /// Used by both the generic POST endpoint and the legacy restart endpoint.
+///
+/// # Errors
+///
+/// Returns `StatusCode::NOT_FOUND` if the device does not exist, or
+/// `StatusCode::INTERNAL_SERVER_ERROR` on database/Zenoh failures.
+#[allow(clippy::implicit_hasher)]
 pub async fn send_command_internal(
     state: &AppState,
     device_id: &str,
@@ -109,7 +115,7 @@ pub async fn send_command_internal(
     };
 
     let payload = proto_command.encode_to_vec();
-    let topic = format!("extrittio/devices/{}/commands", device_id);
+    let topic = format!("extrittio/devices/{device_id}/commands");
 
     state
         .zenoh_session

@@ -16,6 +16,11 @@ use extrittio_proto::extrittio::{DeviceCommandResponse, DeviceHeartbeat, DeviceL
 /// Spawns one subscriber handler in a background tokio task and runs the other
 /// in the current task. Both loop indefinitely, receiving messages and
 /// dispatching them to the appropriate handler function.
+///
+/// # Errors
+///
+/// Returns an error if any Zenoh subscriber declaration fails.
+#[allow(clippy::too_many_lines)]
 pub async fn run_subscriber(
     session: Arc<zenoh::Session>,
     db_pool: DbPool,
@@ -149,7 +154,7 @@ pub async fn run_subscriber(
     Ok(())
 }
 
-/// Decode a DeviceTelemetry protobuf message, insert a telemetry record, and
+/// Decode a `DeviceTelemetry` protobuf message, insert a telemetry record, and
 /// update the device's `last_seen` timestamp.
 ///
 /// Logs and drops messages from unregistered devices or malformed payloads.
@@ -246,7 +251,7 @@ fn handle_telemetry(db_pool: &DbPool, payload: &[u8]) {
     );
 }
 
-/// Decode a DeviceHeartbeat protobuf message and update the device's status,
+/// Decode a `DeviceHeartbeat` protobuf message and update the device's status,
 /// firmware, uptime, and `last_seen` timestamp.
 ///
 /// Logs and drops messages from unregistered devices or malformed payloads.
@@ -301,6 +306,7 @@ fn handle_heartbeat(db_pool: &DbPool, payload: &[u8]) {
     let changeset = UpdateDevice {
         status: Some(status),
         firmware: Some(heartbeat_msg.firmware.clone()),
+        #[allow(clippy::cast_possible_truncation)]
         uptime_seconds: Some(heartbeat_msg.uptime_seconds as i32),
         last_seen: Some(now),
         updated_at: Some(now),
@@ -324,6 +330,7 @@ fn handle_heartbeat(db_pool: &DbPool, payload: &[u8]) {
     );
 }
 
+#[allow(clippy::too_many_lines)]
 fn handle_shadow_report(db_pool: &DbPool, payload: &[u8]) {
     let report = match ShadowReport::decode(payload) {
         Ok(msg) => msg,
@@ -439,14 +446,14 @@ fn handle_shadow_report(db_pool: &DbPool, payload: &[u8]) {
         let ota_status = ota_status_raw.to_lowercase();
         let is_terminal = ota_status == "success" || ota_status == "failed";
         let completed_at = if is_terminal { Some(now) } else { None };
-        let error_message = ota_obj.get("error").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let error_message = ota_obj.get("error").and_then(|v| v.as_str()).map(std::string::ToString::to_string);
 
         // Match deployment by firmware_update_id when available for precise targeting,
         // fall back to latest non-terminal deployment otherwise
         let fw_update_id = ota_obj
             .get("firmware_update_id")
-            .and_then(|v| v.as_i64())
-            .map(|id| id as i32);
+            .and_then(serde_json::Value::as_i64)
+            .and_then(|id| i32::try_from(id).ok());
 
         let deployment = if let Some(fwid) = fw_update_id {
             ota_deployments::table
@@ -524,7 +531,7 @@ async fn handle_shadow_get(db_pool: &DbPool, session: &zenoh::Session, payload: 
 
     // Only send delta if non-empty
     let delta: serde_json::Value = serde_json::from_str(&shadow.delta).unwrap_or_default();
-    if delta.as_object().is_some_and(|obj| obj.is_empty()) {
+    if delta.as_object().is_some_and(serde_json::Map::is_empty) {
         info!("Shadow get from device {}: already in sync", get_msg.device_id);
         return;
     }
@@ -532,7 +539,7 @@ async fn handle_shadow_get(db_pool: &DbPool, session: &zenoh::Session, payload: 
     let delta_msg = ShadowDelta {
         device_id: get_msg.device_id.clone(),
         delta_json: shadow.delta,
-        version: shadow.version as i64,
+        version: i64::from(shadow.version),
     };
 
     let response_payload = prost::Message::encode_to_vec(&delta_msg);

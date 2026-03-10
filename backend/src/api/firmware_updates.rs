@@ -207,6 +207,7 @@ async fn create_firmware_update(
     ))
 }
 
+#[allow(clippy::too_many_lines)]
 async fn upload_firmware_update(
     State(state): State<Arc<AppState>>,
     mut multipart: Multipart,
@@ -241,7 +242,7 @@ async fn upload_firmware_update(
                 }
             }
             "file" => {
-                filename = field.file_name().map(|s| s.to_string());
+                filename = field.file_name().map(std::string::ToString::to_string);
                 file_data = Some(
                     field
                         .bytes()
@@ -263,11 +264,15 @@ async fn upload_firmware_update(
     }
 
     // Compute SHA-256
-    let sha256_hex: String = Sha256::digest(&file_data)
+    let sha256_hex = Sha256::digest(&file_data)
         .iter()
-        .map(|b| format!("{:02x}", b))
-        .collect();
+        .fold(String::new(), |mut acc, b| {
+            use std::fmt::Write;
+            let _ = write!(acc, "{b:02x}");
+            acc
+        });
 
+    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
     let file_size = file_data.len() as i32;
 
     let mut conn = state
@@ -449,11 +454,10 @@ fn next_version_for_type(
 
 fn increment_version(version: &str) -> String {
     let parts: Vec<&str> = version.split('.').collect();
-    if parts.len() == 3 {
-        if let Ok(patch) = parts[2].parse::<u32>() {
+    if parts.len() == 3
+        && let Ok(patch) = parts[2].parse::<u32>() {
             return format!("{}.{}.{}", parts[0], parts[1], patch + 1);
         }
-    }
     // Fallback: append .1
-    format!("{}.1", version)
+    format!("{version}.1")
 }

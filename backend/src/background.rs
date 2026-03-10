@@ -13,6 +13,7 @@ pub async fn run_offline_checker(db_pool: DbPool, timeout_secs: u64) {
     loop {
         tokio::time::sleep(interval).await;
 
+        #[allow(clippy::cast_possible_wrap)]
         let cutoff = Utc::now().naive_utc() - chrono::TimeDelta::seconds(timeout_secs as i64);
 
         let mut conn = match db_pool.get() {
@@ -50,6 +51,7 @@ pub async fn run_command_timeout_checker(db_pool: DbPool, timeout_secs: u64) {
     loop {
         tokio::time::sleep(interval).await;
 
+        #[allow(clippy::cast_possible_wrap)]
         let cutoff = Utc::now().naive_utc() - chrono::TimeDelta::seconds(timeout_secs as i64);
 
         let mut conn = match db_pool.get() {

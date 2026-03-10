@@ -8,11 +8,12 @@ use chrono::{NaiveDateTime, Utc};
 use serde_json::Value;
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::warn;
 
 use crate::api::commands;
-use crate::db::models::{Device, DeviceShadow, DeviceType, Fleet, FirmwareUpdate, NewDevice, NewDeviceShadow, NewOtaDeployment, UpdateDevice, UpdateShadow};
+use crate::db::models::{Device, DeviceShadow, DeviceType, Fleet, FirmwareUpdate, NewDevice, NewDeviceShadow, NewOtaDeployment, OtaDeployment, UpdateDevice, UpdateShadow};
 use crate::db::schema::{device_shadows, device_types, devices, firmware_updates, fleets, ota_deployments};
 use crate::shadow_utils::compute_shadow_delta;
 use crate::state::AppState;
@@ -80,11 +81,11 @@ fn format_uptime(seconds: i32) -> String {
     let minutes = (seconds % 3600) / 60;
 
     if days > 0 {
-        format!("{}d {}h", days, hours)
+        format!("{days}d {hours}h")
     } else if hours > 0 {
-        format!("{}h", hours)
+        format!("{hours}h")
     } else {
-        format!("{}m", minutes)
+        format!("{minutes}m")
     }
 }
 
@@ -103,21 +104,21 @@ fn format_last_seen(last_seen: Option<NaiveDateTime>) -> String {
                 if mins == 1 {
                     "1 minute ago".to_string()
                 } else {
-                    format!("{} minutes ago", mins)
+                    format!("{mins} minutes ago")
                 }
             } else if secs < 86400 {
                 let hours = secs / 3600;
                 if hours == 1 {
                     "1 hour ago".to_string()
                 } else {
-                    format!("{} hours ago", hours)
+                    format!("{hours} hours ago")
                 }
             } else {
                 let days = secs / 86400;
                 if days == 1 {
                     "1 day ago".to_string()
                 } else {
-                    format!("{} days ago", days)
+                    format!("{days} days ago")
                 }
             }
         }
@@ -186,7 +187,7 @@ async fn list_devices(
     }
 
     if let Some(ref search) = params.search {
-        let pattern = format!("%{}%", search);
+        let pattern = format!("%{search}%");
         query = query.filter(
             devices::name
                 .like(pattern.clone())
@@ -369,7 +370,7 @@ async fn restart_device(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
-    commands::send_command_internal(&state, &id, "restart", Default::default()).await?;
+    commands::send_command_internal(&state, &id, "restart", HashMap::default()).await?;
     Ok(StatusCode::OK)
 }
 
@@ -419,7 +420,7 @@ async fn trigger_ota(
 
     // Build OTA desired state: merge firmware update info into desired
     let mut desired: Value =
-        serde_json::from_str(&shadow.desired).unwrap_or(Value::Object(Default::default()));
+        serde_json::from_str(&shadow.desired).unwrap_or(Value::Object(serde_json::Map::default()));
     let desired_obj = desired
         .as_object_mut()
         .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -435,7 +436,7 @@ async fn trigger_ota(
     desired_obj.insert("ota".to_string(), ota_payload);
 
     let reported: Value =
-        serde_json::from_str(&shadow.reported).unwrap_or(Value::Object(Default::default()));
+        serde_json::from_str(&shadow.reported).unwrap_or(Value::Object(serde_json::Map::default()));
 
     // Compute delta using shared utility
     let new_delta = compute_shadow_delta(&desired, &reported);
@@ -473,10 +474,10 @@ async fn trigger_ota(
         let delta_msg = ShadowDelta {
             device_id: id.clone(),
             delta_json,
-            version: (shadow.version + 1) as i64,
+            version: i64::from(shadow.version + 1),
         };
         let payload = prost::Message::encode_to_vec(&delta_msg);
-        let topic = format!("extrittio/devices/{}/shadow/delta", id);
+        let topic = format!("extrittio/devices/{id}/shadow/delta");
         if let Err(e) = state.zenoh_session.put(&topic, payload).await {
             warn!("Failed to publish OTA shadow delta to device {}: {}", id, e);
             return Err(StatusCode::BAD_GATEWAY);
@@ -520,8 +521,6 @@ async fn list_ota_deployments(
             diesel::result::Error::NotFound => StatusCode::NOT_FOUND,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         })?;
-
-    use crate::db::models::OtaDeployment;
 
     let results: Vec<(OtaDeployment, FirmwareUpdate)> = ota_deployments::table
         .inner_join(firmware_updates::table)

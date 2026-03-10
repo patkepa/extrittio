@@ -9,6 +9,7 @@ pub struct AppConfig {
 }
 
 impl AppConfig {
+    #[must_use] 
     pub fn from_env() -> Self {
         Self {
             port: env::var("PORT")

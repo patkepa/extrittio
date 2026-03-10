@@ -76,7 +76,7 @@ async fn get_config(
     match config {
         Some(c) => {
             let config_val: Value =
-                serde_json::from_str(&c.config).unwrap_or(Value::Object(Default::default()));
+                serde_json::from_str(&c.config).unwrap_or(Value::Object(serde_json::Map::default()));
             Ok(Json(ConfigResponse {
                 device_id: c.device_id,
                 config: config_val,
@@ -87,7 +87,7 @@ async fn get_config(
             // Return empty config if none exists yet
             Ok(Json(ConfigResponse {
                 device_id: id,
-                config: Value::Object(Default::default()),
+                config: Value::Object(serde_json::Map::default()),
                 updated_at: Utc::now().to_rfc3339(),
             }))
         }
@@ -124,8 +124,7 @@ async fn update_config(
 
     let current: Value = existing
         .as_ref()
-        .map(|c| serde_json::from_str(&c.config).unwrap_or(Value::Object(Default::default())))
-        .unwrap_or(Value::Object(Default::default()));
+        .map_or(Value::Object(serde_json::Map::default()), |c| serde_json::from_str(&c.config).unwrap_or(Value::Object(serde_json::Map::default())));
 
     // Merge: null values remove keys, others upsert
     let mut obj = current.as_object().cloned().unwrap_or_default();
@@ -168,7 +167,7 @@ async fn update_config(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let config_val: Value =
-        serde_json::from_str(&updated.config).unwrap_or(Value::Object(Default::default()));
+        serde_json::from_str(&updated.config).unwrap_or(Value::Object(serde_json::Map::default()));
 
     Ok(Json(ConfigResponse {
         device_id: updated.device_id,
