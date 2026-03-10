@@ -5,18 +5,15 @@ use axum::{
     Json, Router,
 };
 use chrono::{NaiveDateTime, Utc};
-use serde_json::Value;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::db::models::{Device, DeviceType, Fleet, FirmwareUpdate, NewDevice, NewDeviceShadow, NewOtaDeployment, UpdateDevice, UpdateShadow};
-use crate::services::command_service;
+use crate::db::models::{Device, DeviceType, Fleet, NewDevice, UpdateDevice};
 use crate::error::AppError;
-use crate::repositories::{device_repo, firmware_repo, shadow_repo};
-use crate::shadow_utils::compute_shadow_delta;
+use crate::repositories::{device_repo, firmware_repo};
+use crate::services::{command_service, device_service};
 use crate::state::AppState;
-use extrittio_proto::extrittio::ShadowDelta;
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -216,13 +213,7 @@ async fn create_device(
         firmware: body.firmware.unwrap_or_else(|| "unknown".to_string()),
     };
 
-    device_repo::insert_device(&mut conn, &new_device)?;
-
-    // Create shadow record for the new device
-    let new_shadow = NewDeviceShadow {
-        device_id: new_id.clone(),
-    };
-    shadow_repo::insert_shadow(&mut conn, &new_shadow)?;
+    device_service::create_device(&mut conn, &new_device)?;
 
     let (device, device_type, fleet) =
         device_repo::find_device_with_joins(&mut conn, &new_id)?;
@@ -291,83 +282,7 @@ async fn trigger_ota(
     Json(body): Json<TriggerOtaRequest>,
 ) -> Result<StatusCode, AppError> {
     let mut conn = state.db_pool.get()?;
-
-    // Verify device exists and get its device_type_id
-    let device = device_repo::find_device(&mut conn, &id)?;
-
-    // Fetch firmware update
-    let fw: FirmwareUpdate = firmware_repo::find_firmware_update(&mut conn, body.firmware_update_id)?;
-
-    if fw.device_type_id != device.device_type_id {
-        return Err(AppError::BadRequest(
-            "Firmware device type does not match device".into(),
-        ));
-    }
-
-    // Load current shadow
-    let shadow = shadow_repo::find_shadow(&mut conn, &id)?;
-
-    // Build OTA desired state: merge firmware update info into desired
-    let mut desired: Value =
-        serde_json::from_str(&shadow.desired).unwrap_or(Value::Object(serde_json::Map::default()));
-    let desired_obj = desired
-        .as_object_mut()
-        .ok_or_else(|| AppError::Internal("Shadow desired field is not an object".into()))?;
-
-    let mut ota_payload = serde_json::json!({
-        "firmware_version": fw.version,
-        "firmware_url": fw.url,
-        "firmware_update_id": fw.id,
-    });
-    if let Some(ref hash) = fw.sha256 {
-        ota_payload["sha256"] = Value::String(hash.clone());
-    }
-    desired_obj.insert("ota".to_string(), ota_payload);
-
-    let reported: Value =
-        serde_json::from_str(&shadow.reported).unwrap_or(Value::Object(serde_json::Map::default()));
-
-    // Compute delta using shared utility
-    let new_delta = compute_shadow_delta(&desired, &reported);
-    let now = Utc::now().naive_utc();
-
-    let desired_str = serde_json::to_string(&desired)?;
-    let delta_str = serde_json::to_string(&new_delta)?;
-
-    let changeset = UpdateShadow {
-        desired: Some(desired_str),
-        delta: Some(delta_str),
-        version: Some(shadow.version + 1),
-        updated_at: Some(now),
-        ..Default::default()
-    };
-
-    shadow_repo::update_shadow(&mut conn, &id, &changeset)?;
-
-    // Create OTA deployment record for tracking
-    let new_deployment = NewOtaDeployment {
-        device_id: id.clone(),
-        firmware_update_id: fw.id,
-    };
-    firmware_repo::insert_ota_deployment(&mut conn, &new_deployment)?;
-
-    // Publish delta to device via Zenoh
-    if new_delta.as_object().is_some_and(|obj| !obj.is_empty()) {
-        let delta_json = serde_json::to_string(&new_delta)?;
-        let delta_msg = ShadowDelta {
-            device_id: id.clone(),
-            delta_json,
-            version: i64::from(shadow.version + 1),
-        };
-        let payload = prost::Message::encode_to_vec(&delta_msg);
-        let topic = format!("extrittio/devices/{id}/shadow/delta");
-        state
-            .zenoh_session
-            .put(&topic, payload)
-            .await
-            .map_err(|e| AppError::Zenoh(e.to_string()))?;
-    }
-
+    device_service::trigger_ota(&mut conn, &state.zenoh_session, &id, body.firmware_update_id).await?;
     Ok(StatusCode::OK)
 }
 

@@ -13,6 +13,7 @@ use std::sync::Arc;
 use crate::db::models::{NewFirmwareBlob, NewFirmwareUpdate};
 use crate::error::AppError;
 use crate::repositories::{device_type_repo, firmware_repo};
+use crate::services::firmware_service;
 use crate::state::AppState;
 
 // ---------------------------------------------------------------------------
@@ -139,13 +140,13 @@ async fn create_firmware_update(
         description: body.description,
     };
 
-    let created = firmware_repo::insert_firmware_update(&mut conn, &new_fw)
+    let created = firmware_service::register_firmware(&mut conn, &new_fw)
         .map_err(|e| match e {
-            diesel::result::Error::DatabaseError(
+            AppError::Database(diesel::result::Error::DatabaseError(
                 diesel::result::DatabaseErrorKind::UniqueViolation,
                 _,
-            ) => AppError::Conflict("Firmware version already exists for this device type".into()),
-            other => AppError::Database(other),
+            )) => AppError::Conflict("Firmware version already exists for this device type".into()),
+            other => other,
         })?;
 
     Ok((
@@ -248,7 +249,7 @@ async fn upload_firmware_update(
         None => next_version_for_type(&mut conn, device_type_id)?,
     };
 
-    // Insert firmware update with placeholder URL (updated after we know the ID)
+    // Insert firmware update (with placeholder URL) and blob via service
     let new_fw = NewFirmwareUpdate {
         device_type_id,
         version: version.clone(),
@@ -257,40 +258,33 @@ async fn upload_firmware_update(
         description,
     };
 
-    let created = firmware_repo::insert_firmware_update(&mut conn, &new_fw)
-        .map_err(|e| match e {
-            diesel::result::Error::DatabaseError(
-                diesel::result::DatabaseErrorKind::UniqueViolation,
-                _,
-            ) => AppError::Conflict("Firmware version already exists for this device type".into()),
-            other => AppError::Database(other),
-        })?;
-
-    // Update URL to point to download endpoint
-    let download_url = format!("/api/firmware-updates/{}/download", created.id);
-    firmware_repo::update_firmware_url(&mut conn, created.id, &download_url)?;
-
-    // Store the blob
-    let new_blob = NewFirmwareBlob {
-        firmware_update_id: created.id,
+    let blob = NewFirmwareBlob {
+        firmware_update_id: 0, // overwritten inside upload_firmware
         data: file_data,
         size: file_size,
         filename: filename.clone(),
     };
 
-    firmware_repo::insert_firmware_blob(&mut conn, &new_blob)?;
+    let updated = firmware_service::upload_firmware(&mut conn, &new_fw, blob)
+        .map_err(|e| match e {
+            AppError::Database(diesel::result::Error::DatabaseError(
+                diesel::result::DatabaseErrorKind::UniqueViolation,
+                _,
+            )) => AppError::Conflict("Firmware version already exists for this device type".into()),
+            other => other,
+        })?;
 
     Ok((
         StatusCode::CREATED,
         Json(FirmwareUpdateResponse {
-            id: created.id,
-            device_type_id: created.device_type_id,
+            id: updated.id,
+            device_type_id: updated.device_type_id,
             device_type_name: dt.name,
-            version: created.version,
-            url: download_url,
+            version: updated.version,
+            url: updated.url,
             sha256: Some(sha256_hex),
-            description: created.description,
-            created_at: created.created_at.to_string(),
+            description: updated.description,
+            created_at: updated.created_at.to_string(),
             has_blob: true,
             file_size: Some(file_size),
             filename: Some(filename),
