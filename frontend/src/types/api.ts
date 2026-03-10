@@ -111,6 +111,9 @@ export interface FirmwareUpdate {
   sha256: string | null;
   description: string | null;
   created_at: string;
+  has_blob: boolean;
+  file_size: number | null;
+  filename: string | null;
 }
 
 export interface CreateFirmwareUpdateRequest {

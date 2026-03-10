@@ -24,6 +24,30 @@ export async function createFirmwareUpdate(
   return data;
 }
 
+export interface UploadFirmwareRequest {
+  device_type_id: number;
+  version?: string;
+  description?: string;
+  file: File;
+}
+
+export async function uploadFirmwareUpdate(
+  req: UploadFirmwareRequest
+): Promise<FirmwareUpdate> {
+  const formData = new FormData();
+  formData.append("device_type_id", String(req.device_type_id));
+  if (req.version) formData.append("version", req.version);
+  if (req.description) formData.append("description", req.description);
+  formData.append("file", req.file);
+
+  const { data } = await client.post<FirmwareUpdate>(
+    "/firmware-updates/upload",
+    formData,
+    { headers: { "Content-Type": "multipart/form-data" } }
+  );
+  return data;
+}
+
 export async function deleteFirmwareUpdate(id: number): Promise<void> {
   await client.delete(`/firmware-updates/${id}`);
 }

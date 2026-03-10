@@ -136,7 +136,11 @@ export const OtaTab = ({ device }: OtaTabProps) => {
             <Card elevation={Elevation.ONE} style={{ marginBottom: 12, padding: 12, backgroundColor: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
               <div style={{ fontSize: 13 }}>
                 <div><span style={{ opacity: 0.6 }}>Version: </span><span className="mono-data">v{selectedFw.version}</span></div>
-                <div><span style={{ opacity: 0.6 }}>URL: </span><span className="mono-data" style={{ fontSize: 12 }}>{selectedFw.url}</span></div>
+                {selectedFw.has_blob ? (
+                  <div><span style={{ opacity: 0.6 }}>Source: </span><Tag minimal intent="success" icon="document" style={{ verticalAlign: 'middle' }}>{selectedFw.filename}</Tag></div>
+                ) : (
+                  <div><span style={{ opacity: 0.6 }}>URL: </span><span className="mono-data" style={{ fontSize: 12 }}>{selectedFw.url}</span></div>
+                )}
                 {selectedFw.sha256 && (
                   <div><span style={{ opacity: 0.6 }}>SHA-256: </span><span className="mono-data" style={{ fontSize: 12 }}>{selectedFw.sha256}</span></div>
                 )}

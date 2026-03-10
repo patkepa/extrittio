@@ -2,7 +2,7 @@ use axum::{
     body::Body,
     extract::{Multipart, Path, Query, State},
     http::{header, StatusCode},
-    response::{IntoResponse, Response},
+    response::Response,
     routing::get,
     Json, Router,
 };
@@ -100,8 +100,8 @@ async fn list_firmware_updates(
         .select((
             FirmwareUpdate::as_select(),
             DeviceType::as_select(),
-            firmware_blobs::size.nullable::<diesel::sql_types::Nullable<diesel::sql_types::Integer>>(),
-            firmware_blobs::filename.nullable::<diesel::sql_types::Nullable<diesel::sql_types::Text>>(),
+            firmware_blobs::size.nullable(),
+            firmware_blobs::filename.nullable(),
         ))
         .into_boxed();
 

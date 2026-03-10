@@ -11,7 +11,9 @@ import {
   getNextVersion,
   getOtaDeployments,
   triggerOta,
+  uploadFirmwareUpdate,
 } from "../api/firmware-updates";
+import type { UploadFirmwareRequest } from "../api/firmware-updates";
 
 export function useFirmwareUpdates(params?: FirmwareUpdatesParams) {
   return useQuery({
@@ -43,6 +45,19 @@ export function useCreateFirmwareUpdate() {
   return useMutation({
     mutationFn: (body: CreateFirmwareUpdateRequest) =>
       createFirmwareUpdate(body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["firmware-updates"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["firmware-next-version"],
+      });
+    },
+  });
+}
+
+export function useUploadFirmwareUpdate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (req: UploadFirmwareRequest) => uploadFirmwareUpdate(req),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["firmware-updates"] });
       void queryClient.invalidateQueries({

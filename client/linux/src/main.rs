@@ -12,6 +12,70 @@ use sha2::{Digest, Sha256};
 use tokio::sync::Mutex;
 use tracing::info;
 
+// ---------------------------------------------------------------------------
+// Embedded device ID
+// ---------------------------------------------------------------------------
+//
+// A fixed slot in the compiled binary: a 23-byte marker followed by 64 bytes
+// for the device ID (null-padded) plus 1 trailing null = 88 bytes.
+//
+// On first provisioning the user passes `--device-id`.  During OTA the handler
+// patches this slot in the *downloaded* binary so the new firmware inherits
+// the device identity automatically — no CLI argument required after the
+// initial run.
+
+const EMBED_MARKER_LEN: usize = 23; // b"<<EXTRITTIO_DEVICE_ID>>"
+const EMBED_ID_CAPACITY: usize = 64;
+
+#[used]
+#[no_mangle]
+pub static DEVICE_ID_EMBED: [u8; 88] = {
+    let marker = b"<<EXTRITTIO_DEVICE_ID>>";
+    let mut buf = [0u8; 88];
+    let mut i = 0;
+    while i < 23 {
+        buf[i] = marker[i];
+        i += 1;
+    }
+    buf
+};
+
+/// Read the device ID from the embedded slot (returns `None` if still blank).
+fn read_embedded_device_id() -> Option<String> {
+    let id_bytes = &DEVICE_ID_EMBED[EMBED_MARKER_LEN..EMBED_MARKER_LEN + EMBED_ID_CAPACITY];
+    let end = id_bytes.iter().position(|&b| b == 0).unwrap_or(id_bytes.len());
+    if end == 0 {
+        return None;
+    }
+    String::from_utf8(id_bytes[..end].to_vec()).ok()
+}
+
+/// Find the embedded-ID marker in a binary blob and patch the device ID in.
+/// The marker is assembled from two halves at runtime so the search literal
+/// does not create a second match inside the binary's `.rodata` section.
+fn patch_device_id_in_binary(binary: &mut [u8], device_id: &str) -> bool {
+    let mut marker = Vec::with_capacity(EMBED_MARKER_LEN);
+    marker.extend_from_slice(b"<<EXTRITTIO_");
+    marker.extend_from_slice(b"DEVICE_ID>>");
+
+    if let Some(pos) = binary
+        .windows(marker.len())
+        .position(|w| w == marker.as_slice())
+    {
+        let id_start = pos + EMBED_MARKER_LEN;
+        let id_bytes = device_id.as_bytes();
+        let copy_len = id_bytes.len().min(EMBED_ID_CAPACITY);
+        binary[id_start..id_start + copy_len].copy_from_slice(&id_bytes[..copy_len]);
+        // Zero-fill the rest of the slot
+        for b in &mut binary[id_start + copy_len..id_start + EMBED_ID_CAPACITY] {
+            *b = 0;
+        }
+        true
+    } else {
+        false
+    }
+}
+
 #[derive(Parser)]
 #[command(name = "extrittio-client", about = "Simulated IoT device client")]
 struct Args {
