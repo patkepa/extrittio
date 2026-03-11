@@ -13,8 +13,10 @@ use tracing_subscriber::EnvFilter;
 use extrittio_backend::auth::hash_password;
 use extrittio_backend::config::AppConfig;
 use extrittio_backend::db::models::{NewServerConfigEntry, NewUser, ServerConfigEntry};
-use extrittio_backend::db::schema::{server_config, users};
+use extrittio_backend::db::schema::{ca_certificates, server_config, users};
 use extrittio_backend::middleware::auth_middleware;
+use extrittio_backend::repositories::cert_repo;
+use extrittio_backend::services::cert_service;
 use extrittio_backend::state::AppState;
 use extrittio_backend::{api, background, zenoh_handler, MIGRATIONS};
 
@@ -121,6 +123,43 @@ async fn main() {
                 .expect("Failed to seed admin user");
             tracing::warn!("Default admin user created (username: admin, password: admin). Change this immediately!");
         }
+
+        // Initialize CA certificate if not present
+        let ca_exists: i64 = ca_certificates::table
+            .count()
+            .get_result(&mut conn)
+            .expect("Failed to count CA certificates");
+
+        if ca_exists == 0 {
+            let new_ca = cert_service::generate_ca_certificate()
+                .expect("Failed to generate CA certificate");
+            cert_repo::insert_ca_certificate(&mut conn, &new_ca)
+                .expect("Failed to insert CA certificate");
+            info!("Generated new root CA certificate");
+        }
+
+        // Write CA and server certs to disk for Zenoh TLS
+        let certs_dir = std::env::var("EXTRITTIO_CERTS_DIR").unwrap_or_else(|_| "./certs".to_string());
+        let certs_path = std::path::Path::new(&certs_dir);
+        std::fs::create_dir_all(certs_path).expect("Failed to create certs directory");
+
+        let ca = cert_repo::get_ca_certificate(&mut conn)
+            .expect("Failed to read CA certificate")
+            .expect("CA certificate must exist");
+
+        std::fs::write(certs_path.join("ca.pem"), &ca.certificate_pem)
+            .expect("Failed to write CA cert to disk");
+
+        // Generate server cert for Zenoh TLS
+        let (server_cert_pem, server_key_pem) =
+            cert_service::generate_server_certificate(&ca)
+                .expect("Failed to generate server certificate");
+        std::fs::write(certs_path.join("server.pem"), &server_cert_pem)
+            .expect("Failed to write server cert to disk");
+        std::fs::write(certs_path.join("server-key.pem"), &server_key_pem)
+            .expect("Failed to write server key to disk");
+
+        info!("TLS certificates written to {}", certs_dir);
 
         // Allow override via environment variable
         std::env::var("JWT_SECRET").unwrap_or(jwt_secret)

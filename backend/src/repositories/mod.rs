@@ -1,3 +1,4 @@
+pub mod cert_repo;
 pub mod command_repo;
 pub mod config_repo;
 pub mod dashboard_repo;

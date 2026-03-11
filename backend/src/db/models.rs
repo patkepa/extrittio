@@ -1,7 +1,55 @@
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 
-use super::schema::{command_history, device_configs, device_logs, device_types, devices, firmware_blobs, firmware_updates, fleets, ota_deployments, telemetry, device_shadows, users, server_config};
+use super::schema::{ca_certificates, command_history, device_certificates, device_configs, device_logs, device_types, devices, firmware_blobs, firmware_updates, fleets, ota_deployments, telemetry, device_shadows, users, server_config};
+
+// ---------------------------------------------------------------------------
+// CA Certificates
+// ---------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug, Clone)]
+#[diesel(table_name = ca_certificates)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct CaCertificate {
+    pub id: i32,
+    pub private_key_pem: String,
+    pub certificate_pem: String,
+    pub created_at: NaiveDateTime,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = ca_certificates)]
+pub struct NewCaCertificate {
+    pub private_key_pem: String,
+    pub certificate_pem: String,
+}
+
+// ---------------------------------------------------------------------------
+// Device Certificates
+// ---------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug, Clone)]
+#[diesel(table_name = device_certificates)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct DeviceCertificate {
+    pub id: i32,
+    pub device_id: String,
+    pub private_key_pem: String,
+    pub certificate_pem: String,
+    pub fingerprint: String,
+    pub expires_at: NaiveDateTime,
+    pub created_at: NaiveDateTime,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = device_certificates)]
+pub struct NewDeviceCertificate {
+    pub device_id: String,
+    pub private_key_pem: String,
+    pub certificate_pem: String,
+    pub fingerprint: String,
+    pub expires_at: NaiveDateTime,
+}
 
 // ---------------------------------------------------------------------------
 // Device Types

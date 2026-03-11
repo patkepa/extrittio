@@ -1,4 +1,5 @@
 pub mod auth_routes;
+pub mod certificates;
 pub mod commands;
 pub mod configs;
 pub mod dashboard;
@@ -30,4 +31,5 @@ pub fn router() -> Router<Arc<AppState>> {
         .merge(logs::router())
         .merge(configs::router())
         .merge(commands::router())
+        .merge(certificates::router())
 }

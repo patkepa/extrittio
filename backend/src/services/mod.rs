@@ -1,3 +1,4 @@
+pub mod cert_service;
 pub mod command_service;
 pub mod device_service;
 pub mod firmware_service;

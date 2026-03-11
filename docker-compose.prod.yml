@@ -1,0 +1,33 @@
+services:
+  backend:
+    image: ghcr.io/patkepa/extrittio-backend:latest
+    restart: unless-stopped
+    volumes:
+      - db-data:/app/data
+    environment:
+      - DATABASE_URL=/app/data/extrittio.db
+      - PORT=8080
+      - CORS_ORIGIN=*
+      - RUST_LOG=extrittio_backend=info
+      # - JWT_SECRET=change-me-in-production
+    networks:
+      - app
+      - zenoh
+
+  frontend:
+    image: ghcr.io/patkepa/extrittio-frontend:latest
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - app
+
+volumes:
+  db-data:
+
+networks:
+  app:
+  zenoh:
+    driver: bridge

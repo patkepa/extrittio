@@ -6,8 +6,8 @@ use std::sync::Arc;
 
 use crate::db::models::{NewDevice, NewDeviceShadow, NewOtaDeployment};
 use crate::error::AppError;
-use crate::repositories::{device_repo, firmware_repo, shadow_repo};
-use crate::services::shadow_service;
+use crate::repositories::{cert_repo, device_repo, firmware_repo, shadow_repo};
+use crate::services::{cert_service, shadow_service};
 use crate::state::{run_db, DbPool};
 
 /// Create a device and its associated shadow record atomically.
@@ -21,6 +21,13 @@ pub fn create_device(
             device_id: new_device.id.clone(),
         };
         shadow_repo::insert_shadow(conn, &new_shadow)?;
+
+        // Generate device certificate if CA exists
+        if let Some(ca) = cert_repo::get_ca_certificate(conn)? {
+            let new_cert = cert_service::generate_device_certificate(&new_device.id, &ca)?;
+            cert_repo::insert_device_certificate(conn, &new_cert)?;
+        }
+
         Ok(())
     })
 }
