@@ -1,7 +1,7 @@
 // Repository functions for device types
 
-use diesel::prelude::*;
 use diesel::SqliteConnection;
+use diesel::prelude::*;
 
 use crate::db::models::{DeviceType, NewDeviceType};
 use crate::db::schema::{device_types, devices};

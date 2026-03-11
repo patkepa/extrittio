@@ -8,7 +8,7 @@ use crate::db::models::UpdateShadow;
 use crate::error::AppError;
 use crate::repositories::shadow_repo;
 use crate::shadow_utils::compute_shadow_delta;
-use crate::state::{run_db, DbPool};
+use crate::state::{DbPool, run_db};
 
 /// Transactional DB-only part of update_desired. Returns the new delta and
 /// version so the caller can publish via Zenoh after the transaction commits.
@@ -20,10 +20,10 @@ pub fn update_desired_db(
     conn.transaction(|conn| {
         let shadow = shadow_repo::find_shadow(conn, device_id)?;
 
-        let current_desired: Value =
-            serde_json::from_str(&shadow.desired).unwrap_or(Value::Object(Default::default()));
-        let current_reported: Value =
-            serde_json::from_str(&shadow.reported).unwrap_or(Value::Object(Default::default()));
+        let current_desired: Value = serde_json::from_str(&shadow.desired)
+            .unwrap_or(Value::Object(serde_json::Map::default()));
+        let current_reported: Value = serde_json::from_str(&shadow.reported)
+            .unwrap_or(Value::Object(serde_json::Map::default()));
 
         let new_desired = merge_json(&current_desired, patch);
         let new_delta = compute_shadow_delta(&new_desired, &current_reported);
@@ -54,10 +54,7 @@ pub async fn update_desired(
     let d_id = device_id.to_string();
     let p = patch.clone();
 
-    let (delta, version) = run_db(pool, move |conn| {
-        update_desired_db(conn, &d_id, &p)
-    })
-    .await?;
+    let (delta, version) = run_db(pool, move |conn| update_desired_db(conn, &d_id, &p)).await?;
 
     publish_delta_if_nonempty(zenoh_session, device_id, &delta, version).await;
     Ok(())
@@ -72,10 +69,10 @@ pub fn update_reported(
     conn.transaction(|conn| {
         let shadow = shadow_repo::find_shadow(conn, device_id)?;
 
-        let current_desired: Value =
-            serde_json::from_str(&shadow.desired).unwrap_or(Value::Object(Default::default()));
-        let current_reported: Value =
-            serde_json::from_str(&shadow.reported).unwrap_or(Value::Object(Default::default()));
+        let current_desired: Value = serde_json::from_str(&shadow.desired)
+            .unwrap_or(Value::Object(serde_json::Map::default()));
+        let current_reported: Value = serde_json::from_str(&shadow.reported)
+            .unwrap_or(Value::Object(serde_json::Map::default()));
 
         let new_reported = merge_json(&current_reported, patch);
         let new_delta = compute_shadow_delta(&current_desired, &new_reported);

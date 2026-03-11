@@ -1,7 +1,7 @@
 // Repository functions for commands
 
-use diesel::prelude::*;
 use diesel::SqliteConnection;
+use diesel::prelude::*;
 
 use crate::db::models::{CommandRecord, NewCommandRecord};
 use crate::db::schema::command_history;

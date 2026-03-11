@@ -1,8 +1,8 @@
 use argon2::{
-    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
+    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -21,9 +21,8 @@ pub fn hash_password(password: &str) -> Result<String, argon2::password_hash::Er
 }
 
 pub fn verify_password(password: &str, hash: &str) -> bool {
-    let parsed_hash = match PasswordHash::new(hash) {
-        Ok(h) => h,
-        Err(_) => return false,
+    let Ok(parsed_hash) = PasswordHash::new(hash) else {
+        return false;
     };
     Argon2::default()
         .verify_password(password.as_bytes(), &parsed_hash)
@@ -36,6 +35,7 @@ pub fn create_token(
     role: &str,
     secret: &str,
 ) -> Result<String, jsonwebtoken::errors::Error> {
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
     let expiration = chrono::Utc::now()
         .checked_add_signed(chrono::Duration::hours(24))
         .expect("valid timestamp")

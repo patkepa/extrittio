@@ -1,8 +1,8 @@
 use axum::{
+    Json, Router,
     extract::{Path, State},
     http::StatusCode,
     routing::get,
-    Json, Router,
 };
 use serde::Serialize;
 use std::sync::Arc;
@@ -10,7 +10,7 @@ use std::sync::Arc;
 use crate::error::AppError;
 use crate::repositories::{cert_repo, device_repo};
 use crate::services::cert_service;
-use crate::state::{run_db, AppState};
+use crate::state::{AppState, run_db};
 
 #[derive(Debug, Serialize)]
 pub struct CaCertificateResponse {

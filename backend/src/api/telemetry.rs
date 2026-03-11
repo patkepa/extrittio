@@ -1,7 +1,7 @@
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     routing::get,
-    Json, Router,
 };
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
@@ -10,7 +10,7 @@ use std::sync::Arc;
 use crate::db::models::TelemetryRecord;
 use crate::error::AppError;
 use crate::repositories::{device_repo, telemetry_repo};
-use crate::state::{run_db, AppState};
+use crate::state::{AppState, run_db};
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -80,10 +80,7 @@ async fn get_device_telemetry(
 
         let results = telemetry_repo::list_telemetry(conn, &id, since, limit)?;
 
-        Ok(results
-            .into_iter()
-            .map(TelemetryResponse::from)
-            .collect())
+        Ok(results.into_iter().map(TelemetryResponse::from).collect())
     })
     .await?;
 

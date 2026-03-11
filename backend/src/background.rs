@@ -40,7 +40,10 @@ pub async fn run_offline_checker(db_pool: DbPool, timeout_secs: u64) {
 
 pub async fn run_command_timeout_checker(db_pool: DbPool, timeout_secs: u64) {
     let interval = Duration::from_secs(30);
-    info!("Command timeout checker started (timeout: {}s)", timeout_secs);
+    info!(
+        "Command timeout checker started (timeout: {}s)",
+        timeout_secs
+    );
 
     loop {
         tokio::time::sleep(interval).await;
@@ -52,8 +55,7 @@ pub async fn run_command_timeout_checker(db_pool: DbPool, timeout_secs: u64) {
         let pool = db_pool.clone();
         let result = tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().map_err(|e| e.to_string())?;
-            command_repo::timeout_stale_commands(&mut conn, cutoff, now)
-                .map_err(|e| e.to_string())
+            command_repo::timeout_stale_commands(&mut conn, cutoff, now).map_err(|e| e.to_string())
         })
         .await;
 

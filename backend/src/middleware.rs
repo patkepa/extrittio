@@ -33,8 +33,7 @@ pub async fn auth_middleware(
         _ => return Err(AppError::Unauthorized),
     };
 
-    let claims = validate_token(token, &state.jwt_secret)
-        .map_err(|_| AppError::Unauthorized)?;
+    let claims = validate_token(token, &state.jwt_secret).map_err(|_| AppError::Unauthorized)?;
 
     request.extensions_mut().insert(claims);
 

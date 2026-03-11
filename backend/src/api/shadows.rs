@@ -1,8 +1,8 @@
 use axum::{
+    Json, Router,
     extract::{Path, State},
     http::StatusCode,
     routing::get,
-    Json, Router,
 };
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -13,7 +13,7 @@ use crate::db::models::{DeviceShadow, UpdateShadow};
 use crate::error::AppError;
 use crate::repositories::{device_repo, shadow_repo};
 use crate::services::shadow_service;
-use crate::state::{run_db, AppState};
+use crate::state::{AppState, run_db};
 
 // ---------------------------------------------------------------------------
 // Request / Response types

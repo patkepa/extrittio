@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use clap::Parser;
@@ -44,7 +44,10 @@ pub static DEVICE_ID_EMBED: [u8; 88] = {
 /// Read the device ID from the embedded slot (returns `None` if still blank).
 fn read_embedded_device_id() -> Option<String> {
     let id_bytes = &DEVICE_ID_EMBED[EMBED_MARKER_LEN..EMBED_MARKER_LEN + EMBED_ID_CAPACITY];
-    let end = id_bytes.iter().position(|&b| b == 0).unwrap_or(id_bytes.len());
+    let end = id_bytes
+        .iter()
+        .position(|&b| b == 0)
+        .unwrap_or(id_bytes.len());
     if end == 0 {
         return None;
     }
@@ -264,10 +267,7 @@ async fn main() {
             if let Err(e) = hb_session.put(&heartbeat_topic, payload).await {
                 tracing::warn!("Failed to send heartbeat: {}", e);
             } else {
-                info!(
-                    "Heartbeat sent (uptime: {}s)",
-                    start.elapsed().as_secs()
-                );
+                info!("Heartbeat sent (uptime: {}s)", start.elapsed().as_secs());
             }
         }
     });
@@ -333,10 +333,18 @@ async fn main() {
                                     // If OTA payload present, spawn OTA handler
                                     if let Some(ota_val) = ota_payload {
                                         // Guard: skip if another OTA is already running
-                                        if shadow_ota_flag.compare_exchange(
-                                            false, true, Ordering::SeqCst, Ordering::SeqCst,
-                                        ).is_err() {
-                                            tracing::warn!("OTA: update already in progress, ignoring new delta");
+                                        if shadow_ota_flag
+                                            .compare_exchange(
+                                                false,
+                                                true,
+                                                Ordering::SeqCst,
+                                                Ordering::SeqCst,
+                                            )
+                                            .is_err()
+                                        {
+                                            tracing::warn!(
+                                                "OTA: update already in progress, ignoring new delta"
+                                            );
                                             continue;
                                         }
 
@@ -369,10 +377,7 @@ async fn main() {
                                     );
                                 }
                                 Err(e) => {
-                                    tracing::warn!(
-                                        "Failed to parse shadow delta JSON: {}",
-                                        e
-                                    );
+                                    tracing::warn!("Failed to parse shadow delta JSON: {}", e);
                                 }
                             }
                         }
@@ -496,11 +501,15 @@ async fn handle_ota(
     shadow_version: i64,
 ) {
     // Parse required fields
-    let fw_version = if let Some(v) = ota_payload.get("firmware_version").and_then(|v| v.as_str()) { v.to_string() } else {
+    let fw_version = if let Some(v) = ota_payload.get("firmware_version").and_then(|v| v.as_str()) {
+        v.to_string()
+    } else {
         tracing::warn!("OTA payload missing firmware_version");
         return;
     };
-    let fw_url = if let Some(v) = ota_payload.get("firmware_url").and_then(|v| v.as_str()) { v.to_string() } else {
+    let fw_url = if let Some(v) = ota_payload.get("firmware_url").and_then(|v| v.as_str()) {
+        v.to_string()
+    } else {
         tracing::warn!("OTA payload missing firmware_url");
         return;
     };
@@ -518,8 +527,15 @@ async fn handle_ota(
         if current.contains(&fw_version) {
             info!("OTA: already running v{}, skipping", fw_version);
             report_ota_status(
-                &reported_state, &device_id, &session, &report_topic, shadow_version,
-                &fw_version, fw_update_id, "success", None,
+                &reported_state,
+                &device_id,
+                &session,
+                &report_topic,
+                shadow_version,
+                &fw_version,
+                fw_update_id,
+                "success",
+                None,
             )
             .await;
             return;
@@ -529,8 +545,15 @@ async fn handle_ota(
     // -- Report "downloading" --
     info!("OTA: downloading firmware v{} from {}", fw_version, fw_url);
     report_ota_status(
-        &reported_state, &device_id, &session, &report_topic, shadow_version,
-        &fw_version, fw_update_id, "downloading", None,
+        &reported_state,
+        &device_id,
+        &session,
+        &report_topic,
+        shadow_version,
+        &fw_version,
+        fw_update_id,
+        "downloading",
+        None,
     )
     .await;
 
@@ -546,8 +569,15 @@ async fn handle_ota(
                 let err = format!("HTTP {}", resp.status());
                 tracing::warn!("OTA: download failed: {}", err);
                 report_ota_status(
-                    &reported_state, &device_id, &session, &report_topic, shadow_version,
-                    &fw_version, fw_update_id, "failed", Some(&err),
+                    &reported_state,
+                    &device_id,
+                    &session,
+                    &report_topic,
+                    shadow_version,
+                    &fw_version,
+                    fw_update_id,
+                    "failed",
+                    Some(&err),
                 )
                 .await;
                 return;
@@ -558,8 +588,15 @@ async fn handle_ota(
                     let err = format!("download read error: {e}");
                     tracing::warn!("OTA: {}", err);
                     report_ota_status(
-                        &reported_state, &device_id, &session, &report_topic, shadow_version,
-                        &fw_version, fw_update_id, "failed", Some(&err),
+                        &reported_state,
+                        &device_id,
+                        &session,
+                        &report_topic,
+                        shadow_version,
+                        &fw_version,
+                        fw_update_id,
+                        "failed",
+                        Some(&err),
                     )
                     .await;
                     return;
@@ -570,8 +607,15 @@ async fn handle_ota(
             let err = format!("download error: {e}");
             tracing::warn!("OTA: {}", err);
             report_ota_status(
-                &reported_state, &device_id, &session, &report_topic, shadow_version,
-                &fw_version, fw_update_id, "failed", Some(&err),
+                &reported_state,
+                &device_id,
+                &session,
+                &report_topic,
+                shadow_version,
+                &fw_version,
+                fw_update_id,
+                "failed",
+                Some(&err),
             )
             .await;
             return;
@@ -583,8 +627,15 @@ async fn handle_ota(
     // -- Verify SHA-256 (if provided) --
     if let Some(ref expected) = expected_sha256 {
         report_ota_status(
-            &reported_state, &device_id, &session, &report_topic, shadow_version,
-            &fw_version, fw_update_id, "verifying", None,
+            &reported_state,
+            &device_id,
+            &session,
+            &report_topic,
+            shadow_version,
+            &fw_version,
+            fw_update_id,
+            "verifying",
+            None,
         )
         .await;
 
@@ -596,8 +647,15 @@ async fn handle_ota(
             let err = format!("hash mismatch: expected={expected} got={actual}");
             tracing::warn!("OTA: {}", err);
             report_ota_status(
-                &reported_state, &device_id, &session, &report_topic, shadow_version,
-                &fw_version, fw_update_id, "failed", Some(&err),
+                &reported_state,
+                &device_id,
+                &session,
+                &report_topic,
+                shadow_version,
+                &fw_version,
+                fw_update_id,
+                "failed",
+                Some(&err),
             )
             .await;
             return;
@@ -615,8 +673,15 @@ async fn handle_ota(
 
     // -- Install: replace current executable --
     report_ota_status(
-        &reported_state, &device_id, &session, &report_topic, shadow_version,
-        &fw_version, fw_update_id, "installing", None,
+        &reported_state,
+        &device_id,
+        &session,
+        &report_topic,
+        shadow_version,
+        &fw_version,
+        fw_update_id,
+        "installing",
+        None,
     )
     .await;
 
@@ -626,8 +691,15 @@ async fn handle_ota(
             let err = format!("cannot resolve current executable path: {e}");
             tracing::warn!("OTA: {}", err);
             report_ota_status(
-                &reported_state, &device_id, &session, &report_topic, shadow_version,
-                &fw_version, fw_update_id, "failed", Some(&err),
+                &reported_state,
+                &device_id,
+                &session,
+                &report_topic,
+                shadow_version,
+                &fw_version,
+                fw_update_id,
+                "failed",
+                Some(&err),
             )
             .await;
             return;
@@ -642,8 +714,15 @@ async fn handle_ota(
         tracing::warn!("OTA: {}", err);
         let _ = tokio::fs::remove_file(&tmp_path).await;
         report_ota_status(
-            &reported_state, &device_id, &session, &report_topic, shadow_version,
-            &fw_version, fw_update_id, "failed", Some(&err),
+            &reported_state,
+            &device_id,
+            &session,
+            &report_topic,
+            shadow_version,
+            &fw_version,
+            fw_update_id,
+            "failed",
+            Some(&err),
         )
         .await;
         return;
@@ -653,18 +732,22 @@ async fn handle_ota(
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        if let Err(e) = tokio::fs::set_permissions(
-            &tmp_path,
-            std::fs::Permissions::from_mode(0o755),
-        )
-        .await
+        if let Err(e) =
+            tokio::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o755)).await
         {
             let err = format!("failed to set permissions: {e}");
             tracing::warn!("OTA: {}", err);
             let _ = tokio::fs::remove_file(&tmp_path).await;
             report_ota_status(
-                &reported_state, &device_id, &session, &report_topic, shadow_version,
-                &fw_version, fw_update_id, "failed", Some(&err),
+                &reported_state,
+                &device_id,
+                &session,
+                &report_topic,
+                shadow_version,
+                &fw_version,
+                fw_update_id,
+                "failed",
+                Some(&err),
             )
             .await;
             return;
@@ -677,8 +760,15 @@ async fn handle_ota(
         tracing::warn!("OTA: {}", err);
         let _ = tokio::fs::remove_file(&tmp_path).await;
         report_ota_status(
-            &reported_state, &device_id, &session, &report_topic, shadow_version,
-            &fw_version, fw_update_id, "failed", Some(&err),
+            &reported_state,
+            &device_id,
+            &session,
+            &report_topic,
+            shadow_version,
+            &fw_version,
+            fw_update_id,
+            "failed",
+            Some(&err),
         )
         .await;
         return;
@@ -691,8 +781,15 @@ async fn handle_ota(
     }
 
     report_ota_status(
-        &reported_state, &device_id, &session, &report_topic, shadow_version,
-        &fw_version, fw_update_id, "success", None,
+        &reported_state,
+        &device_id,
+        &session,
+        &report_topic,
+        shadow_version,
+        &fw_version,
+        fw_update_id,
+        "success",
+        None,
     )
     .await;
 

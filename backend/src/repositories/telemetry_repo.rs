@@ -1,8 +1,8 @@
 // Repository functions for telemetry
 
 use chrono::NaiveDateTime;
-use diesel::prelude::*;
 use diesel::SqliteConnection;
+use diesel::prelude::*;
 
 use crate::db::models::{NewTelemetryRecord, TelemetryRecord};
 use crate::db::schema::telemetry;

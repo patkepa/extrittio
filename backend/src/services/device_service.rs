@@ -8,13 +8,10 @@ use crate::db::models::{NewDevice, NewDeviceShadow, NewOtaDeployment};
 use crate::error::AppError;
 use crate::repositories::{cert_repo, device_repo, firmware_repo, shadow_repo};
 use crate::services::{cert_service, shadow_service};
-use crate::state::{run_db, DbPool};
+use crate::state::{DbPool, run_db};
 
 /// Create a device and its associated shadow record atomically.
-pub fn create_device(
-    conn: &mut SqliteConnection,
-    new_device: &NewDevice,
-) -> Result<(), AppError> {
+pub fn create_device(conn: &mut SqliteConnection, new_device: &NewDevice) -> Result<(), AppError> {
     conn.transaction(|conn| {
         device_repo::insert_device(conn, new_device)?;
         let new_shadow = NewDeviceShadow {

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use crate::db::models::{CommandRecord, NewCommandRecord};
 use crate::error::AppError;
 use crate::repositories::{command_repo, device_repo};
-use crate::state::{run_db, DbPool};
+use crate::state::{DbPool, run_db};
 use extrittio_proto::extrittio::DeviceCommand;
 
 /// Send a command to a device: verify it exists, persist the record, publish via

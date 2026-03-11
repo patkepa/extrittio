@@ -1,7 +1,7 @@
 use axum::{
+    Json, Router,
     extract::{Path, State},
     routing::get,
-    Json, Router,
 };
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use crate::error::AppError;
 use crate::repositories::{config_repo, device_repo};
-use crate::state::{run_db, AppState};
+use crate::state::{AppState, run_db};
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -92,13 +92,13 @@ async fn update_config(
         // Read current config
         let existing = config_repo::find_config(conn, &id)?;
 
-        let current: Value = existing.as_ref().map_or(
-            Value::Object(serde_json::Map::default()),
-            |c| {
-                serde_json::from_str(&c.config)
-                    .unwrap_or(Value::Object(serde_json::Map::default()))
-            },
-        );
+        let current: Value =
+            existing
+                .as_ref()
+                .map_or(Value::Object(serde_json::Map::default()), |c| {
+                    serde_json::from_str(&c.config)
+                        .unwrap_or(Value::Object(serde_json::Map::default()))
+                });
 
         // Merge: null values remove keys, others upsert
         let mut obj = current.as_object().cloned().unwrap_or_default();

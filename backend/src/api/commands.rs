@@ -1,8 +1,8 @@
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     routing::get,
-    Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -12,7 +12,7 @@ use crate::db::models::CommandRecord;
 use crate::error::AppError;
 use crate::repositories::{command_repo, device_repo};
 use crate::services::command_service;
-use crate::state::{run_db, AppState};
+use crate::state::{AppState, run_db};
 
 // ---------------------------------------------------------------------------
 // Request / Response types

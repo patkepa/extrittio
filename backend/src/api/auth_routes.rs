@@ -1,15 +1,15 @@
 use axum::{
+    Extension, Json, Router,
     extract::State,
     routing::{get, post},
-    Extension, Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use crate::auth::{create_token, verify_password, Claims};
+use crate::auth::{Claims, create_token, verify_password};
 use crate::error::AppError;
 use crate::repositories::user_repo;
-use crate::state::{run_db, AppState};
+use crate::state::{AppState, run_db};
 
 #[derive(Debug, Deserialize)]
 pub struct LoginRequest {
@@ -42,22 +42,19 @@ async fn login(
 ) -> Result<Json<LoginResponse>, AppError> {
     let jwt_secret = state.jwt_secret.clone();
 
-    let (user_id, username, role) =
-        run_db(&state.db_pool, move |conn| {
-            let user = user_repo::find_user_by_username(conn, &body.username).map_err(
-                |e| match e {
-                    diesel::result::Error::NotFound => AppError::Unauthorized,
-                    other => AppError::Database(other),
-                },
-            )?;
+    let (user_id, username, role) = run_db(&state.db_pool, move |conn| {
+        let user = user_repo::find_user_by_username(conn, &body.username).map_err(|e| match e {
+            diesel::result::Error::NotFound => AppError::Unauthorized,
+            other => AppError::Database(other),
+        })?;
 
-            if !verify_password(&body.password, &user.password_hash) {
-                return Err(AppError::Unauthorized);
-            }
+        if !verify_password(&body.password, &user.password_hash) {
+            return Err(AppError::Unauthorized);
+        }
 
-            Ok((user.id, user.username, user.role))
-        })
-        .await?;
+        Ok((user.id, user.username, user.role))
+    })
+    .await?;
 
     let token = create_token(user_id, &username, &role, &jwt_secret)
         .map_err(|e| AppError::Auth(e.to_string()))?;

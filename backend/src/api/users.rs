@@ -1,8 +1,8 @@
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     routing::get,
-    Json, Router,
 };
 use serde::Deserialize;
 use std::sync::Arc;
@@ -12,7 +12,7 @@ use crate::db::models::NewUser;
 use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse, PaginationParams};
 use crate::repositories::user_repo;
-use crate::state::{run_db, AppState};
+use crate::state::{AppState, run_db};
 
 use super::auth_routes::UserResponse;
 
@@ -30,10 +30,7 @@ pub struct ChangePasswordRequest {
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/api/v1/users", get(list_users).post(create_user))
-        .route(
-            "/api/v1/users/{id}",
-            axum::routing::delete(delete_user),
-        )
+        .route("/api/v1/users/{id}", axum::routing::delete(delete_user))
         .route(
             "/api/v1/users/{id}/password",
             axum::routing::put(change_password),
@@ -76,8 +73,7 @@ async fn create_user(
         ));
     }
 
-    let password_hash =
-        hash_password(&body.password).map_err(|e| AppError::Auth(e.to_string()))?;
+    let password_hash = hash_password(&body.password).map_err(|e| AppError::Auth(e.to_string()))?;
 
     let username = body.username;
 
@@ -134,8 +130,7 @@ async fn change_password(
         ));
     }
 
-    let password_hash =
-        hash_password(&body.password).map_err(|e| AppError::Auth(e.to_string()))?;
+    let password_hash = hash_password(&body.password).map_err(|e| AppError::Auth(e.to_string()))?;
 
     run_db(&state.db_pool, move |conn| {
         // Verify user exists

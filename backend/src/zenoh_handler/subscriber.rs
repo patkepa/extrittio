@@ -45,7 +45,9 @@ pub async fn run_subscriber(
         .declare_subscriber("extrittio/devices/*/commands/response")
         .await?;
 
-    info!("Zenoh subscribers declared for telemetry, heartbeat, shadow, log, and command response topics");
+    info!(
+        "Zenoh subscribers declared for telemetry, heartbeat, shadow, log, and command response topics"
+    );
 
     // Spawn heartbeat handler in a background task
     let heartbeat_pool = db_pool.clone();

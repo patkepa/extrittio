@@ -1,7 +1,7 @@
 // Repository functions for users
 
-use diesel::prelude::*;
 use diesel::SqliteConnection;
+use diesel::prelude::*;
 
 use crate::db::models::{NewUser, User};
 use crate::db::schema::users;
@@ -47,10 +47,7 @@ pub fn insert_user(
         .first(conn)
 }
 
-pub fn delete_user(
-    conn: &mut SqliteConnection,
-    id: i32,
-) -> Result<bool, diesel::result::Error> {
+pub fn delete_user(conn: &mut SqliteConnection, id: i32) -> Result<bool, diesel::result::Error> {
     let rows = diesel::delete(users::table.find(id)).execute(conn)?;
     Ok(rows > 0)
 }
@@ -70,8 +67,5 @@ pub fn find_user_by_id(
     conn: &mut SqliteConnection,
     id: i32,
 ) -> Result<User, diesel::result::Error> {
-    users::table
-        .find(id)
-        .select(User::as_select())
-        .first(conn)
+    users::table.find(id).select(User::as_select()).first(conn)
 }

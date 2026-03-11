@@ -1,5 +1,5 @@
-use diesel::r2d2::{ConnectionManager, Pool};
 use diesel::SqliteConnection;
+use diesel::r2d2::{ConnectionManager, Pool};
 use std::sync::Arc;
 
 use crate::error::AppError;

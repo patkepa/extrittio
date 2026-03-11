@@ -1,16 +1,18 @@
 // Repository functions for fleets
 
-use diesel::prelude::*;
 use diesel::SqliteConnection;
+use diesel::prelude::*;
 
 use crate::db::models::{Fleet, NewFleet};
 use crate::db::schema::{devices, fleets};
+
+type FleetDeviceCounts = Vec<(Option<i32>, i64)>;
 
 pub fn list_fleets(
     conn: &mut SqliteConnection,
     limit: i64,
     offset: i64,
-) -> Result<(Vec<Fleet>, Vec<(Option<i32>, i64)>, i64), diesel::result::Error> {
+) -> Result<(Vec<Fleet>, FleetDeviceCounts, i64), diesel::result::Error> {
     let total: i64 = fleets::table.count().get_result(conn)?;
 
     let all_fleets: Vec<Fleet> = fleets::table
@@ -42,10 +44,7 @@ pub fn insert_fleet(
         .first(conn)
 }
 
-pub fn delete_fleet(
-    conn: &mut SqliteConnection,
-    id: i32,
-) -> Result<bool, diesel::result::Error> {
+pub fn delete_fleet(conn: &mut SqliteConnection, id: i32) -> Result<bool, diesel::result::Error> {
     let rows = diesel::delete(fleets::table.find(id)).execute(conn)?;
     Ok(rows > 0)
 }

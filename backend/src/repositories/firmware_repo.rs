@@ -1,20 +1,22 @@
 // Repository functions for firmware
 
-use diesel::prelude::*;
 use diesel::SqliteConnection;
+use diesel::prelude::*;
 
 use crate::db::models::{
-    DeviceType, FirmwareBlob, FirmwareUpdate, NewFirmwareBlob, NewFirmwareUpdate,
-    NewOtaDeployment, OtaDeployment,
+    DeviceType, FirmwareBlob, FirmwareUpdate, NewFirmwareBlob, NewFirmwareUpdate, NewOtaDeployment,
+    OtaDeployment,
 };
 use crate::db::schema::{device_types, firmware_blobs, firmware_updates, ota_deployments};
+
+type FirmwareUpdateRow = (FirmwareUpdate, DeviceType, Option<i32>, Option<String>);
 
 pub fn list_firmware_updates(
     conn: &mut SqliteConnection,
     device_type_id: Option<i32>,
     limit: i64,
     offset: i64,
-) -> Result<(Vec<(FirmwareUpdate, DeviceType, Option<i32>, Option<String>)>, i64), diesel::result::Error> {
+) -> Result<(Vec<FirmwareUpdateRow>, i64), diesel::result::Error> {
     // Count query
     let mut count_query = firmware_updates::table.into_boxed();
     if let Some(dt_id) = device_type_id {

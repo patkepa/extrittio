@@ -95,9 +95,7 @@ pub fn generate_device_certificate(
 }
 
 /// Generate a server certificate signed by the CA for Zenoh TLS.
-pub fn generate_server_certificate(
-    ca: &CaCertificate,
-) -> Result<(String, String), AppError> {
+pub fn generate_server_certificate(ca: &CaCertificate) -> Result<(String, String), AppError> {
     let ca_key_pair = KeyPair::from_pem(&ca.private_key_pem)
         .map_err(|e| AppError::Internal(format!("Failed to parse CA key: {e}")))?;
 
@@ -142,7 +140,7 @@ pub fn compute_fingerprint(der: &[u8]) -> String {
 
 /// Compute fingerprint from a PEM certificate string.
 pub fn fingerprint_from_pem(pem_str: &str) -> Result<String, AppError> {
-    let parsed = pem::parse(pem_str)
-        .map_err(|e| AppError::Internal(format!("Failed to parse PEM: {e}")))?;
+    let parsed =
+        pem::parse(pem_str).map_err(|e| AppError::Internal(format!("Failed to parse PEM: {e}")))?;
     Ok(compute_fingerprint(parsed.contents()))
 }

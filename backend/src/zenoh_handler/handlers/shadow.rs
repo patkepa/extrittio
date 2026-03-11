@@ -53,15 +53,12 @@ pub fn handle_shadow_report(db_pool: &DbPool, payload: &[u8]) {
         }
     };
 
-    let patch = match new_reported.as_object() {
-        Some(obj) => obj.clone(),
-        None => {
-            warn!(
-                "ShadowReport state_json is not a JSON object for device {}",
-                report.device_id
-            );
-            return;
-        }
+    let Some(patch) = new_reported.as_object().cloned() else {
+        warn!(
+            "ShadowReport state_json is not a JSON object for device {}",
+            report.device_id
+        );
+        return;
     };
 
     // Use shadow_service to merge reported state, recompute delta, and persist
@@ -138,11 +135,7 @@ pub fn handle_shadow_report(db_pool: &DbPool, payload: &[u8]) {
 
 /// Decode a `ShadowGet` protobuf message and publish the shadow delta back to
 /// the device if non-empty. DB access runs on a blocking thread.
-pub async fn handle_shadow_get(
-    db_pool: &DbPool,
-    session: &Arc<zenoh::Session>,
-    payload: &[u8],
-) {
+pub async fn handle_shadow_get(db_pool: &DbPool, session: &Arc<zenoh::Session>, payload: &[u8]) {
     let get_msg = match ShadowGet::decode(payload) {
         Ok(msg) => msg,
         Err(e) => {

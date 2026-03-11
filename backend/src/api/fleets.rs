@@ -1,8 +1,8 @@
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     routing::get,
-    Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -11,7 +11,7 @@ use crate::db::models::NewFleet;
 use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse, PaginationParams};
 use crate::repositories::fleet_repo;
-use crate::state::{run_db, AppState};
+use crate::state::{AppState, run_db};
 
 #[derive(Debug, Serialize)]
 pub struct FleetResponse {
@@ -89,10 +89,10 @@ async fn delete_fleet(
     run_db(&state.db_pool, move |conn| {
         // ON DELETE SET NULL in the schema handles device unassignment
         let deleted = fleet_repo::delete_fleet(conn, id)?;
-        if !deleted {
-            Err(AppError::NotFound(format!("Fleet {id} not found")))
-        } else {
+        if deleted {
             Ok(())
+        } else {
+            Err(AppError::NotFound(format!("Fleet {id} not found")))
         }
     })
     .await?;

@@ -3,11 +3,11 @@ use std::net::IpAddr;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use axum::Json;
 use axum::extract::{Request, State};
 use axum::http::StatusCode;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 use std::sync::Arc;
 
 use crate::state::AppState;
@@ -22,7 +22,7 @@ pub struct RateLimiter {
 impl RateLimiter {
     pub fn new(max_requests: usize, window_secs: u64) -> Self {
         Self {
-            state: Mutex::new(HashMap::new()),
+            state: Mutex::new(HashMap::default()),
             max_requests,
             window: Duration::from_secs(window_secs),
         }

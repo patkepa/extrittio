@@ -1,7 +1,11 @@
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 
-use super::schema::{ca_certificates, command_history, device_certificates, device_configs, device_logs, device_types, devices, firmware_blobs, firmware_updates, fleets, ota_deployments, telemetry, device_shadows, users, server_config};
+use super::schema::{
+    ca_certificates, command_history, device_certificates, device_configs, device_logs,
+    device_shadows, device_types, devices, firmware_blobs, firmware_updates, fleets,
+    ota_deployments, server_config, telemetry, users,
+};
 
 // ---------------------------------------------------------------------------
 // CA Certificates

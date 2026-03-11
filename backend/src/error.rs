@@ -1,6 +1,6 @@
+use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 use serde_json::json;
 
 #[derive(Debug, thiserror::Error)]
@@ -49,30 +49,48 @@ impl IntoResponse for AppError {
             AppError::Unauthorized => (StatusCode::UNAUTHORIZED, "Unauthorized".to_string()),
             AppError::Auth(msg) => {
                 tracing::error!("Auth error: {msg}");
-                (StatusCode::INTERNAL_SERVER_ERROR, "Authentication error".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Authentication error".to_string(),
+                )
             }
             AppError::Database(diesel::result::Error::NotFound) => {
                 (StatusCode::NOT_FOUND, "Resource not found".to_string())
             }
             AppError::Database(e) => {
                 tracing::error!("Database error: {e}");
-                (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal server error".to_string(),
+                )
             }
             AppError::Pool(e) => {
                 tracing::error!("Connection pool error: {e}");
-                (StatusCode::INTERNAL_SERVER_ERROR, "Service temporarily unavailable".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Service temporarily unavailable".to_string(),
+                )
             }
             AppError::Serialization(e) => {
                 tracing::error!("Serialization error: {e}");
-                (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal server error".to_string(),
+                )
             }
             AppError::Zenoh(msg) => {
                 tracing::error!("Zenoh error: {msg}");
-                (StatusCode::BAD_GATEWAY, "Device communication failed".to_string())
+                (
+                    StatusCode::BAD_GATEWAY,
+                    "Device communication failed".to_string(),
+                )
             }
             AppError::Internal(msg) => {
                 tracing::error!("Internal error: {msg}");
-                (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal server error".to_string(),
+                )
             }
         };
 

@@ -1,7 +1,7 @@
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     routing::get,
-    Json, Router,
 };
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
@@ -10,7 +10,7 @@ use std::sync::Arc;
 use crate::db::models::DeviceLog;
 use crate::error::AppError;
 use crate::repositories::{device_repo, log_repo};
-use crate::state::{run_db, AppState};
+use crate::state::{AppState, run_db};
 
 // ---------------------------------------------------------------------------
 // Request / Response types

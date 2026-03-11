@@ -1,8 +1,8 @@
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     routing::get,
-    Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -11,7 +11,7 @@ use crate::db::models::{DeviceType, NewDeviceType};
 use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse, PaginationParams};
 use crate::repositories::device_type_repo;
-use crate::state::{run_db, AppState};
+use crate::state::{AppState, run_db};
 
 #[derive(Debug, Serialize)]
 pub struct DeviceTypeResponse {
@@ -104,10 +104,10 @@ async fn delete_device_type(
 
         let deleted = device_type_repo::delete_device_type(conn, id)?;
 
-        if !deleted {
-            Err(AppError::NotFound(format!("Device type {id} not found")))
-        } else {
+        if deleted {
             Ok(())
+        } else {
+            Err(AppError::NotFound(format!("Device type {id} not found")))
         }
     })
     .await?;

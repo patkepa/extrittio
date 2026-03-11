@@ -1,8 +1,8 @@
 // Repository functions for device configs
 
 use chrono::NaiveDateTime;
-use diesel::prelude::*;
 use diesel::SqliteConnection;
+use diesel::prelude::*;
 
 use crate::db::models::{DeviceConfig, NewDeviceConfig};
 use crate::db::schema::device_configs;

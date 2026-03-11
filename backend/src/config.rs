@@ -27,7 +27,8 @@ impl AppConfig {
                 .and_then(|p| p.parse().ok())
                 .unwrap_or(8080),
             database_url: env::var("DATABASE_URL").unwrap_or_else(|_| "extrittio.db".to_string()),
-            allowed_origin: env::var("CORS_ORIGIN").unwrap_or_else(|_| "http://localhost:5173".to_string()),
+            allowed_origin: env::var("CORS_ORIGIN")
+                .unwrap_or_else(|_| "http://localhost:5173".to_string()),
             offline_timeout_secs: env::var("OFFLINE_TIMEOUT_SECS")
                 .ok()
                 .and_then(|s| s.parse().ok())

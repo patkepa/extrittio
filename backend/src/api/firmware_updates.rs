@@ -1,10 +1,10 @@
 use axum::{
+    Json, Router,
     body::Body,
     extract::{DefaultBodyLimit, Multipart, Path, Query, State},
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     response::Response,
     routing::get,
-    Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -15,7 +15,7 @@ use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse};
 use crate::repositories::{device_type_repo, firmware_repo};
 use crate::services::firmware_service;
-use crate::state::{run_db, AppState};
+use crate::state::{AppState, run_db};
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -102,19 +102,21 @@ async fn list_firmware_updates(
 
         let data = results
             .into_iter()
-            .map(|(fw, dt, blob_size, blob_filename)| FirmwareUpdateResponse {
-                id: fw.id,
-                device_type_id: fw.device_type_id,
-                device_type_name: dt.name,
-                version: fw.version,
-                url: fw.url,
-                sha256: fw.sha256,
-                description: fw.description,
-                created_at: fw.created_at.to_string(),
-                has_blob: blob_size.is_some(),
-                file_size: blob_size,
-                filename: blob_filename,
-            })
+            .map(
+                |(fw, dt, blob_size, blob_filename)| FirmwareUpdateResponse {
+                    id: fw.id,
+                    device_type_id: fw.device_type_id,
+                    device_type_name: dt.name,
+                    version: fw.version,
+                    url: fw.url,
+                    sha256: fw.sha256,
+                    description: fw.description,
+                    created_at: fw.created_at.to_string(),
+                    has_blob: blob_size.is_some(),
+                    file_size: blob_size,
+                    filename: blob_filename,
+                },
+            )
             .collect();
 
         Ok(PaginatedResponse::new(data, total, limit, offset))
@@ -129,7 +131,9 @@ async fn create_firmware_update(
     Json(body): Json<NewFirmwareUpdateRequest>,
 ) -> Result<(StatusCode, Json<FirmwareUpdateResponse>), AppError> {
     if body.url.trim().is_empty() {
-        return Err(AppError::BadRequest("Firmware URL must not be empty".into()));
+        return Err(AppError::BadRequest(
+            "Firmware URL must not be empty".into(),
+        ));
     }
 
     let response = run_db(&state.db_pool, move |conn| {
@@ -240,8 +244,7 @@ async fn upload_firmware_update(
 
     let device_type_id =
         device_type_id.ok_or_else(|| AppError::BadRequest("Missing device_type_id".into()))?;
-    let file_data =
-        file_data.ok_or_else(|| AppError::BadRequest("Missing file".into()))?;
+    let file_data = file_data.ok_or_else(|| AppError::BadRequest("Missing file".into()))?;
 
     // Sanitize filename: strip path components to prevent traversal
     let filename = filename
@@ -275,9 +278,7 @@ async fn upload_firmware_update(
         let dt = device_type_repo::list_all_device_types(conn)?
             .into_iter()
             .find(|d| d.id == device_type_id)
-            .ok_or_else(|| {
-                AppError::NotFound(format!("Device type {device_type_id} not found"))
-            })?;
+            .ok_or_else(|| AppError::NotFound(format!("Device type {device_type_id} not found")))?;
 
         // Auto-generate version if not provided
         let version = match version {
@@ -353,12 +354,12 @@ async fn delete_firmware_update(
 ) -> Result<StatusCode, AppError> {
     run_db(&state.db_pool, move |conn| {
         let deleted = firmware_repo::delete_firmware_update(conn, id)?;
-        if !deleted {
+        if deleted {
+            Ok(())
+        } else {
             Err(AppError::NotFound(format!(
                 "Firmware update {id} not found"
             )))
-        } else {
-            Ok(())
         }
     })
     .await?;

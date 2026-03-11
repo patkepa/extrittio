@@ -1,8 +1,8 @@
 // Repository functions for device logs
 
 use chrono::NaiveDateTime;
-use diesel::prelude::*;
 use diesel::SqliteConnection;
+use diesel::prelude::*;
 
 use crate::db::models::{DeviceLog, NewDeviceLog};
 use crate::db::schema::device_logs;

@@ -1,5 +1,5 @@
-use diesel::prelude::*;
 use diesel::SqliteConnection;
+use diesel::prelude::*;
 
 use crate::db::models::{CaCertificate, DeviceCertificate, NewCaCertificate, NewDeviceCertificate};
 use crate::db::schema::{ca_certificates, device_certificates};
@@ -69,8 +69,6 @@ pub fn delete_device_certificates(
     conn: &mut SqliteConnection,
     device_id: &str,
 ) -> Result<usize, diesel::result::Error> {
-    diesel::delete(
-        device_certificates::table.filter(device_certificates::device_id.eq(device_id)),
-    )
-    .execute(conn)
+    diesel::delete(device_certificates::table.filter(device_certificates::device_id.eq(device_id)))
+        .execute(conn)
 }

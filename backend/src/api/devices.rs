@@ -1,8 +1,8 @@
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
-    Json, Router,
 };
 use chrono::{NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -14,7 +14,7 @@ use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse, PaginationParams};
 use crate::repositories::{device_repo, firmware_repo};
 use crate::services::{command_service, device_service};
-use crate::state::{run_db, AppState};
+use crate::state::{AppState, run_db};
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -231,8 +231,7 @@ async fn create_device(
 
         device_service::create_device(conn, &new_device)?;
 
-        let (device, device_type, fleet) =
-            device_repo::find_device_with_joins(conn, &id_for_read)?;
+        let (device, device_type, fleet) = device_repo::find_device_with_joins(conn, &id_for_read)?;
 
         Ok(to_device_response(device, device_type, fleet))
     })
@@ -246,10 +245,10 @@ async fn update_device(
     Path(id): Path<String>,
     Json(body): Json<UpdateDeviceRequest>,
 ) -> Result<Json<DeviceResponse>, AppError> {
-    if let Some(ref name) = body.name {
-        if name.trim().is_empty() {
-            return Err(AppError::BadRequest("Device name must not be empty".into()));
-        }
+    if let Some(ref name) = body.name
+        && name.trim().is_empty()
+    {
+        return Err(AppError::BadRequest("Device name must not be empty".into()));
     }
 
     let response = run_db(&state.db_pool, move |conn| {

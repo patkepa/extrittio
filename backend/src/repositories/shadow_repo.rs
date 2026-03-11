@@ -1,7 +1,7 @@
 // Repository functions for device shadows
 
-use diesel::prelude::*;
 use diesel::SqliteConnection;
+use diesel::prelude::*;
 
 use crate::db::models::{DeviceShadow, NewDeviceShadow, UpdateShadow};
 use crate::db::schema::device_shadows;

@@ -1,3 +1,12 @@
+#![allow(
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
+    clippy::must_use_candidate,
+    clippy::doc_markdown,
+    clippy::similar_names,
+    clippy::too_many_lines
+)]
+
 #[cfg(not(target_env = "msvc"))]
 #[global_allocator]
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
@@ -5,15 +14,15 @@ static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 use std::sync::Arc;
 
 use axum::middleware as axum_middleware;
+use diesel::RunQueryDsl;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, CustomizeConnection, Pool};
 use diesel::sqlite::SqliteConnection;
-use diesel::RunQueryDsl;
 use diesel_migrations::MigrationHarness;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
-use tracing::info;
 use tracing::Level;
+use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 use extrittio_backend::auth::hash_password;
@@ -25,7 +34,7 @@ use extrittio_backend::rate_limit::{self, RateLimiter};
 use extrittio_backend::repositories::cert_repo;
 use extrittio_backend::services::cert_service;
 use extrittio_backend::state::AppState;
-use extrittio_backend::{api, background, zenoh_handler, MIGRATIONS};
+use extrittio_backend::{MIGRATIONS, api, background, zenoh_handler};
 
 #[derive(Debug)]
 struct SqlitePragmas;
@@ -98,7 +107,9 @@ async fn main() {
 
     // Run migrations, initialize JWT secret, and seed admin user
     let jwt_secret = {
-        let mut conn = db_pool.get().expect("Failed to get DB connection for migrations");
+        let mut conn = db_pool
+            .get()
+            .expect("Failed to get DB connection for migrations");
         run_migrations(&mut conn);
 
         // Initialize JWT secret if not present
@@ -110,28 +121,27 @@ async fn main() {
                 .optional()
                 .expect("Failed to query server_config");
 
-            match existing {
-                Some(entry) => entry.value,
-                None => {
-                    use rand::Rng;
-                    let secret: String = rand::thread_rng()
-                        .sample_iter(&rand::distributions::Alphanumeric)
-                        .take(64)
-                        .map(char::from)
-                        .collect();
+            if let Some(entry) = existing {
+                entry.value
+            } else {
+                use rand::Rng;
+                let secret: String = rand::thread_rng()
+                    .sample_iter(&rand::distributions::Alphanumeric)
+                    .take(64)
+                    .map(char::from)
+                    .collect();
 
-                    let entry = NewServerConfigEntry {
-                        key: "jwt_secret".to_string(),
-                        value: secret.clone(),
-                    };
-                    diesel::insert_into(server_config::table)
-                        .values(&entry)
-                        .execute(&mut conn)
-                        .expect("Failed to insert JWT secret");
+                let entry = NewServerConfigEntry {
+                    key: "jwt_secret".to_string(),
+                    value: secret.clone(),
+                };
+                diesel::insert_into(server_config::table)
+                    .values(&entry)
+                    .execute(&mut conn)
+                    .expect("Failed to insert JWT secret");
 
-                    info!("Generated new JWT secret");
-                    secret
-                }
+                info!("Generated new JWT secret");
+                secret
             }
         };
 
@@ -151,7 +161,9 @@ async fn main() {
                 .values(&admin)
                 .execute(&mut conn)
                 .expect("Failed to seed admin user");
-            tracing::warn!("Default admin user created (username: admin, password: admin). Change this immediately!");
+            tracing::warn!(
+                "Default admin user created (username: admin, password: admin). Change this immediately!"
+            );
         }
 
         // Initialize CA certificate if not present
@@ -161,8 +173,8 @@ async fn main() {
             .expect("Failed to count CA certificates");
 
         if ca_exists == 0 {
-            let new_ca = cert_service::generate_ca_certificate()
-                .expect("Failed to generate CA certificate");
+            let new_ca =
+                cert_service::generate_ca_certificate().expect("Failed to generate CA certificate");
             cert_repo::insert_ca_certificate(&mut conn, &new_ca)
                 .expect("Failed to insert CA certificate");
             info!("Generated new root CA certificate");
@@ -183,9 +195,8 @@ async fn main() {
         let server_cert_path = certs_path.join("server.pem");
         let server_key_path = certs_path.join("server-key.pem");
         if !server_cert_path.exists() || !server_key_path.exists() {
-            let (server_cert_pem, server_key_pem) =
-                cert_service::generate_server_certificate(&ca)
-                    .expect("Failed to generate server certificate");
+            let (server_cert_pem, server_key_pem) = cert_service::generate_server_certificate(&ca)
+                .expect("Failed to generate server certificate");
             std::fs::write(&server_cert_path, &server_cert_pem)
                 .expect("Failed to write server cert to disk");
             std::fs::write(&server_key_path, &server_key_pem)
@@ -270,15 +281,17 @@ async fn main() {
         db_pool: db_pool.clone(),
         zenoh_session: zenoh_session.clone(),
         jwt_secret,
-        api_rate_limiter: RateLimiter::new(100, 60),   // 100 req/min per IP
-        login_rate_limiter: RateLimiter::new(5, 60),    // 5 req/min per IP
+        api_rate_limiter: RateLimiter::new(100, 60), // 100 req/min per IP
+        login_rate_limiter: RateLimiter::new(5, 60), // 5 req/min per IP
     });
 
     // Spawn zenoh subscriber task
     let subscriber_pool = db_pool.clone();
     let subscriber_session = zenoh_session.clone();
     tokio::spawn(async move {
-        if let Err(e) = zenoh_handler::subscriber::run_subscriber(subscriber_session, subscriber_pool).await {
+        if let Err(e) =
+            zenoh_handler::subscriber::run_subscriber(subscriber_session, subscriber_pool).await
+        {
             tracing::error!("Zenoh subscriber failed: {}. Shutting down.", e);
             std::process::exit(1);
         }
@@ -301,7 +314,11 @@ async fn main() {
     // Set up CORS
     let origin = config.allowed_origin.clone();
     let cors = CorsLayer::new()
-        .allow_origin(origin.parse::<axum::http::HeaderValue>().expect("Invalid CORS origin"))
+        .allow_origin(
+            origin
+                .parse::<axum::http::HeaderValue>()
+                .expect("Invalid CORS origin"),
+        )
         .allow_methods(Any)
         .allow_headers(Any);
 
@@ -312,7 +329,10 @@ async fn main() {
 
     // Build Axum router
     let app = api::router(config.max_firmware_size_bytes)
-        .layer(axum_middleware::from_fn_with_state(state.clone(), auth_middleware))
+        .layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            auth_middleware,
+        ))
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
             rate_limit::rate_limit_middleware,
@@ -331,12 +351,16 @@ async fn main() {
         Some(socket2::Protocol::TCP),
     )
     .expect("Failed to create socket");
-    socket.set_reuse_address(true).expect("Failed to set SO_REUSEADDR");
+    socket
+        .set_reuse_address(true)
+        .expect("Failed to set SO_REUSEADDR");
     socket.set_nodelay(true).expect("Failed to set TCP_NODELAY");
     // Increase listen backlog for burst connections from many devices
     socket.bind(&addr.into()).expect("Failed to bind socket");
     socket.listen(1024).expect("Failed to listen");
-    socket.set_nonblocking(true).expect("Failed to set non-blocking");
+    socket
+        .set_nonblocking(true)
+        .expect("Failed to set non-blocking");
     let listener = tokio::net::TcpListener::from_std(socket.into())
         .expect("Failed to create tokio TcpListener");
     info!("Listening on {}", addr);

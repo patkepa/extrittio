@@ -1,8 +1,10 @@
-use diesel::prelude::*;
 use diesel::SqliteConnection;
+use diesel::prelude::*;
 
 use crate::db::models::{Device, DeviceType, Fleet, NewDevice, UpdateDevice};
 use crate::db::schema::{device_types, devices, fleets};
+
+type DeviceWithJoins = (Device, DeviceType, Option<Fleet>);
 
 pub fn list_devices(
     conn: &mut SqliteConnection,
@@ -11,7 +13,7 @@ pub fn list_devices(
     fleet_id_filter: Option<i32>,
     limit: i64,
     offset: i64,
-) -> Result<(Vec<(Device, DeviceType, Option<Fleet>)>, i64), diesel::result::Error> {
+) -> Result<(Vec<DeviceWithJoins>, i64), diesel::result::Error> {
     // Count query
     let mut count_query = devices::table
         .inner_join(device_types::table)
@@ -21,7 +23,7 @@ pub fn list_devices(
     if let Some(status) = status_filter {
         count_query = count_query.filter(devices::status.eq(status));
     }
-    if let Some(ref search) = search_filter {
+    if let Some(search) = search_filter {
         let pattern = format!("%{search}%");
         count_query = count_query.filter(
             devices::name
@@ -74,7 +76,7 @@ pub fn list_devices(
 pub fn find_device_with_joins(
     conn: &mut SqliteConnection,
     id: &str,
-) -> Result<(Device, DeviceType, Option<Fleet>), diesel::result::Error> {
+) -> Result<DeviceWithJoins, diesel::result::Error> {
     devices::table
         .inner_join(device_types::table)
         .left_join(fleets::table)
@@ -87,20 +89,14 @@ pub fn find_device_with_joins(
         .first(conn)
 }
 
-pub fn find_device(
-    conn: &mut SqliteConnection,
-    id: &str,
-) -> Result<Device, diesel::result::Error> {
+pub fn find_device(conn: &mut SqliteConnection, id: &str) -> Result<Device, diesel::result::Error> {
     devices::table
         .find(id)
         .select(Device::as_select())
         .first(conn)
 }
 
-pub fn device_exists(
-    conn: &mut SqliteConnection,
-    id: &str,
-) -> Result<bool, diesel::result::Error> {
+pub fn device_exists(conn: &mut SqliteConnection, id: &str) -> Result<bool, diesel::result::Error> {
     devices::table
         .find(id)
         .select(devices::id)
@@ -130,10 +126,7 @@ pub fn update_device(
     Ok(())
 }
 
-pub fn delete_device(
-    conn: &mut SqliteConnection,
-    id: &str,
-) -> Result<bool, diesel::result::Error> {
+pub fn delete_device(conn: &mut SqliteConnection, id: &str) -> Result<bool, diesel::result::Error> {
     let rows = diesel::delete(devices::table.find(id)).execute(conn)?;
     Ok(rows > 0)
 }
