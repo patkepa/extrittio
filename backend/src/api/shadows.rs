@@ -23,8 +23,11 @@ use crate::state::{AppState, run_db};
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ShadowResponse {
     pub device_id: String,
+    #[schema(value_type = HashMap<String, Value>)]
     pub desired: Value,
+    #[schema(value_type = HashMap<String, Value>)]
     pub reported: Value,
+    #[schema(value_type = HashMap<String, Value>)]
     pub delta: Value,
     pub version: i32,
     pub updated_at: String,

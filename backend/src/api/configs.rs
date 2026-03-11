@@ -20,6 +20,7 @@ use crate::state::{AppState, run_db};
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ConfigResponse {
     pub device_id: String,
+    #[schema(value_type = HashMap<String, Value>)]
     pub config: Value,
     pub updated_at: String,
 }

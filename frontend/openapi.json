@@ -1,0 +1,3149 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Extrittio API",
+    "description": "IoT Hub platform REST API",
+    "license": {
+      "name": ""
+    },
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/v1/auth/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Authenticate and obtain a JWT token.",
+        "operationId": "login",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid credentials"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Get the currently authenticated user.",
+        "operationId": "me",
+        "responses": {
+          "200": {
+            "description": "Current user info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ca/certificate": {
+      "get": {
+        "tags": [
+          "certificates"
+        ],
+        "summary": "Get the CA certificate.",
+        "operationId": "get_ca_certificate",
+        "responses": {
+          "200": {
+            "description": "CA certificate",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaCertificateResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "CA certificate not initialized"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/dashboard/stats": {
+      "get": {
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "Get dashboard summary statistics.",
+        "operationId": "get_stats",
+        "responses": {
+          "200": {
+            "description": "Dashboard statistics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardStats"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/device-types": {
+      "get": {
+        "tags": [
+          "device-types"
+        ],
+        "summary": "List all device types.",
+        "operationId": "list_device_types",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of device types",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_DeviceTypeResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "device-types"
+        ],
+        "summary": "Create a new device type.",
+        "operationId": "create_device_type",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewDeviceTypeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Device type created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceTypeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/device-types/{id}": {
+      "delete": {
+        "tags": [
+          "device-types"
+        ],
+        "summary": "Delete a device type by ID.",
+        "operationId": "delete_device_type",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device type ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Device type deleted"
+          },
+          "404": {
+            "description": "Device type not found"
+          },
+          "409": {
+            "description": "Devices still reference this type"
+          },
+          "422": {
+            "description": "Cannot delete the default type"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices": {
+      "get": {
+        "tags": [
+          "devices"
+        ],
+        "summary": "List devices with optional filtering.",
+        "operationId": "list_devices",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of devices",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_DeviceResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "devices"
+        ],
+        "summary": "Create a new device.",
+        "operationId": "create_device",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewDeviceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Device created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices/{id}": {
+      "get": {
+        "tags": [
+          "devices"
+        ],
+        "summary": "Get a device by ID.",
+        "operationId": "get_device",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Device details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Device not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "devices"
+        ],
+        "summary": "Update a device.",
+        "operationId": "update_device",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDeviceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Device updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "404": {
+            "description": "Device not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "devices"
+        ],
+        "summary": "Delete a device.",
+        "operationId": "delete_device",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Device deleted"
+          },
+          "404": {
+            "description": "Device not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices/{id}/certificate": {
+      "get": {
+        "tags": [
+          "certificates"
+        ],
+        "summary": "Download the device certificate bundle (cert + private key + CA cert).",
+        "description": "The private key is only returned once — after download the key is cleared\nfrom the database.  Subsequent calls will return 410 Gone if the key has\nalready been retrieved.  Use the `/regenerate` endpoint to issue a new\ncertificate if the key was lost.",
+        "operationId": "get_device_certificate",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Device certificate bundle",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceCertificateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Private key already downloaded"
+          },
+          "404": {
+            "description": "Device or certificate not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices/{id}/certificate/regenerate": {
+      "post": {
+        "tags": [
+          "certificates"
+        ],
+        "summary": "Regenerate a device certificate.",
+        "operationId": "regenerate_device_certificate",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Certificate regenerated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceCertificateResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Device not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices/{id}/certificate/status": {
+      "get": {
+        "tags": [
+          "certificates"
+        ],
+        "summary": "Get the status of a device certificate (without the private key).",
+        "operationId": "get_device_certificate_status",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Certificate status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/DeviceCertificateStatusResponse"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Device not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices/{id}/commands": {
+      "get": {
+        "tags": [
+          "commands"
+        ],
+        "summary": "List commands for a device.",
+        "operationId": "list_commands",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of records to return (default 50, max 500).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Filter by command status.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of commands",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CommandResponse"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Device not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "commands"
+        ],
+        "summary": "Send a command to a device.",
+        "operationId": "send_command",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendCommandRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Command sent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "404": {
+            "description": "Device not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices/{id}/config": {
+      "get": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Get the configuration for a device.",
+        "operationId": "get_config",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Device configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Device not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Update the configuration for a device (merge semantics).",
+        "operationId": "update_config",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Configuration updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Device not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices/{id}/logs": {
+      "get": {
+        "tags": [
+          "logs"
+        ],
+        "summary": "Get logs for a device.",
+        "operationId": "get_device_logs",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of records to return (default 100, max 1000).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "level",
+            "in": "query",
+            "description": "Filter by log level (DEBUG, INFO, WARN, ERROR).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "description": "Only return records after this timestamp (RFC 3339 or YYYY-MM-DDTHH:MM:SS).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Device logs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LogResponse"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Device not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices/{id}/ota": {
+      "post": {
+        "tags": [
+          "devices"
+        ],
+        "summary": "Trigger an OTA firmware update on a device.",
+        "operationId": "trigger_ota",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TriggerOtaRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OTA update triggered"
+          },
+          "404": {
+            "description": "Device or firmware not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices/{id}/ota-deployments": {
+      "get": {
+        "tags": [
+          "devices"
+        ],
+        "summary": "List OTA deployments for a device.",
+        "operationId": "list_ota_deployments",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated OTA deployment history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_OtaDeploymentResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Device not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices/{id}/restart": {
+      "post": {
+        "tags": [
+          "devices"
+        ],
+        "summary": "Restart a device.",
+        "operationId": "restart_device",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Restart command sent"
+          },
+          "404": {
+            "description": "Device not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices/{id}/shadow": {
+      "get": {
+        "tags": [
+          "shadows"
+        ],
+        "summary": "Get the device shadow (desired, reported, delta).",
+        "operationId": "get_shadow",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Device shadow",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShadowResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Device not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "shadows"
+        ],
+        "summary": "Reset a device shadow to empty state.",
+        "operationId": "delete_shadow",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Shadow reset"
+          },
+          "404": {
+            "description": "Shadow not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices/{id}/shadow/desired": {
+      "put": {
+        "tags": [
+          "shadows"
+        ],
+        "summary": "Update the desired state of a device shadow.",
+        "operationId": "update_desired",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Shadow updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShadowResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Device not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices/{id}/shadow/reported": {
+      "put": {
+        "tags": [
+          "shadows"
+        ],
+        "summary": "Update the reported state of a device shadow.",
+        "operationId": "update_reported",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Shadow updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShadowResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Device not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices/{id}/telemetry": {
+      "get": {
+        "tags": [
+          "telemetry"
+        ],
+        "summary": "Get telemetry data for a device.",
+        "operationId": "get_device_telemetry",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of records to return (default 50, max 1000).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "description": "Only return records after this timestamp (RFC 3339 or YYYY-MM-DDTHH:MM:SS).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Telemetry records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TelemetryResponse"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Device not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/firmware-updates": {
+      "get": {
+        "tags": [
+          "firmware"
+        ],
+        "summary": "List firmware updates.",
+        "operationId": "list_firmware_updates",
+        "parameters": [
+          {
+            "name": "device_type_id",
+            "in": "query",
+            "description": "Filter by device type.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of firmware updates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_FirmwareUpdateResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "firmware"
+        ],
+        "summary": "Register a firmware update (URL-based, no file upload).",
+        "operationId": "create_firmware_update",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewFirmwareUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Firmware update created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FirmwareUpdateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "404": {
+            "description": "Device type not found"
+          },
+          "409": {
+            "description": "Version already exists"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/firmware-updates/next-version/{device_type_id}": {
+      "get": {
+        "tags": [
+          "firmware"
+        ],
+        "summary": "Get the next auto-generated version for a device type.",
+        "operationId": "get_next_version",
+        "parameters": [
+          {
+            "name": "device_type_id",
+            "in": "path",
+            "description": "Device type ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Next version string",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NextVersionResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/firmware-updates/upload": {
+      "post": {
+        "tags": [
+          "firmware"
+        ],
+        "summary": "Upload firmware binary as multipart form data.",
+        "operationId": "upload_firmware_update",
+        "requestBody": {
+          "description": "Multipart form: device_type_id (required), version (optional), description (optional), file (required)",
+          "content": {
+            "multipart/form-data": {}
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Firmware uploaded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FirmwareUpdateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "404": {
+            "description": "Device type not found"
+          },
+          "409": {
+            "description": "Version already exists"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/firmware-updates/{id}": {
+      "delete": {
+        "tags": [
+          "firmware"
+        ],
+        "summary": "Delete a firmware update.",
+        "operationId": "delete_firmware_update",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Firmware update ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Firmware update deleted"
+          },
+          "404": {
+            "description": "Firmware update not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/firmware-updates/{id}/download": {
+      "get": {
+        "tags": [
+          "firmware"
+        ],
+        "summary": "Download a firmware binary blob.",
+        "operationId": "download_firmware_blob",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Firmware update ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Firmware binary",
+            "content": {
+              "application/octet-stream": {}
+            }
+          },
+          "404": {
+            "description": "Firmware not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/fleets": {
+      "get": {
+        "tags": [
+          "fleets"
+        ],
+        "summary": "List all fleets.",
+        "operationId": "list_fleets",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of fleets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_FleetResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "fleets"
+        ],
+        "summary": "Create a new fleet.",
+        "operationId": "create_fleet",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewFleetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Fleet created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/fleets/{id}": {
+      "delete": {
+        "tags": [
+          "fleets"
+        ],
+        "summary": "Delete a fleet by ID.",
+        "operationId": "delete_fleet",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Fleet ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Fleet deleted"
+          },
+          "404": {
+            "description": "Fleet not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/users": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "List all users.",
+        "operationId": "list_users",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of users",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_UserResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Create a new user.",
+        "operationId": "create_user",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "User created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Username already exists"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/users/{id}": {
+      "delete": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Delete a user by ID.",
+        "operationId": "delete_user",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "User deleted"
+          },
+          "404": {
+            "description": "User not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/users/{id}/password": {
+      "put": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Change a user's password.",
+        "operationId": "change_password",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Password changed"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "404": {
+            "description": "User not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Liveness probe — always returns 200 if the process is running.",
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "description": "Service is alive",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Readiness probe — returns 200 only if the database is reachable.",
+        "operationId": "ready",
+        "responses": {
+          "200": {
+            "description": "Service is ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadyResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadyResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CaCertificateResponse": {
+        "type": "object",
+        "required": [
+          "fingerprint",
+          "certificate_pem",
+          "created_at"
+        ],
+        "properties": {
+          "certificate_pem": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          }
+        }
+      },
+      "ChangePasswordRequest": {
+        "type": "object",
+        "required": [
+          "password"
+        ],
+        "properties": {
+          "password": {
+            "type": "string"
+          }
+        }
+      },
+      "CommandResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "device_id",
+          "command",
+          "params",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "command": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "response_payload": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        }
+      },
+      "ConfigResponse": {
+        "type": "object",
+        "required": [
+          "device_id",
+          "config",
+          "updated_at"
+        ],
+        "properties": {
+          "config": {
+            "type": "object",
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateUserRequest": {
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "properties": {
+          "password": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "DashboardStats": {
+        "type": "object",
+        "required": [
+          "total_devices",
+          "active_devices",
+          "offline_devices",
+          "total_messages"
+        ],
+        "properties": {
+          "active_devices": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "offline_devices": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total_devices": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total_messages": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "DeviceCertificateResponse": {
+        "type": "object",
+        "required": [
+          "certificate_pem",
+          "private_key_pem",
+          "ca_pem",
+          "fingerprint",
+          "expires_at",
+          "created_at"
+        ],
+        "properties": {
+          "ca_pem": {
+            "type": "string"
+          },
+          "certificate_pem": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "private_key_pem": {
+            "type": "string"
+          }
+        }
+      },
+      "DeviceCertificateStatusResponse": {
+        "type": "object",
+        "required": [
+          "fingerprint",
+          "expires_at",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          }
+        }
+      },
+      "DeviceResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "device_type_id",
+          "device_type_name",
+          "status",
+          "last_seen",
+          "firmware",
+          "location",
+          "uptime"
+        ],
+        "properties": {
+          "device_type_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "device_type_name": {
+            "type": "string"
+          },
+          "firmware": {
+            "type": "string"
+          },
+          "fleet_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "fleet_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "last_seen": {
+            "type": "string"
+          },
+          "location": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "uptime": {
+            "type": "string"
+          }
+        }
+      },
+      "DeviceTypeResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "ErrorBody": {
+        "type": "object",
+        "description": "Standard error response body.",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "FirmwareUpdateResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "device_type_id",
+          "device_type_name",
+          "version",
+          "url",
+          "created_at",
+          "has_blob"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "device_type_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "device_type_name": {
+            "type": "string"
+          },
+          "file_size": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "filename": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "has_blob": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "FleetResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "device_count"
+        ],
+        "properties": {
+          "device_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "LogResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "device_id",
+          "level",
+          "message",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "level": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "properties": {
+          "password": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "LoginResponse": {
+        "type": "object",
+        "required": [
+          "token",
+          "user"
+        ],
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserResponse"
+          }
+        }
+      },
+      "NewDeviceRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "device_type_id"
+        ],
+        "properties": {
+          "device_type_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "firmware": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fleet_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "location": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "NewDeviceTypeRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "NewFirmwareUpdateRequest": {
+        "type": "object",
+        "required": [
+          "device_type_id",
+          "url"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "device_type_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": "string"
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "NewFleetRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "NextVersionResponse": {
+        "type": "object",
+        "required": [
+          "next_version"
+        ],
+        "properties": {
+          "next_version": {
+            "type": "string"
+          }
+        }
+      },
+      "OtaDeploymentResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "device_id",
+          "firmware_update_id",
+          "firmware_version",
+          "status",
+          "initiated_at"
+        ],
+        "properties": {
+          "completed_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "error_message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "firmware_update_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "firmware_version": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "initiated_at": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "PaginatedResponse_DeviceResponse": {
+        "type": "object",
+        "required": [
+          "data",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "name",
+                "device_type_id",
+                "device_type_name",
+                "status",
+                "last_seen",
+                "firmware",
+                "location",
+                "uptime"
+              ],
+              "properties": {
+                "device_type_id": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "device_type_name": {
+                  "type": "string"
+                },
+                "firmware": {
+                  "type": "string"
+                },
+                "fleet_id": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int32"
+                },
+                "fleet_name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "id": {
+                  "type": "string"
+                },
+                "last_seen": {
+                  "type": "string"
+                },
+                "location": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "uptime": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "PaginatedResponse_DeviceTypeResponse": {
+        "type": "object",
+        "required": [
+          "data",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "name"
+              ],
+              "properties": {
+                "id": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "name": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "PaginatedResponse_FirmwareUpdateResponse": {
+        "type": "object",
+        "required": [
+          "data",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "device_type_id",
+                "device_type_name",
+                "version",
+                "url",
+                "created_at",
+                "has_blob"
+              ],
+              "properties": {
+                "created_at": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "device_type_id": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "device_type_name": {
+                  "type": "string"
+                },
+                "file_size": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int32"
+                },
+                "filename": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "has_blob": {
+                  "type": "boolean"
+                },
+                "id": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "sha256": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "url": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "PaginatedResponse_FleetResponse": {
+        "type": "object",
+        "required": [
+          "data",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "name",
+                "device_count"
+              ],
+              "properties": {
+                "device_count": {
+                  "type": "integer",
+                  "format": "int64"
+                },
+                "id": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "name": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "PaginatedResponse_OtaDeploymentResponse": {
+        "type": "object",
+        "required": [
+          "data",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "device_id",
+                "firmware_update_id",
+                "firmware_version",
+                "status",
+                "initiated_at"
+              ],
+              "properties": {
+                "completed_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "device_id": {
+                  "type": "string"
+                },
+                "error_message": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "firmware_update_id": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "firmware_version": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "initiated_at": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "PaginatedResponse_UserResponse": {
+        "type": "object",
+        "required": [
+          "data",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "username",
+                "role"
+              ],
+              "properties": {
+                "id": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "username": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "PaginationParams": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "offset": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "ReadyResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "database"
+        ],
+        "properties": {
+          "database": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "SendCommandRequest": {
+        "type": "object",
+        "required": [
+          "command"
+        ],
+        "properties": {
+          "command": {
+            "type": "string"
+          },
+          "params": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ShadowResponse": {
+        "type": "object",
+        "required": [
+          "device_id",
+          "desired",
+          "reported",
+          "delta",
+          "version",
+          "updated_at"
+        ],
+        "properties": {
+          "delta": {
+            "type": "object",
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "desired": {
+            "type": "object",
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "reported": {
+            "type": "object",
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "updated_at": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "TelemetryResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "device_id",
+          "received_at"
+        ],
+        "properties": {
+          "battery_level": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "custom_json": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "humidity": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "received_at": {
+            "type": "string"
+          },
+          "temperature": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          }
+        }
+      },
+      "TriggerOtaRequest": {
+        "type": "object",
+        "required": [
+          "firmware_update_id"
+        ],
+        "properties": {
+          "firmware_update_id": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "UpdateDeviceRequest": {
+        "type": "object",
+        "properties": {
+          "device_type_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "firmware": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fleet_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "location": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "UserResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "username",
+          "role"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "role": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearer_auth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "health",
+      "description": "Health and readiness probes"
+    },
+    {
+      "name": "auth",
+      "description": "Authentication"
+    },
+    {
+      "name": "dashboard",
+      "description": "Dashboard statistics"
+    },
+    {
+      "name": "users",
+      "description": "User management"
+    },
+    {
+      "name": "devices",
+      "description": "Device management"
+    },
+    {
+      "name": "device-types",
+      "description": "Device type management"
+    },
+    {
+      "name": "fleets",
+      "description": "Fleet management"
+    },
+    {
+      "name": "shadows",
+      "description": "Device shadow (desired/reported state)"
+    },
+    {
+      "name": "telemetry",
+      "description": "Device telemetry data"
+    },
+    {
+      "name": "commands",
+      "description": "Device commands"
+    },
+    {
+      "name": "firmware",
+      "description": "Firmware updates and OTA"
+    },
+    {
+      "name": "logs",
+      "description": "Device logs"
+    },
+    {
+      "name": "config",
+      "description": "Device configuration"
+    },
+    {
+      "name": "certificates",
+      "description": "TLS certificates"
+    }
+  ]
+}

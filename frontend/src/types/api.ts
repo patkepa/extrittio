@@ -1,248 +1,124 @@
-// ---------------------------------------------------------------------------
-// Device Types
-// ---------------------------------------------------------------------------
+/**
+ * Re-export auto-generated OpenAPI types under the names used throughout
+ * the frontend.  The canonical definitions live in `openapi.ts` (generated
+ * by `npm run generate-api`).  This file is the only place that maps
+ * backend schema names → frontend aliases, so every other import can stay
+ * unchanged.
+ */
 
-export interface DeviceType {
-  id: number;
-  name: string;
-}
-
-export interface CreateDeviceTypeRequest {
-  name: string;
-}
-
-// ---------------------------------------------------------------------------
-// Fleets
-// ---------------------------------------------------------------------------
-
-export interface Fleet {
-  id: number;
-  name: string;
-  device_count: number;
-}
-
-export interface CreateFleetRequest {
-  name: string;
-}
-
-// ---------------------------------------------------------------------------
-// Devices
-// ---------------------------------------------------------------------------
-
-// Matches DeviceResponse in backend/src/api/devices.rs
-export interface Device {
-  id: string;
-  name: string;
-  device_type_id: number;
-  device_type_name: string;
-  fleet_id: number | null;
-  fleet_name: string | null;
-  status: "online" | "offline";
-  last_seen: string;
-  firmware: string;
-  location: string;
-  uptime: string;
-}
-
-// Matches NewDeviceRequest in backend/src/api/devices.rs
-export interface CreateDeviceRequest {
-  name: string;
-  device_type_id: number;
-  fleet_id?: number;
-  location?: string;
-  firmware?: string;
-}
-
-// Matches UpdateDeviceRequest in backend/src/api/devices.rs
-export interface UpdateDeviceRequest {
-  name?: string;
-  device_type_id?: number;
-  fleet_id?: number | null;
-  location?: string;
-  firmware?: string;
-}
-
-// Matches ListDevicesQuery in backend/src/api/devices.rs
-export interface ListDevicesParams {
-  status?: string;
-  search?: string;
-  fleet_id?: number;
-}
-
-// ---------------------------------------------------------------------------
-// Telemetry
-// ---------------------------------------------------------------------------
-
-// Matches TelemetryResponse in backend/src/api/telemetry.rs
-export interface TelemetryRecord {
-  id: number;
-  device_id: string;
-  temperature: number | null;
-  humidity: number | null;
-  battery_level: number | null;
-  custom_json: string | null;
-  received_at: string;
-}
-
-// Matches DashboardStats in backend/src/api/dashboard.rs
-export interface DashboardStats {
-  total_devices: number;
-  active_devices: number;
-  offline_devices: number;
-  total_messages: number;
-}
-
-// Matches TelemetryQuery in backend/src/api/telemetry.rs
-export interface TelemetryParams {
-  limit?: number;
-  since?: string;
-}
-
-// ---------------------------------------------------------------------------
-// Firmware Updates
-// ---------------------------------------------------------------------------
-
-export interface FirmwareUpdate {
-  id: number;
-  device_type_id: number;
-  device_type_name: string;
-  version: string;
-  url: string;
-  sha256: string | null;
-  description: string | null;
-  created_at: string;
-  has_blob: boolean;
-  file_size: number | null;
-  filename: string | null;
-}
-
-export interface CreateFirmwareUpdateRequest {
-  device_type_id: number;
-  version?: string;
-  url: string;
-  sha256?: string;
-  description?: string;
-}
-
-export interface FirmwareUpdatesParams {
-  device_type_id?: number;
-}
-
-export interface NextVersionResponse {
-  next_version: string;
-}
-
-export interface TriggerOtaRequest {
-  firmware_update_id: number;
-}
-
-// ---------------------------------------------------------------------------
-// OTA Deployments
-// ---------------------------------------------------------------------------
-
-export interface OtaDeployment {
-  id: number;
-  device_id: string;
-  firmware_update_id: number;
-  firmware_version: string;
-  status: string;
-  error_message: string | null;
-  initiated_at: string;
-  completed_at: string | null;
-}
-
-// ---------------------------------------------------------------------------
-// Device Logs
-// ---------------------------------------------------------------------------
-
-export interface LogRecord {
-  id: number;
-  device_id: string;
-  level: string;
-  message: string;
-  created_at: string;
-}
-
-export interface LogsParams {
-  limit?: number;
-  level?: string;
-  since?: string;
-}
-
-// ---------------------------------------------------------------------------
-// Device Configs
-// ---------------------------------------------------------------------------
-
-export interface DeviceConfigResponse {
-  device_id: string;
-  config: Record<string, unknown>;
-  updated_at: string;
-}
-
-// ---------------------------------------------------------------------------
-// Device Commands
-// ---------------------------------------------------------------------------
-
-export interface CommandRecord {
-  id: string;
-  device_id: string;
-  command: string;
-  params: Record<string, string>;
-  status: 'sent' | 'delivered' | 'succeeded' | 'failed' | 'timed_out';
-  response_payload: Record<string, unknown> | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface SendCommandRequest {
-  command: string;
-  params?: Record<string, string>;
-}
-
-export interface CommandsParams {
-  limit?: number;
-  status?: string;
-}
-
-// ---------------------------------------------------------------------------
-// Device Shadows
-// ---------------------------------------------------------------------------
-
-// Matches ShadowResponse in backend/src/api/shadows.rs
-export interface DeviceShadow {
-  device_id: string;
-  desired: Record<string, unknown>;
-  reported: Record<string, unknown>;
-  delta: Record<string, unknown>;
-  version: number;
-  updated_at: string;
-}
+import type { components, operations } from "./openapi";
 
 // ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
 
-export interface LoginRequest {
-  username: string;
-  password: string;
-}
+export type LoginRequest = components["schemas"]["LoginRequest"];
+export type LoginResponse = components["schemas"]["LoginResponse"];
+export type AuthUser = components["schemas"]["UserResponse"];
+export type CreateUserRequest = components["schemas"]["CreateUserRequest"];
+export type ChangePasswordRequest = components["schemas"]["ChangePasswordRequest"];
 
-export interface LoginResponse {
-  token: string;
-  user: AuthUser;
-}
+// ---------------------------------------------------------------------------
+// Dashboard
+// ---------------------------------------------------------------------------
 
-export interface AuthUser {
-  id: number;
-  username: string;
-  role: string;
-}
+export type DashboardStats = components["schemas"]["DashboardStats"];
 
-export interface CreateUserRequest {
-  username: string;
-  password: string;
-}
+// ---------------------------------------------------------------------------
+// Devices
+// ---------------------------------------------------------------------------
 
-export interface ChangePasswordRequest {
-  password: string;
-}
+export type Device = components["schemas"]["DeviceResponse"];
+export type CreateDeviceRequest = components["schemas"]["NewDeviceRequest"];
+export type UpdateDeviceRequest = components["schemas"]["UpdateDeviceRequest"];
+
+export type ListDevicesParams = NonNullable<
+  operations["list_devices"]["parameters"]["query"]
+>;
+
+// ---------------------------------------------------------------------------
+// Device Types
+// ---------------------------------------------------------------------------
+
+export type DeviceType = components["schemas"]["DeviceTypeResponse"];
+export type CreateDeviceTypeRequest = components["schemas"]["NewDeviceTypeRequest"];
+
+// ---------------------------------------------------------------------------
+// Fleets
+// ---------------------------------------------------------------------------
+
+export type Fleet = components["schemas"]["FleetResponse"];
+export type CreateFleetRequest = components["schemas"]["NewFleetRequest"];
+
+// ---------------------------------------------------------------------------
+// Shadows
+// ---------------------------------------------------------------------------
+
+export type DeviceShadow = components["schemas"]["ShadowResponse"];
+
+// ---------------------------------------------------------------------------
+// Telemetry
+// ---------------------------------------------------------------------------
+
+export type TelemetryRecord = components["schemas"]["TelemetryResponse"];
+
+export type TelemetryParams = NonNullable<
+  operations["get_device_telemetry"]["parameters"]["query"]
+>;
+
+// ---------------------------------------------------------------------------
+// Commands
+// ---------------------------------------------------------------------------
+
+export type CommandRecord = components["schemas"]["CommandResponse"];
+export type SendCommandRequest = components["schemas"]["SendCommandRequest"];
+
+export type CommandsParams = NonNullable<
+  operations["list_commands"]["parameters"]["query"]
+>;
+
+// ---------------------------------------------------------------------------
+// Firmware Updates & OTA
+// ---------------------------------------------------------------------------
+
+export type FirmwareUpdate = components["schemas"]["FirmwareUpdateResponse"];
+export type CreateFirmwareUpdateRequest = components["schemas"]["NewFirmwareUpdateRequest"];
+export type NextVersionResponse = components["schemas"]["NextVersionResponse"];
+export type TriggerOtaRequest = components["schemas"]["TriggerOtaRequest"];
+export type OtaDeployment = components["schemas"]["OtaDeploymentResponse"];
+
+export type FirmwareUpdatesParams = NonNullable<
+  operations["list_firmware_updates"]["parameters"]["query"]
+>;
+
+// ---------------------------------------------------------------------------
+// Logs
+// ---------------------------------------------------------------------------
+
+export type LogRecord = components["schemas"]["LogResponse"];
+
+export type LogsParams = NonNullable<
+  operations["get_device_logs"]["parameters"]["query"]
+>;
+
+// ---------------------------------------------------------------------------
+// Device Config
+// ---------------------------------------------------------------------------
+
+export type DeviceConfigResponse = components["schemas"]["ConfigResponse"];
+
+// ---------------------------------------------------------------------------
+// Certificates
+// ---------------------------------------------------------------------------
+
+export type CaCertificateResponse = components["schemas"]["CaCertificateResponse"];
+export type DeviceCertificateResponse = components["schemas"]["DeviceCertificateResponse"];
+export type DeviceCertificateStatusResponse = components["schemas"]["DeviceCertificateStatusResponse"];
+
+// ---------------------------------------------------------------------------
+// Health
+// ---------------------------------------------------------------------------
+
+export type HealthResponse = components["schemas"]["HealthResponse"];
+export type ReadyResponse = components["schemas"]["ReadyResponse"];
+export type ErrorBody = components["schemas"]["ErrorBody"];

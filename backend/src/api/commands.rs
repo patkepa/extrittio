@@ -30,8 +30,10 @@ pub struct CommandResponse {
     pub id: String,
     pub device_id: String,
     pub command: String,
+    #[schema(value_type = HashMap<String, Value>)]
     pub params: serde_json::Value,
     pub status: String,
+    #[schema(value_type = Option<HashMap<String, Value>>)]
     pub response_payload: Option<serde_json::Value>,
     pub created_at: String,
     pub updated_at: String,

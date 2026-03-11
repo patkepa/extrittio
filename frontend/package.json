@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "generate-api": "openapi-typescript http://localhost:3000/api-docs/openapi.json -o src/types/api.ts"
+    "generate-api": "cd .. && cargo run --bin openapi > frontend/openapi.json && cd frontend && openapi-typescript ./openapi.json -o src/types/openapi.ts"
   },
   "devDependencies": {
     "@types/react": "^18.3.26",
