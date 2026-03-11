@@ -8,7 +8,7 @@ use crate::db::models::{CommandRecord, NewCommandRecord};
 use crate::error::AppError;
 use crate::repositories::{command_repo, device_repo};
 use crate::state::{DbPool, run_db};
-use extrittio_proto::extrittio::DeviceCommand;
+use extrittio_common::extrittio::DeviceCommand;
 
 /// Send a command to a device: verify it exists, persist the record, publish via
 /// Zenoh, then return the persisted record (with DB-generated timestamps).
@@ -56,7 +56,7 @@ pub async fn send_command(
     };
 
     let payload = proto_command.encode_to_vec();
-    let topic = format!("extrittio/devices/{device_id}/commands");
+    let topic = extrittio_common::topics::commands(device_id);
 
     zenoh_session
         .put(&topic, payload)

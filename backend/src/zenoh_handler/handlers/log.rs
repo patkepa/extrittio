@@ -5,7 +5,7 @@ use crate::db::models::NewDeviceLog;
 use crate::repositories::{device_repo, log_repo};
 use crate::state::DbPool;
 
-use extrittio_proto::extrittio::DeviceLog;
+use extrittio_common::extrittio::DeviceLog;
 
 /// Decode a `DeviceLog` protobuf message and insert it into the database.
 ///

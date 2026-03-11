@@ -2,6 +2,11 @@ pub mod extrittio {
     include!(concat!(env!("OUT_DIR"), "/extrittio.rs"));
 }
 
+pub mod device_status;
+pub mod ota;
+pub mod shadow;
+pub mod topics;
+
 #[cfg(test)]
 mod tests {
     use super::extrittio::*;

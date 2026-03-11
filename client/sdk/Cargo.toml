@@ -1,0 +1,9 @@
+[package]
+name = "extrittio-sdk"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+extrittio-common = { path = "../../common" }
+prost = "0.13"
+serde_json = "1"

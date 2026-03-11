@@ -7,7 +7,7 @@ use tracing::warn;
 use crate::db::models::UpdateShadow;
 use crate::error::AppError;
 use crate::repositories::shadow_repo;
-use crate::shadow_utils::compute_shadow_delta;
+use extrittio_common::shadow::{compute_delta as compute_shadow_delta, merge_json};
 use crate::state::{DbPool, run_db};
 
 /// Transactional DB-only part of update_desired. Returns the new delta and
@@ -91,19 +91,6 @@ pub fn update_reported(
     })
 }
 
-/// Merge a JSON patch into an existing JSON object.
-/// Keys with null values are removed.
-pub fn merge_json(existing: &Value, patch: &serde_json::Map<String, Value>) -> Value {
-    let mut obj = existing.as_object().cloned().unwrap_or_default();
-    for (key, val) in patch {
-        if val.is_null() {
-            obj.remove(key);
-        } else {
-            obj.insert(key.clone(), val.clone());
-        }
-    }
-    Value::Object(obj)
-}
 
 /// Publish a ShadowDelta via Zenoh if the delta is non-empty.
 pub async fn publish_delta_if_nonempty(
@@ -120,13 +107,13 @@ pub async fn publish_delta_if_nonempty(
                 return;
             }
         };
-        let delta_msg = extrittio_proto::extrittio::ShadowDelta {
+        let delta_msg = extrittio_common::extrittio::ShadowDelta {
             device_id: device_id.to_string(),
             delta_json,
             version: i64::from(version),
         };
         let payload = prost::Message::encode_to_vec(&delta_msg);
-        let topic = format!("extrittio/devices/{device_id}/shadow/delta");
+        let topic = extrittio_common::topics::shadow_delta(device_id);
         if let Err(e) = session.put(&topic, payload).await {
             warn!("Failed to publish shadow delta to device {device_id}: {e}");
         }

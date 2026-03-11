@@ -15,7 +15,8 @@ edition = "2021"
 #   ESP32-C6 (RISC-V) → target = "riscv32imac-esp-espidf" (standard nightly)
 
 [dependencies]
-extrittio-proto = { path = "../../proto" }
+extrittio-common = { path = "../../common" }
+extrittio-sdk = { path = "../sdk" }
 prost = "0.13"
 zenoh = { version = "1", default-features = false }
 esp-idf-svc = { version = "0.50", features = ["binstart"] }

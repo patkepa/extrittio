@@ -4,9 +4,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use clap::Parser;
-use extrittio_proto::extrittio::{
+use extrittio_common::extrittio::{
     DeviceHeartbeat, DeviceTelemetry, ShadowDelta, ShadowGet, ShadowReport,
 };
+use extrittio_common::{device_status, ota::fields as ota_fields, topics};
+use extrittio_sdk::sensor::SensorState;
 use prost::Message;
 use rand::Rng;
 use sha2::{Digest, Sha256};
@@ -115,37 +117,6 @@ struct Args {
     client_key: Option<String>,
 }
 
-struct SensorState {
-    temperature: f32,
-    humidity: f32,
-    battery: f32,
-}
-
-impl SensorState {
-    fn new() -> Self {
-        Self {
-            temperature: 22.0,
-            humidity: 45.0,
-            battery: 100.0,
-        }
-    }
-
-    fn step(&mut self) {
-        let mut rng = rand::rng();
-
-        // Random walk for temperature (±0.5°C per step, clamped to 15-30)
-        self.temperature += rng.random_range(-0.5..=0.5);
-        self.temperature = self.temperature.clamp(15.0, 30.0);
-
-        // Random walk for humidity (±1% per step, clamped to 20-80)
-        self.humidity += rng.random_range(-1.0..=1.0);
-        self.humidity = self.humidity.clamp(20.0, 80.0);
-
-        // Battery drains slowly (0.05-0.15% per step, min 0)
-        self.battery -= rng.random_range(0.05..=0.15);
-        self.battery = self.battery.max(0.0);
-    }
-}
 
 #[tokio::main]
 #[allow(clippy::too_many_lines)]
@@ -228,11 +199,11 @@ async fn main() {
 
     info!("Zenoh session opened");
 
-    let telemetry_topic = format!("extrittio/devices/{device_id}/telemetry");
-    let heartbeat_topic = format!("extrittio/devices/{device_id}/heartbeat");
-    let shadow_get_topic = format!("extrittio/devices/{device_id}/shadow/get");
-    let shadow_delta_topic = format!("extrittio/devices/{device_id}/shadow/delta");
-    let shadow_report_topic = format!("extrittio/devices/{device_id}/shadow/report");
+    let telemetry_topic = topics::telemetry(&device_id);
+    let heartbeat_topic = topics::heartbeat(&device_id);
+    let shadow_get_topic = topics::shadow_get(&device_id);
+    let shadow_delta_topic = topics::shadow_delta(&device_id);
+    let shadow_report_topic = topics::shadow_report(&device_id);
 
     let reported_state: Arc<Mutex<serde_json::Map<String, serde_json::Value>>> =
         Arc::new(Mutex::new(serde_json::Map::new()));
@@ -256,8 +227,8 @@ async fn main() {
             let fw = hb_firmware.lock().await.clone();
             let heartbeat = DeviceHeartbeat {
                 device_id: hb_device_id.clone(),
-                timestamp: chrono_now_millis(),
-                status: "online".to_string(),
+                timestamp: extrittio_sdk::time::now_millis(),
+                status: device_status::ONLINE.to_string(),
                 firmware: fw,
                 #[allow(clippy::cast_possible_wrap)]
                 uptime_seconds: start.elapsed().as_secs() as i64,
@@ -310,7 +281,7 @@ async fn main() {
                             match serde_json::from_str::<serde_json::Value>(&delta.delta_json) {
                                 Ok(serde_json::Value::Object(mut delta_map)) => {
                                     // Extract OTA payload before merging
-                                    let ota_payload = delta_map.remove("ota");
+                                    let ota_payload = delta_map.remove(ota_fields::SHADOW_KEY);
 
                                     // Merge remaining keys into reported state
                                     {
@@ -402,11 +373,16 @@ async fn main() {
 
     loop {
         interval.tick().await;
-        sensor.step();
+        let mut rng = rand::rng();
+        sensor.step(
+            rng.random_range(-0.5..=0.5),
+            rng.random_range(-1.0..=1.0),
+            rng.random_range(0.05..=0.15),
+        );
 
         let telemetry = DeviceTelemetry {
             device_id: device_id.clone(),
-            timestamp: chrono_now_millis(),
+            timestamp: extrittio_sdk::time::now_millis(),
             temperature: sensor.temperature,
             humidity: sensor.humidity,
             battery_level: sensor.battery,
@@ -442,7 +418,7 @@ async fn send_shadow_report(
 
     let report = ShadowReport {
         device_id: device_id.to_string(),
-        timestamp: chrono_now_millis(),
+        timestamp: extrittio_sdk::time::now_millis(),
         state_json,
         version,
     };
@@ -467,20 +443,11 @@ async fn report_ota_status(
     status: &str,
     error: Option<&str>,
 ) {
-    let mut ota_obj = serde_json::json!({
-        "status": status,
-        "firmware_version": fw_version,
-    });
-    if let Some(id) = fw_update_id {
-        ota_obj["firmware_update_id"] = serde_json::json!(id);
-    }
-    if let Some(err) = error {
-        ota_obj["error"] = serde_json::json!(err);
-    }
+    let ota_obj = extrittio_sdk::ota::build_status_json(status, fw_version, fw_update_id, error);
 
     {
         let mut state = reported_state.lock().await;
-        state.insert("ota".to_string(), ota_obj);
+        state.insert(ota_fields::SHADOW_KEY.to_string(), ota_obj);
     }
 
     send_shadow_report(device_id, session, topic, reported_state, version).await;
@@ -501,25 +468,17 @@ async fn handle_ota(
     shadow_version: i64,
 ) {
     // Parse required fields
-    let fw_version = if let Some(v) = ota_payload.get("firmware_version").and_then(|v| v.as_str()) {
-        v.to_string()
-    } else {
-        tracing::warn!("OTA payload missing firmware_version");
-        return;
+    let parsed = match extrittio_sdk::ota::OtaPayload::from_json(&ota_payload) {
+        Some(p) => p,
+        None => {
+            tracing::warn!("OTA payload missing required fields");
+            return;
+        }
     };
-    let fw_url = if let Some(v) = ota_payload.get("firmware_url").and_then(|v| v.as_str()) {
-        v.to_string()
-    } else {
-        tracing::warn!("OTA payload missing firmware_url");
-        return;
-    };
-    let fw_update_id = ota_payload
-        .get("firmware_update_id")
-        .and_then(serde_json::Value::as_i64);
-    let expected_sha256 = ota_payload
-        .get("sha256")
-        .and_then(|v| v.as_str())
-        .map(std::string::ToString::to_string);
+    let fw_version = parsed.firmware_version;
+    let fw_url = parsed.firmware_url;
+    let fw_update_id = parsed.firmware_update_id;
+    let expected_sha256 = parsed.sha256;
 
     // Check if we're already running the requested version
     {
@@ -805,14 +764,3 @@ async fn handle_ota(
     std::process::exit(0);
 }
 
-// ---------------------------------------------------------------------------
-// Utilities
-// ---------------------------------------------------------------------------
-
-#[allow(clippy::cast_possible_truncation)]
-fn chrono_now_millis() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("Time went backwards")
-        .as_millis() as i64
-}

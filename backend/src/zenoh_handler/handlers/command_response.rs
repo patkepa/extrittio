@@ -5,7 +5,7 @@ use tracing::{info, warn};
 use crate::repositories::command_repo;
 use crate::state::DbPool;
 
-use extrittio_proto::extrittio::DeviceCommandResponse;
+use extrittio_common::extrittio::DeviceCommandResponse;
 
 /// Decode a `DeviceCommandResponse` protobuf message and update the corresponding
 /// command record's status and response payload.

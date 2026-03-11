@@ -7,7 +7,7 @@ use crate::repositories::{device_repo, firmware_repo, shadow_repo};
 use crate::services::shadow_service;
 use crate::state::DbPool;
 
-use extrittio_proto::extrittio::{ShadowGet, ShadowReport};
+use extrittio_common::extrittio::{ShadowGet, ShadowReport};
 
 /// Decode a `ShadowReport` protobuf message, merge the reported state into the
 /// device shadow, and update OTA deployment status if applicable.
@@ -88,23 +88,22 @@ pub fn handle_shadow_report(db_pool: &DbPool, payload: &[u8]) {
     let merged_reported: serde_json::Value =
         serde_json::from_str(&shadow.reported).unwrap_or_default();
 
-    if let Some(ota_obj) = merged_reported.get("ota").and_then(|v| v.as_object())
-        && let Some(ota_status_raw) = ota_obj.get("status").and_then(|v| v.as_str())
+    use extrittio_common::ota::{fields as ota_fields, status as ota_status_consts};
+
+    if let Some(ota_obj) = merged_reported.get(ota_fields::SHADOW_KEY).and_then(|v| v.as_object())
+        && let Some(ota_status_raw) = ota_obj.get(ota_fields::STATUS).and_then(|v| v.as_str())
     {
-        // Normalize status to lowercase to avoid case-sensitivity mismatches
         let ota_status = ota_status_raw.to_lowercase();
-        let is_terminal = ota_status == "success" || ota_status == "failed";
+        let is_terminal = ota_status_consts::is_terminal(&ota_status);
         let now = chrono::Utc::now().naive_utc();
         let completed_at = if is_terminal { Some(now) } else { None };
         let error_message = ota_obj
-            .get("error")
+            .get(ota_fields::ERROR)
             .and_then(|v| v.as_str())
             .map(std::string::ToString::to_string);
 
-        // Match deployment by firmware_update_id when available for precise targeting,
-        // fall back to latest non-terminal deployment otherwise
         let fw_update_id = ota_obj
-            .get("firmware_update_id")
+            .get(ota_fields::FIRMWARE_UPDATE_ID)
             .and_then(serde_json::Value::as_i64)
             .and_then(|id| i32::try_from(id).ok());
 

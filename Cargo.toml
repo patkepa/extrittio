@@ -3,7 +3,8 @@ resolver = "2"
 members = [
     "backend",
     "client/linux",
-    "proto",
+    "client/sdk",
+    "common",
 ]
 
 # Optimized release profile for production builds

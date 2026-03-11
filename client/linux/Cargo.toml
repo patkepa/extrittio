@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-extrittio-proto = { path = "../../proto" }
+extrittio-common = { path = "../../common" }
+extrittio-sdk = { path = "../sdk" }
 zenoh = "1"
 prost = "0.13"
 tokio = { version = "1", features = ["full"] }

@@ -1,14 +1,16 @@
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use esp_idf_svc::eventloop::EspSystemEventLoop;
 use esp_idf_svc::hal::peripherals::Peripherals;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_svc::wifi::{BlockingWifi, ClientConfiguration, Configuration, EspWifi};
-use extrittio_proto::extrittio::{
+use extrittio_common::extrittio::{
     DeviceHeartbeat, DeviceTelemetry, ShadowDelta, ShadowGet, ShadowReport,
 };
+use extrittio_common::{device_status, ota::fields as ota_fields, topics};
+use extrittio_sdk::sensor::SensorState;
 use log::info;
 use prost::Message;
 use rand::Rng;
@@ -27,39 +29,6 @@ const FIRMWARE_VERSION: &str = "v1.0.0-esp32";
 // Leave empty to use Zenoh multicast scouting (same LAN only).
 const ZENOH_CONNECT: &str = "tcp/192.0.2.100:7447";
 
-// ── Sensor simulation ──────────────────────────────────────────────
-
-struct SensorState {
-    temperature: f32,
-    humidity: f32,
-    battery: f32,
-}
-
-impl SensorState {
-    fn new() -> Self {
-        Self {
-            temperature: 22.0,
-            humidity: 45.0,
-            battery: 100.0,
-        }
-    }
-
-    fn step(&mut self) {
-        let mut rng = rand::thread_rng();
-
-        // Random walk ±0.5 °C, clamped 15–30
-        self.temperature += rng.gen_range(-0.5..=0.5);
-        self.temperature = self.temperature.clamp(15.0, 30.0);
-
-        // Random walk ±1 %, clamped 20–80
-        self.humidity += rng.gen_range(-1.0..=1.0);
-        self.humidity = self.humidity.clamp(20.0, 80.0);
-
-        // Battery drain 0.05–0.15 % per step
-        self.battery -= rng.gen_range(0.05..=0.15);
-        self.battery = self.battery.max(0.0);
-    }
-}
 
 // ── Entry point ─────────────────────────────────────────────────────
 
@@ -119,11 +88,11 @@ fn main() {
 
     info!("Zenoh session opened");
 
-    let telemetry_topic = format!("extrittio/devices/{}/telemetry", DEVICE_ID);
-    let heartbeat_topic = format!("extrittio/devices/{}/heartbeat", DEVICE_ID);
-    let shadow_get_topic = format!("extrittio/devices/{}/shadow/get", DEVICE_ID);
-    let shadow_delta_topic = format!("extrittio/devices/{}/shadow/delta", DEVICE_ID);
-    let shadow_report_topic = format!("extrittio/devices/{}/shadow/report", DEVICE_ID);
+    let telemetry_topic = topics::telemetry(DEVICE_ID);
+    let heartbeat_topic = topics::heartbeat(DEVICE_ID);
+    let shadow_get_topic = topics::shadow_get(DEVICE_ID);
+    let shadow_delta_topic = topics::shadow_delta(DEVICE_ID);
+    let shadow_report_topic = topics::shadow_report(DEVICE_ID);
     let start = Instant::now();
 
     // Shared state
@@ -169,7 +138,7 @@ fn main() {
                             match serde_json::from_str::<serde_json::Value>(&delta.delta_json) {
                                 Ok(serde_json::Value::Object(mut delta_map)) => {
                                     // Extract OTA payload before merging
-                                    let ota_payload = delta_map.remove("ota");
+                                    let ota_payload = delta_map.remove(ota_fields::SHADOW_KEY);
 
                                     // Merge remaining keys into reported state
                                     {
@@ -232,8 +201,8 @@ fn main() {
         let fw = hb_firmware.lock().unwrap().clone();
         let heartbeat = DeviceHeartbeat {
             device_id: DEVICE_ID.to_string(),
-            timestamp: now_millis(),
-            status: "online".to_string(),
+            timestamp: extrittio_sdk::time::extrittio_sdk::time::now_millis(),
+            status: device_status::ONLINE.to_string(),
             firmware: fw,
             uptime_seconds: start.elapsed().as_secs() as i64,
         };
@@ -254,11 +223,16 @@ fn main() {
 
     loop {
         thread::sleep(Duration::from_secs(TELEMETRY_INTERVAL_SECS));
-        sensor.step();
+        let mut rng = rand::thread_rng();
+        sensor.step(
+            rng.gen_range(-0.5..=0.5),
+            rng.gen_range(-1.0..=1.0),
+            rng.gen_range(0.05..=0.15),
+        );
 
         let telemetry = DeviceTelemetry {
             device_id: DEVICE_ID.to_string(),
-            timestamp: now_millis(),
+            timestamp: extrittio_sdk::time::now_millis(),
             temperature: sensor.temperature,
             humidity: sensor.humidity,
             battery_level: sensor.battery,
@@ -289,7 +263,7 @@ fn send_shadow_report(
 
     let report = ShadowReport {
         device_id: DEVICE_ID.to_string(),
-        timestamp: now_millis(),
+        timestamp: extrittio_sdk::time::now_millis(),
         state_json,
         version,
     };
@@ -310,20 +284,11 @@ fn report_ota_status(
     status: &str,
     error: Option<&str>,
 ) {
-    let mut ota_obj = serde_json::json!({
-        "status": status,
-        "firmware_version": fw_version,
-    });
-    if let Some(id) = fw_update_id {
-        ota_obj["firmware_update_id"] = serde_json::json!(id);
-    }
-    if let Some(err) = error {
-        ota_obj["error"] = serde_json::json!(err);
-    }
+    let ota_obj = extrittio_sdk::ota::build_status_json(status, fw_version, fw_update_id, error);
 
     {
         let mut state = reported_state.lock().unwrap();
-        state.insert("ota".to_string(), ota_obj);
+        state.insert(ota_fields::SHADOW_KEY.to_string(), ota_obj);
     }
 
     send_shadow_report(session, topic, reported_state, version);
@@ -340,27 +305,17 @@ fn handle_ota(
     shadow_version: i64,
 ) {
     // Parse required fields
-    let fw_version = match ota_payload.get("firmware_version").and_then(|v| v.as_str()) {
-        Some(v) => v.to_string(),
+    let parsed = match extrittio_sdk::ota::OtaPayload::from_json(&ota_payload) {
+        Some(p) => p,
         None => {
-            log::warn!("OTA payload missing firmware_version");
+            log::warn!("OTA payload missing required fields");
             return;
         }
     };
-    let fw_url = match ota_payload.get("firmware_url").and_then(|v| v.as_str()) {
-        Some(v) => v.to_string(),
-        None => {
-            log::warn!("OTA payload missing firmware_url");
-            return;
-        }
-    };
-    let fw_update_id = ota_payload
-        .get("firmware_update_id")
-        .and_then(|v| v.as_i64());
-    let expected_sha256 = ota_payload
-        .get("sha256")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
+    let fw_version = parsed.firmware_version;
+    let fw_url = parsed.firmware_url;
+    let fw_update_id = parsed.firmware_update_id;
+    let expected_sha256 = parsed.sha256;
 
     // Check if we're already running the requested version
     {
@@ -563,11 +518,3 @@ fn handle_ota(
     esp_idf_svc::hal::reset::restart();
 }
 
-// ── Utilities ───────────────────────────────────────────────────────
-
-fn now_millis() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("Time went backwards")
-        .as_millis() as i64
-}

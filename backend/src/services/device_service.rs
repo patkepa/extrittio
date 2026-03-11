@@ -56,17 +56,19 @@ pub async fn trigger_ota(
             }
 
             // Build OTA patch and apply via shadow service (DB-only)
+            use extrittio_common::ota::fields as ota_fields;
+
             let mut ota_payload = serde_json::json!({
-                "firmware_version": fw.version,
-                "firmware_url": fw.url,
-                "firmware_update_id": fw.id,
+                ota_fields::FIRMWARE_VERSION: fw.version,
+                ota_fields::FIRMWARE_URL: fw.url,
+                ota_fields::FIRMWARE_UPDATE_ID: fw.id,
             });
             if let Some(ref hash) = fw.sha256 {
-                ota_payload["sha256"] = serde_json::Value::String(hash.clone());
+                ota_payload[ota_fields::SHA256] = serde_json::Value::String(hash.clone());
             }
 
             let mut patch = serde_json::Map::new();
-            patch.insert("ota".to_string(), ota_payload);
+            patch.insert(ota_fields::SHADOW_KEY.to_string(), ota_payload);
 
             let (delta, version) = shadow_service::update_desired_db(conn, &d_id, &patch)?;
 

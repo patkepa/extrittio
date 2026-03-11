@@ -6,7 +6,7 @@ use crate::db::models::{NewTelemetryRecord, UpdateDevice};
 use crate::repositories::{device_repo, telemetry_repo};
 use crate::state::DbPool;
 
-use extrittio_proto::extrittio::DeviceTelemetry;
+use extrittio_common::extrittio::DeviceTelemetry;
 
 /// Decode a `DeviceTelemetry` protobuf message, insert a telemetry record, and
 /// update the device's `last_seen` timestamp.

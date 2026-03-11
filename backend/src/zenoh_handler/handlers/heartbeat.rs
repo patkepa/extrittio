@@ -6,7 +6,7 @@ use crate::db::models::UpdateDevice;
 use crate::repositories::device_repo;
 use crate::state::DbPool;
 
-use extrittio_proto::extrittio::DeviceHeartbeat;
+use extrittio_common::extrittio::DeviceHeartbeat;
 
 /// Decode a `DeviceHeartbeat` protobuf message and update the device's status,
 /// firmware, uptime, and `last_seen` timestamp.
@@ -45,15 +45,16 @@ pub fn handle_heartbeat(db_pool: &DbPool, payload: &[u8]) {
         }
     }
 
-    let valid_statuses = ["online", "offline", "warning"];
-    let status = if valid_statuses.contains(&heartbeat_msg.status.as_str()) {
+    use extrittio_common::device_status;
+
+    let status = if device_status::is_valid(&heartbeat_msg.status) {
         heartbeat_msg.status.clone()
     } else {
         warn!(
-            "Invalid status '{}' from device {}, defaulting to 'online'",
-            heartbeat_msg.status, heartbeat_msg.device_id
+            "Invalid status '{}' from device {}, defaulting to '{}'",
+            heartbeat_msg.status, heartbeat_msg.device_id, device_status::ONLINE
         );
-        "online".to_string()
+        device_status::ONLINE.to_string()
     };
 
     let now = Utc::now().naive_utc();

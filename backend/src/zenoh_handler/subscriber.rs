@@ -21,28 +21,30 @@ pub async fn run_subscriber(
     session: Arc<zenoh::Session>,
     db_pool: DbPool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    use extrittio_common::topics::patterns;
+
     let telemetry_sub = session
-        .declare_subscriber("extrittio/devices/*/telemetry")
+        .declare_subscriber(patterns::TELEMETRY)
         .await?;
 
     let heartbeat_sub = session
-        .declare_subscriber("extrittio/devices/*/heartbeat")
+        .declare_subscriber(patterns::HEARTBEAT)
         .await?;
 
     let shadow_report_sub = session
-        .declare_subscriber("extrittio/devices/*/shadow/report")
+        .declare_subscriber(patterns::SHADOW_REPORT)
         .await?;
 
     let shadow_get_sub = session
-        .declare_subscriber("extrittio/devices/*/shadow/get")
+        .declare_subscriber(patterns::SHADOW_GET)
         .await?;
 
     let log_sub = session
-        .declare_subscriber("extrittio/devices/*/logs")
+        .declare_subscriber(patterns::LOGS)
         .await?;
 
     let cmd_response_sub = session
-        .declare_subscriber("extrittio/devices/*/commands/response")
+        .declare_subscriber(patterns::COMMANDS_RESPONSE)
         .await?;
 
     info!(
