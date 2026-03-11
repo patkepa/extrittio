@@ -139,9 +139,8 @@ async fn main() {
         }
 
         // Write CA and server certs to disk for Zenoh TLS
-        let certs_dir = std::env::var("EXTRITTIO_CERTS_DIR").unwrap_or_else(|_| "./certs".to_string());
-        let certs_path = std::path::Path::new(&certs_dir);
-        std::fs::create_dir_all(certs_path).expect("Failed to create certs directory");
+        let certs_path = std::path::PathBuf::from(&config.certs_dir);
+        std::fs::create_dir_all(&certs_path).expect("Failed to create certs directory");
 
         let ca = cert_repo::get_ca_certificate(&mut conn)
             .expect("Failed to read CA certificate")
@@ -150,23 +149,84 @@ async fn main() {
         std::fs::write(certs_path.join("ca.pem"), &ca.certificate_pem)
             .expect("Failed to write CA cert to disk");
 
-        // Generate server cert for Zenoh TLS
-        let (server_cert_pem, server_key_pem) =
-            cert_service::generate_server_certificate(&ca)
-                .expect("Failed to generate server certificate");
-        std::fs::write(certs_path.join("server.pem"), &server_cert_pem)
-            .expect("Failed to write server cert to disk");
-        std::fs::write(certs_path.join("server-key.pem"), &server_key_pem)
-            .expect("Failed to write server key to disk");
+        // Only generate server cert if it doesn't already exist on disk
+        let server_cert_path = certs_path.join("server.pem");
+        let server_key_path = certs_path.join("server-key.pem");
+        if !server_cert_path.exists() || !server_key_path.exists() {
+            let (server_cert_pem, server_key_pem) =
+                cert_service::generate_server_certificate(&ca)
+                    .expect("Failed to generate server certificate");
+            std::fs::write(&server_cert_path, &server_cert_pem)
+                .expect("Failed to write server cert to disk");
+            std::fs::write(&server_key_path, &server_key_pem)
+                .expect("Failed to write server key to disk");
 
-        info!("TLS certificates written to {}", certs_dir);
+            // Restrict private key file permissions (owner read-only)
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&server_key_path, std::fs::Permissions::from_mode(0o600))
+                    .expect("Failed to set server key permissions");
+            }
+
+            info!("Generated server TLS certificate");
+        }
+
+        info!("TLS certificates at {}", config.certs_dir);
 
         // Allow override via environment variable
         std::env::var("JWT_SECRET").unwrap_or(jwt_secret)
     };
 
-    // Open zenoh session
-    let zenoh_config = zenoh::Config::default();
+    // Open zenoh session (with optional mTLS)
+    let mut zenoh_config = zenoh::Config::default();
+
+    if config.zenoh_tls_enabled {
+        let certs_path = std::fs::canonicalize(&config.certs_dir)
+            .expect("Failed to resolve certs directory path");
+        let ca_path = certs_path.join("ca.pem");
+        let server_cert_path = certs_path.join("server.pem");
+        let server_key_path = certs_path.join("server-key.pem");
+
+        // Verify all required cert files exist
+        for path in [&ca_path, &server_cert_path, &server_key_path] {
+            assert!(path.exists(), "Missing TLS file: {}", path.display());
+        }
+
+        let listen_endpoint = format!("tls/0.0.0.0:{}", config.zenoh_tls_port);
+        zenoh_config
+            .insert_json5("listen/endpoints", &format!("[\"{listen_endpoint}\"]"))
+            .expect("Failed to set Zenoh listen endpoints");
+
+        zenoh_config
+            .insert_json5(
+                "transport/link/tls/root_ca_certificate",
+                &format!("\"{}\"", ca_path.display()),
+            )
+            .expect("Failed to set Zenoh TLS root CA");
+        zenoh_config
+            .insert_json5(
+                "transport/link/tls/listen_certificate",
+                &format!("\"{}\"", server_cert_path.display()),
+            )
+            .expect("Failed to set Zenoh TLS server certificate");
+        zenoh_config
+            .insert_json5(
+                "transport/link/tls/listen_private_key",
+                &format!("\"{}\"", server_key_path.display()),
+            )
+            .expect("Failed to set Zenoh TLS server private key");
+        zenoh_config
+            .insert_json5("transport/link/tls/enable_mtls", "true")
+            .expect("Failed to enable Zenoh mTLS");
+
+        // Disable multicast scouting when using TLS (devices connect directly)
+        zenoh_config
+            .insert_json5("scouting/multicast/enabled", "false")
+            .expect("Failed to disable multicast scouting");
+
+        info!("Zenoh TLS configured: listening on {listen_endpoint} with mTLS");
+    }
 
     let zenoh_session = zenoh::open(zenoh_config)
         .await

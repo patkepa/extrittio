@@ -6,6 +6,9 @@ pub struct AppConfig {
     pub allowed_origin: String,
     pub offline_timeout_secs: u64,
     pub command_timeout_secs: u64,
+    pub certs_dir: String,
+    pub zenoh_tls_enabled: bool,
+    pub zenoh_tls_port: u16,
 }
 
 impl AppConfig {
@@ -26,6 +29,14 @@ impl AppConfig {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(30),
+            certs_dir: env::var("EXTRITTIO_CERTS_DIR").unwrap_or_else(|_| "./certs".to_string()),
+            zenoh_tls_enabled: env::var("ZENOH_TLS_ENABLED")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false),
+            zenoh_tls_port: env::var("ZENOH_TLS_PORT")
+                .ok()
+                .and_then(|p| p.parse().ok())
+                .unwrap_or(7447),
         }
     }
 }

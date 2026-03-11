@@ -55,6 +55,16 @@ pub fn insert_device_certificate(
         .first(conn)
 }
 
+pub fn clear_device_private_key(
+    conn: &mut SqliteConnection,
+    cert_id: i32,
+) -> Result<(), diesel::result::Error> {
+    diesel::update(device_certificates::table.find(cert_id))
+        .set(device_certificates::private_key_pem.eq(""))
+        .execute(conn)?;
+    Ok(())
+}
+
 pub fn delete_device_certificates(
     conn: &mut SqliteConnection,
     device_id: &str,

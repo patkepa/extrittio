@@ -73,19 +73,34 @@ async fn get_ca_certificate(
     Ok(Json(response))
 }
 
+/// Download the device certificate bundle (cert + private key + CA cert).
+///
+/// The private key is only returned once — after download the key is cleared
+/// from the database.  Subsequent calls will return 410 Gone if the key has
+/// already been retrieved.  Use the `/regenerate` endpoint to issue a new
+/// certificate if the key was lost.
 async fn get_device_certificate(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<DeviceCertificateResponse>, AppError> {
     let response = run_db(&state.db_pool, move |conn| {
-        // Verify device exists
         device_repo::find_device(conn, &id)?;
 
         let cert = cert_repo::get_device_certificate(conn, &id)?
             .ok_or_else(|| AppError::NotFound(format!("No certificate for device '{id}'")))?;
 
+        if cert.private_key_pem.is_empty() {
+            return Err(AppError::BadRequest(
+                "Private key already downloaded. Use /regenerate to issue a new certificate."
+                    .into(),
+            ));
+        }
+
         let ca = cert_repo::get_ca_certificate(conn)?
             .ok_or_else(|| AppError::Internal("CA certificate not initialized".into()))?;
+
+        // Clear the private key from the database after retrieval
+        cert_repo::clear_device_private_key(conn, cert.id)?;
 
         Ok(DeviceCertificateResponse {
             certificate_pem: cert.certificate_pem,
