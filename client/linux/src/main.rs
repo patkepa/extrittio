@@ -94,6 +94,22 @@ struct Args {
     /// Seconds between heartbeat messages
     #[arg(long, default_value_t = 30)]
     heartbeat_interval: u64,
+
+    /// Backend endpoint to connect to (e.g. "tcp/192.0.2.10:7447" or "tls/192.0.2.10:7447")
+    #[arg(long)]
+    connect: Option<String>,
+
+    /// Path to CA certificate PEM file (required for TLS)
+    #[arg(long)]
+    ca_cert: Option<String>,
+
+    /// Path to device certificate PEM file (required for mTLS)
+    #[arg(long)]
+    client_cert: Option<String>,
+
+    /// Path to device private key PEM file (required for mTLS)
+    #[arg(long)]
+    client_key: Option<String>,
 }
 
 struct SensorState {
@@ -156,7 +172,53 @@ async fn main() {
         device_id, args.interval, args.heartbeat_interval
     );
 
-    let session = zenoh::open(zenoh::Config::default())
+    let mut zenoh_config = zenoh::Config::default();
+
+    if let Some(ref endpoint) = args.connect {
+        zenoh_config
+            .insert_json5("connect/endpoints", &format!("[\"{endpoint}\"]"))
+            .expect("Failed to set Zenoh connect endpoint");
+
+        // Disable multicast scouting when connecting to a specific endpoint
+        zenoh_config
+            .insert_json5("scouting/multicast/enabled", "false")
+            .expect("Failed to disable multicast scouting");
+    }
+
+    if let Some(ref ca_cert) = args.ca_cert {
+        let ca_path = std::fs::canonicalize(ca_cert)
+            .unwrap_or_else(|e| panic!("CA cert not found at '{ca_cert}': {e}"));
+        zenoh_config
+            .insert_json5(
+                "transport/link/tls/root_ca_certificate",
+                &format!("\"{}\"", ca_path.display()),
+            )
+            .expect("Failed to set TLS root CA");
+    }
+
+    if let Some(ref client_cert) = args.client_cert {
+        let cert_path = std::fs::canonicalize(client_cert)
+            .unwrap_or_else(|e| panic!("Client cert not found at '{client_cert}': {e}"));
+        zenoh_config
+            .insert_json5(
+                "transport/link/tls/connect_certificate",
+                &format!("\"{}\"", cert_path.display()),
+            )
+            .expect("Failed to set TLS client certificate");
+    }
+
+    if let Some(ref client_key) = args.client_key {
+        let key_path = std::fs::canonicalize(client_key)
+            .unwrap_or_else(|e| panic!("Client key not found at '{client_key}': {e}"));
+        zenoh_config
+            .insert_json5(
+                "transport/link/tls/connect_private_key",
+                &format!("\"{}\"", key_path.display()),
+            )
+            .expect("Failed to set TLS client private key");
+    }
+
+    let session = zenoh::open(zenoh_config)
         .await
         .expect("Failed to open zenoh session");
     let session = Arc::new(session);
