@@ -1,6 +1,6 @@
 use axum::{
     body::Body,
-    extract::{Multipart, Path, Query, State},
+    extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     http::{header, StatusCode},
     response::Response,
     routing::get,
@@ -61,7 +61,7 @@ pub struct NextVersionResponse {
 // Router
 // ---------------------------------------------------------------------------
 
-pub fn router() -> Router<Arc<AppState>> {
+pub fn router(max_firmware_size: usize) -> Router<Arc<AppState>> {
     Router::new()
         .route(
             "/api/v1/firmware-updates",
@@ -69,7 +69,8 @@ pub fn router() -> Router<Arc<AppState>> {
         )
         .route(
             "/api/v1/firmware-updates/upload",
-            axum::routing::post(upload_firmware_update),
+            axum::routing::post(upload_firmware_update)
+                .layer(DefaultBodyLimit::max(max_firmware_size)),
         )
         .route(
             "/api/v1/firmware-updates/{id}",
@@ -241,7 +242,14 @@ async fn upload_firmware_update(
         device_type_id.ok_or_else(|| AppError::BadRequest("Missing device_type_id".into()))?;
     let file_data =
         file_data.ok_or_else(|| AppError::BadRequest("Missing file".into()))?;
-    let filename = filename.unwrap_or_else(|| "firmware.bin".to_string());
+
+    // Sanitize filename: strip path components to prevent traversal
+    let filename = filename
+        .as_deref()
+        .and_then(|f| f.rsplit(['/', '\\']).next())
+        .filter(|f| !f.is_empty())
+        .unwrap_or("firmware.bin")
+        .to_string();
 
     if file_data.is_empty() {
         return Err(AppError::BadRequest("File is empty".into()));

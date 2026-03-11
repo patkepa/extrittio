@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use crate::state::AppState;
 
-pub fn router() -> Router<Arc<AppState>> {
+pub fn router(max_firmware_size: usize) -> Router<Arc<AppState>> {
     Router::new()
         .merge(auth_routes::router())
         .merge(devices::router())
@@ -28,7 +28,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .merge(fleets::router())
         .merge(shadows::router())
         .merge(users::router())
-        .merge(firmware_updates::router())
+        .merge(firmware_updates::router(max_firmware_size))
         .merge(logs::router())
         .merge(configs::router())
         .merge(commands::router())

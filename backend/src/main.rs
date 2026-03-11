@@ -7,7 +7,9 @@ use diesel::sqlite::SqliteConnection;
 use diesel::RunQueryDsl;
 use diesel_migrations::MigrationHarness;
 use tower_http::cors::{Any, CorsLayer};
+use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use tracing::info;
+use tracing::Level;
 use tracing_subscriber::EnvFilter;
 
 use extrittio_backend::auth::hash_password;
@@ -15,6 +17,7 @@ use extrittio_backend::config::AppConfig;
 use extrittio_backend::db::models::{NewServerConfigEntry, NewUser, ServerConfigEntry};
 use extrittio_backend::db::schema::{ca_certificates, server_config, users};
 use extrittio_backend::middleware::auth_middleware;
+use extrittio_backend::rate_limit::{self, RateLimiter};
 use extrittio_backend::repositories::cert_repo;
 use extrittio_backend::services::cert_service;
 use extrittio_backend::state::AppState;
@@ -61,10 +64,11 @@ async fn main() {
     // Create database connection pool
     let manager = ConnectionManager::<SqliteConnection>::new(&config.database_url);
     let db_pool = Pool::builder()
-        .max_size(4)
+        .max_size(config.db_pool_size)
         .connection_customizer(Box::new(SqlitePragmas))
         .build(manager)
         .expect("Failed to create database connection pool");
+    info!("DB connection pool: max_size={}", config.db_pool_size);
 
     // Run migrations, initialize JWT secret, and seed admin user
     let jwt_secret = {
@@ -240,6 +244,8 @@ async fn main() {
         db_pool: db_pool.clone(),
         zenoh_session: zenoh_session.clone(),
         jwt_secret,
+        api_rate_limiter: RateLimiter::new(100, 60),   // 100 req/min per IP
+        login_rate_limiter: RateLimiter::new(5, 60),    // 5 req/min per IP
     });
 
     // Spawn zenoh subscriber task
@@ -273,9 +279,19 @@ async fn main() {
         .allow_methods(Any)
         .allow_headers(Any);
 
+    // Request tracing
+    let trace_layer = TraceLayer::new_for_http()
+        .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
+        .on_response(DefaultOnResponse::new().level(Level::INFO));
+
     // Build Axum router
-    let app = api::router()
+    let app = api::router(config.max_firmware_size_bytes)
         .layer(axum_middleware::from_fn_with_state(state.clone(), auth_middleware))
+        .layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            rate_limit::rate_limit_middleware,
+        ))
+        .layer(trace_layer)
         .layer(cors)
         .with_state(state);
 

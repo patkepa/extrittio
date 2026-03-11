@@ -9,11 +9,18 @@ pub struct AppConfig {
     pub certs_dir: String,
     pub zenoh_tls_enabled: bool,
     pub zenoh_tls_port: u16,
+    pub db_pool_size: u32,
+    pub max_firmware_size_bytes: usize,
 }
 
 impl AppConfig {
-    #[must_use] 
+    #[must_use]
     pub fn from_env() -> Self {
+        let max_firmware_mb: usize = env::var("MAX_FIRMWARE_SIZE_MB")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(100);
+
         Self {
             port: env::var("PORT")
                 .ok()
@@ -37,6 +44,11 @@ impl AppConfig {
                 .ok()
                 .and_then(|p| p.parse().ok())
                 .unwrap_or(7447),
+            db_pool_size: env::var("DB_POOL_SIZE")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(16),
+            max_firmware_size_bytes: max_firmware_mb * 1024 * 1024,
         }
     }
 }

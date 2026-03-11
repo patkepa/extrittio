@@ -3,6 +3,7 @@ use diesel::SqliteConnection;
 use std::sync::Arc;
 
 use crate::error::AppError;
+use crate::rate_limit::RateLimiter;
 
 pub type DbPool = Pool<ConnectionManager<SqliteConnection>>;
 
@@ -10,6 +11,8 @@ pub struct AppState {
     pub db_pool: DbPool,
     pub zenoh_session: Arc<zenoh::Session>,
     pub jwt_secret: String,
+    pub api_rate_limiter: RateLimiter,
+    pub login_rate_limiter: RateLimiter,
 }
 
 /// Run a synchronous DB operation on a blocking thread to avoid starving the
