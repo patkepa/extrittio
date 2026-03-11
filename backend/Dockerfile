@@ -1,5 +1,5 @@
 # Stage 1: Cross-compile on native x86_64 for ARM64
-FROM --platform=$BUILDPLATFORM rust:1.87-bookworm AS builder
+FROM --platform=$BUILDPLATFORM rust:1.90-bookworm AS builder
 
 ARG TARGETARCH
 
