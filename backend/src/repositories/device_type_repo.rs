@@ -8,6 +8,24 @@ use crate::db::schema::{device_types, devices};
 
 pub fn list_device_types(
     conn: &mut SqliteConnection,
+    limit: i64,
+    offset: i64,
+) -> Result<(Vec<DeviceType>, i64), diesel::result::Error> {
+    let total: i64 = device_types::table.count().get_result(conn)?;
+
+    let results = device_types::table
+        .select(DeviceType::as_select())
+        .order(device_types::name.asc())
+        .limit(limit)
+        .offset(offset)
+        .load(conn)?;
+
+    Ok((results, total))
+}
+
+/// List all device types without pagination (used internally for lookups).
+pub fn list_all_device_types(
+    conn: &mut SqliteConnection,
 ) -> Result<Vec<DeviceType>, diesel::result::Error> {
     device_types::table
         .select(DeviceType::as_select())

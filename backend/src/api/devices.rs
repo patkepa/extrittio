@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use crate::db::models::{Device, DeviceType, Fleet, NewDevice, UpdateDevice};
 use crate::error::AppError;
+use crate::pagination::{self, PaginatedResponse, PaginationParams};
 use crate::repositories::{device_repo, firmware_repo};
 use crate::services::{command_service, device_service};
 use crate::state::{run_db, AppState};
@@ -57,6 +58,8 @@ pub struct ListDevicesQuery {
     pub status: Option<String>,
     pub search: Option<String>,
     pub fleet_id: Option<i32>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -167,19 +170,25 @@ pub fn router() -> Router<Arc<AppState>> {
 async fn list_devices(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ListDevicesQuery>,
-) -> Result<Json<Vec<DeviceResponse>>, AppError> {
+) -> Result<Json<PaginatedResponse<DeviceResponse>>, AppError> {
+    let (limit, offset) = pagination::clamp(params.limit, params.offset);
+
     let response = run_db(&state.db_pool, move |conn| {
-        let results = device_repo::list_devices(
+        let (results, total) = device_repo::list_devices(
             conn,
             params.status.as_deref(),
             params.search.as_deref(),
             params.fleet_id,
+            limit,
+            offset,
         )?;
 
-        Ok(results
+        let data = results
             .into_iter()
             .map(|(d, dt, f)| to_device_response(d, dt, f))
-            .collect())
+            .collect();
+
+        Ok(PaginatedResponse::new(data, total, limit, offset))
     })
     .await?;
 
@@ -333,14 +342,17 @@ pub struct OtaDeploymentResponse {
 async fn list_ota_deployments(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-) -> Result<Json<Vec<OtaDeploymentResponse>>, AppError> {
+    Query(params): Query<PaginationParams>,
+) -> Result<Json<PaginatedResponse<OtaDeploymentResponse>>, AppError> {
+    let (limit, offset) = pagination::clamp(params.limit, params.offset);
+
     let response = run_db(&state.db_pool, move |conn| {
         // Verify device exists
         device_repo::find_device(conn, &id)?;
 
-        let results = firmware_repo::list_ota_deployments(conn, &id)?;
+        let (results, total) = firmware_repo::list_ota_deployments(conn, &id, limit, offset)?;
 
-        Ok(results
+        let data = results
             .into_iter()
             .map(|(dep, fw)| OtaDeploymentResponse {
                 id: dep.id,
@@ -352,7 +364,9 @@ async fn list_ota_deployments(
                 initiated_at: dep.initiated_at.to_string(),
                 completed_at: dep.completed_at.map(|t| t.to_string()),
             })
-            .collect())
+            .collect();
+
+        Ok(PaginatedResponse::new(data, total, limit, offset))
     })
     .await?;
 

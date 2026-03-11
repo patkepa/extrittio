@@ -9,7 +9,34 @@ pub fn list_devices(
     status_filter: Option<&str>,
     search_filter: Option<&str>,
     fleet_id_filter: Option<i32>,
-) -> Result<Vec<(Device, DeviceType, Option<Fleet>)>, diesel::result::Error> {
+    limit: i64,
+    offset: i64,
+) -> Result<(Vec<(Device, DeviceType, Option<Fleet>)>, i64), diesel::result::Error> {
+    // Count query
+    let mut count_query = devices::table
+        .inner_join(device_types::table)
+        .left_join(fleets::table)
+        .into_boxed();
+
+    if let Some(status) = status_filter {
+        count_query = count_query.filter(devices::status.eq(status));
+    }
+    if let Some(ref search) = search_filter {
+        let pattern = format!("%{search}%");
+        count_query = count_query.filter(
+            devices::name
+                .like(pattern.clone())
+                .or(device_types::name.like(pattern.clone()))
+                .or(devices::location.like(pattern)),
+        );
+    }
+    if let Some(fleet_id) = fleet_id_filter {
+        count_query = count_query.filter(devices::fleet_id.eq(fleet_id));
+    }
+
+    let total: i64 = count_query.count().get_result(conn)?;
+
+    // Data query
     let mut query = devices::table
         .inner_join(device_types::table)
         .left_join(fleets::table)
@@ -31,13 +58,17 @@ pub fn list_devices(
         query = query.filter(devices::fleet_id.eq(fleet_id));
     }
 
-    query
+    let results = query
         .select((
             Device::as_select(),
             DeviceType::as_select(),
             Option::<Fleet>::as_select(),
         ))
-        .load(conn)
+        .limit(limit)
+        .offset(offset)
+        .load(conn)?;
+
+    Ok((results, total))
 }
 
 pub fn find_device_with_joins(

@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     routing::get,
     Json, Router,
@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use crate::db::models::{DeviceType, NewDeviceType};
 use crate::error::AppError;
+use crate::pagination::{self, PaginatedResponse, PaginationParams};
 use crate::repositories::device_type_repo;
 use crate::state::{run_db, AppState};
 
@@ -46,10 +47,14 @@ pub fn router() -> Router<Arc<AppState>> {
 
 async fn list_device_types(
     State(state): State<Arc<AppState>>,
-) -> Result<Json<Vec<DeviceTypeResponse>>, AppError> {
+    Query(params): Query<PaginationParams>,
+) -> Result<Json<PaginatedResponse<DeviceTypeResponse>>, AppError> {
+    let (limit, offset) = pagination::clamp(params.limit, params.offset);
+
     let response = run_db(&state.db_pool, move |conn| {
-        let results = device_type_repo::list_device_types(conn)?;
-        Ok(results.into_iter().map(DeviceTypeResponse::from).collect())
+        let (results, total) = device_type_repo::list_device_types(conn, limit, offset)?;
+        let data = results.into_iter().map(DeviceTypeResponse::from).collect();
+        Ok(PaginatedResponse::new(data, total, limit, offset))
     })
     .await?;
 

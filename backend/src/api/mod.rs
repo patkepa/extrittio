@@ -7,6 +7,7 @@ pub mod device_types;
 pub mod devices;
 pub mod firmware_updates;
 pub mod fleets;
+pub mod health;
 pub mod logs;
 pub mod shadows;
 pub mod telemetry;
@@ -32,4 +33,5 @@ pub fn router() -> Router<Arc<AppState>> {
         .merge(configs::router())
         .merge(commands::router())
         .merge(certificates::router())
+        .merge(health::router())
 }

@@ -8,11 +8,19 @@ use crate::db::schema::users;
 
 pub fn list_users(
     conn: &mut SqliteConnection,
-) -> Result<Vec<User>, diesel::result::Error> {
-    users::table
+    limit: i64,
+    offset: i64,
+) -> Result<(Vec<User>, i64), diesel::result::Error> {
+    let total: i64 = users::table.count().get_result(conn)?;
+
+    let results = users::table
         .select(User::as_select())
         .order(users::username.asc())
-        .load(conn)
+        .limit(limit)
+        .offset(offset)
+        .load(conn)?;
+
+    Ok((results, total))
 }
 
 pub fn find_user_by_username(

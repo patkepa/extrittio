@@ -5,6 +5,7 @@ pub mod config;
 pub mod db;
 pub mod error;
 pub mod middleware;
+pub mod pagination;
 pub mod repositories;
 pub mod services;
 pub mod shadow_utils;

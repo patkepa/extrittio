@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     routing::get,
     Json, Router,
@@ -10,6 +10,7 @@ use std::sync::Arc;
 use crate::auth::hash_password;
 use crate::db::models::NewUser;
 use crate::error::AppError;
+use crate::pagination::{self, PaginatedResponse, PaginationParams};
 use crate::repositories::user_repo;
 use crate::state::{run_db, AppState};
 
@@ -41,17 +42,21 @@ pub fn router() -> Router<Arc<AppState>> {
 
 async fn list_users(
     State(state): State<Arc<AppState>>,
-) -> Result<Json<Vec<UserResponse>>, AppError> {
+    Query(params): Query<PaginationParams>,
+) -> Result<Json<PaginatedResponse<UserResponse>>, AppError> {
+    let (limit, offset) = pagination::clamp(params.limit, params.offset);
+
     let response = run_db(&state.db_pool, move |conn| {
-        let results = user_repo::list_users(conn)?;
-        Ok(results
+        let (results, total) = user_repo::list_users(conn, limit, offset)?;
+        let data = results
             .into_iter()
             .map(|u| UserResponse {
                 id: u.id,
                 username: u.username,
                 role: u.role,
             })
-            .collect())
+            .collect();
+        Ok(PaginatedResponse::new(data, total, limit, offset))
     })
     .await?;
 

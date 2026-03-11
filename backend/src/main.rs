@@ -279,12 +279,41 @@ async fn main() {
         .layer(cors)
         .with_state(state);
 
-    // Bind and serve
+    // Bind and serve with graceful shutdown
     let addr = format!("0.0.0.0:{}", config.port);
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
         .expect("Failed to bind");
     info!("Listening on {}", addr);
 
-    axum::serve(listener, app).await.expect("Server error");
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await
+        .expect("Server error");
+
+    info!("Server shut down gracefully");
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("Failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        () = ctrl_c => info!("Received Ctrl+C, starting graceful shutdown"),
+        () = terminate => info!("Received SIGTERM, starting graceful shutdown"),
+    }
 }

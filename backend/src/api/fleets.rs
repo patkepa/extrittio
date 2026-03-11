@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     routing::get,
     Json, Router,
@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use crate::db::models::NewFleet;
 use crate::error::AppError;
+use crate::pagination::{self, PaginatedResponse, PaginationParams};
 use crate::repositories::fleet_repo;
 use crate::state::{run_db, AppState};
 
@@ -32,23 +33,28 @@ pub fn router() -> Router<Arc<AppState>> {
 
 async fn list_fleets(
     State(state): State<Arc<AppState>>,
-) -> Result<Json<Vec<FleetResponse>>, AppError> {
+    Query(params): Query<PaginationParams>,
+) -> Result<Json<PaginatedResponse<FleetResponse>>, AppError> {
+    let (limit, offset) = pagination::clamp(params.limit, params.offset);
+
     let response = run_db(&state.db_pool, move |conn| {
-        let (all_fleets, counts) = fleet_repo::list_fleets(conn)?;
+        let (all_fleets, counts, total) = fleet_repo::list_fleets(conn, limit, offset)?;
 
         let count_map: std::collections::HashMap<i32, i64> = counts
             .into_iter()
             .filter_map(|(fleet_id, count)| fleet_id.map(|fid| (fid, count)))
             .collect();
 
-        Ok(all_fleets
+        let data = all_fleets
             .into_iter()
             .map(|f| FleetResponse {
                 id: f.id,
                 name: f.name,
                 device_count: count_map.get(&f.id).copied().unwrap_or(0),
             })
-            .collect())
+            .collect();
+
+        Ok(PaginatedResponse::new(data, total, limit, offset))
     })
     .await?;
 

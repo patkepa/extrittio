@@ -12,7 +12,17 @@ use crate::db::schema::{device_types, firmware_blobs, firmware_updates, ota_depl
 pub fn list_firmware_updates(
     conn: &mut SqliteConnection,
     device_type_id: Option<i32>,
-) -> Result<Vec<(FirmwareUpdate, DeviceType, Option<i32>, Option<String>)>, diesel::result::Error> {
+    limit: i64,
+    offset: i64,
+) -> Result<(Vec<(FirmwareUpdate, DeviceType, Option<i32>, Option<String>)>, i64), diesel::result::Error> {
+    // Count query
+    let mut count_query = firmware_updates::table.into_boxed();
+    if let Some(dt_id) = device_type_id {
+        count_query = count_query.filter(firmware_updates::device_type_id.eq(dt_id));
+    }
+    let total: i64 = count_query.count().get_result(conn)?;
+
+    // Data query
     let mut query = firmware_updates::table
         .inner_join(device_types::table)
         .left_join(firmware_blobs::table)
@@ -28,9 +38,13 @@ pub fn list_firmware_updates(
         query = query.filter(firmware_updates::device_type_id.eq(dt_id));
     }
 
-    query
+    let results = query
         .order(firmware_updates::created_at.desc())
-        .load(conn)
+        .limit(limit)
+        .offset(offset)
+        .load(conn)?;
+
+    Ok((results, total))
 }
 
 pub fn find_firmware_update(
@@ -115,13 +129,24 @@ pub fn update_firmware_url(
 pub fn list_ota_deployments(
     conn: &mut SqliteConnection,
     device_id: &str,
-) -> Result<Vec<(OtaDeployment, FirmwareUpdate)>, diesel::result::Error> {
-    ota_deployments::table
+    limit: i64,
+    offset: i64,
+) -> Result<(Vec<(OtaDeployment, FirmwareUpdate)>, i64), diesel::result::Error> {
+    let total: i64 = ota_deployments::table
+        .filter(ota_deployments::device_id.eq(device_id))
+        .count()
+        .get_result(conn)?;
+
+    let results = ota_deployments::table
         .inner_join(firmware_updates::table)
         .filter(ota_deployments::device_id.eq(device_id))
         .select((OtaDeployment::as_select(), FirmwareUpdate::as_select()))
         .order(ota_deployments::initiated_at.desc())
-        .load(conn)
+        .limit(limit)
+        .offset(offset)
+        .load(conn)?;
+
+    Ok((results, total))
 }
 
 /// Find the ID of the active (non-terminal) OTA deployment for the given device,

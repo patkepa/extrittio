@@ -8,10 +8,16 @@ use crate::db::schema::{devices, fleets};
 
 pub fn list_fleets(
     conn: &mut SqliteConnection,
-) -> Result<(Vec<Fleet>, Vec<(Option<i32>, i64)>), diesel::result::Error> {
+    limit: i64,
+    offset: i64,
+) -> Result<(Vec<Fleet>, Vec<(Option<i32>, i64)>, i64), diesel::result::Error> {
+    let total: i64 = fleets::table.count().get_result(conn)?;
+
     let all_fleets: Vec<Fleet> = fleets::table
         .select(Fleet::as_select())
         .order(fleets::name.asc())
+        .limit(limit)
+        .offset(offset)
         .load(conn)?;
 
     let counts: Vec<(Option<i32>, i64)> = devices::table
@@ -19,7 +25,7 @@ pub fn list_fleets(
         .select((devices::fleet_id, diesel::dsl::count(devices::id)))
         .load(conn)?;
 
-    Ok((all_fleets, counts))
+    Ok((all_fleets, counts, total))
 }
 
 pub fn insert_fleet(

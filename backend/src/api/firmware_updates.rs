@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use crate::db::models::{NewFirmwareBlob, NewFirmwareUpdate};
 use crate::error::AppError;
+use crate::pagination::{self, PaginatedResponse};
 use crate::repositories::{device_type_repo, firmware_repo};
 use crate::services::firmware_service;
 use crate::state::{run_db, AppState};
@@ -47,6 +48,8 @@ pub struct NewFirmwareUpdateRequest {
 #[derive(Debug, Deserialize)]
 pub struct ListFirmwareUpdatesQuery {
     pub device_type_id: Option<i32>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -89,11 +92,14 @@ pub fn router() -> Router<Arc<AppState>> {
 async fn list_firmware_updates(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ListFirmwareUpdatesQuery>,
-) -> Result<Json<Vec<FirmwareUpdateResponse>>, AppError> {
-    let response = run_db(&state.db_pool, move |conn| {
-        let results = firmware_repo::list_firmware_updates(conn, params.device_type_id)?;
+) -> Result<Json<PaginatedResponse<FirmwareUpdateResponse>>, AppError> {
+    let (limit, offset) = pagination::clamp(params.limit, params.offset);
 
-        Ok(results
+    let response = run_db(&state.db_pool, move |conn| {
+        let (results, total) =
+            firmware_repo::list_firmware_updates(conn, params.device_type_id, limit, offset)?;
+
+        let data = results
             .into_iter()
             .map(|(fw, dt, blob_size, blob_filename)| FirmwareUpdateResponse {
                 id: fw.id,
@@ -108,7 +114,9 @@ async fn list_firmware_updates(
                 file_size: blob_size,
                 filename: blob_filename,
             })
-            .collect())
+            .collect();
+
+        Ok(PaginatedResponse::new(data, total, limit, offset))
     })
     .await?;
 
@@ -125,7 +133,7 @@ async fn create_firmware_update(
 
     let response = run_db(&state.db_pool, move |conn| {
         // Verify device type exists
-        let dt = device_type_repo::list_device_types(conn)?
+        let dt = device_type_repo::list_all_device_types(conn)?
             .into_iter()
             .find(|d| d.id == body.device_type_id)
             .ok_or_else(|| {
@@ -256,7 +264,7 @@ async fn upload_firmware_update(
 
     let response = run_db(&state.db_pool, move |conn| {
         // Verify device type exists
-        let dt = device_type_repo::list_device_types(conn)?
+        let dt = device_type_repo::list_all_device_types(conn)?
             .into_iter()
             .find(|d| d.id == device_type_id)
             .ok_or_else(|| {
