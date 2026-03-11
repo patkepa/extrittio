@@ -1,3 +1,7 @@
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 use std::sync::Arc;
 
 use axum::middleware as axum_middleware;
@@ -28,7 +32,24 @@ struct SqlitePragmas;
 
 impl CustomizeConnection<SqliteConnection, diesel::r2d2::Error> for SqlitePragmas {
     fn on_acquire(&self, conn: &mut SqliteConnection) -> Result<(), diesel::r2d2::Error> {
+        // Enforce referential integrity
         diesel::sql_query("PRAGMA foreign_keys = ON")
+            .execute(conn)
+            .map_err(diesel::r2d2::Error::QueryError)?;
+        // Return SQLITE_BUSY immediately instead of blocking (Tokio-friendly)
+        diesel::sql_query("PRAGMA busy_timeout = 5000")
+            .execute(conn)
+            .map_err(diesel::r2d2::Error::QueryError)?;
+        // Keep temp tables in memory instead of disk
+        diesel::sql_query("PRAGMA temp_store = MEMORY")
+            .execute(conn)
+            .map_err(diesel::r2d2::Error::QueryError)?;
+        // Increase page cache to ~32MB (8192 pages × 4KB)
+        diesel::sql_query("PRAGMA cache_size = -32000")
+            .execute(conn)
+            .map_err(diesel::r2d2::Error::QueryError)?;
+        // Memory-mapped I/O — let the kernel manage page caching (256MB)
+        diesel::sql_query("PRAGMA mmap_size = 268435456")
             .execute(conn)
             .map_err(diesel::r2d2::Error::QueryError)?;
         Ok(())
@@ -40,6 +61,11 @@ fn run_migrations(conn: &mut SqliteConnection) {
     diesel::sql_query("PRAGMA journal_mode = WAL")
         .execute(conn)
         .expect("Failed to set WAL journal mode");
+
+    // NORMAL sync is safe with WAL — avoids fsync on every commit
+    diesel::sql_query("PRAGMA synchronous = NORMAL")
+        .execute(conn)
+        .expect("Failed to set synchronous mode");
 
     conn.run_pending_migrations(MIGRATIONS)
         .expect("Failed to run database migrations");
@@ -295,11 +321,24 @@ async fn main() {
         .layer(cors)
         .with_state(state);
 
-    // Bind and serve with graceful shutdown
-    let addr = format!("0.0.0.0:{}", config.port);
-    let listener = tokio::net::TcpListener::bind(&addr)
-        .await
-        .expect("Failed to bind");
+    // Bind with tuned socket options for high-connection IoT workloads
+    let addr: std::net::SocketAddr = format!("0.0.0.0:{}", config.port)
+        .parse()
+        .expect("Invalid listen address");
+    let socket = socket2::Socket::new(
+        socket2::Domain::for_address(addr),
+        socket2::Type::STREAM,
+        Some(socket2::Protocol::TCP),
+    )
+    .expect("Failed to create socket");
+    socket.set_reuse_address(true).expect("Failed to set SO_REUSEADDR");
+    socket.set_nodelay(true).expect("Failed to set TCP_NODELAY");
+    // Increase listen backlog for burst connections from many devices
+    socket.bind(&addr.into()).expect("Failed to bind socket");
+    socket.listen(1024).expect("Failed to listen");
+    socket.set_nonblocking(true).expect("Failed to set non-blocking");
+    let listener = tokio::net::TcpListener::from_std(socket.into())
+        .expect("Failed to create tokio TcpListener");
     info!("Listening on {}", addr);
 
     axum::serve(listener, app)

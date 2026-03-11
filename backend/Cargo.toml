@@ -26,6 +26,11 @@ thiserror = "2"
 rcgen = { version = "0.14", features = ["pem", "x509-parser"] }
 time = "0.3"
 pem = "3"
+libsqlite3-sys = { version = "0.35", features = ["bundled"] }
+socket2 = "0.5"
+
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+tikv-jemallocator = "0.6"
 
 [dev-dependencies]
 http-body-util = "0.1"

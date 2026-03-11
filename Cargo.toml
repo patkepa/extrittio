@@ -5,3 +5,10 @@ members = [
     "client/linux",
     "proto",
 ]
+
+# Optimized release profile for production builds
+[profile.release]
+lto = "fat"           # Full link-time optimization across all crates
+codegen-units = 1     # Single codegen unit for maximum optimization
+strip = true          # Strip debug symbols — smaller binary
+panic = "abort"       # No unwinding overhead — smaller + faster

@@ -1,0 +1,13 @@
+# [build]
+# Uncomment after installing sccache:
+#   brew install sccache (macOS) or cargo install sccache
+# rustc-wrapper = "sccache"
+
+[target.aarch64-apple-darwin]
+# Use lld for faster linking on Apple Silicon
+# Requires: brew install llvm
+# Then ensure /opt/homebrew/opt/llvm/bin is in PATH
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]
