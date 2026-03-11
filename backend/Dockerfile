@@ -1,7 +1,25 @@
-# Stage 1: Build the Rust backend
-FROM rust:1.87-bookworm AS builder
+# Stage 1: Cross-compile on native x86_64 for ARM64
+FROM --platform=$BUILDPLATFORM rust:1.87-bookworm AS builder
 
-RUN apt-get update && apt-get install -y protobuf-compiler libsqlite3-dev && rm -rf /var/lib/apt/lists/*
+ARG TARGETARCH
+
+RUN apt-get update && apt-get install -y \
+    protobuf-compiler \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install cross-compilation toolchain for ARM64
+RUN if [ "$TARGETARCH" = "arm64" ]; then \
+        dpkg --add-architecture arm64 && \
+        apt-get update && \
+        apt-get install -y gcc-aarch64-linux-gnu libsqlite3-dev:arm64 && \
+        rm -rf /var/lib/apt/lists/* && \
+        rustup target add aarch64-unknown-linux-gnu; \
+    else \
+        apt-get update && apt-get install -y libsqlite3-dev && rm -rf /var/lib/apt/lists/*; \
+    fi
+
+# Configure cross-linker for ARM64
+ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
 
 WORKDIR /app
 
@@ -17,8 +35,12 @@ RUN mkdir -p proto/src && echo "fn main() {}" > proto/src/lib.rs && \
     mkdir -p backend/src && echo "fn main() {}" > backend/src/main.rs && \
     mkdir -p client/linux/src && echo "fn main() {}" > client/linux/src/main.rs
 
-# Pre-build dependencies (this layer is cached unless Cargo.toml/Cargo.lock change)
-RUN cargo build --release -p extrittio-backend 2>/dev/null || true
+# Determine Rust target triple from TARGETARCH
+RUN if [ "$TARGETARCH" = "arm64" ]; then \
+        cargo build --release --target aarch64-unknown-linux-gnu -p extrittio-backend 2>/dev/null || true; \
+    else \
+        cargo build --release -p extrittio-backend 2>/dev/null || true; \
+    fi
 
 # Copy actual source code
 COPY proto/ proto/
@@ -28,9 +50,14 @@ COPY backend/ backend/
 RUN touch proto/src/lib.rs proto/build.rs backend/src/main.rs
 
 # Build the real binary
-RUN cargo build --release -p extrittio-backend
+RUN if [ "$TARGETARCH" = "arm64" ]; then \
+        cargo build --release --target aarch64-unknown-linux-gnu -p extrittio-backend && \
+        cp target/aarch64-unknown-linux-gnu/release/extrittio-backend target/release/extrittio-backend; \
+    else \
+        cargo build --release -p extrittio-backend; \
+    fi
 
-# Stage 2: Minimal runtime image
+# Stage 2: Minimal runtime image (runs on target arch)
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y libsqlite3-0 ca-certificates && rm -rf /var/lib/apt/lists/*
