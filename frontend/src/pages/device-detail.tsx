@@ -23,12 +23,15 @@ export const DeviceDetail = () => {
   const currentTab = VALID_TABS.includes(activeTab) ? activeTab : 'overview';
 
   const handleTabChange = (newTab: string) => {
-    if (newTab === 'overview') {
-      searchParams.delete('tab');
-    } else {
-      searchParams.set('tab', newTab);
-    }
-    setSearchParams(searchParams, { replace: true });
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (newTab === 'overview') {
+        next.delete('tab');
+      } else {
+        next.set('tab', newTab);
+      }
+      return next;
+    }, { replace: true });
   };
 
   if (!deviceId) return <Navigate to="/devices" replace />;

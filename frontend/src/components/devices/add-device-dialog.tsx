@@ -115,7 +115,7 @@ export function AddDeviceDialog() {
               icon="add"
               onClick={handleAddDevice}
               loading={createDeviceMutation.isPending}
-              disabled={!newDevice.name.trim()}
+              disabled={!newDevice.name.trim() || deviceTypes.length === 0}
             >
               Add Device
             </Button>

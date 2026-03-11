@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -23,17 +23,18 @@ export const CommandsTab = ({ deviceId }: CommandsTabProps) => {
   const sendCommandMutation = useSendCommand();
 
   const [commandName, setCommandName] = useState('');
-  const [params, setParams] = useState<Array<{ key: string; value: string }>>([]);
+  const [params, setParams] = useState<Array<{ id: number; key: string; value: string }>>([]);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const nextParamId = useRef(0);
 
-  const addParam = () => setParams([...params, { key: '', value: '' }]);
+  const addParam = () => setParams([...params, { id: nextParamId.current++, key: '', value: '' }]);
 
-  const updateParam = (index: number, field: 'key' | 'value', value: string) => {
-    setParams(params.map((p, i) => (i === index ? { ...p, [field]: value } : p)));
+  const updateParam = (id: number, field: 'key' | 'value', value: string) => {
+    setParams(params.map((p) => (p.id === id ? { ...p, [field]: value } : p)));
   };
 
-  const removeParam = (index: number) => {
-    setParams(params.filter((_, i) => i !== index));
+  const removeParam = (id: number) => {
+    setParams(params.filter((p) => p.id !== id));
   };
 
   const handleSend = () => {
@@ -105,21 +106,21 @@ export const CommandsTab = ({ deviceId }: CommandsTabProps) => {
           className="tab-input-spacing"
         />
 
-        {params.map((p, i) => (
-          <div key={i} className="tab-param-row">
+        {params.map((p) => (
+          <div key={p.id} className="tab-param-row">
             <InputGroup
               placeholder="Key"
               value={p.key}
-              onChange={(e) => updateParam(i, 'key', e.target.value)}
+              onChange={(e) => updateParam(p.id, 'key', e.target.value)}
               style={{ flex: 1 }}
             />
             <InputGroup
               placeholder="Value"
               value={p.value}
-              onChange={(e) => updateParam(i, 'value', e.target.value)}
+              onChange={(e) => updateParam(p.id, 'value', e.target.value)}
               style={{ flex: 1 }}
             />
-            <Button minimal icon="cross" onClick={() => removeParam(i)} />
+            <Button minimal icon="cross" onClick={() => removeParam(p.id)} />
           </div>
         ))}
 

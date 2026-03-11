@@ -27,6 +27,23 @@ import './devices.css';
 type SortField = 'name' | 'status' | 'last_seen' | 'uptime';
 type SortDir = 'asc' | 'desc';
 
+const SortHeader = ({ field, sortField, sortDir, onSort, children }: {
+  field: SortField;
+  sortField: SortField;
+  sortDir: SortDir;
+  onSort: (field: SortField) => void;
+  children: React.ReactNode;
+}) => (
+  <th className="sortable-th" onClick={() => onSort(field)}>
+    <span className="th-content">
+      {children}
+      {sortField === field && (
+        <Icon icon={sortDir === 'asc' ? 'chevron-up' : 'chevron-down'} size={12} />
+      )}
+    </span>
+  </th>
+);
+
 function generateSparkline(id: string): number[] {
   let hash = 0;
   for (const ch of id) hash = ((hash << 5) - hash + ch.charCodeAt(0)) | 0;
@@ -52,12 +69,15 @@ export const Devices = () => {
   const filterFleetId = searchParams.get('fleet_id') ? Number(searchParams.get('fleet_id')) : null;
 
   const setFilterFleetId = (fleetId: number | null) => {
-    if (fleetId === null) {
-      searchParams.delete('fleet_id');
-    } else {
-      searchParams.set('fleet_id', String(fleetId));
-    }
-    setSearchParams(searchParams);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (fleetId === null) {
+        next.delete('fleet_id');
+      } else {
+        next.set('fleet_id', String(fleetId));
+      }
+      return next;
+    });
   };
 
   const { data: devices = [], isLoading, error } = useDevices(
@@ -73,11 +93,15 @@ export const Devices = () => {
       const device = devices.find((d) => d.id === deviceParam);
       if (device) {
         navigate(`/devices/${device.id}`, { replace: true });
+      } else {
+        setSearchParams((prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete('device');
+          return next;
+        }, { replace: true });
       }
-      searchParams.delete('device');
-      setSearchParams(searchParams, { replace: true });
     }
-  }, [deviceParam, devices, navigate, searchParams, setSearchParams]);
+  }, [deviceParam, devices, navigate, setSearchParams]);
 
   const filteredDevices = devices
     .filter((device) => {
@@ -113,17 +137,6 @@ export const Devices = () => {
     online: devices.filter((d) => d.status === 'online').length,
     offline: devices.filter((d) => d.status === 'offline').length,
   };
-
-  const SortHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
-    <th className="sortable-th" onClick={() => handleSort(field)}>
-      <span className="th-content">
-        {children}
-        {sortField === field && (
-          <Icon icon={sortDir === 'asc' ? 'chevron-up' : 'chevron-down'} size={12} />
-        )}
-      </span>
-    </th>
-  );
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -243,7 +256,7 @@ export const Devices = () => {
             <thead>
               <tr>
                 <th style={{ width: 40 }}></th>
-                <SortHeader field="name">Name</SortHeader>
+                <SortHeader field="name" sortField={sortField} sortDir={sortDir} onSort={handleSort}>Name</SortHeader>
                 <th>Type</th>
                 <th>Fleet</th>
                 <th>Location</th>
@@ -343,11 +356,16 @@ export const Devices = () => {
         onConfirm={() => {
           if (deviceToDelete) {
             deleteDeviceMutation.mutate(deviceToDelete.id, {
-              onSuccess: () => void showSuccessToast('Device deleted'),
-              onError: () => void showErrorToast('Failed to delete device'),
+              onSuccess: () => {
+                setDeviceToDelete(null);
+                void showSuccessToast('Device deleted');
+              },
+              onError: () => {
+                setDeviceToDelete(null);
+                void showErrorToast('Failed to delete device');
+              },
             });
           }
-          setDeviceToDelete(null);
         }}
         onCancel={() => setDeviceToDelete(null)}
       >

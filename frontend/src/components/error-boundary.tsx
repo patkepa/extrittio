@@ -8,16 +8,17 @@ interface Props {
 
 interface State {
   hasError: boolean;
+  resetKey: number;
 }
 
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, resetKey: 0 };
   }
 
   static getDerivedStateFromError(): State {
-    return { hasError: true };
+    return { hasError: true, resetKey: 0 };
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
@@ -35,7 +36,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <Button
               intent="primary"
               icon="refresh"
-              onClick={() => this.setState({ hasError: false })}
+              onClick={() => this.setState((s) => ({ hasError: false, resetKey: s.resetKey + 1 }))}
             >
               Try Again
             </Button>
@@ -43,6 +44,6 @@ export class ErrorBoundary extends Component<Props, State> {
         />
       );
     }
-    return this.props.children;
+    return <div key={this.state.resetKey}>{this.props.children}</div>;
   }
 }

@@ -485,8 +485,13 @@ p {
   outline-offset: 2px;
 }
 
-/* Smooth transitions */
-* {
+/* Smooth transitions — scoped to theme-controlled elements only */
+.bp6-card,
+.bp6-button,
+.bp6-input,
+.bp6-tag,
+.filter-pill,
+.device-row {
   transition-property: background-color, border-color, color, fill, stroke;
   transition-duration: 150ms;
   transition-timing-function: ease-in-out;
@@ -602,4 +607,20 @@ p {
 
 .tab-input-spacing {
   margin-bottom: 12px;
+}
+
+/* Accessibility: disable animations for users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .status-led--online,
+  .status-led--warning {
+    animation: none;
+  }
+
+  .stagger-item,
+  .device-row,
+  .devices-controls,
+  .devices-card,
+  .device-hover-tooltip {
+    animation: none;
+  }
 }

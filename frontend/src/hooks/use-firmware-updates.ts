@@ -33,10 +33,11 @@ export function useNextVersion(deviceTypeId: number | null) {
   });
 }
 
-export function useOtaDeployments(deviceId: string) {
+export function useOtaDeployments(deviceId: string | null) {
   return useQuery({
-    queryKey: queryKeys.firmware.deployments(deviceId),
-    queryFn: () => getOtaDeployments(deviceId),
+    queryKey: queryKeys.firmware.deployments(deviceId ?? ''),
+    queryFn: () => getOtaDeployments(deviceId!),
+    enabled: !!deviceId,
     staleTime: 10_000,
   });
 }

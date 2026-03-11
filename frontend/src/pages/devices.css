@@ -432,6 +432,46 @@
   overflow-y: auto;
 }
 
+.shadow-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.shadow-json-editor {
+  width: 100%;
+  min-height: 200px;
+  max-height: 400px;
+  margin: 8px 0 0;
+  padding: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+  tab-size: 2;
+  color: hsl(var(--foreground));
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  resize: vertical;
+  outline: none;
+}
+
+.shadow-json-editor:focus {
+  border-color: hsl(var(--accent));
+}
+
+.shadow-json-error {
+  margin-top: 6px;
+  font-size: 11px;
+  color: hsl(var(--danger));
+}
+
+.shadow-edit-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 /* Device Hover Tooltip */
 .device-hover-tooltip {
   background-color: var(--card-bg);
