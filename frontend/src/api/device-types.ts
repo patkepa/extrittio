@@ -2,8 +2,8 @@ import client from "./client";
 import type { DeviceType, CreateDeviceTypeRequest } from "../types/api";
 
 export async function getDeviceTypes(): Promise<DeviceType[]> {
-  const { data } = await client.get<DeviceType[]>("/device-types");
-  return data;
+  const { data } = await client.get<{ data: DeviceType[] }>("/device-types");
+  return data.data;
 }
 
 export async function createDeviceType(

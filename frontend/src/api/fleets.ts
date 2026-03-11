@@ -2,8 +2,8 @@ import client from "./client";
 import type { Fleet, CreateFleetRequest } from "../types/api";
 
 export async function getFleets(): Promise<Fleet[]> {
-  const { data } = await client.get<Fleet[]>("/fleets");
-  return data;
+  const { data } = await client.get<{ data: Fleet[] }>("/fleets");
+  return data.data;
 }
 
 export async function createFleet(body: CreateFleetRequest): Promise<Fleet> {

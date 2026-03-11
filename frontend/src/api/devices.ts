@@ -7,8 +7,8 @@ import type {
 } from "../types/api";
 
 export async function getDevices(params?: ListDevicesParams): Promise<Device[]> {
-  const { data } = await client.get<Device[]>("/devices", { params });
-  return data;
+  const { data } = await client.get<{ data: Device[] }>("/devices", { params });
+  return data.data;
 }
 
 export async function getDevice(id: string): Promise<Device> {

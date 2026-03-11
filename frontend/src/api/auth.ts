@@ -12,8 +12,8 @@ export async function getMe(): Promise<AuthUser> {
 }
 
 export async function getUsers(): Promise<AuthUser[]> {
-  const { data } = await client.get<AuthUser[]>("/users");
-  return data;
+  const { data } = await client.get<{ data: AuthUser[] }>("/users");
+  return data.data;
 }
 
 export async function createUser(body: CreateUserRequest): Promise<AuthUser> {

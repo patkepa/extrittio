@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Button, Callout, Divider, InputGroup, Spinner, Tag } from '@blueprintjs/core';
+import { useEffect, useState } from 'react';
+import { Button, Callout, Divider, Spinner, Tag } from '@blueprintjs/core';
 import { useDeviceShadow, useUpdateDesiredState, useDeleteDeviceShadow } from '../../hooks/use-shadow';
 import { showSuccessToast, showErrorToast } from '../../utils/toaster';
 
@@ -11,7 +11,15 @@ export const ShadowTab = ({ deviceId }: ShadowTabProps) => {
   const { data: shadow, isLoading, isError } = useDeviceShadow(deviceId);
   const updateDesiredMutation = useUpdateDesiredState();
   const deleteShadowMutation = useDeleteDeviceShadow();
-  const [desiredInput, setDesiredInput] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState('');
+  const [jsonError, setJsonError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isEditing && shadow) {
+      setEditValue(JSON.stringify(shadow.desired, null, 2));
+    }
+  }, [shadow, isEditing]);
 
   if (isLoading) return <Spinner />;
 
@@ -29,6 +37,46 @@ export const ShadowTab = ({ deviceId }: ShadowTabProps) => {
 
   const hasDelta = Object.keys(shadow.delta).length > 0;
 
+  const handleEdit = () => {
+    setEditValue(JSON.stringify(shadow.desired, null, 2));
+    setJsonError(null);
+    setIsEditing(true);
+  };
+
+  const handleCancel = () => {
+    setIsEditing(false);
+    setJsonError(null);
+  };
+
+  const handleChange = (value: string) => {
+    setEditValue(value);
+    try {
+      JSON.parse(value);
+      setJsonError(null);
+    } catch (e) {
+      setJsonError((e as SyntaxError).message);
+    }
+  };
+
+  const handleSave = () => {
+    try {
+      const parsed = JSON.parse(editValue);
+      updateDesiredMutation.mutate(
+        { deviceId, state: parsed },
+        {
+          onSuccess: () => {
+            setIsEditing(false);
+            setJsonError(null);
+            void showSuccessToast('Desired state updated');
+          },
+          onError: () => void showErrorToast('Failed to update desired state'),
+        }
+      );
+    } catch (e) {
+      setJsonError((e as SyntaxError).message);
+    }
+  };
+
   return (
     <div className="shadow-tab">
       <div className="shadow-status-row">
@@ -42,10 +90,46 @@ export const ShadowTab = ({ deviceId }: ShadowTabProps) => {
 
       <div className="shadow-panes-horizontal">
         <div className="shadow-pane">
-          <span className="section-label">Desired State</span>
-          <pre className="shadow-json mono-data">
-            {JSON.stringify(shadow.desired, null, 2)}
-          </pre>
+          <div className="shadow-pane-header">
+            <span className="section-label">Desired State</span>
+            {!isEditing && (
+              <Button icon="edit" minimal small onClick={handleEdit}>
+                Edit
+              </Button>
+            )}
+          </div>
+          {isEditing ? (
+            <>
+              <textarea
+                className="shadow-json-editor mono-data"
+                value={editValue}
+                onChange={(e) => handleChange(e.target.value)}
+                spellCheck={false}
+              />
+              {jsonError && (
+                <div className="shadow-json-error">{jsonError}</div>
+              )}
+              <div className="shadow-edit-actions">
+                <Button
+                  intent="primary"
+                  icon="floppy-disk"
+                  small
+                  loading={updateDesiredMutation.isPending}
+                  disabled={!!jsonError}
+                  onClick={handleSave}
+                >
+                  Save
+                </Button>
+                <Button small minimal onClick={handleCancel}>
+                  Cancel
+                </Button>
+              </div>
+            </>
+          ) : (
+            <pre className="shadow-json mono-data">
+              {JSON.stringify(shadow.desired, null, 2)}
+            </pre>
+          )}
         </div>
         <div className="shadow-pane">
           <span className="section-label">Reported State</span>
@@ -82,42 +166,7 @@ export const ShadowTab = ({ deviceId }: ShadowTabProps) => {
 
       <Divider className="tab-divider" />
 
-      <span className="section-label">Update Desired State</span>
-      <p className="tab-help-text">
-        Enter JSON to merge into desired state (e.g. {`{"interval": 30}`})
-      </p>
-      <InputGroup
-        placeholder='{"key": "value"}'
-        value={desiredInput}
-        onChange={(e) => setDesiredInput(e.target.value)}
-        className="mono-data"
-      />
       <div className="shadow-actions tab-actions">
-        <Button
-          intent="primary"
-          icon="cloud-upload"
-          loading={updateDesiredMutation.isPending}
-          disabled={!desiredInput.trim()}
-          onClick={() => {
-            try {
-              const parsed = JSON.parse(desiredInput);
-              updateDesiredMutation.mutate(
-                { deviceId, state: parsed },
-                {
-                  onSuccess: () => {
-                    setDesiredInput('');
-                    void showSuccessToast('Desired state updated');
-                  },
-                  onError: () => void showErrorToast('Failed to update desired state'),
-                }
-              );
-            } catch {
-              // Invalid JSON - ignore
-            }
-          }}
-        >
-          Send to Device
-        </Button>
         <Button
           intent="danger"
           icon="trash"

@@ -11,10 +11,10 @@ import type {
 export async function getFirmwareUpdates(
   params?: FirmwareUpdatesParams
 ): Promise<FirmwareUpdate[]> {
-  const { data } = await client.get<FirmwareUpdate[]>("/firmware-updates", {
+  const { data } = await client.get<{ data: FirmwareUpdate[] }>("/firmware-updates", {
     params,
   });
-  return data;
+  return data.data;
 }
 
 export async function createFirmwareUpdate(
@@ -71,8 +71,8 @@ export async function triggerOta(
 export async function getOtaDeployments(
   deviceId: string
 ): Promise<OtaDeployment[]> {
-  const { data } = await client.get<OtaDeployment[]>(
+  const { data } = await client.get<{ data: OtaDeployment[] }>(
     `/devices/${deviceId}/ota-deployments`
   );
-  return data;
+  return data.data;
 }
