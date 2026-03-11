@@ -8,6 +8,7 @@ use chrono::{NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use utoipa::{IntoParams, ToSchema};
 
 use crate::db::models::{Device, DeviceType, Fleet, NewDevice, UpdateDevice};
 use crate::error::AppError;
@@ -20,7 +21,7 @@ use crate::state::{AppState, run_db};
 // Request / Response types
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct DeviceResponse {
     pub id: String,
     pub name: String,
@@ -35,7 +36,7 @@ pub struct DeviceResponse {
     pub uptime: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct NewDeviceRequest {
     pub name: String,
     pub device_type_id: i32,
@@ -44,16 +45,17 @@ pub struct NewDeviceRequest {
     pub firmware: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateDeviceRequest {
     pub name: Option<String>,
     pub device_type_id: Option<i32>,
+    #[schema(value_type = Option<i32>)]
     pub fleet_id: Option<Option<i32>>,
     pub location: Option<String>,
     pub firmware: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, IntoParams)]
 pub struct ListDevicesQuery {
     pub status: Option<String>,
     pub search: Option<String>,
@@ -62,7 +64,7 @@ pub struct ListDevicesQuery {
     pub offset: Option<i64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct TriggerOtaRequest {
     pub firmware_update_id: i32,
 }
@@ -167,7 +169,18 @@ pub fn router() -> Router<Arc<AppState>> {
 // Handlers
 // ---------------------------------------------------------------------------
 
-async fn list_devices(
+/// List devices with optional filtering.
+#[utoipa::path(
+    get,
+    path = "/api/v1/devices",
+    tag = "devices",
+    security(("bearer_auth" = [])),
+    params(ListDevicesQuery),
+    responses(
+        (status = 200, description = "Paginated list of devices", body = PaginatedResponse<DeviceResponse>),
+    ),
+)]
+pub(crate) async fn list_devices(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ListDevicesQuery>,
 ) -> Result<Json<PaginatedResponse<DeviceResponse>>, AppError> {
@@ -195,7 +208,19 @@ async fn list_devices(
     Ok(Json(response))
 }
 
-async fn get_device(
+/// Get a device by ID.
+#[utoipa::path(
+    get,
+    path = "/api/v1/devices/{id}",
+    tag = "devices",
+    security(("bearer_auth" = [])),
+    params(("id" = String, Path, description = "Device ID")),
+    responses(
+        (status = 200, description = "Device details", body = DeviceResponse),
+        (status = 404, description = "Device not found"),
+    ),
+)]
+pub(crate) async fn get_device(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<DeviceResponse>, AppError> {
@@ -208,7 +233,19 @@ async fn get_device(
     Ok(Json(response))
 }
 
-async fn create_device(
+/// Create a new device.
+#[utoipa::path(
+    post,
+    path = "/api/v1/devices",
+    tag = "devices",
+    security(("bearer_auth" = [])),
+    request_body = NewDeviceRequest,
+    responses(
+        (status = 201, description = "Device created", body = DeviceResponse),
+        (status = 400, description = "Invalid input"),
+    ),
+)]
+pub(crate) async fn create_device(
     State(state): State<Arc<AppState>>,
     Json(body): Json<NewDeviceRequest>,
 ) -> Result<(StatusCode, Json<DeviceResponse>), AppError> {
@@ -240,7 +277,21 @@ async fn create_device(
     Ok((StatusCode::CREATED, Json(response)))
 }
 
-async fn update_device(
+/// Update a device.
+#[utoipa::path(
+    put,
+    path = "/api/v1/devices/{id}",
+    tag = "devices",
+    security(("bearer_auth" = [])),
+    params(("id" = String, Path, description = "Device ID")),
+    request_body = UpdateDeviceRequest,
+    responses(
+        (status = 200, description = "Device updated", body = DeviceResponse),
+        (status = 400, description = "Invalid input"),
+        (status = 404, description = "Device not found"),
+    ),
+)]
+pub(crate) async fn update_device(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(body): Json<UpdateDeviceRequest>,
@@ -276,7 +327,19 @@ async fn update_device(
     Ok(Json(response))
 }
 
-async fn delete_device(
+/// Delete a device.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/devices/{id}",
+    tag = "devices",
+    security(("bearer_auth" = [])),
+    params(("id" = String, Path, description = "Device ID")),
+    responses(
+        (status = 204, description = "Device deleted"),
+        (status = 404, description = "Device not found"),
+    ),
+)]
+pub(crate) async fn delete_device(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
@@ -292,7 +355,19 @@ async fn delete_device(
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn restart_device(
+/// Restart a device.
+#[utoipa::path(
+    post,
+    path = "/api/v1/devices/{id}/restart",
+    tag = "devices",
+    security(("bearer_auth" = [])),
+    params(("id" = String, Path, description = "Device ID")),
+    responses(
+        (status = 200, description = "Restart command sent"),
+        (status = 404, description = "Device not found"),
+    ),
+)]
+pub(crate) async fn restart_device(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
@@ -307,7 +382,20 @@ async fn restart_device(
     Ok(StatusCode::OK)
 }
 
-async fn trigger_ota(
+/// Trigger an OTA firmware update on a device.
+#[utoipa::path(
+    post,
+    path = "/api/v1/devices/{id}/ota",
+    tag = "devices",
+    security(("bearer_auth" = [])),
+    params(("id" = String, Path, description = "Device ID")),
+    request_body = TriggerOtaRequest,
+    responses(
+        (status = 200, description = "OTA update triggered"),
+        (status = 404, description = "Device or firmware not found"),
+    ),
+)]
+pub(crate) async fn trigger_ota(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(body): Json<TriggerOtaRequest>,
@@ -326,7 +414,7 @@ async fn trigger_ota(
 // OTA Deployment history
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct OtaDeploymentResponse {
     pub id: i32,
     pub device_id: String,
@@ -338,7 +426,22 @@ pub struct OtaDeploymentResponse {
     pub completed_at: Option<String>,
 }
 
-async fn list_ota_deployments(
+/// List OTA deployments for a device.
+#[utoipa::path(
+    get,
+    path = "/api/v1/devices/{id}/ota-deployments",
+    tag = "devices",
+    security(("bearer_auth" = [])),
+    params(
+        ("id" = String, Path, description = "Device ID"),
+        PaginationParams,
+    ),
+    responses(
+        (status = 200, description = "Paginated OTA deployment history", body = PaginatedResponse<OtaDeploymentResponse>),
+        (status = 404, description = "Device not found"),
+    ),
+)]
+pub(crate) async fn list_ota_deployments(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Query(params): Query<PaginationParams>,

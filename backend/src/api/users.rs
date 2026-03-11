@@ -6,6 +6,7 @@ use axum::{
 };
 use serde::Deserialize;
 use std::sync::Arc;
+use utoipa::ToSchema;
 
 use crate::auth::hash_password;
 use crate::db::models::NewUser;
@@ -16,13 +17,13 @@ use crate::state::{AppState, run_db};
 
 use super::auth_routes::UserResponse;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateUserRequest {
     pub username: String,
     pub password: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct ChangePasswordRequest {
     pub password: String,
 }
@@ -37,7 +38,18 @@ pub fn router() -> Router<Arc<AppState>> {
         )
 }
 
-async fn list_users(
+/// List all users.
+#[utoipa::path(
+    get,
+    path = "/api/v1/users",
+    tag = "users",
+    security(("bearer_auth" = [])),
+    params(PaginationParams),
+    responses(
+        (status = 200, description = "Paginated list of users", body = PaginatedResponse<UserResponse>),
+    ),
+)]
+pub(crate) async fn list_users(
     State(state): State<Arc<AppState>>,
     Query(params): Query<PaginationParams>,
 ) -> Result<Json<PaginatedResponse<UserResponse>>, AppError> {
@@ -60,7 +72,20 @@ async fn list_users(
     Ok(Json(response))
 }
 
-async fn create_user(
+/// Create a new user.
+#[utoipa::path(
+    post,
+    path = "/api/v1/users",
+    tag = "users",
+    security(("bearer_auth" = [])),
+    request_body = CreateUserRequest,
+    responses(
+        (status = 201, description = "User created", body = UserResponse),
+        (status = 400, description = "Invalid input"),
+        (status = 409, description = "Username already exists"),
+    ),
+)]
+pub(crate) async fn create_user(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreateUserRequest>,
 ) -> Result<(StatusCode, Json<UserResponse>), AppError> {
@@ -103,7 +128,19 @@ async fn create_user(
     ))
 }
 
-async fn delete_user(
+/// Delete a user by ID.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/users/{id}",
+    tag = "users",
+    security(("bearer_auth" = [])),
+    params(("id" = i32, Path, description = "User ID")),
+    responses(
+        (status = 204, description = "User deleted"),
+        (status = 404, description = "User not found"),
+    ),
+)]
+pub(crate) async fn delete_user(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i32>,
 ) -> Result<StatusCode, AppError> {
@@ -119,7 +156,21 @@ async fn delete_user(
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn change_password(
+/// Change a user's password.
+#[utoipa::path(
+    put,
+    path = "/api/v1/users/{id}/password",
+    tag = "users",
+    security(("bearer_auth" = [])),
+    params(("id" = i32, Path, description = "User ID")),
+    request_body = ChangePasswordRequest,
+    responses(
+        (status = 200, description = "Password changed"),
+        (status = 400, description = "Invalid input"),
+        (status = 404, description = "User not found"),
+    ),
+)]
+pub(crate) async fn change_password(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i32>,
     Json(body): Json<ChangePasswordRequest>,

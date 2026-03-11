@@ -7,6 +7,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
+use utoipa::ToSchema;
 
 use crate::error::AppError;
 use crate::repositories::{config_repo, device_repo};
@@ -16,7 +17,7 @@ use crate::state::{AppState, run_db};
 // Request / Response types
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ConfigResponse {
     pub device_id: String,
     pub config: Value,
@@ -44,7 +45,19 @@ pub fn router() -> Router<Arc<AppState>> {
 // Handlers
 // ---------------------------------------------------------------------------
 
-async fn get_config(
+/// Get the configuration for a device.
+#[utoipa::path(
+    get,
+    path = "/api/v1/devices/{id}/config",
+    tag = "config",
+    security(("bearer_auth" = [])),
+    params(("id" = String, Path, description = "Device ID")),
+    responses(
+        (status = 200, description = "Device configuration", body = ConfigResponse),
+        (status = 404, description = "Device not found"),
+    ),
+)]
+pub(crate) async fn get_config(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<ConfigResponse>, AppError> {
@@ -80,7 +93,20 @@ async fn get_config(
     Ok(Json(response))
 }
 
-async fn update_config(
+/// Update the configuration for a device (merge semantics).
+#[utoipa::path(
+    put,
+    path = "/api/v1/devices/{id}/config",
+    tag = "config",
+    security(("bearer_auth" = [])),
+    params(("id" = String, Path, description = "Device ID")),
+    request_body = Object,
+    responses(
+        (status = 200, description = "Configuration updated", body = ConfigResponse),
+        (status = 404, description = "Device not found"),
+    ),
+)]
+pub(crate) async fn update_config(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(body): Json<UpdateConfigRequest>,

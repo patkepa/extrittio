@@ -8,6 +8,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
+use utoipa::ToSchema;
 
 use crate::db::models::{DeviceShadow, UpdateShadow};
 use crate::error::AppError;
@@ -19,7 +20,7 @@ use crate::state::{AppState, run_db};
 // Request / Response types
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ShadowResponse {
     pub device_id: String,
     pub desired: Value,
@@ -77,7 +78,19 @@ pub fn router() -> Router<Arc<AppState>> {
 // Handlers
 // ---------------------------------------------------------------------------
 
-async fn get_shadow(
+/// Get the device shadow (desired, reported, delta).
+#[utoipa::path(
+    get,
+    path = "/api/v1/devices/{id}/shadow",
+    tag = "shadows",
+    security(("bearer_auth" = [])),
+    params(("id" = String, Path, description = "Device ID")),
+    responses(
+        (status = 200, description = "Device shadow", body = ShadowResponse),
+        (status = 404, description = "Device not found"),
+    ),
+)]
+pub(crate) async fn get_shadow(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<ShadowResponse>, AppError> {
@@ -92,7 +105,20 @@ async fn get_shadow(
     Ok(Json(response))
 }
 
-async fn update_desired(
+/// Update the desired state of a device shadow.
+#[utoipa::path(
+    put,
+    path = "/api/v1/devices/{id}/shadow/desired",
+    tag = "shadows",
+    security(("bearer_auth" = [])),
+    params(("id" = String, Path, description = "Device ID")),
+    request_body = Object,
+    responses(
+        (status = 200, description = "Shadow updated", body = ShadowResponse),
+        (status = 404, description = "Device not found"),
+    ),
+)]
+pub(crate) async fn update_desired(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(body): Json<UpdateShadowRequest>,
@@ -109,7 +135,20 @@ async fn update_desired(
     Ok(Json(response))
 }
 
-async fn update_reported(
+/// Update the reported state of a device shadow.
+#[utoipa::path(
+    put,
+    path = "/api/v1/devices/{id}/shadow/reported",
+    tag = "shadows",
+    security(("bearer_auth" = [])),
+    params(("id" = String, Path, description = "Device ID")),
+    request_body = Object,
+    responses(
+        (status = 200, description = "Shadow updated", body = ShadowResponse),
+        (status = 404, description = "Device not found"),
+    ),
+)]
+pub(crate) async fn update_reported(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(body): Json<UpdateShadowRequest>,
@@ -124,7 +163,19 @@ async fn update_reported(
     Ok(Json(response))
 }
 
-async fn delete_shadow(
+/// Reset a device shadow to empty state.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/devices/{id}/shadow",
+    tag = "shadows",
+    security(("bearer_auth" = [])),
+    params(("id" = String, Path, description = "Device ID")),
+    responses(
+        (status = 204, description = "Shadow reset"),
+        (status = 404, description = "Shadow not found"),
+    ),
+)]
+pub(crate) async fn delete_shadow(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {

@@ -9,6 +9,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
+use utoipa::{IntoParams, ToSchema};
 
 use crate::db::models::{NewFirmwareBlob, NewFirmwareUpdate};
 use crate::error::AppError;
@@ -21,7 +22,7 @@ use crate::state::{AppState, run_db};
 // Request / Response types
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct FirmwareUpdateResponse {
     pub id: i32,
     pub device_type_id: i32,
@@ -36,7 +37,7 @@ pub struct FirmwareUpdateResponse {
     pub filename: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct NewFirmwareUpdateRequest {
     pub device_type_id: i32,
     pub version: Option<String>,
@@ -45,14 +46,15 @@ pub struct NewFirmwareUpdateRequest {
     pub description: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, IntoParams)]
 pub struct ListFirmwareUpdatesQuery {
+    /// Filter by device type.
     pub device_type_id: Option<i32>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct NextVersionResponse {
     pub next_version: String,
 }
@@ -90,7 +92,18 @@ pub fn router(max_firmware_size: usize) -> Router<Arc<AppState>> {
 // Handlers
 // ---------------------------------------------------------------------------
 
-async fn list_firmware_updates(
+/// List firmware updates.
+#[utoipa::path(
+    get,
+    path = "/api/v1/firmware-updates",
+    tag = "firmware",
+    security(("bearer_auth" = [])),
+    params(ListFirmwareUpdatesQuery),
+    responses(
+        (status = 200, description = "Paginated list of firmware updates", body = PaginatedResponse<FirmwareUpdateResponse>),
+    ),
+)]
+pub(crate) async fn list_firmware_updates(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ListFirmwareUpdatesQuery>,
 ) -> Result<Json<PaginatedResponse<FirmwareUpdateResponse>>, AppError> {
@@ -126,7 +139,21 @@ async fn list_firmware_updates(
     Ok(Json(response))
 }
 
-async fn create_firmware_update(
+/// Register a firmware update (URL-based, no file upload).
+#[utoipa::path(
+    post,
+    path = "/api/v1/firmware-updates",
+    tag = "firmware",
+    security(("bearer_auth" = [])),
+    request_body = NewFirmwareUpdateRequest,
+    responses(
+        (status = 201, description = "Firmware update created", body = FirmwareUpdateResponse),
+        (status = 400, description = "Invalid input"),
+        (status = 404, description = "Device type not found"),
+        (status = 409, description = "Version already exists"),
+    ),
+)]
+pub(crate) async fn create_firmware_update(
     State(state): State<Arc<AppState>>,
     Json(body): Json<NewFirmwareUpdateRequest>,
 ) -> Result<(StatusCode, Json<FirmwareUpdateResponse>), AppError> {
@@ -182,8 +209,22 @@ async fn create_firmware_update(
     Ok((StatusCode::CREATED, Json(response)))
 }
 
+/// Upload firmware binary as multipart form data.
+#[utoipa::path(
+    post,
+    path = "/api/v1/firmware-updates/upload",
+    tag = "firmware",
+    security(("bearer_auth" = [])),
+    request_body(content_type = "multipart/form-data", description = "Multipart form: device_type_id (required), version (optional), description (optional), file (required)"),
+    responses(
+        (status = 201, description = "Firmware uploaded", body = FirmwareUpdateResponse),
+        (status = 400, description = "Invalid input"),
+        (status = 404, description = "Device type not found"),
+        (status = 409, description = "Version already exists"),
+    ),
+)]
 #[allow(clippy::too_many_lines)]
-async fn upload_firmware_update(
+pub(crate) async fn upload_firmware_update(
     State(state): State<Arc<AppState>>,
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<FirmwareUpdateResponse>), AppError> {
@@ -329,7 +370,19 @@ async fn upload_firmware_update(
     Ok((StatusCode::CREATED, Json(response)))
 }
 
-async fn download_firmware_blob(
+/// Download a firmware binary blob.
+#[utoipa::path(
+    get,
+    path = "/api/v1/firmware-updates/{id}/download",
+    tag = "firmware",
+    security(("bearer_auth" = [])),
+    params(("id" = i32, Path, description = "Firmware update ID")),
+    responses(
+        (status = 200, description = "Firmware binary", content_type = "application/octet-stream"),
+        (status = 404, description = "Firmware not found"),
+    ),
+)]
+pub(crate) async fn download_firmware_blob(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i32>,
 ) -> Result<Response, AppError> {
@@ -348,7 +401,19 @@ async fn download_firmware_blob(
         .unwrap())
 }
 
-async fn delete_firmware_update(
+/// Delete a firmware update.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/firmware-updates/{id}",
+    tag = "firmware",
+    security(("bearer_auth" = [])),
+    params(("id" = i32, Path, description = "Firmware update ID")),
+    responses(
+        (status = 204, description = "Firmware update deleted"),
+        (status = 404, description = "Firmware update not found"),
+    ),
+)]
+pub(crate) async fn delete_firmware_update(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i32>,
 ) -> Result<StatusCode, AppError> {
@@ -367,7 +432,18 @@ async fn delete_firmware_update(
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn get_next_version(
+/// Get the next auto-generated version for a device type.
+#[utoipa::path(
+    get,
+    path = "/api/v1/firmware-updates/next-version/{device_type_id}",
+    tag = "firmware",
+    security(("bearer_auth" = [])),
+    params(("device_type_id" = i32, Path, description = "Device type ID")),
+    responses(
+        (status = 200, description = "Next version string", body = NextVersionResponse),
+    ),
+)]
+pub(crate) async fn get_next_version(
     State(state): State<Arc<AppState>>,
     Path(device_type_id): Path<i32>,
 ) -> Result<Json<NextVersionResponse>, AppError> {

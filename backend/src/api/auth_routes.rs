@@ -5,25 +5,26 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::ToSchema;
 
 use crate::auth::{Claims, create_token, verify_password};
 use crate::error::AppError;
 use crate::repositories::user_repo;
 use crate::state::{AppState, run_db};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct LoginRequest {
     pub username: String,
     pub password: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct LoginResponse {
     pub token: String,
     pub user: UserResponse,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct UserResponse {
     pub id: i32,
     pub username: String,
@@ -36,7 +37,18 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/api/v1/auth/me", get(me))
 }
 
-async fn login(
+/// Authenticate and obtain a JWT token.
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/login",
+    tag = "auth",
+    request_body = LoginRequest,
+    responses(
+        (status = 200, description = "Login successful", body = LoginResponse),
+        (status = 401, description = "Invalid credentials"),
+    ),
+)]
+pub(crate) async fn login(
     State(state): State<Arc<AppState>>,
     Json(body): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, AppError> {
@@ -69,7 +81,18 @@ async fn login(
     }))
 }
 
-async fn me(Extension(claims): Extension<Claims>) -> Json<UserResponse> {
+/// Get the currently authenticated user.
+#[utoipa::path(
+    get,
+    path = "/api/v1/auth/me",
+    tag = "auth",
+    security(("bearer_auth" = [])),
+    responses(
+        (status = 200, description = "Current user info", body = UserResponse),
+        (status = 401, description = "Unauthorized"),
+    ),
+)]
+pub(crate) async fn me(Extension(claims): Extension<Claims>) -> Json<UserResponse> {
     Json(UserResponse {
         id: claims.sub,
         username: claims.username,

@@ -1,16 +1,17 @@
 use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
 use serde::Serialize;
 use std::sync::Arc;
+use utoipa::ToSchema;
 
 use crate::state::AppState;
 
-#[derive(Serialize)]
-struct HealthResponse {
+#[derive(Serialize, ToSchema)]
+pub(crate) struct HealthResponse {
     status: &'static str,
 }
 
-#[derive(Serialize)]
-struct ReadyResponse {
+#[derive(Serialize, ToSchema)]
+pub(crate) struct ReadyResponse {
     status: &'static str,
     database: &'static str,
 }
@@ -22,12 +23,29 @@ pub fn router() -> Router<Arc<AppState>> {
 }
 
 /// Liveness probe — always returns 200 if the process is running.
-async fn health() -> Json<HealthResponse> {
+#[utoipa::path(
+    get,
+    path = "/health",
+    tag = "health",
+    responses(
+        (status = 200, description = "Service is alive", body = HealthResponse),
+    ),
+)]
+pub(crate) async fn health() -> Json<HealthResponse> {
     Json(HealthResponse { status: "ok" })
 }
 
 /// Readiness probe — returns 200 only if the database is reachable.
-async fn ready(
+#[utoipa::path(
+    get,
+    path = "/ready",
+    tag = "health",
+    responses(
+        (status = 200, description = "Service is ready", body = ReadyResponse),
+        (status = 503, description = "Service unavailable", body = ReadyResponse),
+    ),
+)]
+pub(crate) async fn ready(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ReadyResponse>, (StatusCode, Json<ReadyResponse>)> {
     match state.db_pool.get() {

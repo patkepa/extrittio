@@ -6,6 +6,7 @@ use axum::{
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::{IntoParams, ToSchema};
 
 use crate::db::models::TelemetryRecord;
 use crate::error::AppError;
@@ -16,7 +17,7 @@ use crate::state::{AppState, run_db};
 // Request / Response types
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct TelemetryResponse {
     pub id: i32,
     pub device_id: String,
@@ -27,9 +28,11 @@ pub struct TelemetryResponse {
     pub received_at: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, IntoParams)]
 pub struct TelemetryQuery {
+    /// Maximum number of records to return (default 50, max 1000).
     pub limit: Option<i64>,
+    /// Only return records after this timestamp (RFC 3339 or YYYY-MM-DDTHH:MM:SS).
     pub since: Option<String>,
 }
 
@@ -63,7 +66,22 @@ pub fn router() -> Router<Arc<AppState>> {
 // Handler
 // ---------------------------------------------------------------------------
 
-async fn get_device_telemetry(
+/// Get telemetry data for a device.
+#[utoipa::path(
+    get,
+    path = "/api/v1/devices/{id}/telemetry",
+    tag = "telemetry",
+    security(("bearer_auth" = [])),
+    params(
+        ("id" = String, Path, description = "Device ID"),
+        TelemetryQuery,
+    ),
+    responses(
+        (status = 200, description = "Telemetry records", body = Vec<TelemetryResponse>),
+        (status = 404, description = "Device not found"),
+    ),
+)]
+pub(crate) async fn get_device_telemetry(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Query(params): Query<TelemetryQuery>,

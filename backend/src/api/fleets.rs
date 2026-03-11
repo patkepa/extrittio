@@ -6,6 +6,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::ToSchema;
 
 use crate::db::models::NewFleet;
 use crate::error::AppError;
@@ -13,14 +14,14 @@ use crate::pagination::{self, PaginatedResponse, PaginationParams};
 use crate::repositories::fleet_repo;
 use crate::state::{AppState, run_db};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct FleetResponse {
     pub id: i32,
     pub name: String,
     pub device_count: i64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct NewFleetRequest {
     pub name: String,
 }
@@ -31,7 +32,18 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/api/v1/fleets/{id}", axum::routing::delete(delete_fleet))
 }
 
-async fn list_fleets(
+/// List all fleets.
+#[utoipa::path(
+    get,
+    path = "/api/v1/fleets",
+    tag = "fleets",
+    security(("bearer_auth" = [])),
+    params(PaginationParams),
+    responses(
+        (status = 200, description = "Paginated list of fleets", body = PaginatedResponse<FleetResponse>),
+    ),
+)]
+pub(crate) async fn list_fleets(
     State(state): State<Arc<AppState>>,
     Query(params): Query<PaginationParams>,
 ) -> Result<Json<PaginatedResponse<FleetResponse>>, AppError> {
@@ -61,7 +73,19 @@ async fn list_fleets(
     Ok(Json(response))
 }
 
-async fn create_fleet(
+/// Create a new fleet.
+#[utoipa::path(
+    post,
+    path = "/api/v1/fleets",
+    tag = "fleets",
+    security(("bearer_auth" = [])),
+    request_body = NewFleetRequest,
+    responses(
+        (status = 201, description = "Fleet created", body = FleetResponse),
+        (status = 400, description = "Invalid input"),
+    ),
+)]
+pub(crate) async fn create_fleet(
     State(state): State<Arc<AppState>>,
     Json(body): Json<NewFleetRequest>,
 ) -> Result<(StatusCode, Json<FleetResponse>), AppError> {
@@ -82,7 +106,19 @@ async fn create_fleet(
     Ok((StatusCode::CREATED, Json(response)))
 }
 
-async fn delete_fleet(
+/// Delete a fleet by ID.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/fleets/{id}",
+    tag = "fleets",
+    security(("bearer_auth" = [])),
+    params(("id" = i32, Path, description = "Fleet ID")),
+    responses(
+        (status = 204, description = "Fleet deleted"),
+        (status = 404, description = "Fleet not found"),
+    ),
+)]
+pub(crate) async fn delete_fleet(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i32>,
 ) -> Result<StatusCode, AppError> {

@@ -9,12 +9,15 @@ pub mod firmware_updates;
 pub mod fleets;
 pub mod health;
 pub mod logs;
+pub mod openapi;
 pub mod shadows;
 pub mod telemetry;
 pub mod users;
 
 use axum::Router;
 use std::sync::Arc;
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
 use crate::state::AppState;
 
@@ -34,4 +37,8 @@ pub fn router(max_firmware_size: usize) -> Router<Arc<AppState>> {
         .merge(commands::router())
         .merge(certificates::router())
         .merge(health::router())
+        .merge(
+            SwaggerUi::new("/swagger-ui")
+                .url("/api-docs/openapi.json", openapi::ApiDoc::openapi()),
+        )
 }

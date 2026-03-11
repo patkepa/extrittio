@@ -7,6 +7,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use utoipa::{IntoParams, ToSchema};
 
 use crate::db::models::CommandRecord;
 use crate::error::AppError;
@@ -18,13 +19,13 @@ use crate::state::{AppState, run_db};
 // Request / Response types
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct SendCommandRequest {
     pub command: String,
     pub params: Option<HashMap<String, String>>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct CommandResponse {
     pub id: String,
     pub device_id: String,
@@ -36,9 +37,11 @@ pub struct CommandResponse {
     pub updated_at: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, IntoParams)]
 pub struct CommandsQuery {
+    /// Maximum number of records to return (default 50, max 500).
     pub limit: Option<i64>,
+    /// Filter by command status.
     pub status: Option<String>,
 }
 
@@ -76,7 +79,21 @@ pub fn router() -> Router<Arc<AppState>> {
 // Handlers
 // ---------------------------------------------------------------------------
 
-async fn send_command(
+/// Send a command to a device.
+#[utoipa::path(
+    post,
+    path = "/api/v1/devices/{id}/commands",
+    tag = "commands",
+    security(("bearer_auth" = [])),
+    params(("id" = String, Path, description = "Device ID")),
+    request_body = SendCommandRequest,
+    responses(
+        (status = 201, description = "Command sent", body = CommandResponse),
+        (status = 400, description = "Invalid input"),
+        (status = 404, description = "Device not found"),
+    ),
+)]
+pub(crate) async fn send_command(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(body): Json<SendCommandRequest>,
@@ -97,7 +114,22 @@ async fn send_command(
     Ok((StatusCode::CREATED, Json(to_command_response(record))))
 }
 
-async fn list_commands(
+/// List commands for a device.
+#[utoipa::path(
+    get,
+    path = "/api/v1/devices/{id}/commands",
+    tag = "commands",
+    security(("bearer_auth" = [])),
+    params(
+        ("id" = String, Path, description = "Device ID"),
+        CommandsQuery,
+    ),
+    responses(
+        (status = 200, description = "List of commands", body = Vec<CommandResponse>),
+        (status = 404, description = "Device not found"),
+    ),
+)]
+pub(crate) async fn list_commands(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Query(params): Query<CommandsQuery>,

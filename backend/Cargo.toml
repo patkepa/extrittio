@@ -23,6 +23,8 @@ jsonwebtoken = "9"
 rand = "0.8"
 sha2 = "0.10"
 thiserror = "2"
+utoipa = { version = "5", features = ["axum_extras"] }
+utoipa-swagger-ui = { version = "9", features = ["axum"] }
 rcgen = { version = "0.14", features = ["pem", "x509-parser"] }
 time = "0.3"
 pem = "3"

@@ -6,6 +6,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::ToSchema;
 
 use crate::db::models::{DeviceType, NewDeviceType};
 use crate::error::AppError;
@@ -13,7 +14,7 @@ use crate::pagination::{self, PaginatedResponse, PaginationParams};
 use crate::repositories::device_type_repo;
 use crate::state::{AppState, run_db};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct DeviceTypeResponse {
     pub id: i32,
     pub name: String,
@@ -28,7 +29,7 @@ impl From<DeviceType> for DeviceTypeResponse {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct NewDeviceTypeRequest {
     pub name: String,
 }
@@ -45,7 +46,18 @@ pub fn router() -> Router<Arc<AppState>> {
         )
 }
 
-async fn list_device_types(
+/// List all device types.
+#[utoipa::path(
+    get,
+    path = "/api/v1/device-types",
+    tag = "device-types",
+    security(("bearer_auth" = [])),
+    params(PaginationParams),
+    responses(
+        (status = 200, description = "Paginated list of device types", body = PaginatedResponse<DeviceTypeResponse>),
+    ),
+)]
+pub(crate) async fn list_device_types(
     State(state): State<Arc<AppState>>,
     Query(params): Query<PaginationParams>,
 ) -> Result<Json<PaginatedResponse<DeviceTypeResponse>>, AppError> {
@@ -61,7 +73,19 @@ async fn list_device_types(
     Ok(Json(response))
 }
 
-async fn create_device_type(
+/// Create a new device type.
+#[utoipa::path(
+    post,
+    path = "/api/v1/device-types",
+    tag = "device-types",
+    security(("bearer_auth" = [])),
+    request_body = NewDeviceTypeRequest,
+    responses(
+        (status = 201, description = "Device type created", body = DeviceTypeResponse),
+        (status = 400, description = "Invalid input"),
+    ),
+)]
+pub(crate) async fn create_device_type(
     State(state): State<Arc<AppState>>,
     Json(body): Json<NewDeviceTypeRequest>,
 ) -> Result<(StatusCode, Json<DeviceTypeResponse>), AppError> {
@@ -81,7 +105,21 @@ async fn create_device_type(
     Ok((StatusCode::CREATED, Json(response)))
 }
 
-async fn delete_device_type(
+/// Delete a device type by ID.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/device-types/{id}",
+    tag = "device-types",
+    security(("bearer_auth" = [])),
+    params(("id" = i32, Path, description = "Device type ID")),
+    responses(
+        (status = 204, description = "Device type deleted"),
+        (status = 404, description = "Device type not found"),
+        (status = 409, description = "Devices still reference this type"),
+        (status = 422, description = "Cannot delete the default type"),
+    ),
+)]
+pub(crate) async fn delete_device_type(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i32>,
 ) -> Result<StatusCode, AppError> {
