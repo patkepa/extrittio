@@ -24,6 +24,19 @@
   letter-spacing: 0.01em;
 }
 
+.detail-tabs .bp6-tab:focus,
+.detail-tabs .bp6-tab:active {
+  outline: none;
+  box-shadow: none;
+  background: none;
+}
+
+.detail-tabs .bp6-tab[aria-selected="true"] {
+  outline: none;
+  box-shadow: none;
+  background: none;
+}
+
 /* Tab content area */
 .detail-tab-content {
   min-height: 400px;
