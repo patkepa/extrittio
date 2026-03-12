@@ -35,6 +35,12 @@ pub struct FirmwareUpdateResponse {
     pub has_blob: bool,
     pub file_size: Option<i32>,
     pub filename: Option<String>,
+    pub commit_sha: Option<String>,
+    pub branch: Option<String>,
+    pub ci_run_url: Option<String>,
+    pub build_timestamp: Option<String>,
+    pub changelog: Option<String>,
+    pub source: String,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -128,6 +134,12 @@ pub(crate) async fn list_firmware_updates(
                     has_blob: blob_size.is_some(),
                     file_size: blob_size,
                     filename: blob_filename,
+                    commit_sha: fw.commit_sha,
+                    branch: fw.branch,
+                    ci_run_url: fw.ci_run_url,
+                    build_timestamp: fw.build_timestamp.map(|ts| ts.format("%Y-%m-%dT%H:%M:%S").to_string()),
+                    changelog: fw.changelog,
+                    source: fw.source,
                 },
             )
             .collect();
@@ -184,6 +196,12 @@ pub(crate) async fn create_firmware_update(
             url: body.url,
             sha256: body.sha256,
             description: body.description,
+            commit_sha: None,
+            branch: None,
+            ci_run_url: None,
+            build_timestamp: None,
+            changelog: None,
+            source: None,
         };
 
         let created = firmware_service::register_firmware(conn, &new_fw).map_err(
@@ -202,6 +220,12 @@ pub(crate) async fn create_firmware_update(
             has_blob: false,
             file_size: None,
             filename: None,
+            commit_sha: created.commit_sha,
+            branch: created.branch,
+            ci_run_url: created.ci_run_url,
+            build_timestamp: created.build_timestamp.map(|ts| ts.format("%Y-%m-%dT%H:%M:%S").to_string()),
+            changelog: created.changelog,
+            source: created.source,
         })
     })
     .await?;
@@ -334,6 +358,12 @@ pub(crate) async fn upload_firmware_update(
             url: String::new(),
             sha256: Some(sha256_hex),
             description,
+            commit_sha: None,
+            branch: None,
+            ci_run_url: None,
+            build_timestamp: None,
+            changelog: None,
+            source: None,
         };
 
         let blob = NewFirmwareBlob {
@@ -359,6 +389,12 @@ pub(crate) async fn upload_firmware_update(
             has_blob: true,
             file_size: Some(file_size),
             filename: Some(filename_for_response),
+            commit_sha: updated.commit_sha,
+            branch: updated.branch,
+            ci_run_url: updated.ci_run_url,
+            build_timestamp: updated.build_timestamp.map(|ts| ts.format("%Y-%m-%dT%H:%M:%S").to_string()),
+            changelog: updated.changelog,
+            source: updated.source,
         })
     })
     .await?;

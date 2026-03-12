@@ -2,7 +2,7 @@ use chrono::NaiveDateTime;
 use diesel::prelude::*;
 
 use super::schema::{
-    ca_certificates, command_history, device_certificates, device_configs, device_logs,
+    api_keys, ca_certificates, command_history, device_certificates, device_configs, device_logs,
     device_shadows, device_types, devices, firmware_blobs, firmware_updates, fleets,
     ota_deployments, server_config, telemetry, users,
 };
@@ -89,6 +89,12 @@ pub struct FirmwareUpdate {
     pub description: Option<String>,
     pub created_at: NaiveDateTime,
     pub sha256: Option<String>,
+    pub commit_sha: Option<String>,
+    pub branch: Option<String>,
+    pub ci_run_url: Option<String>,
+    pub build_timestamp: Option<NaiveDateTime>,
+    pub changelog: Option<String>,
+    pub source: String,
 }
 
 #[derive(Insertable, Debug)]
@@ -99,6 +105,12 @@ pub struct NewFirmwareUpdate {
     pub url: String,
     pub description: Option<String>,
     pub sha256: Option<String>,
+    pub commit_sha: Option<String>,
+    pub branch: Option<String>,
+    pub ci_run_url: Option<String>,
+    pub build_timestamp: Option<NaiveDateTime>,
+    pub changelog: Option<String>,
+    pub source: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -383,4 +395,30 @@ pub struct NewCommandRecord {
     pub device_id: String,
     pub command: String,
     pub params: String,
+}
+
+// ---------------------------------------------------------------------------
+// API Keys
+// ---------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug, Clone)]
+#[diesel(table_name = api_keys)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct ApiKey {
+    pub id: i32,
+    pub name: String,
+    pub key_hash: String,
+    pub key_prefix: String,
+    pub device_type_id: Option<i32>,
+    pub created_at: NaiveDateTime,
+    pub last_used_at: Option<NaiveDateTime>,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = api_keys)]
+pub struct NewApiKey {
+    pub name: String,
+    pub key_hash: String,
+    pub key_prefix: String,
+    pub device_type_id: Option<i32>,
 }
