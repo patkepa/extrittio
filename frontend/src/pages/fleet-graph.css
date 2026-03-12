@@ -1,6 +1,6 @@
-/* Fleet Graph Page */
+/* Fleet Graph Page — needs explicit height since .page-content is overflow-y: auto */
 .fleet-graph-page {
-  height: 100%;
+  height: calc(100vh - 48px - 48px);
   display: flex;
   flex-direction: column;
 }
