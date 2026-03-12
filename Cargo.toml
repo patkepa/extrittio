@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "backend",
     "client/linux",
+    "client/rpi",
     "client/sdk",
     "common",
 ]

@@ -883,6 +883,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "extrittio-rpi"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "extrittio-common",
+ "extrittio-sdk",
+ "libc",
+ "prost",
+ "reqwest",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "zenoh",
+]
+
+[[package]]
 name = "extrittio-sdk"
 version = "0.1.0"
 dependencies = [
