@@ -1,0 +1,44 @@
+.ca-card {
+  margin-bottom: 24px;
+  padding: 20px;
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-color);
+}
+
+.ca-card-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.ca-card-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ca-fingerprint {
+  font-family: monospace;
+  font-size: 12px;
+  color: hsl(var(--muted));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cert-fingerprint {
+  font-family: monospace;
+  font-size: 12px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cert-no-cert {
+  color: hsl(var(--muted));
+  font-style: italic;
+  font-size: 13px;
+}
