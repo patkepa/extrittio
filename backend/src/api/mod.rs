@@ -1,6 +1,7 @@
 pub mod api_keys;
 pub mod auth_routes;
 pub mod certificates;
+pub mod ci_pipeline;
 pub mod commands;
 pub mod configs;
 pub mod dashboard;
@@ -26,6 +27,7 @@ pub fn router(max_firmware_size: usize) -> Router<Arc<AppState>> {
     Router::new()
         .merge(api_keys::router())
         .merge(auth_routes::router())
+        .merge(ci_pipeline::router())
         .merge(devices::router())
         .merge(dashboard::router())
         .merge(telemetry::router())
