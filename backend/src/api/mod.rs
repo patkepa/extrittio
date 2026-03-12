@@ -1,3 +1,4 @@
+pub mod api_keys;
 pub mod auth_routes;
 pub mod certificates;
 pub mod commands;
@@ -23,6 +24,7 @@ use crate::state::AppState;
 
 pub fn router(max_firmware_size: usize) -> Router<Arc<AppState>> {
     Router::new()
+        .merge(api_keys::router())
         .merge(auth_routes::router())
         .merge(devices::router())
         .merge(dashboard::router())
