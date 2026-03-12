@@ -7,6 +7,7 @@ import { Dashboard } from './pages/dashboard';
 import { Devices } from './pages/devices';
 import { DeviceDetail } from './pages/device-detail';
 import { Settings } from './pages/settings/index';
+import { FleetGraph } from './pages/fleet-graph';
 
 // Import Blueprint.js styles
 import '@blueprintjs/core/lib/css/blueprint.css';
@@ -28,6 +29,7 @@ function App() {
                     <Route path="/" element={<Dashboard />} />
                     <Route path="/devices" element={<Devices />} />
                     <Route path="/devices/:deviceId" element={<DeviceDetail />} />
+                    <Route path="/fleet-graph" element={<FleetGraph />} />
                     <Route path="/settings/*" element={<Settings />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>

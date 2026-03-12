@@ -10,6 +10,11 @@ export const navGroups: NavGroup[] = [
         href: '/',
       },
       {
+        label: 'Fleet Graph',
+        icon: 'graph',
+        href: '/fleet-graph',
+      },
+      {
         label: 'Devices',
         icon: 'mobile-video',
         href: '/devices',

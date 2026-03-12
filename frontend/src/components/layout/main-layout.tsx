@@ -15,6 +15,7 @@ interface MainLayoutProps {
 const routeNames: Record<string, string> = {
   '/': 'Dashboard',
   '/devices': 'Devices',
+  '/fleet-graph': 'Fleet Graph',
   '/settings': 'Settings',
   '/settings/profile': 'Settings / Profile',
   '/settings/device-types': 'Settings / Device Types',
