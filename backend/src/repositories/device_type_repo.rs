@@ -65,6 +65,17 @@ pub fn find_default_device_type_id(
         .optional()
 }
 
+pub fn find_device_type_by_name(
+    conn: &mut SqliteConnection,
+    name: &str,
+) -> Result<Option<DeviceType>, diesel::result::Error> {
+    device_types::table
+        .filter(device_types::name.eq(name))
+        .select(DeviceType::as_select())
+        .first(conn)
+        .optional()
+}
+
 pub fn count_devices_for_type(
     conn: &mut SqliteConnection,
     device_type_id: i32,

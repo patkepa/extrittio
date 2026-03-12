@@ -267,6 +267,13 @@ async fn main() {
             .expect("Failed to disable multicast scouting");
 
         info!("Zenoh TLS configured: listening on {listen_endpoint} with mTLS");
+    } else {
+        // Listen on plain TCP so clients can connect with --connect tcp/host:port
+        let listen_endpoint = format!("tcp/0.0.0.0:{}", config.zenoh_tls_port);
+        zenoh_config
+            .insert_json5("listen/endpoints", &format!("[\"{listen_endpoint}\"]"))
+            .expect("Failed to set Zenoh listen endpoints");
+        info!("Zenoh configured: listening on {listen_endpoint} (no TLS)");
     }
 
     let zenoh_session = zenoh::open(zenoh_config)

@@ -86,6 +86,94 @@
   background: rgba(63, 185, 80, 0.1);
 }
 
+/* Telemetry sections */
+.telemetry-section {
+  margin-bottom: 24px;
+}
+
+/* Current values table */
+.telemetry-current-table {
+  margin-top: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.telemetry-current-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.telemetry-current-row:last-child {
+  border-bottom: none;
+}
+
+.telemetry-current-key {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.telemetry-current-val {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.telemetry-current-timestamp {
+  margin-top: 8px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+/* Historical values table */
+.telemetry-table-wrap {
+  margin-top: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  overflow-x: auto;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.telemetry-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.telemetry-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.telemetry-table th {
+  background: rgba(255, 255, 255, 0.05);
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.5);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.telemetry-table td {
+  padding: 6px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.telemetry-table tr:last-child td {
+  border-bottom: none;
+}
+
+.telemetry-table tr:hover td {
+  background: rgba(255, 255, 255, 0.03);
+}
+
 /* Wider telemetry charts on full page */
 .device-detail-page .telemetry-chart {
   padding: 16px;
