@@ -31,8 +31,6 @@ export function AddDeviceDialog() {
     name: '',
     device_type_id: 0,
     fleet_id: undefined as number | undefined,
-    location: '',
-    firmware: '',
   });
 
   const [certBundle, setCertBundle] = useState<DeviceCertificateResponse | null>(null);
@@ -45,8 +43,6 @@ export function AddDeviceDialog() {
         name: newDevice.name,
         device_type_id: newDevice.device_type_id || defaultTypeId,
         fleet_id: newDevice.fleet_id,
-        location: newDevice.location || undefined,
-        firmware: newDevice.firmware || undefined,
       },
       {
         onSuccess: async (device) => {
@@ -63,7 +59,7 @@ export function AddDeviceDialog() {
             }
           }
           closeAddDeviceDialog();
-          setNewDevice({ name: '', device_type_id: 0, fleet_id: undefined, location: '', firmware: '' });
+          setNewDevice({ name: '', device_type_id: 0, fleet_id: undefined });
         },
         onError: () => {
           void showErrorToast('Failed to add device');
@@ -108,20 +104,6 @@ export function AddDeviceDialog() {
               ))}
             </HTMLSelect>
           </FormGroup>
-          <FormGroup label="Location">
-            <InputGroup
-              placeholder="e.g. Building A, Floor 2"
-              value={newDevice.location}
-              onChange={(e) => setNewDevice({ ...newDevice, location: e.target.value })}
-            />
-          </FormGroup>
-          <FormGroup label="Firmware">
-            <InputGroup
-              placeholder="e.g. v1.2.0"
-              value={newDevice.firmware}
-              onChange={(e) => setNewDevice({ ...newDevice, firmware: e.target.value })}
-            />
-          </FormGroup>
           {createDeviceMutation.isError && (
             <Callout intent="danger" icon="error">Failed to create device. Please try again.</Callout>
           )}
@@ -149,7 +131,7 @@ export function AddDeviceDialog() {
           setCertBundle(null);
           setCreatedDeviceName('');
           closeAddDeviceDialog();
-          setNewDevice({ name: '', device_type_id: 0, fleet_id: undefined, location: '', firmware: '' });
+          setNewDevice({ name: '', device_type_id: 0, fleet_id: undefined });
         }}
         certBundle={certBundle}
         deviceName={createdDeviceName}
