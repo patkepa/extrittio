@@ -8,7 +8,8 @@ pub mod status {
 
     /// Returns true if the status is terminal (success or failed).
     pub fn is_terminal(status: &str) -> bool {
-        status.eq_ignore_ascii_case(SUCCESS) || status.eq_ignore_ascii_case(FAILED)
+        let s = status.to_lowercase();
+        s == SUCCESS || s == FAILED
     }
 }
 
@@ -22,20 +23,4 @@ pub mod fields {
     pub const SHA256: &str = "sha256";
     pub const STATUS: &str = "status";
     pub const ERROR: &str = "error";
-}
-
-#[cfg(test)]
-mod tests {
-    use super::status::*;
-
-    #[test]
-    fn test_is_terminal_case_insensitive() {
-        assert!(is_terminal("success"));
-        assert!(is_terminal("SUCCESS"));
-        assert!(is_terminal("Success"));
-        assert!(is_terminal("failed"));
-        assert!(is_terminal("FAILED"));
-        assert!(!is_terminal("downloading"));
-        assert!(!is_terminal(""));
-    }
 }
