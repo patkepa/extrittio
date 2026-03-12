@@ -3,7 +3,11 @@ name = "extrittio-sdk"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = ["std"]
+std = ["extrittio-common/std", "dep:serde_json", "serde_json?/std"]
+alloc = ["extrittio-common/alloc", "dep:serde_json", "serde_json?/alloc"]
+
 [dependencies]
-extrittio-common = { path = "../../common" }
-prost = "0.13"
-serde_json = "1"
+extrittio-common = { path = "../../common", default-features = false }
+serde_json = { version = "1", default-features = false, optional = true }

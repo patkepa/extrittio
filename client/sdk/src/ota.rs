@@ -1,3 +1,6 @@
+#[cfg(not(feature = "std"))]
+use alloc::string::{String, ToString};
+
 use extrittio_common::ota::fields;
 use serde_json::Value;
 
