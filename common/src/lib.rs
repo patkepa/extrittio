@@ -1,16 +1,9 @@
-#![cfg_attr(not(feature = "std"), no_std)]
-
-#[cfg(feature = "alloc")]
-extern crate alloc;
-
-#[cfg(feature = "std")]
 pub mod extrittio {
     include!(concat!(env!("OUT_DIR"), "/extrittio.rs"));
 }
 
 pub mod device_status;
 pub mod ota;
-#[cfg(feature = "std")]
 pub mod shadow;
 pub mod topics;
 
