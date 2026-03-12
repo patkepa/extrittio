@@ -179,6 +179,29 @@
   padding: 16px;
 }
 
+/* Telemetry chart tooltip */
+.telemetry-tooltip {
+  background: rgba(20, 20, 22, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  backdrop-filter: blur(8px);
+}
+
+.telemetry-tooltip-time {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+  margin-bottom: 2px;
+}
+
+.telemetry-tooltip-value {
+  font-family: 'SF Mono', 'Fira Code', 'Fira Mono', 'Roboto Mono', monospace;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Logs tab */
 .logs-toolbar {
   display: flex;

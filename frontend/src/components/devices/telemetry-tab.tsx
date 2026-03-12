@@ -1,5 +1,5 @@
 import { Callout, Spinner } from '@blueprintjs/core';
-import { AreaChart, Area, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { useDeviceTelemetry } from '../../hooks/use-telemetry';
 import type { TelemetryRecord } from '../../types/api';
 
@@ -127,6 +127,7 @@ function parseCustomJson(raw: string | null | undefined): Record<string, string>
 function flattenRecord(r: TelemetryRecord): Record<string, number | string | null> {
   const custom = parseCustomJson(r.custom_json);
   const flat: Record<string, number | string | null> = {
+    received_at: r.received_at,
     temperature: r.temperature ?? null,
     humidity: r.humidity ?? null,
     battery_level: r.battery_level ?? null,
@@ -136,6 +137,38 @@ function flattenRecord(r: TelemetryRecord): Record<string, number | string | nul
     flat[k] = isNaN(n) ? v : n;
   }
   return flat;
+}
+
+/** Short time label for X-axis ticks */
+function formatAxisTime(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+}
+
+/** Whether a metric should use a 0-100 domain (percentage metrics) */
+function isPercentMetric(unit: string): boolean {
+  return unit === '%';
+}
+
+/** Custom tooltip */
+function ChartTooltip({ active, payload, metric }: {
+  active?: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  payload?: Array<{ value: number; payload: any }>;
+  label?: string;
+  metric: MetricDef;
+}) {
+  const entry = payload?.[0];
+  if (!active || !entry) return null;
+  const time = entry.payload?.received_at;
+  return (
+    <div className="telemetry-tooltip">
+      {time && <div className="telemetry-tooltip-time">{formatTimestamp(String(time))}</div>}
+      <div className="telemetry-tooltip-value" style={{ color: metric.color }}>
+        {formatValue(entry.value)} {metric.unit}
+      </div>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -212,6 +245,9 @@ export const TelemetryTab = ({ deviceId, deviceTypeName }: TelemetryTabProps) =>
         <span className="section-label">Charts</span>
         {profile.charts.map((metric) => {
           const latestValue = chartData[chartData.length - 1]?.[metric.key];
+          const yDomain: [number | 'auto', number | 'auto'] = isPercentMetric(metric.unit)
+            ? [0, 100]
+            : ['auto', 'auto'];
           return (
             <div key={metric.key} className="telemetry-chart">
               <div className="telemetry-header">
@@ -220,14 +256,40 @@ export const TelemetryTab = ({ deviceId, deviceTypeName }: TelemetryTabProps) =>
                   {latestValue != null ? `${formatValue(latestValue)}${metric.unit}` : '—'}
                 </span>
               </div>
-              <ResponsiveContainer width="100%" height={60}>
-                <AreaChart data={chartData}>
+              <ResponsiveContainer width="100%" height={160}>
+                <AreaChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -12 }}>
                   <defs>
                     <linearGradient id={`tel-${metric.key}`} x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor={metric.color} stopOpacity={0.3} />
                       <stop offset="100%" stopColor={metric.color} stopOpacity={0} />
                     </linearGradient>
                   </defs>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="rgba(255,255,255,0.06)"
+                    vertical={false}
+                  />
+                  <XAxis
+                    dataKey="received_at"
+                    tickFormatter={formatAxisTime}
+                    tick={{ fontSize: 11, fill: 'rgba(255,255,255,0.4)' }}
+                    axisLine={{ stroke: 'rgba(255,255,255,0.08)' }}
+                    tickLine={false}
+                    minTickGap={40}
+                  />
+                  <YAxis
+                    domain={yDomain}
+                    tick={{ fontSize: 11, fill: 'rgba(255,255,255,0.4)' }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={40}
+                    tickFormatter={(v: number) => `${v}${metric.unit}`}
+                  />
+                  <Tooltip
+                    content={<ChartTooltip metric={metric} />}
+                    cursor={{ stroke: 'rgba(255,255,255,0.15)' }}
+                    isAnimationActive={false}
+                  />
                   <Area
                     type="monotone"
                     dataKey={metric.key}
