@@ -48,10 +48,12 @@ export const FleetGraph = () => {
 
   const handleNodeClick = useCallback(
     (device: Device, screenPos: { x: number; y: number }) => {
-      const rect = containerRef.current?.getBoundingClientRect() ?? { left: 0, top: 0 };
+      const rect = containerRef.current?.getBoundingClientRect() ?? { left: 0, top: 0, width: 0, height: 0 };
+      const x = Math.max(0, Math.min(screenPos.x - rect.left, rect.width - 280));
+      const y = Math.max(0, Math.min(screenPos.y - rect.top, rect.height - 300));
       setPopover({
         device,
-        position: { x: screenPos.x - rect.left, y: screenPos.y - rect.top },
+        position: { x, y },
       });
     },
     [],

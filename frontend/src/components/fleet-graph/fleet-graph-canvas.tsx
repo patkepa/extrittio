@@ -31,6 +31,7 @@ export const FleetGraphCanvas = ({
   const [hoverNode, setHoverNode] = useState<GraphNode | null>(null);
   const highlightNodes = useRef(new Set<GraphNode>());
   const highlightLinks = useRef(new Set<GraphLink>());
+  const hasInitialFit = useRef(false);
 
   // Configure forces after mount
   useEffect(() => {
@@ -44,9 +45,12 @@ export const FleetGraphCanvas = ({
     );
   }, []);
 
-  // Fit to view when simulation settles
+  // Fit to view only on initial simulation settle
   const handleEngineStop = useCallback(() => {
-    graphRef.current?.zoomToFit(400, 60);
+    if (!hasInitialFit.current) {
+      hasInitialFit.current = true;
+      graphRef.current?.zoomToFit(400, 60);
+    }
   }, []);
 
   // Hover handler — update highlight sets
@@ -81,6 +85,8 @@ export const FleetGraphCanvas = ({
       const isHighlighted = highlightNodes.current.has(node);
       const isHovered = node === hoverNode;
       const shouldDim = hoverNode && !isHighlighted;
+
+      if (node.x == null || node.y == null) return;
 
       // Opacity
       ctx.globalAlpha = shouldDim ? DIM_OPACITY : 1;
@@ -120,7 +126,7 @@ export const FleetGraphCanvas = ({
         if (node.deviceCount != null) {
           ctx.font = '10px -apple-system, sans-serif';
           ctx.fillStyle = 'rgba(255,255,255,0.6)';
-          ctx.fillText(`${node.deviceCount} devices`, node.x!, node.y! + FLEET_RADIUS + 12);
+          ctx.fillText(`${node.deviceCount} device${node.deviceCount === 1 ? '' : 's'}`, node.x!, node.y! + FLEET_RADIUS + 12);
         }
       } else {
         // Device: type abbreviation inside circle
