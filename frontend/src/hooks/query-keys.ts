@@ -42,4 +42,9 @@ export const queryKeys = {
   users: {
     all: ["users"] as const,
   },
+  certificates: {
+    ca: ["ca-certificate"] as const,
+    deviceStatusAll: ["device-certificate-status"] as const,
+    deviceStatus: (id: string) => ["device-certificate-status", id] as const,
+  },
 } as const;
