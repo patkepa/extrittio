@@ -2,7 +2,8 @@ use chrono::Utc;
 use std::time::Duration;
 use tracing::{info, warn};
 
-use crate::repositories::{command_repo, device_repo};
+use crate::db::models::NewDeviceLog;
+use crate::repositories::{command_repo, device_repo, log_repo};
 use crate::state::DbPool;
 
 pub async fn run_offline_checker(db_pool: DbPool, timeout_secs: u64) {
@@ -18,7 +19,33 @@ pub async fn run_offline_checker(db_pool: DbPool, timeout_secs: u64) {
         let pool = db_pool.clone();
         let result = tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().map_err(|e| e.to_string())?;
-            device_repo::mark_devices_offline(&mut conn, cutoff).map_err(|e| e.to_string())
+
+            // Find which devices will go offline before marking them
+            let going_offline = device_repo::find_devices_going_offline(&mut conn, cutoff)
+                .map_err(|e| e.to_string())?;
+
+            let count =
+                device_repo::mark_devices_offline(&mut conn, cutoff).map_err(|e| e.to_string())?;
+
+            // Log an entry for each device that went offline
+            for device_id in &going_offline {
+                let message = format!(
+                    "Device went offline (no heartbeat for {}s)",
+                    timeout_secs
+                );
+                if let Err(e) = log_repo::insert_log(
+                    &mut conn,
+                    &NewDeviceLog {
+                        device_id: device_id.clone(),
+                        level: "WARN".to_string(),
+                        message,
+                    },
+                ) {
+                    warn!("Failed to insert offline log for {}: {}", device_id, e);
+                }
+            }
+
+            Ok::<usize, String>(count)
         })
         .await;
 

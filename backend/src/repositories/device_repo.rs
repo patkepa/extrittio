@@ -131,6 +131,18 @@ pub fn delete_device(conn: &mut SqliteConnection, id: &str) -> Result<bool, dies
     Ok(rows > 0)
 }
 
+/// Find device IDs that will be marked offline (not already offline, last seen before cutoff).
+pub fn find_devices_going_offline(
+    conn: &mut SqliteConnection,
+    cutoff: chrono::NaiveDateTime,
+) -> Result<Vec<String>, diesel::result::Error> {
+    devices::table
+        .filter(devices::status.ne("offline"))
+        .filter(devices::last_seen.lt(cutoff))
+        .select(devices::id)
+        .load(conn)
+}
+
 /// Bulk-update devices that haven't been seen since `cutoff` to "offline".
 pub fn mark_devices_offline(
     conn: &mut SqliteConnection,

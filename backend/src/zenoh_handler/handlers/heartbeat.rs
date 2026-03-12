@@ -2,28 +2,18 @@ use chrono::Utc;
 use prost::Message;
 use tracing::{info, warn};
 
-use crate::db::models::{NewDevice, UpdateDevice};
-use crate::repositories::{device_repo, device_type_repo};
+use crate::db::models::{NewDeviceLog, UpdateDevice};
+use crate::repositories::{device_repo, log_repo};
+use crate::services::device_service;
 use crate::state::DbPool;
 
 use extrittio_common::extrittio::DeviceHeartbeat;
-
-/// Infer the device type name from the firmware version string.
-///
-/// Returns `"mac-device"` for macOS firmware, `"default"` otherwise.
-fn infer_device_type(firmware: &str) -> &'static str {
-    if firmware.contains("macos") {
-        "mac-device"
-    } else {
-        "default"
-    }
-}
 
 /// Decode a `DeviceHeartbeat` protobuf message and update the device's status,
 /// firmware, uptime, and `last_seen` timestamp.
 ///
 /// Devices that send a heartbeat but are not yet registered are automatically
-/// provisioned with a device type inferred from the firmware version string.
+/// provisioned via the device service.
 pub fn handle_heartbeat(db_pool: &DbPool, payload: &[u8]) {
     let heartbeat_msg = match DeviceHeartbeat::decode(payload) {
         Ok(msg) => msg,
@@ -41,52 +31,15 @@ pub fn handle_heartbeat(db_pool: &DbPool, payload: &[u8]) {
         }
     };
 
-    // Auto-register device on first heartbeat
-    match device_repo::device_exists(&mut conn, &heartbeat_msg.device_id) {
-        Ok(true) => {}
-        Ok(false) => {
-            let type_name = infer_device_type(&heartbeat_msg.firmware);
-            let device_type_id = match device_type_repo::find_device_type_by_name(&mut conn, type_name) {
-                Ok(Some(dt)) => dt.id,
-                Ok(None) => {
-                    warn!("Device type '{}' not found, falling back to default", type_name);
-                    match device_type_repo::find_default_device_type_id(&mut conn) {
-                        Ok(Some(id)) => id,
-                        _ => {
-                            warn!("No default device type found, dropping heartbeat");
-                            return;
-                        }
-                    }
-                }
-                Err(e) => {
-                    warn!("DB error looking up device type: {}", e);
-                    return;
-                }
-            };
-
-            let new_device = NewDevice {
-                id: heartbeat_msg.device_id.clone(),
-                name: heartbeat_msg.device_id.clone(),
-                device_type_id,
-                fleet_id: None,
-                location: String::new(),
-                firmware: heartbeat_msg.firmware.clone(),
-            };
-
-            if let Err(e) = device_repo::insert_device(&mut conn, &new_device) {
-                warn!("Failed to auto-register device {}: {}", heartbeat_msg.device_id, e);
-                return;
-            }
-
-            info!(
-                "Auto-registered device {} as type '{}'",
-                heartbeat_msg.device_id, type_name
-            );
-        }
-        Err(e) => {
-            warn!("DB error checking device: {}", e);
-            return;
-        }
+    // Auto-register device on first heartbeat (returns None on failure)
+    if device_service::auto_register_device(
+        &mut conn,
+        &heartbeat_msg.device_id,
+        &heartbeat_msg.firmware,
+    )
+    .is_none()
+    {
+        return;
     }
 
     use extrittio_common::device_status;
@@ -101,9 +54,14 @@ pub fn handle_heartbeat(db_pool: &DbPool, payload: &[u8]) {
         device_status::ONLINE.to_string()
     };
 
+    // Check current status to detect transitions
+    let previous_status = device_repo::find_device(&mut conn, &heartbeat_msg.device_id)
+        .ok()
+        .map(|d| d.status);
+
     let now = Utc::now().naive_utc();
     let changeset = UpdateDevice {
-        status: Some(status),
+        status: Some(status.clone()),
         firmware: Some(heartbeat_msg.firmware.clone()),
         #[allow(clippy::cast_possible_truncation)]
         uptime_seconds: Some(heartbeat_msg.uptime_seconds as i32),
@@ -115,6 +73,21 @@ pub fn handle_heartbeat(db_pool: &DbPool, payload: &[u8]) {
     if let Err(e) = device_repo::update_device(&mut conn, &heartbeat_msg.device_id, &changeset) {
         warn!("Failed to update device from heartbeat: {}", e);
         return;
+    }
+
+    // Log status transitions
+    if let Some(prev) = &previous_status {
+        if prev != &status {
+            let message = format!("Device status changed from {prev} to {status}");
+            let _ = log_repo::insert_log(
+                &mut conn,
+                &NewDeviceLog {
+                    device_id: heartbeat_msg.device_id.clone(),
+                    level: "INFO".to_string(),
+                    message,
+                },
+            );
+        }
     }
 
     info!(

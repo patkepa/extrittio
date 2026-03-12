@@ -3,10 +3,11 @@
 use diesel::Connection;
 use diesel::SqliteConnection;
 use std::sync::Arc;
+use tracing::{info, warn};
 
-use crate::db::models::{NewDevice, NewDeviceShadow, NewOtaDeployment};
+use crate::db::models::{NewDevice, NewDeviceLog, NewDeviceShadow, NewOtaDeployment};
 use crate::error::AppError;
-use crate::repositories::{cert_repo, device_repo, firmware_repo, shadow_repo};
+use crate::repositories::{cert_repo, device_repo, device_type_repo, firmware_repo, log_repo, shadow_repo};
 use crate::services::{cert_service, shadow_service};
 use crate::state::{DbPool, run_db};
 
@@ -27,6 +28,84 @@ pub fn create_device(conn: &mut SqliteConnection, new_device: &NewDevice) -> Res
 
         Ok(())
     })
+}
+
+/// Infer the device type name from the firmware version string.
+fn infer_device_type(firmware: &str) -> &'static str {
+    if firmware.contains("macos") {
+        "mac-device"
+    } else {
+        "default"
+    }
+}
+
+/// Auto-register a device on first heartbeat. Infers device type from firmware
+/// string and logs the registration event.
+///
+/// Returns `true` if the device was newly registered, `false` if it already
+/// existed, or `None` if registration failed.
+pub fn auto_register_device(
+    conn: &mut SqliteConnection,
+    device_id: &str,
+    firmware: &str,
+) -> Option<bool> {
+    match device_repo::device_exists(conn, device_id) {
+        Ok(true) => return Some(false),
+        Ok(false) => {}
+        Err(e) => {
+            warn!("DB error checking device: {}", e);
+            return None;
+        }
+    }
+
+    let type_name = infer_device_type(firmware);
+    let device_type_id = match device_type_repo::find_device_type_by_name(conn, type_name) {
+        Ok(Some(dt)) => dt.id,
+        Ok(None) => {
+            warn!(
+                "Device type '{}' not found, falling back to default",
+                type_name
+            );
+            match device_type_repo::find_default_device_type_id(conn) {
+                Ok(Some(id)) => id,
+                _ => {
+                    warn!("No default device type found, dropping heartbeat");
+                    return None;
+                }
+            }
+        }
+        Err(e) => {
+            warn!("DB error looking up device type: {}", e);
+            return None;
+        }
+    };
+
+    let new_device = NewDevice {
+        id: device_id.to_string(),
+        name: device_id.to_string(),
+        device_type_id,
+        fleet_id: None,
+        location: String::new(),
+        firmware: firmware.to_string(),
+    };
+
+    if let Err(e) = device_repo::insert_device(conn, &new_device) {
+        warn!("Failed to auto-register device {}: {}", device_id, e);
+        return None;
+    }
+
+    info!("Auto-registered device {} as type '{}'", device_id, type_name);
+
+    let _ = log_repo::insert_log(
+        conn,
+        &NewDeviceLog {
+            device_id: device_id.to_string(),
+            level: "INFO".to_string(),
+            message: "Device registered and came online".to_string(),
+        },
+    );
+
+    Some(true)
 }
 
 /// Orchestrate an OTA update: validate device/firmware compatibility, update
