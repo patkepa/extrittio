@@ -49,6 +49,7 @@ export const navGroups: NavGroup[] = [
             icon: 'upload',
             href: '/settings/firmware',
           },
+          { label: 'Certificates', icon: 'lock', href: '/settings/certificates' },
         ],
       },
     ],
