@@ -1,6 +1,18 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    api_keys (id) {
+        id -> Integer,
+        name -> Text,
+        key_hash -> Text,
+        key_prefix -> Text,
+        device_type_id -> Nullable<Integer>,
+        created_at -> Timestamp,
+        last_used_at -> Nullable<Timestamp>,
+    }
+}
+
+diesel::table! {
     ca_certificates (id) {
         id -> Integer,
         private_key_pem -> Text,
@@ -158,6 +170,7 @@ diesel::table! {
     }
 }
 
+diesel::joinable!(api_keys -> device_types (device_type_id));
 diesel::joinable!(command_history -> devices (device_id));
 diesel::joinable!(device_certificates -> devices (device_id));
 diesel::joinable!(device_configs -> devices (device_id));
@@ -172,6 +185,7 @@ diesel::joinable!(ota_deployments -> firmware_updates (firmware_update_id));
 diesel::joinable!(telemetry -> devices (device_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
+    api_keys,
     ca_certificates,
     command_history,
     device_certificates,
