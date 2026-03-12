@@ -117,6 +117,12 @@ diesel::table! {
         description -> Nullable<Text>,
         created_at -> Timestamp,
         sha256 -> Nullable<Text>,
+        commit_sha -> Nullable<Text>,
+        branch -> Nullable<Text>,
+        ci_run_url -> Nullable<Text>,
+        build_timestamp -> Nullable<Timestamp>,
+        changelog -> Nullable<Text>,
+        source -> Text,
     }
 }
 
