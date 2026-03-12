@@ -66,7 +66,12 @@ async fn ci_ingest(
     let plaintext_key = extract_api_key(&headers)?;
     let key_hash = api_key_util::hash_api_key(&plaintext_key);
 
-    // 2. Validate required fields
+    // 2. Rate limit by API key
+    if !state.ci_rate_limiter.check(&key_hash) {
+        return Err(AppError::TooManyRequests);
+    }
+
+    // 3. Validate required fields
     if body.artifact_url.is_empty()
         || (!body.artifact_url.starts_with("http://")
             && !body.artifact_url.starts_with("https://"))

@@ -57,6 +57,40 @@ fn extract_client_ip(request: &Request) -> IpAddr {
         .unwrap_or(IpAddr::V4(std::net::Ipv4Addr::LOCALHOST))
 }
 
+/// Sliding-window rate limiter keyed by API key hash (string).
+pub struct ApiKeyRateLimiter {
+    state: Mutex<HashMap<String, Vec<Instant>>>,
+    max_requests: usize,
+    window: Duration,
+}
+
+impl ApiKeyRateLimiter {
+    pub fn new(max_requests: usize, window_secs: u64) -> Self {
+        Self {
+            state: Mutex::new(HashMap::default()),
+            max_requests,
+            window: Duration::from_secs(window_secs),
+        }
+    }
+
+    /// Returns `true` if the request is allowed, `false` if rate-limited.
+    pub fn check(&self, key_hash: &str) -> bool {
+        let now = Instant::now();
+        let mut state = self.state.lock().unwrap();
+        let entry = state.entry(key_hash.to_string()).or_default();
+
+        // Remove expired timestamps
+        entry.retain(|&t| now.duration_since(t) < self.window);
+
+        if entry.len() >= self.max_requests {
+            false
+        } else {
+            entry.push(now);
+            true
+        }
+    }
+}
+
 pub async fn rate_limit_middleware(
     State(state): State<Arc<AppState>>,
     request: Request,

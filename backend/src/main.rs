@@ -23,7 +23,7 @@ use tracing_subscriber::EnvFilter;
 use extrittio_backend::config::AppConfig;
 use extrittio_backend::init;
 use extrittio_backend::middleware::auth_middleware;
-use extrittio_backend::rate_limit::{self, RateLimiter};
+use extrittio_backend::rate_limit::{self, ApiKeyRateLimiter, RateLimiter};
 use extrittio_backend::state::AppState;
 use extrittio_backend::{api, background, zenoh_handler};
 
@@ -73,6 +73,7 @@ async fn main() {
         jwt_secret,
         api_rate_limiter: RateLimiter::new(100, 60),
         login_rate_limiter: RateLimiter::new(5, 60),
+        ci_rate_limiter: ApiKeyRateLimiter::new(60, 60),
     });
 
     // Background tasks
