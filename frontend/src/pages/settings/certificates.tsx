@@ -78,7 +78,7 @@ export function CertificatesSettings() {
       </div>
 
       {/* CA Certificate */}
-      <div className="section-label">Certificate Authority</div>
+      <span className="section-label">Certificate Authority</span>
       {caQuery.isLoading ? (
         <Spinner size={24} />
       ) : caQuery.isError ? (
@@ -113,9 +113,9 @@ export function CertificatesSettings() {
       ) : null}
 
       {/* Device Certificates */}
-      <div className="section-label" style={{ marginTop: 8 }}>
+      <span className="section-label" style={{ marginTop: 8, display: "block" }}>
         Device Certificates
-      </div>
+      </span>
       {devicesQuery.isLoading ? (
         <Spinner size={24} />
       ) : devicesQuery.isError ? (

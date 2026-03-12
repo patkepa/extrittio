@@ -29,6 +29,7 @@
 }
 
 .cert-fingerprint {
+  display: inline-block;
   font-family: monospace;
   font-size: 12px;
   max-width: 200px;
