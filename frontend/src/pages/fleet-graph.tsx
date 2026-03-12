@@ -122,6 +122,7 @@ function FleetGraphInner() {
           nodeTypes={nodeTypes}
           onNodeClick={onNodeClick}
           onPaneClick={onPaneClick}
+          onMoveEnd={() => setPopover(null)}
           fitView
           fitViewOptions={{ padding: 0.3 }}
           nodesDraggable={false}

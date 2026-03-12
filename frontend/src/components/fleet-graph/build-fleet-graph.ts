@@ -121,7 +121,7 @@ export function buildFleetGraph(
         id: `edge-${group.id}-${device.id}`,
         source: group.id,
         target: nodeId,
-        style: { stroke: 'hsl(0, 0%, 15%)', strokeWidth: 1 },
+        style: { stroke: 'hsl(0, 0%, 25%)', strokeWidth: 1 },
       });
     });
   });
