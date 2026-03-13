@@ -5,7 +5,7 @@ use tracing::{info, warn};
 use crate::db::models::DeviceShadow;
 use crate::repositories::{device_repo, firmware_repo, shadow_repo};
 use crate::services::shadow_service;
-use crate::state::DbPool;
+use crate::state::{DbPool, ZenohMetrics};
 
 use extrittio_common::extrittio::{ShadowGet, ShadowReport};
 
@@ -134,7 +134,7 @@ pub fn handle_shadow_report(db_pool: &DbPool, payload: &[u8]) {
 
 /// Decode a `ShadowGet` protobuf message and publish the shadow delta back to
 /// the device if non-empty. DB access runs on a blocking thread.
-pub async fn handle_shadow_get(db_pool: &DbPool, session: &Arc<zenoh::Session>, payload: &[u8]) {
+pub async fn handle_shadow_get(db_pool: &DbPool, session: &Arc<zenoh::Session>, payload: &[u8], zenoh_metrics: &ZenohMetrics) {
     let get_msg = match ShadowGet::decode(payload) {
         Ok(msg) => msg,
         Err(e) => {
@@ -177,7 +177,7 @@ pub async fn handle_shadow_get(db_pool: &DbPool, session: &Arc<zenoh::Session>, 
         return;
     }
 
-    shadow_service::publish_delta_if_nonempty(session, &get_msg.device_id, &delta, shadow.version)
+    shadow_service::publish_delta_if_nonempty(session, &get_msg.device_id, &delta, shadow.version, zenoh_metrics)
         .await;
 
     info!("Shadow get from device {}: sent delta", get_msg.device_id);

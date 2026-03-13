@@ -3,11 +3,12 @@
 use prost::Message;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use crate::db::models::{CommandRecord, NewCommandRecord};
 use crate::error::AppError;
 use crate::repositories::{command_repo, device_repo};
-use crate::state::{DbPool, run_db};
+use crate::state::{DbPool, ZenohMetrics, run_db};
 use extrittio_common::extrittio::DeviceCommand;
 
 /// Send a command to a device: verify it exists, persist the record, publish via
@@ -27,6 +28,7 @@ pub async fn send_command(
     device_id: &str,
     command: &str,
     params: HashMap<String, String>,
+    zenoh_metrics: &ZenohMetrics,
 ) -> Result<CommandRecord, AppError> {
     let correlation_id = uuid::Uuid::new_v4().to_string();
     let params_json = serde_json::to_string(&params).unwrap_or_else(|_| "{}".to_string());
@@ -62,6 +64,8 @@ pub async fn send_command(
         .put(&topic, payload)
         .await
         .map_err(|e| AppError::Zenoh(e.to_string()))?;
+
+    zenoh_metrics.messages_out.fetch_add(1, Ordering::Relaxed);
 
     // Re-read the record to get the DB-generated timestamps
     let corr_id = correlation_id;

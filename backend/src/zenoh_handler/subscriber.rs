@@ -1,7 +1,8 @@
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use tracing::{info, warn};
 
-use crate::state::DbPool;
+use crate::state::{DbPool, ZenohMetrics};
 
 use super::handlers;
 
@@ -20,6 +21,7 @@ use super::handlers;
 pub async fn run_subscriber(
     session: Arc<zenoh::Session>,
     db_pool: DbPool,
+    zenoh_metrics: Arc<ZenohMetrics>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use extrittio_common::topics::patterns;
 
@@ -53,6 +55,7 @@ pub async fn run_subscriber(
 
     // Spawn heartbeat handler in a background task
     let heartbeat_pool = db_pool.clone();
+    let heartbeat_metrics = zenoh_metrics.clone();
     tokio::spawn(async move {
         loop {
             match heartbeat_sub.recv_async().await {
@@ -63,6 +66,7 @@ pub async fn run_subscriber(
                         handlers::heartbeat::handle_heartbeat(&pool, &payload);
                     })
                     .await;
+                    heartbeat_metrics.messages_in.fetch_add(1, Ordering::Relaxed);
                 }
                 Err(e) => {
                     warn!("Heartbeat subscriber channel closed: {}", e);
@@ -74,6 +78,7 @@ pub async fn run_subscriber(
 
     // Spawn shadow report handler
     let shadow_report_pool = db_pool.clone();
+    let shadow_report_metrics = zenoh_metrics.clone();
     tokio::spawn(async move {
         loop {
             match shadow_report_sub.recv_async().await {
@@ -84,6 +89,7 @@ pub async fn run_subscriber(
                         handlers::shadow::handle_shadow_report(&pool, &payload);
                     })
                     .await;
+                    shadow_report_metrics.messages_in.fetch_add(1, Ordering::Relaxed);
                 }
                 Err(e) => {
                     warn!("Shadow report subscriber channel closed: {}", e);
@@ -96,6 +102,7 @@ pub async fn run_subscriber(
     // Spawn shadow get handler (async — DB part uses spawn_blocking internally)
     let shadow_get_pool = db_pool.clone();
     let shadow_get_session = session.clone();
+    let shadow_get_metrics = zenoh_metrics.clone();
     tokio::spawn(async move {
         loop {
             match shadow_get_sub.recv_async().await {
@@ -105,8 +112,10 @@ pub async fn run_subscriber(
                         &shadow_get_pool,
                         &shadow_get_session,
                         &payload,
+                        &shadow_get_metrics,
                     )
                     .await;
+                    shadow_get_metrics.messages_in.fetch_add(1, Ordering::Relaxed);
                 }
                 Err(e) => {
                     warn!("Shadow get subscriber channel closed: {}", e);
@@ -118,6 +127,7 @@ pub async fn run_subscriber(
 
     // Spawn log handler
     let log_pool = db_pool.clone();
+    let log_metrics = zenoh_metrics.clone();
     tokio::spawn(async move {
         loop {
             match log_sub.recv_async().await {
@@ -128,6 +138,7 @@ pub async fn run_subscriber(
                         handlers::log::handle_device_log(&pool, &payload);
                     })
                     .await;
+                    log_metrics.messages_in.fetch_add(1, Ordering::Relaxed);
                 }
                 Err(e) => {
                     warn!("Log subscriber channel closed: {}", e);
@@ -139,6 +150,7 @@ pub async fn run_subscriber(
 
     // Spawn command response handler
     let cmd_response_pool = db_pool.clone();
+    let cmd_response_metrics = zenoh_metrics.clone();
     tokio::spawn(async move {
         loop {
             match cmd_response_sub.recv_async().await {
@@ -149,6 +161,7 @@ pub async fn run_subscriber(
                         handlers::command_response::handle_command_response(&pool, &payload);
                     })
                     .await;
+                    cmd_response_metrics.messages_in.fetch_add(1, Ordering::Relaxed);
                 }
                 Err(e) => {
                     warn!("Command response subscriber channel closed: {}", e);
@@ -168,6 +181,7 @@ pub async fn run_subscriber(
                     handlers::telemetry::handle_telemetry(&pool, &payload);
                 })
                 .await;
+                zenoh_metrics.messages_in.fetch_add(1, Ordering::Relaxed);
             }
             Err(e) => {
                 warn!("Telemetry subscriber channel closed: {}", e);

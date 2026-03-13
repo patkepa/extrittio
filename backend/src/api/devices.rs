@@ -493,6 +493,7 @@ pub(crate) async fn restart_device(
         &id,
         "restart",
         HashMap::default(),
+        &state.zenoh_metrics,
     )
     .await?;
     Ok(StatusCode::OK)
@@ -521,6 +522,7 @@ pub(crate) async fn trigger_ota(
         &state.zenoh_session,
         &id,
         body.firmware_update_id,
+        &state.zenoh_metrics,
     )
     .await?;
     Ok(StatusCode::OK)
@@ -581,6 +583,7 @@ pub(crate) async fn bulk_restart_devices(
             device_id,
             "restart",
             HashMap::default(),
+            &state.zenoh_metrics,
         )
         .await
         {
@@ -620,6 +623,7 @@ pub(crate) async fn bulk_trigger_ota(
             &state.zenoh_session,
             device_id,
             firmware_update_id,
+            &state.zenoh_metrics,
         )
         .await
         {

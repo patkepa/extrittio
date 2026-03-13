@@ -111,6 +111,7 @@ pub(crate) async fn send_command(
         &id,
         &body.command,
         params,
+        &state.zenoh_metrics,
     )
     .await?;
     Ok((StatusCode::CREATED, Json(to_command_response(record))))

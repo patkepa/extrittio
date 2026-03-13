@@ -9,7 +9,7 @@ use crate::db::models::{NewDevice, NewDeviceLog, NewDeviceShadow, NewOtaDeployme
 use crate::error::AppError;
 use crate::repositories::{cert_repo, device_repo, device_type_repo, firmware_repo, log_repo, shadow_repo};
 use crate::services::{cert_service, shadow_service};
-use crate::state::{DbPool, run_db};
+use crate::state::{DbPool, ZenohMetrics, run_db};
 
 /// Create a device and its associated shadow record atomically.
 pub fn create_device(conn: &mut SqliteConnection, new_device: &NewDevice) -> Result<(), AppError> {
@@ -119,6 +119,7 @@ pub async fn trigger_ota(
     zenoh_session: &Arc<zenoh::Session>,
     device_id: &str,
     firmware_update_id: i32,
+    zenoh_metrics: &ZenohMetrics,
 ) -> Result<(), AppError> {
     let d_id = device_id.to_string();
     let d_id_for_publish = d_id.clone();
@@ -162,7 +163,7 @@ pub async fn trigger_ota(
     })
     .await?;
 
-    shadow_service::publish_delta_if_nonempty(zenoh_session, &d_id_for_publish, &delta, version)
+    shadow_service::publish_delta_if_nonempty(zenoh_session, &d_id_for_publish, &delta, version, zenoh_metrics)
         .await;
 
     Ok(())

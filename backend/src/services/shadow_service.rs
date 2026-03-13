@@ -2,13 +2,14 @@ use diesel::Connection;
 use diesel::SqliteConnection;
 use serde_json::Value;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use tracing::warn;
 
 use crate::db::models::UpdateShadow;
 use crate::error::AppError;
 use crate::repositories::shadow_repo;
 use extrittio_common::shadow::{compute_delta as compute_shadow_delta, merge_json};
-use crate::state::{DbPool, run_db};
+use crate::state::{DbPool, ZenohMetrics, run_db};
 
 /// Transactional DB-only part of update_desired. Returns the new delta and
 /// version so the caller can publish via Zenoh after the transaction commits.
@@ -50,13 +51,14 @@ pub async fn update_desired(
     zenoh_session: &Arc<zenoh::Session>,
     device_id: &str,
     patch: &serde_json::Map<String, Value>,
+    zenoh_metrics: &ZenohMetrics,
 ) -> Result<(), AppError> {
     let d_id = device_id.to_string();
     let p = patch.clone();
 
     let (delta, version) = run_db(pool, move |conn| update_desired_db(conn, &d_id, &p)).await?;
 
-    publish_delta_if_nonempty(zenoh_session, device_id, &delta, version).await;
+    publish_delta_if_nonempty(zenoh_session, device_id, &delta, version, zenoh_metrics).await;
     Ok(())
 }
 
@@ -98,6 +100,7 @@ pub async fn publish_delta_if_nonempty(
     device_id: &str,
     delta: &Value,
     version: i32,
+    zenoh_metrics: &ZenohMetrics,
 ) {
     if delta.as_object().is_some_and(|obj| !obj.is_empty()) {
         let delta_json = match serde_json::to_string(delta) {
@@ -116,6 +119,8 @@ pub async fn publish_delta_if_nonempty(
         let topic = extrittio_common::topics::shadow_delta(device_id);
         if let Err(e) = session.put(&topic, payload).await {
             warn!("Failed to publish shadow delta to device {device_id}: {e}");
+        } else {
+            zenoh_metrics.messages_out.fetch_add(1, Ordering::Relaxed);
         }
     }
 }

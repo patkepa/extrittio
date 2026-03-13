@@ -85,14 +85,19 @@ async fn main() {
     // Background tasks
     let subscriber_pool = db_pool.clone();
     let subscriber_session = zenoh_session.clone();
+    let subscriber_metrics = zenoh_metrics.clone();
     tokio::spawn(async move {
         if let Err(e) =
-            zenoh_handler::subscriber::run_subscriber(subscriber_session, subscriber_pool).await
+            zenoh_handler::subscriber::run_subscriber(subscriber_session, subscriber_pool, subscriber_metrics).await
         {
             tracing::error!("Zenoh subscriber failed: {}. Shutting down.", e);
             std::process::exit(1);
         }
     });
+
+    tokio::spawn(services::server_metrics::run_system_metrics_collector(db_pool.clone()));
+    tokio::spawn(services::server_metrics::run_app_metrics_flusher(state.clone()));
+    tokio::spawn(services::server_metrics::run_metrics_retention(db_pool.clone()));
 
     let checker_pool = db_pool.clone();
     let offline_timeout = config.offline_timeout_secs;
