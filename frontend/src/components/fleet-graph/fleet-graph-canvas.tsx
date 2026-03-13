@@ -5,7 +5,8 @@ import { forceCollide } from 'd3-force-3d';
 import type { GraphData, GraphNode, GraphLink } from './build-force-graph-data';
 import type { Device } from '../../types/api';
 import { getHealthTier, getStalenessColor, getPulseFrequency } from './health-utils';
-import { TIER_COLORS, TYPE_ICON_PATHS, FALLBACK_ICON_PATHS } from './constants';
+import { TIER_COLORS, TYPE_ICON_PATHS, FALLBACK_ICON_PATHS, SELECTION_COLOR } from './constants';
+import { useSelectionStore } from '../../stores/selection-store';
 
 // --- Constants ---
 const FLEET_RADIUS = 14;
@@ -56,7 +57,7 @@ interface FleetGraphCanvasProps {
   width: number;
   height: number;
   onNodeClick: (device: Device, position: { x: number; y: number }) => void;
-  onBackgroundClick: () => void;
+  onBackgroundClick: (event?: MouseEvent) => void;
   selectedNodeId?: string | null;
 }
 
@@ -74,6 +75,17 @@ export const FleetGraphCanvas = ({
   const highlightLinks = useRef(new Set<GraphLink>());
   const hasInitialFit = useRef(false);
   const pulseClockRef = useRef(0);
+  const canvasWrapperRef = useRef<HTMLDivElement>(null);
+  const lassoRef = useRef<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+  const isLassoingRef = useRef(false);
+  const [shiftHeld, setShiftHeld] = useState(false);
+  const shiftHeldRef = useRef(false);
+
+  // Subscribe to selection store
+  const selectedDeviceIds = useSelectionStore((s) => s.selectedDeviceIds);
+  const addToSelection = useSelectionStore((s) => s.addToSelection);
+  const toggleDevice = useSelectionStore((s) => s.toggleDevice);
+  const clearSelection = useSelectionStore((s) => s.clearSelection);
 
   useEffect(() => {
     let rafId: number;
@@ -84,6 +96,93 @@ export const FleetGraphCanvas = ({
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
   }, []);
+
+  // Shift key tracking for lasso mode
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') {
+        shiftHeldRef.current = true;
+        setShiftHeld(true);
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') {
+        shiftHeldRef.current = false;
+        setShiftHeld(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, []);
+
+  // Lasso mouse event handlers
+  useEffect(() => {
+    const fg = graphRef.current;
+    const wrapper = canvasWrapperRef.current;
+    if (!fg || !wrapper) return;
+    const canvasEl = wrapper.querySelector('canvas');
+    if (!canvasEl) return;
+
+    const onMouseDown = (e: MouseEvent) => {
+      if (!e.shiftKey || e.button !== 0) return;
+      const coords = fg.screen2GraphCoords(e.offsetX, e.offsetY);
+      lassoRef.current = { x1: coords.x, y1: coords.y, x2: coords.x, y2: coords.y };
+      isLassoingRef.current = true;
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isLassoingRef.current || !lassoRef.current) return;
+      const coords = fg.screen2GraphCoords(e.offsetX, e.offsetY);
+      lassoRef.current.x2 = coords.x;
+      lassoRef.current.y2 = coords.y;
+    };
+
+    const onMouseUp = () => {
+      if (!isLassoingRef.current || !lassoRef.current) return;
+      isLassoingRef.current = false;
+
+      const { x1, y1, x2, y2 } = lassoRef.current;
+      const minX = Math.min(x1, x2);
+      const maxX = Math.max(x1, x2);
+      const minY = Math.min(y1, y2);
+      const maxY = Math.max(y1, y2);
+
+      if (maxX - minX > 2 && maxY - minY > 2) {
+        const hitIds: string[] = [];
+        for (const node of graphData.nodes) {
+          if (
+            node.type === 'device' &&
+            node.x != null &&
+            node.y != null &&
+            node.x >= minX &&
+            node.x <= maxX &&
+            node.y >= minY &&
+            node.y <= maxY
+          ) {
+            hitIds.push(node.id);
+          }
+        }
+        if (hitIds.length > 0) {
+          addToSelection(hitIds);
+        }
+      }
+
+      lassoRef.current = null;
+    };
+
+    canvasEl.addEventListener('mousedown', onMouseDown);
+    canvasEl.addEventListener('mousemove', onMouseMove);
+    canvasEl.addEventListener('mouseup', onMouseUp);
+    return () => {
+      canvasEl.removeEventListener('mousedown', onMouseDown);
+      canvasEl.removeEventListener('mousemove', onMouseMove);
+      canvasEl.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [graphData.nodes, addToSelection]);
 
   // Configure forces after mount
   useEffect(() => {
@@ -132,11 +231,26 @@ export const FleetGraphCanvas = ({
   // Click handler
   const handleNodeClick = useCallback(
     (node: GraphNode, event: MouseEvent) => {
+      if (event.shiftKey && node.type === 'device') {
+        toggleDevice(node.id);
+        return;
+      }
       if (node.type === 'device' && node.device) {
         onNodeClick(node.device, { x: event.clientX, y: event.clientY });
       }
     },
-    [onNodeClick],
+    [onNodeClick, toggleDevice],
+  );
+
+  // Background click: clear selection unless Shift is held
+  const handleBackgroundClickInternal = useCallback(
+    (event: MouseEvent) => {
+      if (!event.shiftKey) {
+        clearSelection();
+      }
+      onBackgroundClick(event);
+    },
+    [onBackgroundClick, clearSelection],
   );
 
   // --- Canvas rendering callbacks ---
@@ -282,6 +396,18 @@ export const FleetGraphCanvas = ({
           ctx.stroke();
         }
 
+        // Selection ring (drawn after main circle and uptime ring so glow is visible)
+        if (selectedDeviceIds.has(node.id)) {
+          ctx.beginPath();
+          ctx.arc(node.x!, node.y!, effectiveRadius + 4, 0, 2 * Math.PI);
+          ctx.strokeStyle = SELECTION_COLOR;
+          ctx.lineWidth = 2;
+          ctx.shadowColor = SELECTION_COLOR;
+          ctx.shadowBlur = 8;
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+        }
+
         // Device type icon inside circle
         const iconPaths = getIconPaths(node.deviceTypeName);
         const iconSize = effectiveRadius * 1.2;
@@ -298,7 +424,7 @@ export const FleetGraphCanvas = ({
       // Reset
       ctx.globalAlpha = 1;
     },
-    [hoverNode],
+    [hoverNode, selectedDeviceIds],
   );
 
   const paintLink = useCallback(
@@ -388,7 +514,31 @@ export const FleetGraphCanvas = ({
     }
   }, [width, height]);
 
+  // Disable pan when Shift is held (lasso mode)
+  const enablePanInteraction = useCallback((ev: MouseEvent) => !ev.shiftKey, []);
+
+  // Draw lasso selection rectangle overlay
+  const paintLasso = useCallback((ctx: CanvasRenderingContext2D, globalScale: number) => {
+    if (!lassoRef.current) return;
+    const { x1, y1, x2, y2 } = lassoRef.current;
+    const x = Math.min(x1, x2);
+    const y = Math.min(y1, y2);
+    const w = Math.abs(x2 - x1);
+    const h = Math.abs(y2 - y1);
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(45, 114, 210, 0.15)';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = SELECTION_COLOR;
+    ctx.lineWidth = 1 / globalScale;
+    ctx.setLineDash([4 / globalScale, 4 / globalScale]);
+    ctx.strokeRect(x, y, w, h);
+    ctx.setLineDash([]);
+    ctx.restore();
+  }, []);
+
   return (
+    <div ref={canvasWrapperRef} style={{ width, height }}>
     <ForceGraph2D
       ref={graphRef}
       graphData={graphData}
@@ -396,14 +546,17 @@ export const FleetGraphCanvas = ({
       height={height}
       backgroundColor="#000000"
       onRenderFramePre={paintGrid as any}
+      onRenderFramePost={paintLasso as any}
       nodeCanvasObject={paintNode as any}
       nodeCanvasObjectMode={() => 'replace'}
       linkCanvasObject={paintLink as any}
       linkCanvasObjectMode={() => 'replace'}
       onNodeHover={handleNodeHover as any}
       onNodeClick={handleNodeClick as any}
-      onBackgroundClick={onBackgroundClick}
+      onBackgroundClick={handleBackgroundClickInternal as any}
       onEngineStop={handleEngineStop}
+      enablePanInteraction={enablePanInteraction as any}
+      enableNodeDrag={!shiftHeld}
       nodeVal="val"
       d3AlphaDecay={0.02}
       d3VelocityDecay={0.3}
@@ -412,5 +565,6 @@ export const FleetGraphCanvas = ({
       autoPauseRedraw={false}
       nodeLabel=""
     />
+    </div>
   );
 };
