@@ -55,6 +55,7 @@ export const navGroups: NavGroup[] = [
             href: '/settings/users',
           },
           { label: 'Certificates', icon: 'lock', href: '/settings/certificates' },
+          { label: 'API Keys', icon: 'key', href: '/settings/api-keys' },
         ],
       },
     ],
