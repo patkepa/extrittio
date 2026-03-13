@@ -14,8 +14,8 @@ const HOVER_SCALE = 1.3;
 const DIM_OPACITY = 0.15;
 const FLEET_LABEL_FONT = 'bold 12px -apple-system, BlinkMacSystemFont, sans-serif';
 const GRID_SIZE = 40;
-const GRID_COLOR = 'rgba(255, 255, 255, 0.03)';
-const GRID_ACCENT_COLOR = 'rgba(255, 255, 255, 0.06)';
+const GRID_COLOR = 'rgba(255, 255, 255, 0.05)';
+const GRID_ACCENT_COLOR = 'rgba(255, 255, 255, 0.12)';
 const GRID_ACCENT_EVERY = 5; // every 5th line is brighter
 
 interface FleetGraphCanvasProps {
@@ -278,14 +278,14 @@ export const FleetGraphCanvas = ({
     [hoverNode],
   );
 
-  // Draw a subtle grid on the canvas background
-  const paintGrid = useCallback((ctx: CanvasRenderingContext2D, globalScale: number) => {
-    const vp = graphRef.current;
-    if (!vp) return;
+  // Draw a grid that pans/zooms with the graph
+  const paintGrid = useCallback((ctx: CanvasRenderingContext2D, _globalScale: number) => {
+    const fg = graphRef.current;
+    if (!fg) return;
 
-    // Get the visible world-space bounds from the canvas transform
-    const topLeft = vp.screen2GraphCoords(0, 0);
-    const bottomRight = vp.screen2GraphCoords(width, height);
+    // Convert screen corners to world-space
+    const topLeft = fg.screen2GraphCoords(0, 0);
+    const bottomRight = fg.screen2GraphCoords(width, height);
 
     const step = GRID_SIZE;
     const startX = Math.floor(topLeft.x / step) * step;
@@ -293,31 +293,30 @@ export const FleetGraphCanvas = ({
     const endX = Math.ceil(bottomRight.x / step) * step;
     const endY = Math.ceil(bottomRight.y / step) * step;
 
-    ctx.save();
-
-    // Vertical lines
+    // Convert world coords to screen coords for drawing
     for (let x = startX; x <= endX; x += step) {
       const gridIdx = Math.round(x / step);
+      const screenStart = fg.graph2ScreenCoords(x, topLeft.y);
+      const screenEnd = fg.graph2ScreenCoords(x, bottomRight.y);
       ctx.strokeStyle = gridIdx % GRID_ACCENT_EVERY === 0 ? GRID_ACCENT_COLOR : GRID_COLOR;
-      ctx.lineWidth = 1 / globalScale;
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(x, topLeft.y);
-      ctx.lineTo(x, bottomRight.y);
+      ctx.moveTo(screenStart.x, screenStart.y);
+      ctx.lineTo(screenEnd.x, screenEnd.y);
       ctx.stroke();
     }
 
-    // Horizontal lines
     for (let y = startY; y <= endY; y += step) {
       const gridIdx = Math.round(y / step);
+      const screenStart = fg.graph2ScreenCoords(topLeft.x, y);
+      const screenEnd = fg.graph2ScreenCoords(bottomRight.x, y);
       ctx.strokeStyle = gridIdx % GRID_ACCENT_EVERY === 0 ? GRID_ACCENT_COLOR : GRID_COLOR;
-      ctx.lineWidth = 1 / globalScale;
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(topLeft.x, y);
-      ctx.lineTo(bottomRight.x, y);
+      ctx.moveTo(screenStart.x, screenStart.y);
+      ctx.lineTo(screenEnd.x, screenEnd.y);
       ctx.stroke();
     }
-
-    ctx.restore();
   }, [width, height]);
 
   return (
