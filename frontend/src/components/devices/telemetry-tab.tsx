@@ -1,6 +1,7 @@
-import { Callout, Spinner } from '@blueprintjs/core';
+import { useState } from 'react';
+import { Callout, SegmentedControl, Spinner } from '@blueprintjs/core';
 import { AreaChart, Area, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
-import { useDeviceTelemetry } from '../../hooks/use-telemetry';
+import { useDeviceTelemetry, useAllDeviceTelemetry } from '../../hooks/use-telemetry';
 import type { TelemetryRecord } from '../../types/api';
 
 interface TelemetryTabProps {
@@ -91,6 +92,38 @@ function getProfile(deviceTypeName: string): DeviceProfile {
 }
 
 // ---------------------------------------------------------------------------
+// Range configuration
+// ---------------------------------------------------------------------------
+
+type RangeKey = '15m' | '1h' | '6h' | '24h' | '7d' | '30d' | 'all';
+
+interface RangeConfig {
+  label: string;
+  offsetMs: number | null; // null = "All"
+  limit: number;
+}
+
+const RANGES: Record<RangeKey, RangeConfig> = {
+  '15m': { label: '15m', offsetMs: 15 * 60 * 1000, limit: 200 },
+  '1h':  { label: '1h',  offsetMs: 60 * 60 * 1000, limit: 500 },
+  '6h':  { label: '6h',  offsetMs: 6 * 60 * 60 * 1000, limit: 1000 },
+  '24h': { label: '24h', offsetMs: 24 * 60 * 60 * 1000, limit: 1000 },
+  '7d':  { label: '7d',  offsetMs: 7 * 24 * 60 * 60 * 1000, limit: 1000 },
+  '30d': { label: '30d', offsetMs: 30 * 24 * 60 * 60 * 1000, limit: 1000 },
+  'all': { label: 'All', offsetMs: null, limit: 1000 },
+};
+
+const RANGE_OPTIONS = (Object.keys(RANGES) as RangeKey[]).map((key) => ({
+  label: RANGES[key].label,
+  value: key,
+}));
+
+function computeSince(range: RangeConfig): string | undefined {
+  if (range.offsetMs == null) return undefined;
+  return new Date(Date.now() - range.offsetMs).toISOString();
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -139,10 +172,21 @@ function flattenRecord(r: TelemetryRecord): Record<string, number | string | nul
   return flat;
 }
 
-/** Short time label for X-axis ticks */
-function formatAxisTime(iso: string): string {
+/** Short time label for X-axis ticks, range-aware */
+function formatAxisTime(iso: string, rangeKey: RangeKey): string {
   const d = new Date(iso);
-  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  if (rangeKey === '15m' || rangeKey === '1h') {
+    return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+  if (rangeKey === '6h' || rangeKey === '24h') {
+    return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  }
+  if (rangeKey === '7d') {
+    return d.toLocaleDateString(undefined, { weekday: 'short' }) + ' ' +
+           d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  }
+  // 30d, all
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 /** Whether a metric should use a 0-100 domain (percentage metrics) */
@@ -176,17 +220,39 @@ function ChartTooltip({ active, payload, metric }: {
 // ---------------------------------------------------------------------------
 
 export const TelemetryTab = ({ deviceId, deviceTypeName }: TelemetryTabProps) => {
-  const { data: telemetryRecords = [], isLoading, isError } = useDeviceTelemetry(deviceId, { limit: 50 });
+  const [selectedRange, setSelectedRange] = useState<RangeKey>('24h');
+  const rangeConfig = RANGES[selectedRange];
+  const isAll = selectedRange === 'all';
+
+  // Time-bounded query (for all ranges except "All")
+  const since = computeSince(rangeConfig);
+  const boundedQuery = useDeviceTelemetry(
+    isAll ? null : deviceId,
+    { limit: rangeConfig.limit, since }
+  );
+
+  // Paginated query (for "All" only)
+  const allQuery = useAllDeviceTelemetry(isAll ? deviceId : null);
+
+  // Pick the active query result
+  const activeQuery = isAll ? allQuery : boundedQuery;
+  const telemetryRecords = activeQuery.data ?? [];
+  const isLoading = activeQuery.isLoading;
+  const isError = activeQuery.isError;
+
   const profile = getProfile(deviceTypeName);
 
-  const latest = telemetryRecords[0];
+  // "All" data is sorted ascending; others are descending. Latest is always newest.
+  const latest = isAll
+    ? telemetryRecords[telemetryRecords.length - 1]
+    : telemetryRecords[0];
   const latestFlat = latest ? flattenRecord(latest) : null;
   const latestCustom = parseCustomJson(latest?.custom_json);
 
-  const chartData = telemetryRecords
-    .slice()
-    .reverse()
-    .map((r) => flattenRecord(r));
+  // "All" data is pre-sorted ascending from the hook; others need reversing
+  const chartData = isAll
+    ? telemetryRecords.map((r) => flattenRecord(r))
+    : telemetryRecords.slice().reverse().map((r) => flattenRecord(r));
 
   if (isLoading) return <Spinner />;
 
@@ -198,17 +264,9 @@ export const TelemetryTab = ({ deviceId, deviceTypeName }: TelemetryTabProps) =>
     );
   }
 
-  if (telemetryRecords.length === 0) {
-    return (
-      <Callout icon="info-sign" intent="primary">
-        No telemetry data available for this device.
-      </Callout>
-    );
-  }
-
   return (
     <div className="telemetry-tab">
-      {/* Current values */}
+      {/* Current values section */}
       <div className="telemetry-section">
         <span className="section-label">Current Values</span>
         <div className="telemetry-current-table">
@@ -240,74 +298,90 @@ export const TelemetryTab = ({ deviceId, deviceTypeName }: TelemetryTabProps) =>
         )}
       </div>
 
-      {/* Charts */}
+      {/* Charts section with range selector */}
       <div className="telemetry-section">
-        <span className="section-label">Charts</span>
-        {profile.charts.map((metric) => {
-          const latestValue = chartData[chartData.length - 1]?.[metric.key];
-          const yDomain: [number | 'auto', number | 'auto'] = isPercentMetric(metric.unit)
-            ? [0, 100]
-            : ['auto', 'auto'];
-          return (
-            <div key={metric.key} className="telemetry-chart">
-              <div className="telemetry-header">
-                <span className="section-label">{metric.label}</span>
-                <span className="mono-data" style={{ fontSize: 14, color: metric.color }}>
-                  {latestValue != null ? `${formatValue(latestValue)}${metric.unit}` : '—'}
-                </span>
+        <div className="telemetry-range-bar">
+          <span className="section-label">Charts</span>
+          <SegmentedControl
+            options={RANGE_OPTIONS}
+            value={selectedRange}
+            onValueChange={(val) => setSelectedRange(val as RangeKey)}
+            small
+          />
+        </div>
+        {isAll && telemetryRecords.length >= 50_000 && (
+          <Callout intent="warning" icon="info-sign" compact style={{ marginTop: 8 }}>
+            Showing most recent 50,000 records.
+          </Callout>
+        )}
+
+        {telemetryRecords.length === 0 ? (
+          <Callout icon="info-sign" intent="primary" style={{ marginTop: 12 }}>
+            No telemetry data in this time range.
+          </Callout>
+        ) : (
+          profile.charts.map((metric) => {
+            const latestValue = chartData[chartData.length - 1]?.[metric.key];
+            const yDomain: [number | 'auto', number | 'auto'] = isPercentMetric(metric.unit)
+              ? [0, 100]
+              : ['auto', 'auto'];
+            return (
+              <div key={metric.key} className="telemetry-chart">
+                <div className="telemetry-header">
+                  <span className="section-label">{metric.label}</span>
+                  <span className="mono-data" style={{ fontSize: 14, color: metric.color }}>
+                    {latestValue != null ? `${formatValue(latestValue)}${metric.unit}` : '—'}
+                  </span>
+                </div>
+                <ResponsiveContainer width="100%" height={160}>
+                  <AreaChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -12 }}>
+                    <defs>
+                      <linearGradient id={`tel-${metric.key}`} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={metric.color} stopOpacity={0.3} />
+                        <stop offset="100%" stopColor={metric.color} stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                    <XAxis
+                      dataKey="received_at"
+                      tickFormatter={(v: string) => formatAxisTime(v, selectedRange)}
+                      tick={{ fontSize: 11, fill: 'rgba(255,255,255,0.4)' }}
+                      axisLine={{ stroke: 'rgba(255,255,255,0.08)' }}
+                      tickLine={false}
+                      minTickGap={40}
+                    />
+                    <YAxis
+                      domain={yDomain}
+                      tick={{ fontSize: 11, fill: 'rgba(255,255,255,0.4)' }}
+                      axisLine={false}
+                      tickLine={false}
+                      width={40}
+                      tickFormatter={(v: number) => `${v}${metric.unit}`}
+                    />
+                    <Tooltip
+                      content={<ChartTooltip metric={metric} />}
+                      cursor={{ stroke: 'rgba(255,255,255,0.15)' }}
+                      isAnimationActive={false}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey={metric.key}
+                      stroke={metric.color}
+                      strokeWidth={1.5}
+                      fill={`url(#tel-${metric.key})`}
+                      dot={false}
+                      isAnimationActive={false}
+                      connectNulls
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
               </div>
-              <ResponsiveContainer width="100%" height={160}>
-                <AreaChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -12 }}>
-                  <defs>
-                    <linearGradient id={`tel-${metric.key}`} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={metric.color} stopOpacity={0.3} />
-                      <stop offset="100%" stopColor={metric.color} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke="rgba(255,255,255,0.06)"
-                    vertical={false}
-                  />
-                  <XAxis
-                    dataKey="received_at"
-                    tickFormatter={formatAxisTime}
-                    tick={{ fontSize: 11, fill: 'rgba(255,255,255,0.4)' }}
-                    axisLine={{ stroke: 'rgba(255,255,255,0.08)' }}
-                    tickLine={false}
-                    minTickGap={40}
-                  />
-                  <YAxis
-                    domain={yDomain}
-                    tick={{ fontSize: 11, fill: 'rgba(255,255,255,0.4)' }}
-                    axisLine={false}
-                    tickLine={false}
-                    width={40}
-                    tickFormatter={(v: number) => `${v}${metric.unit}`}
-                  />
-                  <Tooltip
-                    content={<ChartTooltip metric={metric} />}
-                    cursor={{ stroke: 'rgba(255,255,255,0.15)' }}
-                    isAnimationActive={false}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey={metric.key}
-                    stroke={metric.color}
-                    strokeWidth={1.5}
-                    fill={`url(#tel-${metric.key})`}
-                    dot={false}
-                    isAnimationActive={false}
-                    connectNulls
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
 
-      {/* Historical values table */}
+      {/* Historical values table — newest first for all ranges */}
       <div className="telemetry-section">
         <span className="section-label">Historical Values</span>
         <div className="telemetry-table-wrap">
@@ -321,7 +395,7 @@ export const TelemetryTab = ({ deviceId, deviceTypeName }: TelemetryTabProps) =>
               </tr>
             </thead>
             <tbody>
-              {telemetryRecords.map((r) => {
+              {(isAll ? [...telemetryRecords].reverse() : telemetryRecords).map((r) => {
                 const flat = flattenRecord(r);
                 return (
                   <tr key={r.id}>

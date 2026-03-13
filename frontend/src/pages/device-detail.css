@@ -215,6 +215,18 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Telemetry time range bar */
+.telemetry-range-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.telemetry-range-bar .bp6-segmented-control {
+  background: rgba(255, 255, 255, 0.04);
+}
+
 /* Logs tab */
 .logs-toolbar {
   display: flex;
