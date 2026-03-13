@@ -4,7 +4,7 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use chrono::{NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -31,9 +31,11 @@ pub struct DeviceResponse {
     pub fleet_name: Option<String>,
     pub status: String,
     pub last_seen: String,
+    pub last_seen_at: Option<String>,
     pub firmware: String,
     pub location: String,
     pub uptime: String,
+    pub uptime_seconds: i32,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -131,6 +133,10 @@ fn to_device_response(
     device_type: DeviceType,
     fleet: Option<Fleet>,
 ) -> DeviceResponse {
+    let last_seen_at = device.last_seen.map(|dt| {
+        DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc)
+            .to_rfc3339()
+    });
     DeviceResponse {
         id: device.id,
         name: device.name,
@@ -140,9 +146,11 @@ fn to_device_response(
         fleet_name: fleet.map(|f| f.name),
         status: device.status,
         last_seen: format_last_seen(device.last_seen),
+        last_seen_at,
         firmware: device.firmware,
         location: device.location,
         uptime: format_uptime(device.uptime_seconds),
+        uptime_seconds: device.uptime_seconds,
     }
 }
 
