@@ -1801,6 +1801,8 @@ export interface operations {
                 limit?: number | null;
                 /** @description Only return records after this timestamp (RFC 3339 or YYYY-MM-DDTHH:MM:SS). */
                 since?: string | null;
+                /** @description Only return records before this timestamp (RFC 3339 or YYYY-MM-DDTHH:MM:SS). */
+                before?: string | null;
             };
             header?: never;
             path: {

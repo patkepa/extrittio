@@ -1271,6 +1271,18 @@
                 "null"
               ]
             }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "description": "Only return records before this timestamp (RFC 3339 or YYYY-MM-DDTHH:MM:SS).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
