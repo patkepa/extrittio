@@ -26,7 +26,7 @@ pub fn update_desired_db(
         let current_reported: Value = serde_json::from_str(&shadow.reported)
             .unwrap_or(Value::Object(serde_json::Map::default()));
 
-        let new_desired = merge_json(&current_desired, patch);
+        let new_desired = merge_json(current_desired, patch);
         let new_delta = compute_shadow_delta(&new_desired, &current_reported);
         let new_version = shadow.version + 1;
         let now = chrono::Utc::now().naive_utc();
@@ -76,7 +76,7 @@ pub fn update_reported(
         let current_reported: Value = serde_json::from_str(&shadow.reported)
             .unwrap_or(Value::Object(serde_json::Map::default()));
 
-        let new_reported = merge_json(&current_reported, patch);
+        let new_reported = merge_json(current_reported, patch);
         let new_delta = compute_shadow_delta(&current_desired, &new_reported);
         let now = chrono::Utc::now().naive_utc();
 

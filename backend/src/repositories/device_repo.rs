@@ -6,39 +6,18 @@ use crate::db::schema::{device_types, devices, fleets};
 
 type DeviceWithJoins = (Device, DeviceType, Option<Fleet>);
 
-pub fn list_devices(
-    conn: &mut SqliteConnection,
-    status_filter: Option<&str>,
-    search_filter: Option<&str>,
+type BoxedDeviceQuery<'a> = diesel::dsl::IntoBoxed<
+    'a,
+    diesel::dsl::LeftJoin<diesel::dsl::InnerJoin<devices::table, device_types::table>, fleets::table>,
+    diesel::sqlite::Sqlite,
+>;
+
+/// Build a filtered query for devices with joins. Shared by count and data queries.
+fn filtered_device_query<'a>(
+    status_filter: Option<&'a str>,
+    search_filter: Option<&'a str>,
     fleet_id_filter: Option<i32>,
-    limit: i64,
-    offset: i64,
-) -> Result<(Vec<DeviceWithJoins>, i64), diesel::result::Error> {
-    // Count query
-    let mut count_query = devices::table
-        .inner_join(device_types::table)
-        .left_join(fleets::table)
-        .into_boxed();
-
-    if let Some(status) = status_filter {
-        count_query = count_query.filter(devices::status.eq(status));
-    }
-    if let Some(search) = search_filter {
-        let pattern = format!("%{search}%");
-        count_query = count_query.filter(
-            devices::name
-                .like(pattern.clone())
-                .or(device_types::name.like(pattern.clone()))
-                .or(devices::location.like(pattern)),
-        );
-    }
-    if let Some(fleet_id) = fleet_id_filter {
-        count_query = count_query.filter(devices::fleet_id.eq(fleet_id));
-    }
-
-    let total: i64 = count_query.count().get_result(conn)?;
-
-    // Data query
+) -> BoxedDeviceQuery<'a> {
     let mut query = devices::table
         .inner_join(device_types::table)
         .left_join(fleets::table)
@@ -60,7 +39,22 @@ pub fn list_devices(
         query = query.filter(devices::fleet_id.eq(fleet_id));
     }
 
-    let results = query
+    query
+}
+
+pub fn list_devices(
+    conn: &mut SqliteConnection,
+    status_filter: Option<&str>,
+    search_filter: Option<&str>,
+    fleet_id_filter: Option<i32>,
+    limit: i64,
+    offset: i64,
+) -> Result<(Vec<DeviceWithJoins>, i64), diesel::result::Error> {
+    let total: i64 = filtered_device_query(status_filter, search_filter, fleet_id_filter)
+        .count()
+        .get_result(conn)?;
+
+    let results = filtered_device_query(status_filter, search_filter, fleet_id_filter)
         .select((
             Device::as_select(),
             DeviceType::as_select(),

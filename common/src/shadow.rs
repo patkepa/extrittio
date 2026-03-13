@@ -25,8 +25,12 @@ pub fn compute_delta(desired: &Value, reported: &Value) -> Value {
 
 /// Merge a JSON patch into an existing JSON object.
 /// Keys with null values are removed; other keys are upserted.
-pub fn merge_json(existing: &Value, patch: &serde_json::Map<String, Value>) -> Value {
-    let mut obj = existing.as_object().cloned().unwrap_or_default();
+/// Takes ownership of the existing value to avoid cloning.
+pub fn merge_json(existing: Value, patch: &serde_json::Map<String, Value>) -> Value {
+    let mut obj = match existing {
+        Value::Object(map) => map,
+        _ => serde_json::Map::new(),
+    };
     for (key, val) in patch {
         if val.is_null() {
             obj.remove(key);
@@ -63,7 +67,7 @@ mod tests {
         let mut patch = serde_json::Map::new();
         patch.insert("b".into(), json!(99));
         patch.insert("c".into(), json!(3));
-        let result = merge_json(&existing, &patch);
+        let result = merge_json(existing, &patch);
         assert_eq!(result, json!({"a": 1, "b": 99, "c": 3}));
     }
 
@@ -72,7 +76,7 @@ mod tests {
         let existing = json!({"a": 1, "b": 2});
         let mut patch = serde_json::Map::new();
         patch.insert("b".into(), Value::Null);
-        let result = merge_json(&existing, &patch);
+        let result = merge_json(existing, &patch);
         assert_eq!(result, json!({"a": 1}));
     }
 }

@@ -1,6 +1,5 @@
-use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::net::IpAddr;
-use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use axum::Json;
@@ -8,13 +7,15 @@ use axum::extract::{Request, State};
 use axum::http::StatusCode;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
+use dashmap::DashMap;
 use std::sync::Arc;
 
 use crate::state::AppState;
 
 /// Simple sliding-window rate limiter keyed by IP address.
+/// Uses DashMap for lock-free concurrent access.
 pub struct RateLimiter {
-    state: Mutex<HashMap<IpAddr, Vec<Instant>>>,
+    state: DashMap<IpAddr, VecDeque<Instant>>,
     max_requests: usize,
     window: Duration,
 }
@@ -22,7 +23,7 @@ pub struct RateLimiter {
 impl RateLimiter {
     pub fn new(max_requests: usize, window_secs: u64) -> Self {
         Self {
-            state: Mutex::new(HashMap::default()),
+            state: DashMap::new(),
             max_requests,
             window: Duration::from_secs(window_secs),
         }
@@ -31,18 +32,32 @@ impl RateLimiter {
     /// Returns `true` if the request is allowed, `false` if rate-limited.
     pub fn check(&self, ip: &IpAddr) -> bool {
         let now = Instant::now();
-        let mut state = self.state.lock().unwrap();
-        let entry = state.entry(*ip).or_default();
+        let mut entry = self.state.entry(*ip).or_default();
+        let timestamps = entry.value_mut();
 
-        // Remove expired timestamps
-        entry.retain(|&t| now.duration_since(t) < self.window);
+        // Remove expired timestamps from the front (oldest first)
+        while let Some(&front) = timestamps.front() {
+            if now.duration_since(front) >= self.window {
+                timestamps.pop_front();
+            } else {
+                break;
+            }
+        }
 
-        if entry.len() >= self.max_requests {
+        if timestamps.len() >= self.max_requests {
             false
         } else {
-            entry.push(now);
+            timestamps.push_back(now);
             true
         }
+    }
+
+    /// Remove entries that haven't been seen since the window expired.
+    pub fn cleanup(&self) {
+        let now = Instant::now();
+        self.state.retain(|_, timestamps| {
+            timestamps.back().is_some_and(|&t| now.duration_since(t) < self.window)
+        });
     }
 }
 
@@ -59,7 +74,7 @@ fn extract_client_ip(request: &Request) -> IpAddr {
 
 /// Sliding-window rate limiter keyed by API key hash (string).
 pub struct ApiKeyRateLimiter {
-    state: Mutex<HashMap<String, Vec<Instant>>>,
+    state: DashMap<String, VecDeque<Instant>>,
     max_requests: usize,
     window: Duration,
 }
@@ -67,7 +82,7 @@ pub struct ApiKeyRateLimiter {
 impl ApiKeyRateLimiter {
     pub fn new(max_requests: usize, window_secs: u64) -> Self {
         Self {
-            state: Mutex::new(HashMap::default()),
+            state: DashMap::new(),
             max_requests,
             window: Duration::from_secs(window_secs),
         }
@@ -76,16 +91,22 @@ impl ApiKeyRateLimiter {
     /// Returns `true` if the request is allowed, `false` if rate-limited.
     pub fn check(&self, key_hash: &str) -> bool {
         let now = Instant::now();
-        let mut state = self.state.lock().unwrap();
-        let entry = state.entry(key_hash.to_string()).or_default();
+        let mut entry = self.state.entry(key_hash.to_string()).or_default();
+        let timestamps = entry.value_mut();
 
-        // Remove expired timestamps
-        entry.retain(|&t| now.duration_since(t) < self.window);
+        // Remove expired timestamps from the front (oldest first)
+        while let Some(&front) = timestamps.front() {
+            if now.duration_since(front) >= self.window {
+                timestamps.pop_front();
+            } else {
+                break;
+            }
+        }
 
-        if entry.len() >= self.max_requests {
+        if timestamps.len() >= self.max_requests {
             false
         } else {
-            entry.push(now);
+            timestamps.push_back(now);
             true
         }
     }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState, memo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Card,
@@ -30,7 +30,7 @@ import './devices.css';
 type SortField = 'name' | 'status' | 'last_seen' | 'uptime';
 type SortDir = 'asc' | 'desc';
 
-const SortHeader = ({ field, sortField, sortDir, onSort, children }: {
+const SortHeader = memo(({ field, sortField, sortDir, onSort, children }: {
   field: SortField;
   sortField: SortField;
   sortDir: SortDir;
@@ -45,12 +45,18 @@ const SortHeader = ({ field, sortField, sortDir, onSort, children }: {
       )}
     </span>
   </th>
-);
+));
 
-function generateSparkline(id: string): number[] {
+const sparklineCache = new Map<string, { v: number; i: number }[]>();
+
+function getSparklineData(id: string): { v: number; i: number }[] {
+  let cached = sparklineCache.get(id);
+  if (cached) return cached;
   let hash = 0;
   for (const ch of id) hash = ((hash << 5) - hash + ch.charCodeAt(0)) | 0;
-  return Array.from({ length: 7 }, (_, i) => Math.abs((hash * (i + 1)) % 100));
+  cached = Array.from({ length: 7 }, (_, i) => ({ v: Math.abs((hash * (i + 1)) % 100), i }));
+  sparklineCache.set(id, cached);
+  return cached;
 }
 
 export const Devices = () => {
@@ -170,11 +176,11 @@ export const Devices = () => {
     navigate(`/devices/${device.id}`);
   };
 
-  const statusCounts = {
+  const statusCounts = useMemo(() => ({
     all: devices.length,
     online: devices.filter((d) => d.status === 'online').length,
     offline: devices.filter((d) => d.status === 'offline').length,
-  };
+  }), [devices]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -381,7 +387,7 @@ export const Devices = () => {
                     <td>
                       <div className="row-sparkline">
                         <ResponsiveContainer width="100%" height={24}>
-                          <AreaChart data={generateSparkline(device.id).map((v, i) => ({ v, i }))}>
+                          <AreaChart data={getSparklineData(device.id)}>
                             <Area
                               type="monotone"
                               dataKey="v"

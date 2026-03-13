@@ -6,7 +6,8 @@ export function useCurrentMetrics() {
   return useQuery({
     queryKey: queryKeys.serverMetrics.current,
     queryFn: getCurrentMetrics,
-    refetchInterval: 10_000,
+    staleTime: 25_000,
+    refetchInterval: 30_000,
   });
 }
 
@@ -14,6 +15,7 @@ export function useMetricsHistory(since?: string, resolution?: number) {
   return useQuery({
     queryKey: queryKeys.serverMetrics.history({ since, resolution }),
     queryFn: () => getMetricsHistory(since, resolution),
+    staleTime: 55_000,
     refetchInterval: 60_000,
   });
 }
