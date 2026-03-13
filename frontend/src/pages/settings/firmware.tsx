@@ -21,12 +21,6 @@ import {
 import { AddFirmwareDialog } from '../../components/settings/add-firmware-dialog';
 import './settings.css';
 
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 export const FirmwareSettings = () => {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [filterDeviceTypeId, setFilterDeviceTypeId] = useState<number | undefined>(undefined);
@@ -113,27 +107,30 @@ export const FirmwareSettings = () => {
                     <Tag minimal intent="primary" className="mono-data">
                       v{fw.version}
                     </Tag>
+                    {fw.source === 'ci' && (
+                      <div style={{ fontSize: 12, marginTop: 4, opacity: 0.8 }}>
+                        {fw.commit_sha && (
+                          <span style={{ marginRight: 12 }}>
+                            Commit: <code>{fw.commit_sha.substring(0, 7)}</code>
+                          </span>
+                        )}
+                        {fw.branch && <span style={{ marginRight: 12 }}>Branch: {fw.branch}</span>}
+                        {fw.ci_run_url && (
+                          <a href={fw.ci_run_url} target="_blank" rel="noopener noreferrer">
+                            CI Run
+                          </a>
+                        )}
+                      </div>
+                    )}
                   </td>
                   <td>{fw.device_type_name}</td>
                   <td>
-                    {fw.has_blob ? (
-                      <span style={{ fontSize: 12 }}>
-                        <Tag minimal intent="success" icon="document" style={{ marginRight: 6 }}>
-                          {fw.filename}
-                        </Tag>
-                        <span style={{ opacity: 0.6 }}>
-                          {fw.file_size != null ? formatFileSize(fw.file_size) : ''}
-                        </span>
-                      </span>
-                    ) : (
-                      <span
-                        className="mono-data"
-                        style={{ fontSize: 12, opacity: 0.8, maxWidth: 300, display: 'inline-block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                        title={fw.url}
-                      >
-                        {fw.url}
-                      </span>
-                    )}
+                    <Tag
+                      minimal
+                      intent={fw.source === 'ci' ? 'primary' : 'none'}
+                    >
+                      {fw.source === 'ci' ? 'CI' : 'Manual'}
+                    </Tag>
                   </td>
                   <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {fw.description ?? '\u2014'}
