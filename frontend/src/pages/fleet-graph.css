@@ -2,7 +2,7 @@
 .fleet-graph-page {
   height: calc(100vh - 48px - 48px);
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
 }
 
 .fleet-graph-canvas {
@@ -82,4 +82,104 @@
 .fleet-graph-empty p {
   color: hsl(var(--muted));
   font-size: 14px;
+}
+
+/* Health Side Panel */
+.health-panel {
+  width: 280px;
+  min-width: 280px;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--card-bg);
+  border-left: 1px solid var(--border-color);
+}
+
+.health-panel-header {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.health-panel-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: hsl(var(--muted));
+  display: block;
+  margin-bottom: 8px;
+}
+
+.health-panel-summary-bar {
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  gap: 1px;
+}
+
+/* Device list rows */
+.health-panel-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+}
+
+.health-panel-row:hover {
+  background-color: var(--sidebar-accent);
+}
+
+.health-panel-row--selected {
+  background-color: var(--sidebar-accent-hover);
+}
+
+.health-panel-led {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.health-panel-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.health-panel-staleness {
+  font-size: 11px;
+  font-family: 'SF Mono', 'Monaco', monospace;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.health-panel-fleet {
+  font-size: 11px;
+  color: hsl(var(--muted));
+  max-width: 60px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Counts footer */
+.health-panel-footer {
+  padding: 8px 14px;
+  border-top: 1px solid var(--border-color);
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.health-panel-dot {
+  color: hsl(var(--muted));
 }
