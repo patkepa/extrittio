@@ -81,7 +81,14 @@ export type CommandsParams = NonNullable<
 // Firmware Updates & OTA
 // ---------------------------------------------------------------------------
 
-export type FirmwareUpdate = components["schemas"]["FirmwareUpdateResponse"];
+export type FirmwareUpdate = components["schemas"]["FirmwareUpdateResponse"] & {
+  source?: string | null;
+  commit_sha?: string | null;
+  branch?: string | null;
+  ci_run_url?: string | null;
+  build_timestamp?: string | null;
+  changelog?: string | null;
+};
 export type CreateFirmwareUpdateRequest = components["schemas"]["NewFirmwareUpdateRequest"];
 export type NextVersionResponse = components["schemas"]["NextVersionResponse"];
 export type TriggerOtaRequest = components["schemas"]["TriggerOtaRequest"];
@@ -114,6 +121,33 @@ export type DeviceConfigResponse = components["schemas"]["ConfigResponse"];
 export type CaCertificateResponse = components["schemas"]["CaCertificateResponse"];
 export type DeviceCertificateResponse = components["schemas"]["DeviceCertificateResponse"];
 export type DeviceCertificateStatusResponse = components["schemas"]["DeviceCertificateStatusResponse"];
+
+// ---------------------------------------------------------------------------
+// API Keys
+// ---------------------------------------------------------------------------
+
+export interface ApiKey {
+  id: number;
+  name: string;
+  key_prefix: string;
+  device_type_id: number | null;
+  device_type_name: string | null;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+export interface CreateApiKeyRequest {
+  name: string;
+  device_type_id?: number;
+}
+
+export interface CreateApiKeyResponse {
+  id: number;
+  name: string;
+  key: string;
+  key_prefix: string;
+  device_type_id: number | null;
+}
 
 // ---------------------------------------------------------------------------
 // Health
