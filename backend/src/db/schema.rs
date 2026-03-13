@@ -13,6 +13,21 @@ diesel::table! {
 }
 
 diesel::table! {
+    app_metrics (id) {
+        id -> Integer,
+        request_count -> Integer,
+        error_count -> Integer,
+        avg_latency_ms -> Float,
+        p95_latency_ms -> Float,
+        db_pool_active -> Integer,
+        db_pool_idle -> Integer,
+        zenoh_messages_in -> Integer,
+        zenoh_messages_out -> Integer,
+        recorded_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     ca_certificates (id) {
         id -> Integer,
         private_key_pem -> Text,
@@ -154,6 +169,23 @@ diesel::table! {
 }
 
 diesel::table! {
+    server_metrics (id) {
+        id -> Integer,
+        cpu_usage_percent -> Float,
+        memory_used_bytes -> BigInt,
+        memory_total_bytes -> BigInt,
+        disk_used_bytes -> BigInt,
+        disk_total_bytes -> BigInt,
+        network_rx_bytes_delta -> BigInt,
+        network_tx_bytes_delta -> BigInt,
+        load_avg_1m -> Float,
+        load_avg_5m -> Float,
+        load_avg_15m -> Float,
+        recorded_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     telemetry (id) {
         id -> Integer,
         device_id -> Text,
@@ -192,6 +224,7 @@ diesel::joinable!(telemetry -> devices (device_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     api_keys,
+    app_metrics,
     ca_certificates,
     command_history,
     device_certificates,
@@ -205,6 +238,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     fleets,
     ota_deployments,
     server_config,
+    server_metrics,
     telemetry,
     users,
 );
