@@ -34,6 +34,47 @@
   border: 1px solid var(--border-color);
 }
 
+/* Bulk Action Bar */
+.bulk-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.bulk-action-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bulk-selection-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+.bulk-action-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Selected row highlight */
+.device-row--selected {
+  background-color: hsl(var(--accent) / 0.08) !important;
+}
+
+.device-row--selected:hover {
+  background-color: hsl(var(--accent) / 0.12) !important;
+}
+
+/* Checkbox alignment in table */
+.devices-table th .bp6-control,
+.devices-table td .bp6-control {
+  margin-bottom: 0;
+}
+
 .controls-row {
   display: flex;
   gap: 16px;
