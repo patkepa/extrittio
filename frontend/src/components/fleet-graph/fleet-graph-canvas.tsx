@@ -8,11 +8,11 @@ import { getHealthTier, getStalenessColor, getPulseFrequency } from './health-ut
 import { TIER_COLORS, TYPE_ICON_PATHS, FALLBACK_ICON_PATHS } from './constants';
 
 // --- Constants ---
-const FLEET_RADIUS = 18;
-const DEVICE_RADIUS = 8;
+const FLEET_RADIUS = 14;
+const DEVICE_RADIUS = 11;
 const HOVER_SCALE = 1.3;
 const DIM_OPACITY = 0.15;
-const FLEET_LABEL_FONT = 'bold 12px -apple-system, BlinkMacSystemFont, sans-serif';
+const FLEET_LABEL_FONT = 'bold 10px -apple-system, BlinkMacSystemFont, sans-serif';
 const GRID_SIZE = 40;
 const GRID_COLOR = 'rgba(255, 255, 255, 0.05)';
 const GRID_ACCENT_COLOR = 'rgba(255, 255, 255, 0.12)';
@@ -167,17 +167,30 @@ export const FleetGraphCanvas = ({
         ctx.shadowBlur = 0;
       }
 
-      // Draw circle
-      ctx.beginPath();
-      ctx.arc(node.x!, node.y!, radius, 0, 2 * Math.PI);
-      ctx.fillStyle = node.color;
-      ctx.fill();
-
-      // Reset shadow for text
-      ctx.shadowBlur = 0;
-
       if (isFleet) {
-        // Fleet: name label centered
+        // --- Fleet node: rounded rectangle sized to text ---
+        const padX = 8;
+        const padY = 4;
+        const cornerRadius = 4;
+        const hoverScale = isHovered ? HOVER_SCALE : 1;
+
+        ctx.font = FLEET_LABEL_FONT;
+        const textWidth = ctx.measureText(node.name).width;
+        const rectW = (textWidth + padX * 2) * hoverScale;
+        const rectH = (FLEET_RADIUS + padY) * hoverScale;
+        const rx = node.x! - rectW / 2;
+        const ry = node.y! - rectH / 2;
+
+        // Rounded rect background
+        ctx.beginPath();
+        ctx.roundRect(rx, ry, rectW, rectH, cornerRadius * hoverScale);
+        ctx.fillStyle = node.color;
+        ctx.fill();
+
+        // Reset shadow for text
+        ctx.shadowBlur = 0;
+
+        // Fleet name
         ctx.font = FLEET_LABEL_FONT;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
@@ -186,16 +199,21 @@ export const FleetGraphCanvas = ({
 
         // Device count below
         if (node.deviceCount != null) {
-          ctx.font = '10px -apple-system, sans-serif';
+          ctx.font = '8px -apple-system, sans-serif';
           ctx.fillStyle = 'rgba(255,255,255,0.6)';
-          ctx.fillText(`${node.deviceCount} device${node.deviceCount === 1 ? '' : 's'}`, node.x!, node.y! + FLEET_RADIUS + 12);
+          ctx.fillText(
+            `${node.deviceCount} device${node.deviceCount === 1 ? '' : 's'}`,
+            node.x!,
+            node.y! + rectH / 2 + 10,
+          );
         }
 
-        // Fleet hub aggregate health donut ring
+        // Health summary bar below the rectangle
         if (node.tierRatios) {
-          const ringRadius = radius + 4;
-          const ringWidth = 3;
-          let angle = -Math.PI / 2; // start at 12 o'clock
+          const barY = node.y! + rectH / 2 + 2;
+          const barH = 3;
+          const barW = rectW - 4;
+          const barX = node.x! - barW / 2;
 
           const segments: [number, string][] = [
             [node.tierRatios.fresh, TIER_COLORS.fresh],
@@ -204,18 +222,24 @@ export const FleetGraphCanvas = ({
             [node.tierRatios.dead, TIER_COLORS.dead],
           ];
 
+          let offsetX = 0;
           for (const [ratio, color] of segments) {
             if (ratio <= 0) continue;
-            const arcLen = ratio * 2 * Math.PI;
-            ctx.beginPath();
-            ctx.arc(node.x!, node.y!, ringRadius, angle, angle + arcLen);
-            ctx.strokeStyle = color;
-            ctx.lineWidth = ringWidth;
-            ctx.stroke();
-            angle += arcLen;
+            const segW = ratio * barW;
+            ctx.fillStyle = color;
+            ctx.fillRect(barX + offsetX, barY, segW, barH);
+            offsetX += segW;
           }
         }
       } else {
+        // Draw circle for device nodes
+        ctx.beginPath();
+        ctx.arc(node.x!, node.y!, radius, 0, 2 * Math.PI);
+        ctx.fillStyle = node.color;
+        ctx.fill();
+
+        // Reset shadow for text
+        ctx.shadowBlur = 0;
         // --- Device node: staleness-based color + pulse + uptime ring ---
         const now = Date.now();
         const stalenessMs = node.lastSeenTimestamp ? now - node.lastSeenTimestamp : NaN;
@@ -283,28 +307,45 @@ export const FleetGraphCanvas = ({
       const shouldDim = hoverNode && !isHighlighted;
 
       // D3 mutates source/target to objects
-      const source = link.source as any;
-      const target = link.target as any;
+      const source = link.source as any as GraphNode;
+      const target = link.target as any as GraphNode;
       if (source.x == null || target.x == null) return;
 
+      // Determine if the device end of the link is active
+      const deviceNode = source.type === 'device' ? source : target.type === 'device' ? target : null;
+      const isActive = deviceNode?.status === 'online' || deviceNode?.status === 'warning';
+
       ctx.beginPath();
-      ctx.moveTo(source.x, source.y);
-      ctx.lineTo(target.x, target.y);
+      if (isActive) {
+        ctx.setLineDash([4, 4]);
+        // Animate dash offset so the dashes appear to flow
+        ctx.lineDashOffset = -(pulseClockRef.current / 1000) * 12;
+      } else {
+        ctx.setLineDash([]);
+      }
+      ctx.moveTo(source.x!, source.y!);
+      ctx.lineTo(target.x!, target.y!);
 
       if (isHighlighted) {
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+        ctx.strokeStyle = isActive ? 'rgba(15, 153, 96, 0.8)' : 'rgba(130, 130, 130, 0.6)';
         ctx.lineWidth = 1.5;
-        ctx.shadowColor = 'rgba(255, 255, 255, 0.3)';
+        ctx.shadowColor = isActive ? 'rgba(15, 153, 96, 0.3)' : 'rgba(130, 130, 130, 0.2)';
         ctx.shadowBlur = 6;
-      } else {
-        ctx.strokeStyle = shouldDim
-          ? `rgba(255, 255, 255, ${DIM_OPACITY * 0.5})`
-          : 'rgba(255, 255, 255, 0.15)';
+      } else if (shouldDim) {
+        ctx.strokeStyle = isActive
+          ? `rgba(15, 153, 96, ${DIM_OPACITY * 0.5})`
+          : `rgba(130, 130, 130, ${DIM_OPACITY * 0.5})`;
         ctx.lineWidth = 0.5;
+        ctx.shadowBlur = 0;
+      } else {
+        ctx.strokeStyle = isActive ? 'rgba(15, 153, 96, 0.35)' : 'rgba(130, 130, 130, 0.2)';
+        ctx.lineWidth = isActive ? 1 : 0.5;
         ctx.shadowBlur = 0;
       }
 
       ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.lineDashOffset = 0;
       ctx.shadowBlur = 0;
     },
     [hoverNode],
