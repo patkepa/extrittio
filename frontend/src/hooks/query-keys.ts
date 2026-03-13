@@ -11,6 +11,8 @@ export const queryKeys = {
   telemetry: {
     list: (deviceId: string, params?: unknown) =>
       ["telemetry", deviceId, params] as const,
+    all: (deviceId: string) =>
+      ["telemetry-all", deviceId] as const,
   },
   logs: {
     list: (deviceId: string, params?: unknown) =>
