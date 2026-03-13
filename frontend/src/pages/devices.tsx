@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Card,
+  Checkbox,
   Elevation,
   H3,
   HTMLTable,
@@ -20,7 +21,9 @@ import { useFleets } from '../hooks/use-fleets';
 import { useUIStore } from '../stores/ui-store';
 import { AddDeviceDialog } from '../components/devices/add-device-dialog';
 import { useDeviceHoverTooltip, DeviceHoverTooltip } from '../components/devices/device-hover-tooltip';
-import type { Device } from '../types/api';
+import { useSelectionStore } from '../stores/selection-store';
+import { BulkActionBar } from '../components/devices/bulk-action-bar';
+import type { Device, BulkDeviceFilters, ListDevicesParams } from '../types/api';
 import { showSuccessToast, showErrorToast } from '../utils/toaster';
 import './devices.css';
 
@@ -80,9 +83,50 @@ export const Devices = () => {
     });
   };
 
-  const { data: devices = [], isLoading, error } = useDevices(
-    filterFleetId ? { fleet_id: filterFleetId } : undefined
+  // Selection store
+  const {
+    selectedDeviceIds,
+    isAllMatchingSelected,
+    toggleDevice,
+    selectAllVisible,
+    deselectAllVisible,
+    clearSelection,
+    isSelected,
+  } = useSelectionStore();
+
+  const hasSelection = selectedDeviceIds.size > 0 || isAllMatchingSelected;
+
+  // Build server-side filter params for bulk targeting
+  const currentFilters: BulkDeviceFilters = {
+    ...(filterStatus !== 'all' ? { status: filterStatus } : {}),
+    ...(searchQuery ? { search: searchQuery } : {}),
+    ...(filterFleetId ? { fleet_id: filterFleetId } : {}),
+  };
+
+  // Clear selection when filters change
+  useEffect(() => {
+    clearSelection();
+  }, [filterStatus, searchQuery, filterFleetId, clearSelection]);
+
+  // Search uses a debounced value to avoid firing a request per keystroke
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const queryParams: ListDevicesParams = {
+    ...(filterFleetId ? { fleet_id: filterFleetId } : {}),
+    ...(debouncedSearch ? { search: debouncedSearch } : {}),
+  };
+  const devicesQuery = useDevices(
+    Object.keys(queryParams).length > 0 ? queryParams : undefined
   );
+  const devices = devicesQuery.data?.data ?? [];
+  const totalDeviceCount = devicesQuery.data?.total ?? 0;
+  const isLoading = devicesQuery.isLoading;
+  const error = devicesQuery.error;
+
   const { data: fleets = [] } = useFleets();
   const deleteDeviceMutation = useDeleteDevice();
 
@@ -103,15 +147,9 @@ export const Devices = () => {
     }
   }, [deviceParam, devices, navigate, setSearchParams]);
 
+  // Status filtering stays client-side so we can show pill counts
   const filteredDevices = devices
-    .filter((device) => {
-      const matchesSearch =
-        device.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        device.device_type_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        device.location.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesStatus = filterStatus === 'all' || device.status === filterStatus;
-      return matchesSearch && matchesStatus;
-    })
+    .filter((device) => filterStatus === 'all' || device.status === filterStatus)
     .sort((a, b) => {
       const dir = sortDir === 'asc' ? 1 : -1;
       if (sortField === 'name') return a.name.localeCompare(b.name) * dir;
@@ -185,63 +223,73 @@ export const Devices = () => {
         </Button>
       </div>
 
-      {/* Filters and Search */}
-      <Card elevation={Elevation.ONE} className="devices-controls">
-        <div className="controls-row">
-          <div className="search-section">
-            <InputGroup
-              leftIcon="search"
-              placeholder="Search by name, type, or location..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              fill
-              rightElement={
-                searchQuery ? (
-                  <Button icon="cross" minimal onClick={() => setSearchQuery('')} />
-                ) : undefined
-              }
-            />
-          </div>
+      {/* Filters and Search / Bulk Action Bar */}
+      {hasSelection ? (
+        <Card elevation={Elevation.ONE} className="devices-controls">
+          <BulkActionBar
+            totalMatchingCount={totalDeviceCount}
+            visibleCount={filteredDevices.length}
+            currentFilters={currentFilters}
+          />
+        </Card>
+      ) : (
+        <Card elevation={Elevation.ONE} className="devices-controls">
+          <div className="controls-row">
+            <div className="search-section">
+              <InputGroup
+                leftIcon="search"
+                placeholder="Search by name, type, or location..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                fill
+                rightElement={
+                  searchQuery ? (
+                    <Button icon="cross" minimal onClick={() => setSearchQuery('')} />
+                  ) : undefined
+                }
+              />
+            </div>
 
-          <div className="filter-section">
-            {(['all', 'online', 'offline'] as const).map((status) => (
-              <button
-                key={status}
-                className={`filter-pill ${filterStatus === status ? 'active' : ''} ${status !== 'all' ? `pill-${status}` : ''}`}
-                onClick={() => setFilterStatus(status)}
-              >
-                {status !== 'all' && <span className={`status-led status-led--${status}`} />}
-                <span className="pill-label">{status === 'all' ? 'All' : status.charAt(0).toUpperCase() + status.slice(1)}</span>
-                <span className="pill-count mono-data">{statusCounts[status]}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Fleet filter */}
-        {fleets.length > 0 && (
-          <div className="controls-row" style={{ marginTop: 10 }}>
             <div className="filter-section">
-              <button
-                className={`filter-pill ${filterFleetId === null ? 'active' : ''}`}
-                onClick={() => setFilterFleetId(null)}
-              >
-                <span className="pill-label">All Fleets</span>
-              </button>
-              {fleets.map((fleet) => (
+              {(['all', 'online', 'offline'] as const).map((status) => (
                 <button
-                  key={fleet.id}
-                  className={`filter-pill ${filterFleetId === fleet.id ? 'active' : ''}`}
-                  onClick={() => setFilterFleetId(fleet.id)}
+                  key={status}
+                  className={`filter-pill ${filterStatus === status ? 'active' : ''} ${status !== 'all' ? `pill-${status}` : ''}`}
+                  onClick={() => setFilterStatus(status)}
                 >
-                  <span className="pill-label">{fleet.name}</span>
-                  <span className="pill-count mono-data">{fleet.device_count}</span>
+                  {status !== 'all' && <span className={`status-led status-led--${status}`} />}
+                  <span className="pill-label">{status === 'all' ? 'All' : status.charAt(0).toUpperCase() + status.slice(1)}</span>
+                  <span className="pill-count mono-data">{statusCounts[status]}</span>
                 </button>
               ))}
             </div>
           </div>
-        )}
-      </Card>
+
+          {/* Fleet filter */}
+          {fleets.length > 0 && (
+            <div className="controls-row" style={{ marginTop: 10 }}>
+              <div className="filter-section">
+                <button
+                  className={`filter-pill ${filterFleetId === null ? 'active' : ''}`}
+                  onClick={() => setFilterFleetId(null)}
+                >
+                  <span className="pill-label">All Fleets</span>
+                </button>
+                {fleets.map((fleet) => (
+                  <button
+                    key={fleet.id}
+                    className={`filter-pill ${filterFleetId === fleet.id ? 'active' : ''}`}
+                    onClick={() => setFilterFleetId(fleet.id)}
+                  >
+                    <span className="pill-label">{fleet.name}</span>
+                    <span className="pill-count mono-data">{fleet.device_count}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
 
       {/* Devices Table */}
       <Card elevation={Elevation.TWO} className="devices-card">
@@ -255,6 +303,26 @@ export const Devices = () => {
           <HTMLTable interactive className="devices-table">
             <thead>
               <tr>
+                <th style={{ width: 40 }} onClick={(e) => e.stopPropagation()}>
+                  <Checkbox
+                    checked={
+                      filteredDevices.length > 0 &&
+                      filteredDevices.every((d) => isSelected(d.id))
+                    }
+                    indeterminate={
+                      filteredDevices.some((d) => isSelected(d.id)) &&
+                      !filteredDevices.every((d) => isSelected(d.id))
+                    }
+                    onChange={() => {
+                      if (filteredDevices.every((d) => isSelected(d.id))) {
+                        deselectAllVisible();
+                      } else {
+                        selectAllVisible(filteredDevices.map((d) => d.id));
+                      }
+                    }}
+                    style={{ marginBottom: 0 }}
+                  />
+                </th>
                 <th style={{ width: 40 }}></th>
                 <SortHeader field="name" sortField={sortField} sortDir={sortDir} onSort={handleSort}>Name</SortHeader>
                 <th>Type</th>
@@ -271,12 +339,19 @@ export const Devices = () => {
               {filteredDevices.map((device, idx) => (
                   <tr
                     key={device.id}
-                    className="device-row"
+                    className={`device-row ${isSelected(device.id) ? 'device-row--selected' : ''}`}
                     onClick={() => handleViewDevice(device)}
                     onMouseEnter={(e) => onMouseEnter(device, e)}
                     onMouseLeave={onMouseLeave}
                     style={{ animationDelay: `${idx * 30}ms` }}
                   >
+                    <td onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={isSelected(device.id)}
+                        onChange={() => toggleDevice(device.id)}
+                        style={{ marginBottom: 0 }}
+                      />
+                    </td>
                     <td>
                       <span className={`status-led status-led--${device.status}`} />
                     </td>
