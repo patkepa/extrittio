@@ -1,21 +1,10 @@
 import type { Device, Fleet } from '../../types/api';
-
-// --- Status → color mapping ---
-const STATUS_COLORS: Record<string, string> = {
-  online: '#0F9960',
-  offline: '#E76A6E',
-  warning: '#D9822B',
-};
-
-const FLEET_COLOR = '#2D72D2';
-const DEFAULT_COLOR = '#555555';
-
-// --- Device type → abbreviation ---
-const TYPE_ABBREVS: Record<string, string> = {
-  'mac-device': 'M',
-  linux: 'L',
-  esp32: 'E',
-};
+import {
+  STATUS_COLORS,
+  FLEET_COLOR,
+  DEFAULT_COLOR,
+  TYPE_ABBREVS,
+} from './constants';
 
 function getTypeAbbrev(deviceTypeName: string): string {
   return TYPE_ABBREVS[deviceTypeName.toLowerCase()] ?? '?';
