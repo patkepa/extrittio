@@ -14,11 +14,12 @@ import {
 } from "../api/devices";
 import { queryKeys } from "./query-keys";
 
-export function useDevices(params?: ListDevicesParams) {
+export function useDevices(params?: ListDevicesParams, options?: { refetchInterval?: number }) {
   return useQuery({
     queryKey: queryKeys.devices.list(params),
     queryFn: () => getDevices(params),
     staleTime: 30_000,
+    refetchInterval: options?.refetchInterval,
   });
 }
 
