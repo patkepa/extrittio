@@ -5,7 +5,7 @@ import { forceCollide } from 'd3-force-3d';
 import type { GraphData, GraphNode, GraphLink } from './build-force-graph-data';
 import type { Device } from '../../types/api';
 import { getHealthTier, getStalenessColor, getPulseFrequency } from './health-utils';
-import { TIER_COLORS } from './constants';
+import { TIER_COLORS, TYPE_ICON_PATHS, FALLBACK_ICON_PATHS } from './constants';
 
 // --- Constants ---
 const FLEET_RADIUS = 18;
@@ -17,6 +17,39 @@ const GRID_SIZE = 40;
 const GRID_COLOR = 'rgba(255, 255, 255, 0.05)';
 const GRID_ACCENT_COLOR = 'rgba(255, 255, 255, 0.12)';
 const GRID_ACCENT_EVERY = 5; // every 5th line is brighter
+
+// --- Pre-built Path2D cache for device-type icons (16×16 viewBox) ---
+const iconPathCache = new Map<string, Path2D[]>();
+
+function getIconPaths(deviceTypeName?: string): Path2D[] {
+  const key = deviceTypeName?.toLowerCase() ?? '__fallback__';
+  let cached = iconPathCache.get(key);
+  if (cached) return cached;
+
+  const svgPaths = TYPE_ICON_PATHS[key] ?? FALLBACK_ICON_PATHS;
+  cached = svgPaths.map((d) => new Path2D(d));
+  iconPathCache.set(key, cached);
+  return cached;
+}
+
+/** Draw a Blueprint icon (16×16 paths) centered at (cx, cy), scaled to fit `size`. */
+function drawIcon(
+  ctx: CanvasRenderingContext2D,
+  paths: Path2D[],
+  cx: number,
+  cy: number,
+  size: number,
+) {
+  const scale = size / 16;
+  ctx.save();
+  // Translate so the 16×16 icon is centered at (cx, cy)
+  ctx.translate(cx - size / 2, cy - size / 2);
+  ctx.scale(scale, scale);
+  for (const p of paths) {
+    ctx.fill(p);
+  }
+  ctx.restore();
+}
 
 interface FleetGraphCanvasProps {
   graphData: GraphData;
@@ -225,12 +258,11 @@ export const FleetGraphCanvas = ({
           ctx.stroke();
         }
 
-        // Type abbreviation inside circle
-        ctx.font = `bold ${Math.max(8, effectiveRadius)}px -apple-system, sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
+        // Device type icon inside circle
+        const iconPaths = getIconPaths(node.deviceTypeName);
+        const iconSize = effectiveRadius * 1.2;
         ctx.fillStyle = '#ffffff';
-        ctx.fillText(node.typeAbbrev ?? '?', node.x!, node.y!);
+        drawIcon(ctx, iconPaths, node.x!, node.y!, iconSize);
 
         // Name label below
         const fontSize = Math.max(10, 12 / globalScale);

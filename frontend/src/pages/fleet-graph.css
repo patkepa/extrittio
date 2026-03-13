@@ -84,6 +84,20 @@
   font-size: 14px;
 }
 
+/* Health panel toggle button */
+.health-panel-toggle {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 5;
+  opacity: 0.6;
+  transition: opacity 0.15s ease;
+}
+
+.health-panel-toggle:hover {
+  opacity: 1;
+}
+
 /* Health Side Panel */
 .health-panel {
   width: 280px;

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Spinner, Callout, Icon, H4 } from '@blueprintjs/core';
+import { Spinner, Callout, Icon, H4, Button } from '@blueprintjs/core';
 import { useDevices } from '../hooks/use-devices';
 import { useFleets } from '../hooks/use-fleets';
 import { buildForceGraphData } from '../components/fleet-graph/build-force-graph-data';
@@ -74,6 +74,7 @@ export const FleetGraph = () => {
   }, []);
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [healthPanelOpen, setHealthPanelOpen] = useState(true);
 
   const handlePanelDeviceClick = useCallback(
     (nodeId: string) => {
@@ -135,9 +136,20 @@ export const FleetGraph = () => {
             onClose={() => setPopover(null)}
           />
         )}
+
+        {graphData && (
+          <Button
+            className="health-panel-toggle"
+            icon={healthPanelOpen ? 'chevron-right' : 'chevron-left'}
+            minimal
+            small
+            title={healthPanelOpen ? 'Hide health panel' : 'Show health panel'}
+            onClick={() => setHealthPanelOpen((v) => !v)}
+          />
+        )}
       </div>
 
-      {graphData && (
+      {graphData && healthPanelOpen && (
         <HealthPanel
           nodes={graphData.nodes}
           onDeviceClick={handlePanelDeviceClick}
