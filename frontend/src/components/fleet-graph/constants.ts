@@ -6,6 +6,7 @@ export const STATUS_COLORS: Record<string, string> = {
 };
 
 export const FLEET_COLOR = '#2D72D2';
+export const SELECTION_COLOR = '#2D72D2';
 export const DEFAULT_COLOR = '#555555';
 
 // --- Health tier thresholds (milliseconds) ---
