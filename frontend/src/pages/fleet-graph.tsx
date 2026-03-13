@@ -5,6 +5,8 @@ import { useFleets } from '../hooks/use-fleets';
 import { buildForceGraphData } from '../components/fleet-graph/build-force-graph-data';
 import { FleetGraphCanvas } from '../components/fleet-graph/fleet-graph-canvas';
 import { DevicePopover } from '../components/fleet-graph/device-popover';
+import { HealthPanel } from '../components/fleet-graph/health-panel';
+import type { GraphNode } from '../components/fleet-graph/build-force-graph-data';
 import type { Device } from '../types/api';
 import './fleet-graph.css';
 
@@ -14,7 +16,7 @@ interface PopoverState {
 }
 
 export const FleetGraph = () => {
-  const devicesQuery = useDevices({ limit: 10000 });
+  const devicesQuery = useDevices({ limit: 10000 }, { refetchInterval: 30_000 });
   const devices = devicesQuery.data?.data ?? [];
   const devicesLoading = devicesQuery.isLoading;
   const devicesError = devicesQuery.error;
@@ -44,9 +46,14 @@ export const FleetGraph = () => {
     return () => observer.disconnect();
   }, []);
 
+  const prevNodesRef = useRef<GraphNode[]>();
+
   const graphData = useMemo(() => {
     if (devices.length === 0) return null;
-    return buildForceGraphData(devices, fleets);
+    const data = buildForceGraphData(devices, fleets, prevNodesRef.current);
+    // Intentional side effect: cache nodes for next merge
+    prevNodesRef.current = data.nodes;
+    return data;
   }, [devices, fleets]);
 
   const handleNodeClick = useCallback(
@@ -65,6 +72,24 @@ export const FleetGraph = () => {
   const handleBackgroundClick = useCallback(() => {
     setPopover(null);
   }, []);
+
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+  const handlePanelDeviceClick = useCallback(
+    (nodeId: string) => {
+      setSelectedNodeId(nodeId);
+      // Also open popover for the device
+      const node = graphData?.nodes.find((n) => n.id === nodeId);
+      if (node?.type === 'device' && node.device) {
+        const rect = containerRef.current?.getBoundingClientRect() ?? { left: 0, top: 0, width: 0, height: 0 };
+        setPopover({
+          device: node.device,
+          position: { x: rect.width / 2 - 130, y: rect.height / 2 - 150 },
+        });
+      }
+    },
+    [graphData],
+  );
 
   // Dismiss popover on Escape key
   useEffect(() => {
@@ -115,6 +140,7 @@ export const FleetGraph = () => {
             height={dimensions.height}
             onNodeClick={handleNodeClick}
             onBackgroundClick={handleBackgroundClick}
+            selectedNodeId={selectedNodeId}
           />
         )}
 
@@ -126,6 +152,15 @@ export const FleetGraph = () => {
           />
         )}
       </div>
+
+      {graphData && (
+        <HealthPanel
+          nodes={graphData.nodes}
+          onDeviceClick={handlePanelDeviceClick}
+          selectedNodeId={selectedNodeId}
+          height={dimensions.height || 600}
+        />
+      )}
     </div>
   );
 };
