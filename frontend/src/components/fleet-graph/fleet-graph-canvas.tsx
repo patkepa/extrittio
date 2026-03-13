@@ -4,6 +4,8 @@ import ForceGraph2D from 'react-force-graph-2d';
 import { forceCollide } from 'd3-force-3d';
 import type { GraphData, GraphNode, GraphLink } from './build-force-graph-data';
 import type { Device } from '../../types/api';
+import { getHealthTier, getStalenessColor, getPulseFrequency } from './health-utils';
+import { TIER_COLORS } from './constants';
 
 // --- Constants ---
 const FLEET_RADIUS = 18;
@@ -18,6 +20,7 @@ interface FleetGraphCanvasProps {
   height: number;
   onNodeClick: (device: Device, position: { x: number; y: number }) => void;
   onBackgroundClick: () => void;
+  selectedNodeId?: string | null;
 }
 
 export const FleetGraphCanvas = ({
@@ -26,12 +29,24 @@ export const FleetGraphCanvas = ({
   height,
   onNodeClick,
   onBackgroundClick,
+  selectedNodeId,
 }: FleetGraphCanvasProps) => {
   const graphRef = useRef<any>(null);
   const [hoverNode, setHoverNode] = useState<GraphNode | null>(null);
   const highlightNodes = useRef(new Set<GraphNode>());
   const highlightLinks = useRef(new Set<GraphLink>());
   const hasInitialFit = useRef(false);
+  const pulseClockRef = useRef(0);
+
+  useEffect(() => {
+    let rafId: number;
+    const tick = () => {
+      pulseClockRef.current = performance.now();
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, []);
 
   // Configure forces after mount
   useEffect(() => {
@@ -44,6 +59,16 @@ export const FleetGraphCanvas = ({
       forceCollide((node: GraphNode) => (node.type === 'fleet' ? FLEET_RADIUS + 6 : DEVICE_RADIUS + 4)),
     );
   }, []);
+
+  // Center on selected node
+  useEffect(() => {
+    if (!selectedNodeId || !graphRef.current) return;
+    const node = graphData.nodes.find((n) => n.id === selectedNodeId);
+    if (node?.x != null && node?.y != null) {
+      graphRef.current.centerAt(node.x, node.y, 500);
+      graphRef.current.zoom(2, 500);
+    }
+  }, [selectedNodeId, graphData.nodes]);
 
   // Fit to view only on initial simulation settle
   const handleEngineStop = useCallback(() => {
@@ -128,9 +153,76 @@ export const FleetGraphCanvas = ({
           ctx.fillStyle = 'rgba(255,255,255,0.6)';
           ctx.fillText(`${node.deviceCount} device${node.deviceCount === 1 ? '' : 's'}`, node.x!, node.y! + FLEET_RADIUS + 12);
         }
+
+        // Fleet hub aggregate health donut ring
+        if (node.tierRatios) {
+          const ringRadius = radius + 4;
+          const ringWidth = 3;
+          let angle = -Math.PI / 2; // start at 12 o'clock
+
+          const segments: [number, string][] = [
+            [node.tierRatios.fresh, TIER_COLORS.fresh],
+            [node.tierRatios.warm, TIER_COLORS.warm],
+            [node.tierRatios.stale, TIER_COLORS.stale],
+            [node.tierRatios.dead, TIER_COLORS.dead],
+          ];
+
+          for (const [ratio, color] of segments) {
+            if (ratio <= 0) continue;
+            const arcLen = ratio * 2 * Math.PI;
+            ctx.beginPath();
+            ctx.arc(node.x!, node.y!, ringRadius, angle, angle + arcLen);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = ringWidth;
+            ctx.stroke();
+            angle += arcLen;
+          }
+        }
       } else {
-        // Device: type abbreviation inside circle
-        ctx.font = `bold ${Math.max(8, radius)}px -apple-system, sans-serif`;
+        // --- Device node: staleness-based color + pulse + uptime ring ---
+        const now = Date.now();
+        const stalenessMs = node.lastSeenTimestamp ? now - node.lastSeenTimestamp : NaN;
+        const tier = getHealthTier(stalenessMs);
+        const stalenessColor = getStalenessColor(stalenessMs);
+        const pulseHz = getPulseFrequency(tier);
+
+        // Dead nodes shrink slightly
+        const effectiveRadius = tier === 'dead' ? radius * 0.85 : radius;
+
+        // Pulse glow (radial gradient behind node) — only for fresh/warm
+        if (pulseHz > 0) {
+          const t = pulseClockRef.current / 1000;
+          const glowRadius = effectiveRadius + 4 + 4 * Math.sin(2 * Math.PI * pulseHz * t);
+          const gradient = ctx.createRadialGradient(
+            node.x!, node.y!, effectiveRadius,
+            node.x!, node.y!, glowRadius,
+          );
+          gradient.addColorStop(0, stalenessColor + '80'); // 50% alpha
+          gradient.addColorStop(1, stalenessColor + '00'); // fully transparent
+          ctx.beginPath();
+          ctx.arc(node.x!, node.y!, glowRadius, 0, 2 * Math.PI);
+          ctx.fillStyle = gradient;
+          ctx.fill();
+        }
+
+        // Main circle
+        ctx.beginPath();
+        ctx.arc(node.x!, node.y!, effectiveRadius, 0, 2 * Math.PI);
+        ctx.fillStyle = stalenessColor;
+        ctx.fill();
+
+        // Uptime ring
+        if (node.uptimeArcAngle && node.uptimeArcAngle > 0) {
+          ctx.beginPath();
+          const startAngle = -Math.PI / 2; // 12 o'clock
+          ctx.arc(node.x!, node.y!, effectiveRadius + 3, startAngle, startAngle + node.uptimeArcAngle);
+          ctx.strokeStyle = stalenessColor;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+
+        // Type abbreviation inside circle
+        ctx.font = `bold ${Math.max(8, effectiveRadius)}px -apple-system, sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = '#ffffff';
@@ -140,7 +232,7 @@ export const FleetGraphCanvas = ({
         const fontSize = Math.max(10, 12 / globalScale);
         ctx.font = `${fontSize}px -apple-system, sans-serif`;
         ctx.fillStyle = shouldDim ? `rgba(255,255,255,${DIM_OPACITY})` : 'rgba(255,255,255,0.8)';
-        ctx.fillText(node.name, node.x!, node.y! + radius + fontSize + 2);
+        ctx.fillText(node.name, node.x!, node.y! + effectiveRadius + fontSize + 2);
       }
 
       // Reset
