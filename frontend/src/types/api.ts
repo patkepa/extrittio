@@ -37,6 +37,52 @@ export type ListDevicesParams = NonNullable<
 >;
 
 // ---------------------------------------------------------------------------
+// Bulk Operations
+// ---------------------------------------------------------------------------
+
+export interface BulkDeviceFilters {
+  status?: string;
+  search?: string;
+  fleet_id?: number;
+}
+
+export interface BulkTargeting {
+  device_ids?: string[];
+  filters?: BulkDeviceFilters;
+  select_all?: boolean;
+}
+
+export interface BulkFleetRequest extends BulkTargeting {
+  fleet_id: number | null;
+}
+
+export interface BulkOtaRequest extends BulkTargeting {
+  firmware_update_id: number;
+}
+
+export interface BulkAffectedResponse {
+  affected: number;
+}
+
+export interface BulkOperationError {
+  device_id: string;
+  error: string;
+}
+
+export interface BulkResultResponse {
+  succeeded: number;
+  failed: number;
+  errors: BulkOperationError[];
+}
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+// ---------------------------------------------------------------------------
 // Device Types
 // ---------------------------------------------------------------------------
 
