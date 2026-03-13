@@ -50,4 +50,8 @@ export const queryKeys = {
   apiKeys: {
     all: ["api-keys"] as const,
   },
+  serverMetrics: {
+    current: ["server-metrics-current"] as const,
+    history: (params?: unknown) => ["server-metrics-history", params] as const,
+  },
 } as const;

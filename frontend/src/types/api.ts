@@ -202,3 +202,43 @@ export interface CreateApiKeyResponse {
 export type HealthResponse = components["schemas"]["HealthResponse"];
 export type ReadyResponse = components["schemas"]["ReadyResponse"];
 export type ErrorBody = components["schemas"]["ErrorBody"];
+
+// ---------------------------------------------------------------------------
+// Server Metrics
+// ---------------------------------------------------------------------------
+
+export interface SystemMetricsSnapshot {
+  cpu_usage_percent: number;
+  memory_used_bytes: number;
+  memory_total_bytes: number;
+  disk_used_bytes: number;
+  disk_total_bytes: number;
+  network_rx_bytes_delta: number;
+  network_tx_bytes_delta: number;
+  load_avg_1m: number;
+  load_avg_5m: number;
+  load_avg_15m: number;
+  recorded_at: string;
+}
+
+export interface AppMetricsSnapshot {
+  request_count: number;
+  error_count: number;
+  avg_latency_ms: number;
+  p95_latency_ms: number;
+  db_pool_active: number;
+  db_pool_idle: number;
+  zenoh_messages_in: number;
+  zenoh_messages_out: number;
+  recorded_at: string;
+}
+
+export interface CurrentMetricsResponse {
+  system: SystemMetricsSnapshot | null;
+  app: AppMetricsSnapshot | null;
+}
+
+export interface MetricsHistoryResponse {
+  system: SystemMetricsSnapshot[];
+  app: AppMetricsSnapshot[];
+}
