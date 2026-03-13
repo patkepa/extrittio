@@ -30,6 +30,7 @@ time = "0.3"
 pem = "3"
 libsqlite3-sys = { version = "0.35", features = ["bundled"] }
 socket2 = "0.5"
+sysinfo = "0.33"
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
 tikv-jemallocator = "0.6"

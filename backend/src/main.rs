@@ -24,7 +24,8 @@ use extrittio_backend::config::AppConfig;
 use extrittio_backend::init;
 use extrittio_backend::middleware::auth_middleware;
 use extrittio_backend::rate_limit::{self, ApiKeyRateLimiter, RateLimiter};
-use extrittio_backend::state::AppState;
+use extrittio_backend::state::{AppState, MetricsAccumulator, ZenohMetrics};
+use extrittio_backend::services;
 use extrittio_backend::{api, background, zenoh_handler};
 
 #[tokio::main]
@@ -66,6 +67,9 @@ async fn main() {
     );
     info!("Zenoh session opened");
 
+    // Zenoh metrics
+    let zenoh_metrics = Arc::new(ZenohMetrics::new());
+
     // Application state
     let state = Arc::new(AppState {
         db_pool: db_pool.clone(),
@@ -74,6 +78,8 @@ async fn main() {
         api_rate_limiter: RateLimiter::new(100, 60),
         login_rate_limiter: RateLimiter::new(5, 60),
         ci_rate_limiter: ApiKeyRateLimiter::new(60, 60),
+        metrics_accumulator: MetricsAccumulator::new(),
+        zenoh_metrics: zenoh_metrics.clone(),
     });
 
     // Background tasks
@@ -125,6 +131,10 @@ async fn main() {
             rate_limit::rate_limit_middleware,
         ))
         .layer(trace_layer)
+        .layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            services::metrics_middleware::metrics_middleware,
+        ))
         .layer(cors)
         .with_state(state);
 
