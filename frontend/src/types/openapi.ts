@@ -651,10 +651,13 @@ export interface components {
             fleet_name?: string | null;
             id: string;
             last_seen: string;
+            last_seen_at?: string | null;
             location: string;
             name: string;
             status: string;
             uptime: string;
+            /** Format: int32 */
+            uptime_seconds: number;
         };
         DeviceTypeResponse: {
             /** Format: int32 */
@@ -666,6 +669,11 @@ export interface components {
             error: string;
         };
         FirmwareUpdateResponse: {
+            branch?: string | null;
+            build_timestamp?: string | null;
+            changelog?: string | null;
+            ci_run_url?: string | null;
+            commit_sha?: string | null;
             created_at: string;
             description?: string | null;
             /** Format: int32 */
@@ -678,6 +686,7 @@ export interface components {
             /** Format: int32 */
             id: number;
             sha256?: string | null;
+            source: string;
             url: string;
             version: string;
         };
@@ -756,10 +765,13 @@ export interface components {
                 fleet_name?: string | null;
                 id: string;
                 last_seen: string;
+                last_seen_at?: string | null;
                 location: string;
                 name: string;
                 status: string;
                 uptime: string;
+                /** Format: int32 */
+                uptime_seconds: number;
             }[];
             /** Format: int64 */
             limit: number;
@@ -783,6 +795,11 @@ export interface components {
         };
         PaginatedResponse_FirmwareUpdateResponse: {
             data: {
+                branch?: string | null;
+                build_timestamp?: string | null;
+                changelog?: string | null;
+                ci_run_url?: string | null;
+                commit_sha?: string | null;
                 created_at: string;
                 description?: string | null;
                 /** Format: int32 */
@@ -795,6 +812,7 @@ export interface components {
                 /** Format: int32 */
                 id: number;
                 sha256?: string | null;
+                source: string;
                 url: string;
                 version: string;
             }[];
