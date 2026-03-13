@@ -19,7 +19,8 @@ pub fn compute_delta(desired: &Value, reported: &Value) -> Value {
             }
             Value::Object(delta)
         }
-        _ => desired.clone(),
+        (Some(_d), None) => desired.clone(),
+        _ => Value::Object(serde_json::Map::new()),
     }
 }
 

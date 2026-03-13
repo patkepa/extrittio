@@ -58,6 +58,7 @@ interface FleetGraphCanvasProps {
   height: number;
   onNodeClick: (device: Device, position: { x: number; y: number }) => void;
   onBackgroundClick: (event?: MouseEvent) => void;
+  onNodeRightClick?: (node: GraphNode, event: MouseEvent) => void;
   selectedNodeId?: string | null;
 }
 
@@ -67,6 +68,7 @@ export const FleetGraphCanvas = ({
   height,
   onNodeClick,
   onBackgroundClick,
+  onNodeRightClick,
   selectedNodeId,
 }: FleetGraphCanvasProps) => {
   const graphRef = useRef<any>(null);
@@ -553,6 +555,7 @@ export const FleetGraphCanvas = ({
       linkCanvasObjectMode={() => 'replace'}
       onNodeHover={handleNodeHover as any}
       onNodeClick={handleNodeClick as any}
+      onNodeRightClick={onNodeRightClick as any}
       onBackgroundClick={handleBackgroundClickInternal as any}
       onEngineStop={handleEngineStop}
       enablePanInteraction={enablePanInteraction as any}

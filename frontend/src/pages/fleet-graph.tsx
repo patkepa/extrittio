@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Spinner, Callout, Icon, H4, Button } from '@blueprintjs/core';
-import { useDevices } from '../hooks/use-devices';
+import { useDevices, useBulkChangeFleet } from '../hooks/use-devices';
 import { useFleets } from '../hooks/use-fleets';
 import { buildForceGraphData } from '../components/fleet-graph/build-force-graph-data';
 import { FleetGraphCanvas } from '../components/fleet-graph/fleet-graph-canvas';
 import { DevicePopover } from '../components/fleet-graph/device-popover';
 import { HealthPanel } from '../components/fleet-graph/health-panel';
+import { FleetGraphContextMenu, type ContextMenuState } from '../components/fleet-graph/fleet-graph-context-menu';
+import { useSelectionStore } from '../stores/selection-store';
+import { showSuccessToast, showErrorToast } from '../utils/toaster';
 import type { GraphNode } from '../components/fleet-graph/build-force-graph-data';
 import type { Device } from '../types/api';
 import './fleet-graph.css';
@@ -22,6 +25,8 @@ export const FleetGraph = () => {
   const devicesError = devicesQuery.error;
   const { data: fleets = [], isLoading: fleetsLoading, error: fleetsError } = useFleets();
   const [popover, setPopover] = useState<PopoverState | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const bulkFleetMutation = useBulkChangeFleet();
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
@@ -73,6 +78,42 @@ export const FleetGraph = () => {
     setPopover(null);
   }, []);
 
+  const handleNodeRightClick = useCallback((node: GraphNode, event: MouseEvent) => {
+    event.preventDefault();
+    setContextMenu({
+      position: { x: event.clientX, y: event.clientY },
+      target: { type: node.type, node },
+    });
+  }, []);
+
+  const handleContextMenuViewDetails = useCallback((node: GraphNode) => {
+    if (node.type === 'device' && node.device) {
+      const rect = containerRef.current?.getBoundingClientRect() ?? { left: 0, top: 0, width: 0, height: 0 };
+      setPopover({
+        device: node.device,
+        position: { x: rect.width / 2 - 130, y: rect.height / 2 - 150 },
+      });
+    }
+  }, []);
+
+  const handleAssignFleet = useCallback(async (deviceIds: string[], fleetId: number) => {
+    try {
+      const result = await bulkFleetMutation.mutateAsync({ device_ids: deviceIds, fleet_id: fleetId });
+      void showSuccessToast(`${result.affected} device${result.affected !== 1 ? 's' : ''} moved to fleet`);
+    } catch {
+      void showErrorToast('Failed to change fleet');
+    }
+  }, [bulkFleetMutation]);
+
+  const handleRemoveFromFleet = useCallback(async (deviceIds: string[]) => {
+    try {
+      const result = await bulkFleetMutation.mutateAsync({ device_ids: deviceIds, fleet_id: null });
+      void showSuccessToast(`${result.affected} device${result.affected !== 1 ? 's' : ''} removed from fleet`);
+    } catch {
+      void showErrorToast('Failed to remove from fleet');
+    }
+  }, [bulkFleetMutation]);
+
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [healthPanelOpen, setHealthPanelOpen] = useState(true);
 
@@ -92,14 +133,22 @@ export const FleetGraph = () => {
     [graphData],
   );
 
-  // Dismiss popover on Escape key
+  // Dismiss context menu → popover → selection on Escape key (priority ordering)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setPopover(null);
+      if (e.key === 'Escape') {
+        if (contextMenu) {
+          setContextMenu(null);
+        } else if (popover) {
+          setPopover(null);
+        } else {
+          useSelectionStore.getState().clearSelection();
+        }
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [contextMenu, popover]);
 
   // Always render the container so ResizeObserver can measure it.
   // Show loading/error/empty states inside the canvas area.
@@ -125,6 +174,7 @@ export const FleetGraph = () => {
             height={dimensions.height}
             onNodeClick={handleNodeClick}
             onBackgroundClick={handleBackgroundClick}
+            onNodeRightClick={handleNodeRightClick}
             selectedNodeId={selectedNodeId}
           />
         ) : null}
@@ -134,6 +184,16 @@ export const FleetGraph = () => {
             device={popover.device}
             position={popover.position}
             onClose={() => setPopover(null)}
+          />
+        )}
+
+        {contextMenu && (
+          <FleetGraphContextMenu
+            state={contextMenu}
+            onClose={() => setContextMenu(null)}
+            onViewDetails={handleContextMenuViewDetails}
+            onAssignFleet={(ids, fid) => void handleAssignFleet(ids, fid)}
+            onRemoveFromFleet={(ids) => void handleRemoveFromFleet(ids)}
           />
         )}
 

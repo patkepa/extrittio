@@ -1,5 +1,6 @@
 // Repository functions for users
 
+use diesel::Connection;
 use diesel::SqliteConnection;
 use diesel::prelude::*;
 
@@ -37,14 +38,16 @@ pub fn insert_user(
     conn: &mut SqliteConnection,
     user: &NewUser,
 ) -> Result<User, diesel::result::Error> {
-    diesel::insert_into(users::table)
-        .values(user)
-        .execute(conn)?;
+    conn.transaction(|conn| {
+        diesel::insert_into(users::table)
+            .values(user)
+            .execute(conn)?;
 
-    users::table
-        .filter(users::username.eq(&user.username))
-        .select(User::as_select())
-        .first(conn)
+        users::table
+            .filter(users::username.eq(&user.username))
+            .select(User::as_select())
+            .first(conn)
+    })
 }
 
 pub fn delete_user(conn: &mut SqliteConnection, id: i32) -> Result<bool, diesel::result::Error> {

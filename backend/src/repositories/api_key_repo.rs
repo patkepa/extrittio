@@ -1,3 +1,4 @@
+use diesel::Connection;
 use diesel::prelude::*;
 use crate::db::models::{ApiKey, NewApiKey};
 use crate::db::schema::api_keys;
@@ -6,14 +7,16 @@ pub fn insert_api_key(
     conn: &mut SqliteConnection,
     new_key: &NewApiKey,
 ) -> Result<ApiKey, diesel::result::Error> {
-    diesel::insert_into(api_keys::table)
-        .values(new_key)
-        .execute(conn)?;
+    conn.transaction(|conn| {
+        diesel::insert_into(api_keys::table)
+            .values(new_key)
+            .execute(conn)?;
 
-    api_keys::table
-        .order(api_keys::id.desc())
-        .select(ApiKey::as_select())
-        .first(conn)
+        api_keys::table
+            .order(api_keys::id.desc())
+            .select(ApiKey::as_select())
+            .first(conn)
+    })
 }
 
 pub fn find_api_key_by_hash(

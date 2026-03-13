@@ -483,7 +483,7 @@ async fn handle_ota(
     // Check if we're already running the requested version
     {
         let current = firmware_version.lock().await;
-        if current.contains(&fw_version) {
+        if *current == format!("v{fw_version}") {
             info!("OTA: already running v{}, skipping", fw_version);
             report_ota_status(
                 &reported_state,

@@ -14,7 +14,7 @@ pub mod ota;
 pub mod shadow;
 pub mod topics;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod tests {
     use super::extrittio::*;
     use prost::Message;
