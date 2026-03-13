@@ -71,6 +71,72 @@ pub struct TriggerOtaRequest {
     pub firmware_update_id: i32,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(default)]
+pub struct BulkDeviceFilters {
+    pub status: Option<String>,
+    pub search: Option<String>,
+    pub fleet_id: Option<i32>,
+}
+
+impl Default for BulkDeviceFilters {
+    fn default() -> Self {
+        Self { status: None, search: None, fleet_id: None }
+    }
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct BulkFleetRequest {
+    #[serde(default)]
+    pub device_ids: Option<Vec<String>>,
+    #[serde(default)]
+    pub filters: Option<BulkDeviceFilters>,
+    #[serde(default)]
+    pub select_all: Option<bool>,
+    #[serde(default)]
+    #[schema(value_type = Option<i32>)]
+    pub fleet_id: Option<Option<i32>>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct BulkDeviceRequest {
+    #[serde(default)]
+    pub device_ids: Option<Vec<String>>,
+    #[serde(default)]
+    pub filters: Option<BulkDeviceFilters>,
+    #[serde(default)]
+    pub select_all: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct BulkOtaRequest {
+    #[serde(default)]
+    pub device_ids: Option<Vec<String>>,
+    #[serde(default)]
+    pub filters: Option<BulkDeviceFilters>,
+    #[serde(default)]
+    pub select_all: Option<bool>,
+    pub firmware_update_id: i32,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct BulkAffectedResponse {
+    pub affected: i64,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct BulkOperationError {
+    pub device_id: String,
+    pub error: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct BulkResultResponse {
+    pub succeeded: i64,
+    pub failed: i64,
+    pub errors: Vec<BulkOperationError>,
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -154,6 +220,44 @@ fn to_device_response(
     }
 }
 
+const MAX_BULK_SIZE: usize = 500;
+
+/// Resolve the target device IDs from a bulk request body.
+fn resolve_target_ids(
+    conn: &mut diesel::SqliteConnection,
+    device_ids: Option<Vec<String>>,
+    filters: Option<&BulkDeviceFilters>,
+    select_all: Option<bool>,
+) -> Result<Vec<String>, AppError> {
+    let ids = if select_all.unwrap_or(false) {
+        let f = filters.unwrap_or(&BulkDeviceFilters {
+            status: None,
+            search: None,
+            fleet_id: None,
+        });
+        device_repo::resolve_device_ids(
+            conn,
+            f.status.as_deref(),
+            f.search.as_deref(),
+            f.fleet_id,
+        )?
+    } else {
+        device_ids.ok_or_else(|| {
+            AppError::BadRequest("Either device_ids or select_all with filters is required".into())
+        })?
+    };
+
+    // Empty results are not an error — handlers return success with 0 counts.
+    if ids.len() > MAX_BULK_SIZE {
+        return Err(AppError::BadRequest(format!(
+            "Too many devices ({}). Maximum is {MAX_BULK_SIZE}. Narrow your filters.",
+            ids.len()
+        )));
+    }
+
+    Ok(ids)
+}
+
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
@@ -171,6 +275,10 @@ pub fn router() -> Router<Arc<AppState>> {
             "/api/v1/devices/{id}/ota-deployments",
             get(list_ota_deployments),
         )
+        .route("/api/v1/devices/bulk/fleet", post(bulk_change_fleet))
+        .route("/api/v1/devices/bulk/delete", post(bulk_delete_devices))
+        .route("/api/v1/devices/bulk/restart", post(bulk_restart_devices))
+        .route("/api/v1/devices/bulk/ota", post(bulk_trigger_ota))
 }
 
 // ---------------------------------------------------------------------------
@@ -416,6 +524,117 @@ pub(crate) async fn trigger_ota(
     )
     .await?;
     Ok(StatusCode::OK)
+}
+
+/// Bulk change fleet assignment for multiple devices.
+pub(crate) async fn bulk_change_fleet(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<BulkFleetRequest>,
+) -> Result<Json<BulkAffectedResponse>, AppError> {
+    let target_fleet_id = body.fleet_id.ok_or_else(|| {
+        AppError::BadRequest("fleet_id is required (use null to unassign)".into())
+    })?;
+
+    let response = run_db(&state.db_pool, move |conn| {
+        let ids = resolve_target_ids(conn, body.device_ids, body.filters.as_ref(), body.select_all)?;
+        let affected = device_repo::bulk_update_fleet(conn, &ids, target_fleet_id, Utc::now().naive_utc())?;
+        Ok(BulkAffectedResponse { affected: affected as i64 })
+    })
+    .await?;
+
+    Ok(Json(response))
+}
+
+/// Bulk delete multiple devices.
+pub(crate) async fn bulk_delete_devices(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<BulkDeviceRequest>,
+) -> Result<Json<BulkAffectedResponse>, AppError> {
+    let response = run_db(&state.db_pool, move |conn| {
+        let ids = resolve_target_ids(conn, body.device_ids, body.filters.as_ref(), body.select_all)?;
+        let deleted = device_repo::bulk_delete_devices(conn, &ids)?;
+        Ok(BulkAffectedResponse { affected: deleted as i64 })
+    })
+    .await?;
+
+    Ok(Json(response))
+}
+
+/// Bulk restart multiple devices.
+pub(crate) async fn bulk_restart_devices(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<BulkDeviceRequest>,
+) -> Result<Json<BulkResultResponse>, AppError> {
+    let ids = run_db(&state.db_pool, move |conn| {
+        resolve_target_ids(conn, body.device_ids, body.filters.as_ref(), body.select_all)
+    })
+    .await?;
+
+    let mut succeeded: i64 = 0;
+    let mut failed: i64 = 0;
+    let mut errors = Vec::new();
+
+    for device_id in &ids {
+        match command_service::send_command(
+            &state.db_pool,
+            &state.zenoh_session,
+            device_id,
+            "restart",
+            HashMap::default(),
+        )
+        .await
+        {
+            Ok(_) => succeeded += 1,
+            Err(e) => {
+                failed += 1;
+                errors.push(BulkOperationError {
+                    device_id: device_id.clone(),
+                    error: e.to_string(),
+                });
+            }
+        }
+    }
+
+    Ok(Json(BulkResultResponse { succeeded, failed, errors }))
+}
+
+/// Bulk trigger OTA firmware update on multiple devices.
+pub(crate) async fn bulk_trigger_ota(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<BulkOtaRequest>,
+) -> Result<Json<BulkResultResponse>, AppError> {
+    let firmware_update_id = body.firmware_update_id;
+
+    let ids = run_db(&state.db_pool, move |conn| {
+        resolve_target_ids(conn, body.device_ids, body.filters.as_ref(), body.select_all)
+    })
+    .await?;
+
+    let mut succeeded: i64 = 0;
+    let mut failed: i64 = 0;
+    let mut errors = Vec::new();
+
+    for device_id in &ids {
+        match device_service::trigger_ota(
+            &state.db_pool,
+            &state.zenoh_session,
+            device_id,
+            firmware_update_id,
+        )
+        .await
+        {
+            Ok(_) => succeeded += 1,
+            Err(e) => {
+                failed += 1;
+                errors.push(BulkOperationError {
+                    device_id: device_id.clone(),
+                    error: e.to_string(),
+                });
+            }
+        }
+    }
+
+    Ok(Json(BulkResultResponse { succeeded, failed, errors }))
 }
 
 // ---------------------------------------------------------------------------
