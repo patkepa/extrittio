@@ -197,3 +197,16 @@
 .health-panel-dot {
   color: hsl(var(--muted));
 }
+
+/* Context menu overlay */
+.fleet-graph-context-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+}
+
+.fleet-graph-context-menu {
+  position: fixed;
+  z-index: 101;
+  outline: none;
+}
