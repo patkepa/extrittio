@@ -321,24 +321,24 @@ export const FleetGraphCanvas = ({
         // Animate dash offset so the dashes appear to flow
         ctx.lineDashOffset = -(pulseClockRef.current / 1000) * 12;
       } else {
-        ctx.setLineDash([]);
+        ctx.setLineDash([3, 5]);
       }
       ctx.moveTo(source.x!, source.y!);
       ctx.lineTo(target.x!, target.y!);
 
       if (isHighlighted) {
-        ctx.strokeStyle = isActive ? 'rgba(15, 153, 96, 0.8)' : 'rgba(130, 130, 130, 0.6)';
+        ctx.strokeStyle = isActive ? 'rgba(0, 200, 80, 0.9)' : 'rgba(255, 60, 60, 0.8)';
         ctx.lineWidth = 1.5;
-        ctx.shadowColor = isActive ? 'rgba(15, 153, 96, 0.3)' : 'rgba(130, 130, 130, 0.2)';
+        ctx.shadowColor = isActive ? 'rgba(0, 200, 80, 0.4)' : 'rgba(255, 60, 60, 0.3)';
         ctx.shadowBlur = 6;
       } else if (shouldDim) {
         ctx.strokeStyle = isActive
-          ? `rgba(15, 153, 96, ${DIM_OPACITY * 0.5})`
-          : `rgba(130, 130, 130, ${DIM_OPACITY * 0.5})`;
+          ? `rgba(0, 200, 80, ${DIM_OPACITY * 0.5})`
+          : `rgba(255, 60, 60, ${DIM_OPACITY * 0.5})`;
         ctx.lineWidth = 0.5;
         ctx.shadowBlur = 0;
       } else {
-        ctx.strokeStyle = isActive ? 'rgba(15, 153, 96, 0.35)' : 'rgba(130, 130, 130, 0.2)';
+        ctx.strokeStyle = isActive ? 'rgba(0, 200, 80, 0.6)' : 'rgba(255, 60, 60, 0.45)';
         ctx.lineWidth = isActive ? 1 : 0.5;
         ctx.shadowBlur = 0;
       }

@@ -88,11 +88,15 @@ pub(crate) async fn get_device_telemetry(
     Path(id): Path<String>,
     Query(params): Query<TelemetryQuery>,
 ) -> Result<Json<Vec<TelemetryResponse>>, AppError> {
+    // Parse timestamp filters before entering the blocking closure so
+    // validation errors surface as 400 rather than 500.
     let since = parse_timestamp(params.since.as_deref())?;
     let before = parse_timestamp(params.before.as_deref())?;
 
     let response = run_db(&state.db_pool, move |conn| {
+        // Verify device exists (404 if not)
         device_repo::find_device(conn, &id)?;
+        // Determine limit (default 50, max 1000)
         let limit = params.limit.unwrap_or(50).clamp(1, 1000);
         let results = telemetry_repo::list_telemetry(conn, &id, since, before, limit)?;
         Ok(results.into_iter().map(TelemetryResponse::from).collect())

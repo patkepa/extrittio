@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Callout, SegmentedControl, Spinner } from '@blueprintjs/core';
 import { AreaChart, Area, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { useDeviceTelemetry, useAllDeviceTelemetry } from '../../hooks/use-telemetry';
@@ -224,8 +224,8 @@ export const TelemetryTab = ({ deviceId, deviceTypeName }: TelemetryTabProps) =>
   const rangeConfig = RANGES[selectedRange];
   const isAll = selectedRange === 'all';
 
-  // Time-bounded query (for all ranges except "All")
-  const since = computeSince(rangeConfig);
+  // Stabilize `since` so the React Query key doesn't change on every render
+  const since = useMemo(() => computeSince(rangeConfig), [selectedRange]);
   const boundedQuery = useDeviceTelemetry(
     isAll ? null : deviceId,
     { limit: rangeConfig.limit, since }
