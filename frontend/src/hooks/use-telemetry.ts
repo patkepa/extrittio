@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import type { TelemetryParams, TelemetryRecord } from "../types/api";
 import { getDeviceTelemetry } from "../api/telemetry";
 import { queryKeys } from "./query-keys";
@@ -12,6 +12,7 @@ export function useDeviceTelemetry(
     queryFn: () => getDeviceTelemetry(deviceId!, params),
     enabled: !!deviceId,
     staleTime: 10_000,
+    placeholderData: keepPreviousData,
   });
 }
 

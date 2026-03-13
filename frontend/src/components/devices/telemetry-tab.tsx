@@ -238,6 +238,7 @@ export const TelemetryTab = ({ deviceId, deviceTypeName }: TelemetryTabProps) =>
   const activeQuery = isAll ? allQuery : boundedQuery;
   const telemetryRecords = activeQuery.data ?? [];
   const isLoading = activeQuery.isLoading;
+  const isFetching = activeQuery.isFetching;
   const isError = activeQuery.isError;
 
   const profile = getProfile(deviceTypeName);
@@ -302,12 +303,15 @@ export const TelemetryTab = ({ deviceId, deviceTypeName }: TelemetryTabProps) =>
       <div className="telemetry-section">
         <div className="telemetry-range-bar">
           <span className="section-label">Charts</span>
-          <SegmentedControl
-            options={RANGE_OPTIONS}
-            value={selectedRange}
-            onValueChange={(val) => setSelectedRange(val as RangeKey)}
-            small
-          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {isFetching && !isLoading && <Spinner size={16} />}
+            <SegmentedControl
+              options={RANGE_OPTIONS}
+              value={selectedRange}
+              onValueChange={(val) => setSelectedRange(val as RangeKey)}
+              small
+            />
+          </div>
         </div>
         {isAll && telemetryRecords.length >= 50_000 && (
           <Callout intent="warning" icon="info-sign" compact style={{ marginTop: 8 }}>
