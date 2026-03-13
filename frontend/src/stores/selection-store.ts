@@ -9,6 +9,8 @@ interface SelectionStore {
   toggleDevice: (id: string) => void;
   selectAllVisible: (ids: string[]) => void;
   deselectAllVisible: () => void;
+  addToSelection: (ids: string[]) => void;
+  removeFromSelection: (ids: string[]) => void;
   selectAllMatching: (filters: BulkDeviceFilters) => void;
   clearSelection: () => void;
   isSelected: (id: string) => boolean;
@@ -46,6 +48,28 @@ export const useSelectionStore = create<SelectionStore>((set, get) => ({
       selectedDeviceIds: new Set(),
       isAllMatchingSelected: false,
       selectionFilters: null,
+    }),
+
+  addToSelection: (ids) =>
+    set((state) => {
+      const next = new Set(state.selectedDeviceIds);
+      for (const id of ids) next.add(id);
+      return {
+        selectedDeviceIds: next,
+        isAllMatchingSelected: false,
+        selectionFilters: null,
+      };
+    }),
+
+  removeFromSelection: (ids) =>
+    set((state) => {
+      const next = new Set(state.selectedDeviceIds);
+      for (const id of ids) next.delete(id);
+      return {
+        selectedDeviceIds: next,
+        isAllMatchingSelected: false,
+        selectionFilters: null,
+      };
     }),
 
   selectAllMatching: (filters) =>
