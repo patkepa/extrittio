@@ -47,4 +47,7 @@ export const queryKeys = {
     deviceStatusAll: ["device-certificate-status"] as const,
     deviceStatus: (id: string) => ["device-certificate-status", id] as const,
   },
+  apiKeys: {
+    all: ["api-keys"] as const,
+  },
 } as const;
