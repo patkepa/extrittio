@@ -13,6 +13,10 @@ const DEVICE_RADIUS = 8;
 const HOVER_SCALE = 1.3;
 const DIM_OPACITY = 0.15;
 const FLEET_LABEL_FONT = 'bold 12px -apple-system, BlinkMacSystemFont, sans-serif';
+const GRID_SIZE = 40;
+const GRID_COLOR = 'rgba(255, 255, 255, 0.03)';
+const GRID_ACCENT_COLOR = 'rgba(255, 255, 255, 0.06)';
+const GRID_ACCENT_EVERY = 5; // every 5th line is brighter
 
 interface FleetGraphCanvasProps {
   graphData: GraphData;
@@ -274,6 +278,48 @@ export const FleetGraphCanvas = ({
     [hoverNode],
   );
 
+  // Draw a subtle grid on the canvas background
+  const paintGrid = useCallback((ctx: CanvasRenderingContext2D, globalScale: number) => {
+    const vp = graphRef.current;
+    if (!vp) return;
+
+    // Get the visible world-space bounds from the canvas transform
+    const topLeft = vp.screen2GraphCoords(0, 0);
+    const bottomRight = vp.screen2GraphCoords(width, height);
+
+    const step = GRID_SIZE;
+    const startX = Math.floor(topLeft.x / step) * step;
+    const startY = Math.floor(topLeft.y / step) * step;
+    const endX = Math.ceil(bottomRight.x / step) * step;
+    const endY = Math.ceil(bottomRight.y / step) * step;
+
+    ctx.save();
+
+    // Vertical lines
+    for (let x = startX; x <= endX; x += step) {
+      const gridIdx = Math.round(x / step);
+      ctx.strokeStyle = gridIdx % GRID_ACCENT_EVERY === 0 ? GRID_ACCENT_COLOR : GRID_COLOR;
+      ctx.lineWidth = 1 / globalScale;
+      ctx.beginPath();
+      ctx.moveTo(x, topLeft.y);
+      ctx.lineTo(x, bottomRight.y);
+      ctx.stroke();
+    }
+
+    // Horizontal lines
+    for (let y = startY; y <= endY; y += step) {
+      const gridIdx = Math.round(y / step);
+      ctx.strokeStyle = gridIdx % GRID_ACCENT_EVERY === 0 ? GRID_ACCENT_COLOR : GRID_COLOR;
+      ctx.lineWidth = 1 / globalScale;
+      ctx.beginPath();
+      ctx.moveTo(topLeft.x, y);
+      ctx.lineTo(bottomRight.x, y);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }, [width, height]);
+
   return (
     <ForceGraph2D
       ref={graphRef}
@@ -281,6 +327,7 @@ export const FleetGraphCanvas = ({
       width={width}
       height={height}
       backgroundColor="#000000"
+      onRenderFramePre={paintGrid as any}
       nodeCanvasObject={paintNode as any}
       nodeCanvasObjectMode={() => 'replace'}
       linkCanvasObject={paintLink as any}
