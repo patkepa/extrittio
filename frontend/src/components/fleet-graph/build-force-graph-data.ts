@@ -166,7 +166,7 @@ export function buildForceGraphData(
     let fresh = 0, warm = 0, stale = 0, dead = 0;
     for (const dn of deviceNeighbors) {
       const staleness = dn.lastSeenTimestamp ? now - dn.lastSeenTimestamp : NaN;
-      const tier = getHealthTier(staleness);
+      const tier = getHealthTier(staleness, dn.status);
       if (tier === 'fresh') fresh++;
       else if (tier === 'warm') warm++;
       else if (tier === 'stale') stale++;

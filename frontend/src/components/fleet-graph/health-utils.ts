@@ -8,13 +8,18 @@ import {
 
 /**
  * Determine health tier from staleness in milliseconds.
- * Returns 'dead' for null/NaN (device never seen).
+ * When staleness is unavailable (NaN), falls back to device status.
  */
-export function getHealthTier(stalenessMs: number): HealthTier {
-  if (Number.isNaN(stalenessMs) || stalenessMs < 0) return 'dead';
-  if (stalenessMs < STALENESS_FRESH_MS) return 'fresh';
-  if (stalenessMs < STALENESS_WARM_MS) return 'warm';
-  if (stalenessMs < STALENESS_STALE_MS) return 'stale';
+export function getHealthTier(stalenessMs: number, status?: string): HealthTier {
+  if (!Number.isNaN(stalenessMs) && stalenessMs >= 0) {
+    if (stalenessMs < STALENESS_FRESH_MS) return 'fresh';
+    if (stalenessMs < STALENESS_WARM_MS) return 'warm';
+    if (stalenessMs < STALENESS_STALE_MS) return 'stale';
+    return 'dead';
+  }
+  // Fallback to backend-reported status when staleness is unknown
+  if (status === 'online') return 'fresh';
+  if (status === 'warning') return 'warm';
   return 'dead';
 }
 
@@ -39,9 +44,12 @@ function lerpColor(colorA: string, colorB: string, t: number): string {
 /**
  * Compute the continuous staleness color from stalenessMs.
  * Interpolates within tier boundaries for smooth gradients.
+ * Falls back to device status when staleness is unavailable.
  */
-export function getStalenessColor(stalenessMs: number): string {
-  if (Number.isNaN(stalenessMs) || stalenessMs < 0) return TIER_COLORS.dead;
+export function getStalenessColor(stalenessMs: number, status?: string): string {
+  if (Number.isNaN(stalenessMs) || stalenessMs < 0) {
+    return TIER_COLORS[getHealthTier(stalenessMs, status)];
+  }
 
   if (stalenessMs < STALENESS_FRESH_MS) {
     return TIER_COLORS.fresh;

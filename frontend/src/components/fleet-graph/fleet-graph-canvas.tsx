@@ -219,8 +219,8 @@ export const FleetGraphCanvas = ({
         // --- Device node: staleness-based color + pulse + uptime ring ---
         const now = Date.now();
         const stalenessMs = node.lastSeenTimestamp ? now - node.lastSeenTimestamp : NaN;
-        const tier = getHealthTier(stalenessMs);
-        const stalenessColor = getStalenessColor(stalenessMs);
+        const tier = getHealthTier(stalenessMs, node.status);
+        const stalenessColor = getStalenessColor(stalenessMs, node.status);
         const pulseHz = getPulseFrequency(tier);
 
         // Dead nodes shrink slightly

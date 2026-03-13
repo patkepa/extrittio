@@ -7,6 +7,7 @@ import { TIER_COLORS, type HealthTier } from './constants';
 interface DeviceEntry {
   node: GraphNode;
   stalenessMs: number;
+  status?: string;
 }
 
 interface HealthPanelProps {
@@ -41,8 +42,8 @@ function HealthRow({
 }) {
   const entry = deviceEntries[index];
   if (!entry) return null;
-  const { node, stalenessMs } = entry;
-  const color = getStalenessColor(stalenessMs);
+  const { node, stalenessMs, status } = entry;
+  const color = getStalenessColor(stalenessMs, status);
   const isSelected = node.id === selectedNodeId;
 
   return (
@@ -74,7 +75,7 @@ export const HealthPanel = ({ nodes, onDeviceClick, selectedNodeId, height }: He
       .filter((n) => n.type === 'device')
       .map((n) => {
         const stalenessMs = n.lastSeenTimestamp ? now - n.lastSeenTimestamp : NaN;
-        return { node: n, stalenessMs };
+        return { node: n, stalenessMs, status: n.status };
       })
       .sort((a, b) => {
         const aVal = Number.isNaN(a.stalenessMs) ? Infinity : a.stalenessMs;
@@ -88,8 +89,8 @@ export const HealthPanel = ({ nodes, onDeviceClick, selectedNodeId, height }: He
   // Tier counts
   const tierCounts = useMemo(() => {
     const counts: Record<HealthTier, number> = { fresh: 0, warm: 0, stale: 0, dead: 0 };
-    for (const { stalenessMs } of deviceEntries) {
-      counts[getHealthTier(stalenessMs)]++;
+    for (const { stalenessMs, status } of deviceEntries) {
+      counts[getHealthTier(stalenessMs, status)]++;
     }
     return counts;
   }, [deviceEntries]);
