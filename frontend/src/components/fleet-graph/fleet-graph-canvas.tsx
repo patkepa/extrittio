@@ -278,12 +278,12 @@ export const FleetGraphCanvas = ({
     [hoverNode],
   );
 
-  // Draw a grid that pans/zooms with the graph
-  const paintGrid = useCallback((ctx: CanvasRenderingContext2D, _globalScale: number) => {
+  // Draw a grid in world-space (onRenderFramePre context is already transformed)
+  const paintGrid = useCallback((ctx: CanvasRenderingContext2D, globalScale: number) => {
     const fg = graphRef.current;
     if (!fg) return;
 
-    // Convert screen corners to world-space
+    // Get visible world-space bounds
     const topLeft = fg.screen2GraphCoords(0, 0);
     const bottomRight = fg.screen2GraphCoords(width, height);
 
@@ -293,28 +293,24 @@ export const FleetGraphCanvas = ({
     const endX = Math.ceil(bottomRight.x / step) * step;
     const endY = Math.ceil(bottomRight.y / step) * step;
 
-    // Convert world coords to screen coords for drawing
+    // Draw in world-space — context already has the zoom/pan transform
     for (let x = startX; x <= endX; x += step) {
       const gridIdx = Math.round(x / step);
-      const screenStart = fg.graph2ScreenCoords(x, topLeft.y);
-      const screenEnd = fg.graph2ScreenCoords(x, bottomRight.y);
       ctx.strokeStyle = gridIdx % GRID_ACCENT_EVERY === 0 ? GRID_ACCENT_COLOR : GRID_COLOR;
-      ctx.lineWidth = 1;
+      ctx.lineWidth = 1 / globalScale;
       ctx.beginPath();
-      ctx.moveTo(screenStart.x, screenStart.y);
-      ctx.lineTo(screenEnd.x, screenEnd.y);
+      ctx.moveTo(x, topLeft.y);
+      ctx.lineTo(x, bottomRight.y);
       ctx.stroke();
     }
 
     for (let y = startY; y <= endY; y += step) {
       const gridIdx = Math.round(y / step);
-      const screenStart = fg.graph2ScreenCoords(topLeft.x, y);
-      const screenEnd = fg.graph2ScreenCoords(bottomRight.x, y);
       ctx.strokeStyle = gridIdx % GRID_ACCENT_EVERY === 0 ? GRID_ACCENT_COLOR : GRID_COLOR;
-      ctx.lineWidth = 1;
+      ctx.lineWidth = 1 / globalScale;
       ctx.beginPath();
-      ctx.moveTo(screenStart.x, screenStart.y);
-      ctx.lineTo(screenEnd.x, screenEnd.y);
+      ctx.moveTo(topLeft.x, y);
+      ctx.lineTo(bottomRight.x, y);
       ctx.stroke();
     }
   }, [width, height]);
