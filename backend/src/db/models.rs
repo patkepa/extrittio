@@ -2,9 +2,9 @@ use chrono::NaiveDateTime;
 use diesel::prelude::*;
 
 use super::schema::{
-    api_keys, ca_certificates, command_history, device_certificates, device_configs, device_logs,
-    device_shadows, device_types, devices, firmware_blobs, firmware_updates, fleets,
-    ota_deployments, server_config, telemetry, users,
+    api_keys, app_metrics, ca_certificates, command_history, device_certificates, device_configs,
+    device_logs, device_shadows, device_types, devices, firmware_blobs, firmware_updates, fleets,
+    ota_deployments, server_config, server_metrics, telemetry, users,
 };
 
 // ---------------------------------------------------------------------------
@@ -421,4 +421,70 @@ pub struct NewApiKey {
     pub key_hash: String,
     pub key_prefix: String,
     pub device_type_id: Option<i32>,
+}
+
+// ---------------------------------------------------------------------------
+// Server Diagnostics
+// ---------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug)]
+#[diesel(table_name = server_metrics)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct ServerMetric {
+    pub id: i32,
+    pub cpu_usage_percent: f32,
+    pub memory_used_bytes: i64,
+    pub memory_total_bytes: i64,
+    pub disk_used_bytes: i64,
+    pub disk_total_bytes: i64,
+    pub network_rx_bytes_delta: i64,
+    pub network_tx_bytes_delta: i64,
+    pub load_avg_1m: f32,
+    pub load_avg_5m: f32,
+    pub load_avg_15m: f32,
+    pub recorded_at: NaiveDateTime,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = server_metrics)]
+pub struct NewServerMetric {
+    pub cpu_usage_percent: f32,
+    pub memory_used_bytes: i64,
+    pub memory_total_bytes: i64,
+    pub disk_used_bytes: i64,
+    pub disk_total_bytes: i64,
+    pub network_rx_bytes_delta: i64,
+    pub network_tx_bytes_delta: i64,
+    pub load_avg_1m: f32,
+    pub load_avg_5m: f32,
+    pub load_avg_15m: f32,
+}
+
+#[derive(Queryable, Selectable, Debug)]
+#[diesel(table_name = app_metrics)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct AppMetric {
+    pub id: i32,
+    pub request_count: i32,
+    pub error_count: i32,
+    pub avg_latency_ms: f32,
+    pub p95_latency_ms: f32,
+    pub db_pool_active: i32,
+    pub db_pool_idle: i32,
+    pub zenoh_messages_in: i32,
+    pub zenoh_messages_out: i32,
+    pub recorded_at: NaiveDateTime,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = app_metrics)]
+pub struct NewAppMetric {
+    pub request_count: i32,
+    pub error_count: i32,
+    pub avg_latency_ms: f32,
+    pub p95_latency_ms: f32,
+    pub db_pool_active: i32,
+    pub db_pool_idle: i32,
+    pub zenoh_messages_in: i32,
+    pub zenoh_messages_out: i32,
 }
