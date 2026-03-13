@@ -79,7 +79,7 @@ export const ServerHealth = () => {
 
   const reqSpark = appHistory.map((a: AppMetricsSnapshot) => a.request_count);
   const errSpark = appHistory.map((a: AppMetricsSnapshot) => a.error_count);
-  const latSpark = appHistory.map((a: AppMetricsSnapshot) => a.avg_latency_ms);
+  const latSpark = appHistory.map((a: AppMetricsSnapshot) => a.p95_latency_ms);
   const zenInSpark = appHistory.map((a: AppMetricsSnapshot) => a.zenoh_messages_in);
 
   // Derived values
@@ -202,7 +202,7 @@ export const ServerHealth = () => {
               <span className="server-metric-label">Requests</span>
               <div className="server-metric-value">
                 <span className="server-metric-detail">
-                  {app?.request_count ?? 0} reqs
+                  {((app?.request_count ?? 0) / 10).toFixed(1)} req/s
                 </span>
               </div>
               <div className="server-metric-spark">
@@ -265,7 +265,8 @@ export const ServerHealth = () => {
               <span className="server-metric-label">Zenoh</span>
               <div className="server-metric-value">
                 <span className="server-metric-detail">
-                  in {app?.zenoh_messages_in ?? 0} / out {app?.zenoh_messages_out ?? 0}
+                  in {((app?.zenoh_messages_in ?? 0) / 10).toFixed(1)}/s / out{" "}
+                  {((app?.zenoh_messages_out ?? 0) / 10).toFixed(1)}/s
                 </span>
               </div>
               <div className="server-metric-spark">

@@ -160,6 +160,11 @@ pub(crate) async fn get_metrics_history(
 ) -> Result<Json<MetricsHistoryResponse>, AppError> {
     let since = parse_since(params.since.as_deref())?;
     let resolution = params.resolution.unwrap_or(10);
+    if resolution < 10 {
+        return Err(AppError::BadRequest(
+            "resolution must be >= 10".into(),
+        ));
+    }
 
     let response = run_db(&state.db_pool, move |conn| {
         if resolution > 10 {
@@ -182,7 +187,7 @@ pub(crate) async fn get_metrics_history(
                     load_avg_1m: d.load_avg_1m,
                     load_avg_5m: d.load_avg_5m,
                     load_avg_15m: d.load_avg_15m,
-                    recorded_at: chrono::DateTime::from_timestamp(d.bucket as i64, 0)
+                    recorded_at: chrono::DateTime::from_timestamp(d.bucket, 0)
                         .unwrap_or_default()
                         .to_rfc3339(),
                 })
@@ -199,7 +204,7 @@ pub(crate) async fn get_metrics_history(
                     db_pool_idle: d.db_pool_idle,
                     zenoh_messages_in: d.zenoh_messages_in,
                     zenoh_messages_out: d.zenoh_messages_out,
-                    recorded_at: chrono::DateTime::from_timestamp(d.bucket as i64, 0)
+                    recorded_at: chrono::DateTime::from_timestamp(d.bucket, 0)
                         .unwrap_or_default()
                         .to_rfc3339(),
                 })

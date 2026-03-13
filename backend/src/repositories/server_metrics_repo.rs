@@ -16,8 +16,8 @@ use crate::db::schema::{app_metrics, server_metrics};
 #[derive(QueryableByName, Debug, Serialize)]
 #[serde(crate = "serde")]
 pub struct DownsampledServerMetric {
-    #[diesel(sql_type = Integer)]
-    pub bucket: i32,
+    #[diesel(sql_type = BigInt)]
+    pub bucket: i64,
     #[diesel(sql_type = Float)]
     pub cpu_usage_percent: f32,
     #[diesel(sql_type = BigInt)]
@@ -43,8 +43,8 @@ pub struct DownsampledServerMetric {
 #[derive(QueryableByName, Debug, Serialize)]
 #[serde(crate = "serde")]
 pub struct DownsampledAppMetric {
-    #[diesel(sql_type = Integer)]
-    pub bucket: i32,
+    #[diesel(sql_type = BigInt)]
+    pub bucket: i64,
     #[diesel(sql_type = Integer)]
     pub request_count: i32,
     #[diesel(sql_type = Integer)]
@@ -122,7 +122,7 @@ pub fn list_server_metrics(
 ) -> Result<Vec<ServerMetric>, diesel::result::Error> {
     server_metrics::table
         .filter(server_metrics::recorded_at.gt(since))
-        .order(server_metrics::recorded_at.desc())
+        .order(server_metrics::recorded_at.asc())
         .limit(limit)
         .select(ServerMetric::as_select())
         .load(conn)
@@ -135,7 +135,7 @@ pub fn list_app_metrics(
 ) -> Result<Vec<AppMetric>, diesel::result::Error> {
     app_metrics::table
         .filter(app_metrics::recorded_at.gt(since))
-        .order(app_metrics::recorded_at.desc())
+        .order(app_metrics::recorded_at.asc())
         .limit(limit)
         .select(AppMetric::as_select())
         .load(conn)
