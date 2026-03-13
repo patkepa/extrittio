@@ -100,40 +100,24 @@ export const FleetGraph = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  if (error) {
-    return (
-      <div className="fleet-graph-page">
-        <Callout intent="danger" icon="error">
-          Failed to load fleet data. Is the backend running?
-        </Callout>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="fleet-graph-page">
-        <Spinner />
-      </div>
-    );
-  }
-
-  if (devices.length === 0) {
-    return (
-      <div className="fleet-graph-page">
-        <div className="fleet-graph-empty">
-          <Icon icon="graph" size={48} />
-          <H4>No devices yet</H4>
-          <p>Add devices to see your fleet graph</p>
-        </div>
-      </div>
-    );
-  }
-
+  // Always render the container so ResizeObserver can measure it.
+  // Show loading/error/empty states inside the canvas area.
   return (
     <div className="fleet-graph-page">
       <div className="fleet-graph-canvas" ref={containerRef}>
-        {graphData && dimensions.width > 0 && (
+        {error ? (
+          <Callout intent="danger" icon="error">
+            Failed to load fleet data. Is the backend running?
+          </Callout>
+        ) : isLoading ? (
+          <div className="fleet-graph-empty"><Spinner /></div>
+        ) : devices.length === 0 ? (
+          <div className="fleet-graph-empty">
+            <Icon icon="graph" size={48} />
+            <H4>No devices yet</H4>
+            <p>Add devices to see your fleet graph</p>
+          </div>
+        ) : graphData && dimensions.width > 0 ? (
           <FleetGraphCanvas
             graphData={graphData}
             width={dimensions.width}
@@ -142,7 +126,7 @@ export const FleetGraph = () => {
             onBackgroundClick={handleBackgroundClick}
             selectedNodeId={selectedNodeId}
           />
-        )}
+        ) : null}
 
         {popover && (
           <DevicePopover
