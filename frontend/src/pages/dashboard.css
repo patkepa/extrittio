@@ -299,3 +299,56 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Server Health Section */
+.server-health-section {
+  margin-top: 24px;
+}
+
+.server-health-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.server-metric-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.server-metric-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 120px;
+  align-items: center;
+  gap: 12px;
+}
+
+.server-metric-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary, #8a9ba8);
+}
+
+.server-metric-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.server-metric-detail {
+  font-size: 11px;
+}
+
+.server-metric-spark {
+  min-width: 80px;
+}
+
+@media (max-width: 900px) {
+  .server-health-grid {
+    grid-template-columns: 1fr;
+  }
+}

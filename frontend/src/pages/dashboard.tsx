@@ -9,6 +9,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { useDashboardStats } from '../hooks/use-dashboard';
+import { ServerHealth } from '../components/dashboard/server-health';
 import './dashboard.css';
 
 const sparklineData = [
@@ -212,6 +213,9 @@ export const Dashboard = () => {
           </Card>
         </div>
       </div>
+
+      {/* Server Health */}
+      <ServerHealth />
     </div>
   );
 };
