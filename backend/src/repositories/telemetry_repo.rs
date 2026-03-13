@@ -11,6 +11,7 @@ pub fn list_telemetry(
     conn: &mut SqliteConnection,
     device_id: &str,
     since: Option<NaiveDateTime>,
+    before: Option<NaiveDateTime>,
     limit: i64,
 ) -> Result<Vec<TelemetryRecord>, diesel::result::Error> {
     let mut query = telemetry::table
@@ -19,6 +20,10 @@ pub fn list_telemetry(
 
     if let Some(since_dt) = since {
         query = query.filter(telemetry::received_at.gt(since_dt));
+    }
+
+    if let Some(before_dt) = before {
+        query = query.filter(telemetry::received_at.lt(before_dt));
     }
 
     query
