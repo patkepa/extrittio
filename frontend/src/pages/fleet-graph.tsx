@@ -14,7 +14,10 @@ interface PopoverState {
 }
 
 export const FleetGraph = () => {
-  const { data: devices = [], isLoading: devicesLoading, error: devicesError } = useDevices({ limit: 10000 });
+  const devicesQuery = useDevices({ limit: 10000 });
+  const devices = devicesQuery.data?.data ?? [];
+  const devicesLoading = devicesQuery.isLoading;
+  const devicesError = devicesQuery.error;
   const { data: fleets = [], isLoading: fleetsLoading, error: fleetsError } = useFleets();
   const [popover, setPopover] = useState<PopoverState | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);

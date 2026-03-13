@@ -36,7 +36,7 @@ export function CertificatesSettings() {
 
   const caQuery = useCaCertificate();
   const devicesQuery = useDevices();
-  const devices = devicesQuery.data ?? [];
+  const devices = devicesQuery.data?.data ?? [];
   const deviceIds = devices.map((d) => d.id);
   const statusQueries = useDeviceCertificateStatuses(deviceIds);
   const regenerateMutation = useRegenerateDeviceCertificate();

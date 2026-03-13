@@ -23,7 +23,8 @@ const MAX_PALETTE_DEVICES = 20;
 
 export const CommandPalette = () => {
   const navigate = useNavigate();
-  const { data: devices = [] } = useDevices();
+  const devicesQuery = useDevices();
+  const devices = devicesQuery.data?.data ?? [];
   const open = useUIStore((s) => s.isCommandPaletteOpen);
   const toggleCommandPalette = useUIStore((s) => s.toggleCommandPalette);
   const closeCommandPalette = useUIStore((s) => s.closeCommandPalette);
