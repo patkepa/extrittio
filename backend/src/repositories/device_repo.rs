@@ -31,8 +31,7 @@ fn filtered_device_query<'a>(
         query = query.filter(
             devices::name
                 .like(pattern.clone())
-                .or(device_types::name.like(pattern.clone()))
-                .or(devices::location.like(pattern)),
+                .or(device_types::name.like(pattern)),
         );
     }
     if let Some(fleet_id) = fleet_id_filter {
@@ -87,8 +86,7 @@ pub fn resolve_device_ids(
         query = query.filter(
             devices::name
                 .like(pattern.clone())
-                .or(device_types::name.like(pattern.clone()))
-                .or(devices::location.like(pattern)),
+                .or(device_types::name.like(pattern)),
         );
     }
     if let Some(fleet_id) = fleet_id_filter {

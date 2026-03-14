@@ -246,7 +246,7 @@ export const Devices = () => {
             <div className="search-section">
               <InputGroup
                 leftIcon="search"
-                placeholder="Search by name, type, or location..."
+                placeholder="Search by name or type..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 fill
@@ -335,7 +335,6 @@ export const Devices = () => {
                 <SortHeader field="name" sortField={sortField} sortDir={sortDir} onSort={handleSort}>Name</SortHeader>
                 <th>Type</th>
                 <th>Fleet</th>
-                <th>Location</th>
                 <th>Last Seen</th>
                 <th>Firmware</th>
                 <th style={{ width: 80 }}>Activity</th>
@@ -379,7 +378,6 @@ export const Devices = () => {
                         <span style={{ color: 'hsl(var(--muted))', fontSize: 12 }}>—</span>
                       )}
                     </td>
-                    <td className="location-cell">{device.location}</td>
                     <td>
                       <span className="mono-data">{device.last_seen}</span>
                     </td>

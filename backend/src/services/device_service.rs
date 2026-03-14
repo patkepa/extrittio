@@ -85,7 +85,6 @@ pub fn auto_register_device(
         name: device_id.to_string(),
         device_type_id,
         fleet_id: None,
-        location: String::new(),
         firmware: firmware.to_string(),
     };
 

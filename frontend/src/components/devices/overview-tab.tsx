@@ -36,10 +36,6 @@ export const OverviewTab = ({ device }: OverviewTabProps) => {
           <span className="detail-value">{device.fleet_name ?? '—'}</span>
         </div>
         <div className="detail-item">
-          <span className="section-label">Location</span>
-          <span className="detail-value">{device.location}</span>
-        </div>
-        <div className="detail-item">
           <span className="section-label">Firmware</span>
           <span className="detail-value mono-data">{device.firmware}</span>
         </div>

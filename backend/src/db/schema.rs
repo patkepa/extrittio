@@ -106,7 +106,6 @@ diesel::table! {
         fleet_id -> Nullable<Integer>,
         status -> Text,
         firmware -> Text,
-        location -> Text,
         last_seen -> Nullable<Timestamp>,
         uptime_seconds -> Integer,
         created_at -> Timestamp,

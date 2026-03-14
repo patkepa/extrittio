@@ -193,7 +193,6 @@ pub struct Device {
     pub fleet_id: Option<i32>,
     pub status: String,
     pub firmware: String,
-    pub location: String,
     pub last_seen: Option<NaiveDateTime>,
     pub uptime_seconds: i32,
     pub created_at: NaiveDateTime,
@@ -207,7 +206,6 @@ pub struct NewDevice {
     pub name: String,
     pub device_type_id: i32,
     pub fleet_id: Option<i32>,
-    pub location: String,
     pub firmware: String,
 }
 
@@ -217,7 +215,6 @@ pub struct UpdateDevice {
     pub name: Option<String>,
     pub device_type_id: Option<i32>,
     pub fleet_id: Option<Option<i32>>,
-    pub location: Option<String>,
     pub firmware: Option<String>,
     pub status: Option<String>,
     pub last_seen: Option<NaiveDateTime>,

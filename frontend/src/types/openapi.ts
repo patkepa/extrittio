@@ -652,7 +652,6 @@ export interface components {
             id: string;
             last_seen: string;
             last_seen_at?: string | null;
-            location: string;
             name: string;
             status: string;
             uptime: string;
@@ -722,7 +721,6 @@ export interface components {
             firmware?: string | null;
             /** Format: int32 */
             fleet_id?: number | null;
-            location?: string | null;
             name: string;
         };
         NewDeviceTypeRequest: {
@@ -766,7 +764,6 @@ export interface components {
                 id: string;
                 last_seen: string;
                 last_seen_at?: string | null;
-                location: string;
                 name: string;
                 status: string;
                 uptime: string;
@@ -926,7 +923,6 @@ export interface components {
             firmware?: string | null;
             /** Format: int32 */
             fleet_id?: number | null;
-            location?: string | null;
             name?: string | null;
         };
         UserResponse: {

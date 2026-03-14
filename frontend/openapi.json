@@ -2123,7 +2123,6 @@
           "status",
           "last_seen",
           "firmware",
-          "location",
           "uptime",
           "uptime_seconds"
         ],
@@ -2162,9 +2161,6 @@
               "string",
               "null"
             ]
-          },
-          "location": {
-            "type": "string"
           },
           "name": {
             "type": "string"
@@ -2419,12 +2415,6 @@
             ],
             "format": "int32"
           },
-          "location": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "name": {
             "type": "string"
           }
@@ -2563,7 +2553,6 @@
                 "status",
                 "last_seen",
                 "firmware",
-                "location",
                 "uptime",
                 "uptime_seconds"
               ],
@@ -2602,9 +2591,6 @@
                     "string",
                     "null"
                   ]
-                },
-                "location": {
-                  "type": "string"
                 },
                 "name": {
                   "type": "string"
@@ -3146,12 +3132,6 @@
               "null"
             ],
             "format": "int32"
-          },
-          "location": {
-            "type": [
-              "string",
-              "null"
-            ]
           },
           "name": {
             "type": [

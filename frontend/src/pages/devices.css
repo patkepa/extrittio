@@ -215,11 +215,6 @@
   color: hsl(var(--muted));
 }
 
-.location-cell {
-  color: hsl(var(--muted));
-  font-size: 13px;
-}
-
 /* Row Sparkline */
 .row-sparkline {
   width: 80px;

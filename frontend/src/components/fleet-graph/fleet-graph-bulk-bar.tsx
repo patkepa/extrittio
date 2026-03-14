@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Button, Alert, Popover, Menu, MenuItem, MenuDivider } from '@blueprintjs/core';
 import { useFleets } from '../../hooks/use-fleets';
 import { useBulkChangeFleet, useBulkRestartDevices, useBulkTriggerOta } from '../../hooks/use-devices';
@@ -11,6 +11,9 @@ export const FleetGraphBulkBar = () => {
   const count = selectedDeviceIds.size;
 
   const [restartAlertOpen, setRestartAlertOpen] = useState(false);
+  // Snapshot device IDs when the restart dialog opens so the confirmation
+  // always acts on the selection that was confirmed, not a later mutation.
+  const restartIdsRef = useRef<string[]>([]);
 
   const { data: fleets = [] } = useFleets();
   const { data: firmwareUpdates } = useFirmwareUpdates();
@@ -47,7 +50,7 @@ export const FleetGraphBulkBar = () => {
 
   async function handleRestart() {
     try {
-      const result = await bulkRestartMutation.mutateAsync({ device_ids: deviceIds });
+      const result = await bulkRestartMutation.mutateAsync({ device_ids: restartIdsRef.current });
       if (result.failed > 0) {
         void showWarningToast(`${result.succeeded} restarted, ${result.failed} failed`);
         useSelectionStore.setState({
@@ -136,7 +139,10 @@ export const FleetGraphBulkBar = () => {
           small
           loading={bulkRestartMutation.isPending}
           disabled={isAnyPending}
-          onClick={() => setRestartAlertOpen(true)}
+          onClick={() => {
+            restartIdsRef.current = deviceIds;
+            setRestartAlertOpen(true);
+          }}
         />
 
         <Popover

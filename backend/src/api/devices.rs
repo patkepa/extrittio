@@ -33,7 +33,6 @@ pub struct DeviceResponse {
     pub last_seen: String,
     pub last_seen_at: Option<String>,
     pub firmware: String,
-    pub location: String,
     pub uptime: String,
     pub uptime_seconds: i32,
 }
@@ -43,7 +42,6 @@ pub struct NewDeviceRequest {
     pub name: String,
     pub device_type_id: i32,
     pub fleet_id: Option<i32>,
-    pub location: Option<String>,
     pub firmware: Option<String>,
 }
 
@@ -53,7 +51,6 @@ pub struct UpdateDeviceRequest {
     pub device_type_id: Option<i32>,
     #[schema(value_type = Option<i32>)]
     pub fleet_id: Option<Option<i32>>,
-    pub location: Option<String>,
     pub firmware: Option<String>,
 }
 
@@ -214,7 +211,6 @@ fn to_device_response(
         last_seen: format_last_seen(device.last_seen),
         last_seen_at,
         firmware: device.firmware,
-        location: device.location,
         uptime: format_uptime(device.uptime_seconds),
         uptime_seconds: device.uptime_seconds,
     }
@@ -378,7 +374,6 @@ pub(crate) async fn create_device(
             name: body.name,
             device_type_id: body.device_type_id,
             fleet_id: body.fleet_id,
-            location: body.location.unwrap_or_default(),
             firmware: body.firmware.unwrap_or_else(|| "unknown".to_string()),
         };
 
@@ -426,7 +421,6 @@ pub(crate) async fn update_device(
             name: body.name,
             device_type_id: body.device_type_id,
             fleet_id: body.fleet_id,
-            location: body.location,
             firmware: body.firmware,
             updated_at: Some(Utc::now().naive_utc()),
             ..Default::default()

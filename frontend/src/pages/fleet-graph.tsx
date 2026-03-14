@@ -56,11 +56,16 @@ export const FleetGraph = () => {
 
   const graphData = useMemo(() => {
     if (devices.length === 0) return null;
-    const data = buildForceGraphData(devices, fleets, prevNodesRef.current);
-    // Intentional side effect: cache nodes for next merge
-    prevNodesRef.current = data.nodes;
-    return data;
+    return buildForceGraphData(devices, fleets, prevNodesRef.current);
   }, [devices, fleets]);
+
+  // Cache nodes for the next merge — kept outside useMemo to avoid
+  // side effects (React Strict Mode double-invokes useMemo in dev).
+  useEffect(() => {
+    if (graphData) {
+      prevNodesRef.current = graphData.nodes;
+    }
+  }, [graphData]);
 
   const handleNodeClick = useCallback(
     (device: Device, screenPos: { x: number; y: number }) => {

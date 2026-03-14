@@ -121,16 +121,16 @@ export const FleetGraphCanvas = ({
     };
   }, []);
 
-  // Suppress browser's native context menu on canvas
+  // Suppress browser's native context menu — attach to the wrapper div so it
+  // works regardless of when ForceGraph2D creates the inner canvas element
+  // (events bubble from canvas → wrapper).
   useEffect(() => {
     const wrapper = canvasWrapperRef.current;
     if (!wrapper) return;
-    const canvasEl = wrapper.querySelector('canvas');
-    if (!canvasEl) return;
 
     const suppress = (e: Event) => e.preventDefault();
-    canvasEl.addEventListener('contextmenu', suppress);
-    return () => canvasEl.removeEventListener('contextmenu', suppress);
+    wrapper.addEventListener('contextmenu', suppress);
+    return () => wrapper.removeEventListener('contextmenu', suppress);
   }, []);
 
   // Lasso mouse event handlers
@@ -190,11 +190,13 @@ export const FleetGraphCanvas = ({
 
     canvasEl.addEventListener('mousedown', onMouseDown);
     canvasEl.addEventListener('mousemove', onMouseMove);
-    canvasEl.addEventListener('mouseup', onMouseUp);
+    // Listen on window so releasing the mouse outside the canvas still
+    // completes the lasso (prevents stuck lasso state).
+    window.addEventListener('mouseup', onMouseUp);
     return () => {
       canvasEl.removeEventListener('mousedown', onMouseDown);
       canvasEl.removeEventListener('mousemove', onMouseMove);
-      canvasEl.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('mouseup', onMouseUp);
     };
   }, [graphData.nodes, addToSelection]);
 
@@ -360,13 +362,8 @@ export const FleetGraphCanvas = ({
           }
         }
       } else {
-        // Draw circle for device nodes
-        ctx.beginPath();
-        ctx.arc(node.x!, node.y!, radius, 0, 2 * Math.PI);
-        ctx.fillStyle = node.color;
-        ctx.fill();
-
-        // Reset shadow for text
+        // Reset shadow before drawing device node — shadow glow is applied
+        // via the selection ring below, not the main circle.
         ctx.shadowBlur = 0;
         // --- Device node: staleness-based color + pulse + uptime ring ---
         const now = Date.now();
@@ -386,8 +383,14 @@ export const FleetGraphCanvas = ({
             node.x!, node.y!, effectiveRadius,
             node.x!, node.y!, glowRadius,
           );
-          gradient.addColorStop(0, stalenessColor + '80'); // 50% alpha
-          gradient.addColorStop(1, stalenessColor + '00'); // fully transparent
+          // Use rgba() instead of 8-digit hex — Canvas 2D spec mandates CSS
+          // Color Level 3 parsing, which doesn't include #RRGGBBAA. Safari's
+          // canvas silently treats 8-digit hex as transparent.
+          const r = parseInt(stalenessColor.slice(1, 3), 16);
+          const g = parseInt(stalenessColor.slice(3, 5), 16);
+          const b = parseInt(stalenessColor.slice(5, 7), 16);
+          gradient.addColorStop(0, `rgba(${r},${g},${b},0.5)`);
+          gradient.addColorStop(1, `rgba(${r},${g},${b},0)`);
           ctx.beginPath();
           ctx.arc(node.x!, node.y!, glowRadius, 0, 2 * Math.PI);
           ctx.fillStyle = gradient;
