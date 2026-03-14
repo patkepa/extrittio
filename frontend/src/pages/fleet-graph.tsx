@@ -66,7 +66,10 @@ export const FleetGraph = () => {
     prevNodes: GraphNode[] | undefined;
     inputDevices: typeof devices;
     inputFleets: typeof fleets;
-  }>({ data: null, prevNodes: undefined, inputDevices: devices, inputFleets: fleets });
+  }>(() => {
+    const data = devices.length === 0 ? null : buildForceGraphData(devices, fleets, undefined);
+    return { data, prevNodes: data?.nodes, inputDevices: devices, inputFleets: fleets };
+  });
 
   if (devices !== graphState.inputDevices || fleets !== graphState.inputFleets) {
     const newData =
