@@ -126,11 +126,13 @@ export const FleetGraph = () => {
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [healthPanelOpen, setHealthPanelOpen] = useState(true);
-  const [viewport, setViewport] = useState<ViewportInfo | null>(null);
+  const viewportRef = useRef<ViewportInfo | null>(null);
+  const minimapDrawRef = useRef<(() => void) | null>(null);
   const graphActionsRef = useRef<GraphActions | null>(null);
 
   const handleViewportChange = useCallback((t: ViewportInfo) => {
-    setViewport(t);
+    viewportRef.current = t;
+    minimapDrawRef.current?.();
   }, []);
 
   const handleMinimapNavigate = useCallback((worldX: number, worldY: number) => {
@@ -259,7 +261,8 @@ export const FleetGraph = () => {
           onDeviceClick={handlePanelDeviceClick}
           selectedNodeId={selectedNodeId}
           height={dimensions.height || 600}
-          viewport={viewport}
+          viewportRef={viewportRef}
+          minimapDrawRef={minimapDrawRef}
           canvasWidth={dimensions.width}
           canvasHeight={dimensions.height}
           onMinimapNavigate={handleMinimapNavigate}

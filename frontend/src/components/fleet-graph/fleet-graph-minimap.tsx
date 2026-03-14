@@ -10,10 +10,12 @@ export interface ViewportInfo {
 
 interface FleetGraphMinimapProps {
   nodes: GraphNode[];
-  viewport: ViewportInfo | null;
+  viewportRef: React.RefObject<ViewportInfo | null>;
   canvasWidth: number;
   canvasHeight: number;
   onNavigate: (worldX: number, worldY: number) => void;
+  /** Parent writes a redraw callback here so it can trigger imperative redraws */
+  drawRef: React.MutableRefObject<(() => void) | null>;
 }
 
 const MINIMAP_HEIGHT = 100;
@@ -42,16 +44,19 @@ function computeWorldBounds(nodes: GraphNode[]) {
 
 export const FleetGraphMinimap = ({
   nodes,
-  viewport,
+  viewportRef,
   canvasWidth,
   canvasHeight,
   onNavigate,
+  drawRef,
 }: FleetGraphMinimapProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+
+    const viewport = viewportRef.current;
 
     const dpr = window.devicePixelRatio || 1;
     const rect = canvas.getBoundingClientRect();
@@ -124,14 +129,24 @@ export const FleetGraphMinimap = ({
         ctx.fill();
       }
     }
-  }, [nodes, viewport, canvasWidth, canvasHeight]);
+  }, [nodes, viewportRef, canvasWidth, canvasHeight]);
 
+  // Register draw function so parent can call it imperatively on viewport changes
+  useEffect(() => {
+    drawRef.current = draw;
+    return () => { drawRef.current = null; };
+  }, [draw, drawRef]);
+
+  // Draw on mount and when nodes/canvas size change
   useEffect(() => {
     draw();
   }, [draw]);
 
-  const handleClick = useCallback(
+  const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
+      e.stopPropagation();
+      e.preventDefault();
+
       const canvas = canvasRef.current;
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
@@ -164,7 +179,7 @@ export const FleetGraphMinimap = ({
       ref={canvasRef}
       className="fleet-graph-minimap"
       style={{ width: '100%', height: MINIMAP_HEIGHT, cursor: 'crosshair' }}
-      onClick={handleClick}
+      onMouseDown={handleMouseDown}
     />
   );
 };

@@ -16,7 +16,8 @@ interface HealthPanelProps {
   onDeviceClick: (nodeId: string) => void;
   selectedNodeId?: string | null;
   height: number;
-  viewport: ViewportInfo | null;
+  viewportRef: React.RefObject<ViewportInfo | null>;
+  minimapDrawRef: React.MutableRefObject<(() => void) | null>;
   canvasWidth: number;
   canvasHeight: number;
   onMinimapNavigate: (worldX: number, worldY: number) => void;
@@ -28,7 +29,7 @@ interface RowExtraProps {
   onDeviceClick: (nodeId: string) => void;
 }
 
-const HEADER_HEIGHT = 60;
+const HEADER_HEIGHT = 48;
 const MINIMAP_SECTION_HEIGHT = 112;
 const FOOTER_HEIGHT = 32;
 const ROW_HEIGHT = 48;
@@ -66,7 +67,7 @@ function HealthRow({
   );
 }
 
-export const HealthPanel = ({ nodes, onDeviceClick, selectedNodeId, height, viewport, canvasWidth, canvasHeight, onMinimapNavigate }: HealthPanelProps) => {
+export const HealthPanel = ({ nodes, onDeviceClick, selectedNodeId, height, viewportRef, minimapDrawRef, canvasWidth, canvasHeight, onMinimapNavigate }: HealthPanelProps) => {
   // Tick every 5s so staleness labels and sort order stay reasonably fresh
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -161,10 +162,11 @@ export const HealthPanel = ({ nodes, onDeviceClick, selectedNodeId, height, view
       <div className="health-panel-minimap">
         <FleetGraphMinimap
           nodes={nodes}
-          viewport={viewport}
+          viewportRef={viewportRef}
           canvasWidth={canvasWidth}
           canvasHeight={canvasHeight}
           onNavigate={onMinimapNavigate}
+          drawRef={minimapDrawRef}
         />
       </div>
     </div>
