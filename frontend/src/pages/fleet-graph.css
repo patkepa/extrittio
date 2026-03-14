@@ -198,6 +198,53 @@
   color: hsl(var(--muted));
 }
 
+/* Fleet Graph Bulk Action Bar */
+.fleet-graph-bulk-bar {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  animation: fleet-graph-bulk-bar-slide-in 150ms ease-out;
+}
+
+@keyframes fleet-graph-bulk-bar-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.fleet-graph-bulk-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.fleet-graph-bulk-label {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.fleet-graph-bulk-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 /* Context menu overlay */
 .fleet-graph-context-menu-backdrop {
   position: fixed;
