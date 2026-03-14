@@ -1,0 +1,45 @@
+menu "Extrittio Configuration"
+
+config EXTRITTIO_DEVICE_ID
+    string "Device ID"
+    default "esp32-c-001"
+    help
+        Unique identifier for this device.
+
+config EXTRITTIO_WIFI_SSID
+    string "WiFi SSID"
+    default ""
+    help
+        WiFi network name.
+
+config EXTRITTIO_WIFI_PASSWORD
+    string "WiFi Password"
+    default ""
+    help
+        WiFi network password.
+
+config EXTRITTIO_ZENOH_CONNECT
+    string "Zenoh endpoint"
+    default "tcp/192.0.2.100:7447"
+    help
+        Zenoh router endpoint to connect to.
+
+config EXTRITTIO_TELEMETRY_INTERVAL_S
+    int "Telemetry interval (seconds)"
+    default 5
+    help
+        Seconds between telemetry publishes.
+
+config EXTRITTIO_HEARTBEAT_INTERVAL_S
+    int "Heartbeat interval (seconds)"
+    default 30
+    help
+        Seconds between heartbeat publishes.
+
+config EXTRITTIO_FIRMWARE_VERSION
+    string "Firmware version"
+    default "v1.0.0-esp32c"
+    help
+        Reported firmware version string.
+
+endmenu
