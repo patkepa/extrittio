@@ -16,44 +16,43 @@
   /* Base colors - HIGH CONTRAST dark theme
    * Pure black backgrounds with white text for maximum contrast
    */
-  --background: 0 0% 0%;           /* Pure black #000000 */
+  --background: 0 0% 4%;           /* Near black #0a0a0a */
   --foreground: 0 0% 100%;         /* Pure white #FFFFFF */
 
-  /* Primary - Electric blue (Blueprint BLUE3) */
-  --primary: 211 100% 50%;
+  /* Primary - Softened blue */
+  --primary: 213 68% 59%;
   --primary-foreground: 220 20% 8%;
 
   /* Secondary - HIGH CONTRAST */
   --secondary: 0 0% 7%;            /* Near black */
   --secondary-foreground: 0 0% 100%; /* Pure white */
 
-  /* Accent - Bright electric blue (Blueprint BLUE3) */
-  --accent: 211 100% 50%;          /* Blueprint BLUE3: #2D72D2 */
-  --accent-hover: 211 100% 55%;    /* Blueprint BLUE4: #4C90F0 */
+  /* Accent - Softened blue */
+  --accent: 213 68% 59%;
+  --accent-hover: 214 84% 65%;
 
   /* Muted colors - HIGH CONTRAST muted (still light gray for readability) */
   --muted: 0 0% 70%;               /* Light gray for muted elements */
   --muted-foreground: 0 0% 85%;    /* Very light gray for muted text */
 
   /* Border and ring - More visible */
-  --border: 220 15% 15%;           /* ~DARK_GRAY3 */
-  --ring: 211 100% 50%;
+  --ring: 213 68% 59%;
 
   /* Sidebar specific - HIGH CONTRAST */
-  --sidebar-bg: hsl(0, 0%, 0%);                 /* Pure black */
+  --sidebar-bg: #0d0d0d;
   --sidebar-foreground: hsl(0, 0%, 100%);       /* Pure white text */
-  --sidebar-primary: hsl(211, 100%, 50%);       /* Blueprint BLUE3 #2D72D2 */
+  --sidebar-primary: hsl(213, 68%, 59%);
   --sidebar-primary-foreground: hsl(0, 0%, 0%); /* Black text on blue background */
-  --sidebar-accent: hsl(0, 0%, 7%);             /* Near black */
-  --sidebar-accent-hover: hsl(0, 0%, 12%);      /* Slightly lighter on hover */
+  --sidebar-accent: #161616;
+  --sidebar-accent-hover: #1c1c1c;
   --sidebar-muted-foreground: hsl(0, 0%, 85%);  /* Light gray for muted text */
-  --sidebar-border: hsl(0, 0%, 15%);            /* Dark gray border */
+  --sidebar-border: hsla(0, 0%, 100%, 0.08);
 
   /* Content area - HIGH CONTRAST */
-  --content-bg: hsl(0, 0%, 0%);      /* Pure black */
-  --navbar-bg: hsl(0, 0%, 0%);       /* Pure black */
-  --border-color: hsl(0, 0%, 15%);   /* Dark gray */
-  --card-bg: hsl(0, 0%, 7%);         /* Near black */
+  --content-bg: #0a0a0a;
+  --navbar-bg: #0a0a0a;
+  --border-color: hsla(0, 0%, 100%, 0.08);
+  --card-bg: #111111;
 
   /* Status colors - Vibrant for dark bg (Blueprint GREEN3, ORANGE3, RED3) */
   --success: 152 69% 45%;      /* ~Blueprint GREEN3 */
