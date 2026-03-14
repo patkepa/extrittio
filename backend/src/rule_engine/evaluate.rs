@@ -194,12 +194,14 @@ pub fn evaluate_telemetry(
             // Check cooldown — skip firing new alert/actions if in cooldown,
             // but still update an existing alert value.
             if let Some(ref alert_id) = existing_alert_id {
-                // Already active — just update the value.
-                actions.push(PendingAction::UpdateAlertValue {
-                    alert_id: alert_id.clone(),
-                    triggered_value: triggered_value_for(&rule.conditions, data)
-                        .unwrap_or_default(),
-                });
+                // Skip empty-string sentinel (reservation in-flight).
+                if !alert_id.is_empty() {
+                    actions.push(PendingAction::UpdateAlertValue {
+                        alert_id: alert_id.clone(),
+                        triggered_value: triggered_value_for(&rule.conditions, data)
+                            .unwrap_or_default(),
+                    });
+                }
             } else {
                 // Not yet active. Respect cooldown before creating.
                 if is_in_cooldown(cache, &rule.id, device_id, rule.cooldown_seconds) {
@@ -287,8 +289,11 @@ pub fn evaluate_telemetry(
             }
         } else {
             // Conditions not met — auto-resolve if an active alert exists.
+            // Skip empty-string sentinels (reservation in-flight).
             if let Some(alert_id) = existing_alert_id {
-                actions.push(PendingAction::ResolveAlert { alert_id });
+                if !alert_id.is_empty() {
+                    actions.push(PendingAction::ResolveAlert { alert_id });
+                }
             }
         }
     }
@@ -333,11 +338,13 @@ pub fn evaluate_status_change(
 
         if conditions_met {
             if let Some(ref alert_id) = existing_alert_id {
-                // Already active — update value.
-                actions.push(PendingAction::UpdateAlertValue {
-                    alert_id: alert_id.clone(),
-                    triggered_value: change.new_status.clone(),
-                });
+                // Skip empty-string sentinel (reservation in-flight).
+                if !alert_id.is_empty() {
+                    actions.push(PendingAction::UpdateAlertValue {
+                        alert_id: alert_id.clone(),
+                        triggered_value: change.new_status.clone(),
+                    });
+                }
             } else {
                 // Respect cooldown.
                 if is_in_cooldown(cache, &rule.id, device_id, rule.cooldown_seconds) {
@@ -420,8 +427,11 @@ pub fn evaluate_status_change(
             }
         } else {
             // Auto-resolve if an active alert exists.
+            // Skip empty-string sentinels (reservation in-flight).
             if let Some(alert_id) = existing_alert_id {
-                actions.push(PendingAction::ResolveAlert { alert_id });
+                if !alert_id.is_empty() {
+                    actions.push(PendingAction::ResolveAlert { alert_id });
+                }
             }
         }
     }

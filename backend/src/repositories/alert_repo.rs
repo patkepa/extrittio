@@ -120,12 +120,14 @@ pub fn count_by_status_and_severity(
 // Convenience loaders
 // ---------------------------------------------------------------------------
 
-/// Load all alerts whose status is "active".
+/// Load all alerts whose status is "active" or "acknowledged".
+/// Both states represent alerts the rule engine should track to avoid creating
+/// duplicate alerts for the same rule+device pair.
 pub fn load_active_alerts(
     conn: &mut SqliteConnection,
 ) -> Result<Vec<Alert>, diesel::result::Error> {
     alerts::table
-        .filter(alerts::status.eq("active"))
+        .filter(alerts::status.eq("active").or(alerts::status.eq("acknowledged")))
         .select(Alert::as_select())
         .load(conn)
 }

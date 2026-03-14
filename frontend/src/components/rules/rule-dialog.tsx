@@ -138,10 +138,24 @@ export function RuleDialog() {
   }, [isRuleDialogOpen, resetCreate, resetUpdate]);
 
   const hasEmptyConditions = conditions.some((c) => c.value.trim() === '');
+  const hasInvalidActions = actions.some((a) => {
+    if (a.action_type === 'webhook') {
+      const url = (a.config.url as string) ?? '';
+      return !url.trim() || (!url.startsWith('http://') && !url.startsWith('https://'));
+    }
+    if (a.action_type === 'command') {
+      return !((a.config.command as string) ?? '').trim();
+    }
+    return false;
+  });
 
   const handleSubmit = () => {
     if (hasEmptyConditions) {
       void showErrorToast('All conditions must have a value');
+      return;
+    }
+    if (hasInvalidActions) {
+      void showErrorToast('Webhook actions require a valid URL, command actions require a name');
       return;
     }
 
@@ -504,7 +518,7 @@ export function RuleDialog() {
               icon={editingRuleId ? 'tick' : 'add'}
               onClick={handleSubmit}
               loading={isPending}
-              disabled={!name.trim() || hasEmptyConditions}
+              disabled={!name.trim() || hasEmptyConditions || hasInvalidActions}
             >
               {editingRuleId ? 'Update Rule' : 'Add Rule'}
             </Button>

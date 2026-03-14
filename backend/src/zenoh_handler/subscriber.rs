@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::sync::RwLock;
 use std::sync::atomic::Ordering;
+use tokio::sync::Semaphore;
 use tracing::{info, warn};
 
 use crate::rule_engine::cache::RuleCache;
@@ -9,14 +10,22 @@ use crate::state::{DbPool, ZenohMetrics};
 
 use super::handlers;
 
-/// Start zenoh subscribers for telemetry and heartbeat topics.
+/// Maximum number of concurrent action-execution tasks to prevent unbounded
+/// resource consumption when telemetry arrives faster than actions complete.
+static ACTION_SEMAPHORE: std::sync::LazyLock<Arc<Semaphore>> =
+    std::sync::LazyLock::new(|| Arc::new(Semaphore::new(64)));
+
+/// Start zenoh subscribers for telemetry, heartbeat, shadow, log, and command
+/// response topics.
 ///
-/// Spawns one subscriber handler in a background tokio task and runs the other
-/// in the current task. Both loop indefinitely, receiving messages and
+/// Spawns five subscriber handlers in background tokio tasks (heartbeat,
+/// shadow_report, shadow_get, log, command_response) and runs the telemetry
+/// handler in the current task. All loop indefinitely, receiving messages and
 /// dispatching them to the appropriate handler function.
 ///
-/// All synchronous handler functions (DB-touching) are dispatched via
-/// `spawn_blocking` to avoid starving the Tokio runtime.
+/// Synchronous handler functions (DB-touching) are dispatched via
+/// `spawn_blocking` to avoid starving the Tokio runtime, except where the
+/// handler manages `spawn_blocking` internally (e.g. `shadow_get`).
 ///
 /// # Errors
 ///
@@ -89,7 +98,9 @@ pub async fn run_subscriber(
                             let cl = client.clone();
                             let s = heartbeat_session.clone();
                             let m = heartbeat_zenoh_metrics.clone();
+                            let permit = ACTION_SEMAPHORE.clone();
                             tokio::spawn(async move {
+                                let _permit = permit.acquire().await;
                                 execute_action(action, &p, &c, &cl, &s, &m).await;
                             });
                         }
@@ -222,7 +233,9 @@ pub async fn run_subscriber(
                         let cl = client.clone();
                         let s = session.clone();
                         let m = zenoh_metrics.clone();
+                        let permit = ACTION_SEMAPHORE.clone();
                         tokio::spawn(async move {
+                            let _permit = permit.acquire().await;
                             execute_action(action, &p, &c, &cl, &s, &m).await;
                         });
                     }
@@ -266,14 +279,16 @@ pub async fn execute_action(
 
             // Atomically check-and-reserve to prevent duplicate alerts from
             // concurrent telemetry messages triggering the same rule+device.
-            {
-                let mut guard = cache.write().unwrap();
+            if let Ok(mut guard) = cache.write() {
                 let key = (rid.clone(), did.clone());
                 if guard.active_alerts.contains_key(&key) {
                     return;
                 }
                 // Reserve the slot; replaced with the real alert ID below.
                 guard.active_alerts.insert(key, String::new());
+            } else {
+                warn!("Rule cache lock poisoned; skipping CreateAlert");
+                return;
             }
 
             let result = tokio::task::spawn_blocking(move || {
@@ -354,11 +369,11 @@ pub async fn execute_action(
             }
         }
         PendingAction::SendWebhook { url, headers, payload } => {
+            // .json() already sets Content-Type: application/json
             let mut req = http_client.post(&url).json(&payload);
             for (k, v) in &headers {
                 req = req.header(k, v);
             }
-            req = req.header("Content-Type", "application/json");
             let result = req
                 .timeout(std::time::Duration::from_secs(10))
                 .send()

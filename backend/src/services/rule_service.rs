@@ -276,7 +276,6 @@ pub fn create_rule(
     )?;
 
     let rule_id = Uuid::new_v4().to_string();
-    let now = Utc::now().naive_utc();
 
     let new_rule = NewRule {
         id: rule_id.clone(),
@@ -319,9 +318,6 @@ pub fn create_rule(
         Ok::<(), diesel::result::Error>(())
     })?;
 
-    // Stamp updated_at so Diesel picks it up correctly. The NewRule struct
-    // doesn't carry updated_at; the DB defaults it — we refetch instead.
-    let _ = now; // used above to document intent; actual value comes from DB default
     get_rule(conn, &rule_id)
 }
 
@@ -469,6 +465,18 @@ pub fn toggle_rule(
         return Err(AppError::NotFound(format!("Rule '{id}' not found")));
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Retention / cleanup
+// ---------------------------------------------------------------------------
+
+/// Delete stale cooldown records older than `cutoff`.
+pub fn delete_stale_cooldowns(
+    conn: &mut SqliteConnection,
+    cutoff: chrono::NaiveDateTime,
+) -> Result<usize, AppError> {
+    Ok(rule_repo::delete_cooldowns_older_than(conn, cutoff)?)
 }
 
 // ---------------------------------------------------------------------------

@@ -256,6 +256,47 @@ pub fn list_ota_deployments(
     Ok(firmware_repo::list_ota_deployments(conn, device_id, limit, offset)?)
 }
 
+/// Mark a pre-determined list of devices as offline and log the transition.
+/// Use this when the caller has already identified which devices should go
+/// offline (e.g. using a shared cutoff) to avoid TOCTOU races.
+pub fn mark_devices_offline(
+    conn: &mut SqliteConnection,
+    device_ids: &[String],
+) -> Result<usize, AppError> {
+    if device_ids.is_empty() {
+        return Ok(0);
+    }
+
+    use crate::db::schema::devices;
+    use diesel::prelude::*;
+
+    let count = diesel::update(
+        devices::table.filter(
+            devices::id
+                .eq_any(device_ids)
+                .and(devices::status.ne("offline")),
+        ),
+    )
+    .set(devices::status.eq("offline"))
+    .execute(conn)?;
+
+    for device_id in device_ids {
+        let message = "Device went offline (no heartbeat)".to_string();
+        if let Err(e) = log_repo::insert_log(
+            conn,
+            &NewDeviceLog {
+                device_id: device_id.clone(),
+                level: "WARN".to_string(),
+                message,
+            },
+        ) {
+            tracing::warn!("Failed to insert offline log for {device_id}: {e}");
+        }
+    }
+
+    Ok(count)
+}
+
 /// Mark devices as offline if they haven't been seen since timeout_secs.
 pub fn check_offline_devices(
     conn: &mut SqliteConnection,

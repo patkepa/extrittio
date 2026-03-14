@@ -204,8 +204,7 @@ pub(crate) async fn resolve_alert_handler(
         let rid = rule_id.clone();
         let did = alert.device_id.clone();
         let now = chrono::Utc::now().naive_utc();
-        {
-            let mut guard = state.rule_cache.write().unwrap();
+        if let Ok(mut guard) = state.rule_cache.write() {
             guard.active_alerts.remove(&(rid.clone(), did.clone()));
             guard.cooldowns.insert((rid.clone(), did.clone()), now);
         }
@@ -273,8 +272,7 @@ pub(crate) async fn bulk_resolve(
     // Remove from cache and set cooldowns to prevent immediate re-fire
     let now = chrono::Utc::now().naive_utc();
     let mut cooldown_entries = Vec::new();
-    {
-        let mut guard = state.rule_cache.write().unwrap();
+    if let Ok(mut guard) = state.rule_cache.write() {
         for a in &results {
             if let Some(rule_id) = &a.rule_id {
                 guard.active_alerts.remove(&(rule_id.clone(), a.device_id.clone()));
@@ -318,13 +316,14 @@ pub(crate) async fn reactivate_alert_handler(
     })
     .await?;
 
-    // Re-add to active_alerts cache
-    {
-        let mut guard = state.rule_cache.write().unwrap();
+    // Re-add to active_alerts cache and clear any stale cooldown so the rule
+    // engine can resume tracking this alert immediately.
+    if let Ok(mut guard) = state.rule_cache.write() {
         if let Some(rule_id) = &alert.rule_id {
             guard
                 .active_alerts
                 .insert((rule_id.clone(), alert.device_id.clone()), alert.id.clone());
+            guard.cooldowns.remove(&(rule_id.clone(), alert.device_id.clone()));
         }
     }
 
@@ -348,13 +347,13 @@ pub(crate) async fn bulk_reactivate(
     })
     .await?;
 
-    {
-        let mut guard = state.rule_cache.write().unwrap();
+    if let Ok(mut guard) = state.rule_cache.write() {
         for a in &results {
             if let Some(rule_id) = &a.rule_id {
                 guard
                     .active_alerts
                     .insert((rule_id.clone(), a.device_id.clone()), a.id.clone());
+                guard.cooldowns.remove(&(rule_id.clone(), a.device_id.clone()));
             }
         }
     }

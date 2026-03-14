@@ -29,27 +29,29 @@ pub async fn run_offline_checker(
         let result = tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().map_err(|e| e.to_string())?;
 
-            // First, find which devices are going offline (before marking them)
+            // Mark offline and collect the affected device IDs in one pass
+            // using a shared cutoff to avoid TOCTOU races.
             #[allow(clippy::cast_possible_wrap)]
             let cutoff =
                 chrono::Utc::now().naive_utc() - chrono::TimeDelta::seconds(timeout_secs as i64);
             let going_offline_ids =
                 device_repo::find_devices_going_offline(&mut conn, cutoff)
                     .map_err(|e| e.to_string())?;
-
-            // Now do the full check_offline_devices which marks them and logs
-            let count = device_service::check_offline_devices(&mut conn, timeout_secs)
+            let count = device_service::mark_devices_offline(&mut conn, &going_offline_ids)
                 .map_err(|e| e.to_string())?;
 
-            // For each device going offline, load its record and evaluate rules
-            let mut all_actions: Vec<PendingAction> = Vec::new();
-            let cache_guard = cache.read().map_err(|e| e.to_string())?;
-
+            // Load device records for rule evaluation (no lock held yet)
+            let mut device_records = Vec::new();
             for device_id in &going_offline_ids {
                 if let Ok(device) = device_repo::find_device(&mut conn, device_id) {
-                    // The device was just marked offline by check_offline_devices,
-                    // so device.status is now "offline". We approximate the
-                    // previous status as "online" for rule evaluation.
+                    device_records.push((device_id.clone(), device));
+                }
+            }
+
+            // Take the read lock only for rule evaluation, then drop it
+            let mut all_actions: Vec<PendingAction> = Vec::new();
+            if let Ok(cache_guard) = cache.read() {
+                for (device_id, device) in &device_records {
                     let change = StatusChange {
                         old_status: "online".to_string(),
                         new_status: "offline".to_string(),
@@ -64,7 +66,6 @@ pub async fn run_offline_checker(
                     all_actions.extend(actions);
                 }
             }
-            drop(cache_guard);
 
             Ok::<(usize, Vec<PendingAction>), String>((count, all_actions))
         })
@@ -155,7 +156,7 @@ pub async fn run_alert_retention(db_pool: DbPool, retention_days: u64) {
             let cooldown_cutoff =
                 chrono::Utc::now().naive_utc() - chrono::Duration::seconds(86400);
             let cooldown_count =
-                crate::repositories::rule_repo::delete_cooldowns_older_than(&mut conn, cooldown_cutoff)
+                crate::services::rule_service::delete_stale_cooldowns(&mut conn, cooldown_cutoff)
                     .map_err(|e| e.to_string())?;
 
             Ok::<(usize, usize), String>((alert_count, cooldown_count))

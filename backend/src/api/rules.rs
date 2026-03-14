@@ -156,8 +156,11 @@ async fn refresh_rule_cache(state: &AppState) {
     .await;
     match result {
         Ok(Ok(new_cache)) => {
-            let mut guard = state.rule_cache.write().unwrap();
-            *guard = new_cache;
+            if let Ok(mut guard) = state.rule_cache.write() {
+                *guard = new_cache;
+            } else {
+                tracing::warn!("Rule cache lock poisoned; skipping refresh");
+            }
         }
         Ok(Err(e)) => tracing::warn!("Failed to refresh rule cache: {e}"),
         Err(e) => tracing::warn!("Rule cache refresh task failed: {e}"),
@@ -259,6 +262,7 @@ pub(crate) async fn update_rule_handler(
     Path(id): Path<String>,
     Json(body): Json<UpdateRuleRequest>,
 ) -> Result<Json<RuleResponse>, AppError> {
+    let trigger_type_changing = body.trigger_type.clone();
     let conditions: Option<Vec<(String, String, String)>> = body.conditions.map(|cs| {
         cs.into_iter()
             .map(|c| (c.field, c.operator, c.value))
@@ -271,6 +275,7 @@ pub(crate) async fn update_rule_handler(
             .collect()
     });
 
+    let rule_id = id.clone();
     let details = run_db(&state.db_pool, move |conn| {
         rule_service::update_rule(
             conn,
@@ -286,6 +291,23 @@ pub(crate) async fn update_rule_handler(
         )
     })
     .await?;
+
+    // If trigger_type changed, remove any active alert cache entries for this
+    // rule to prevent the engine from issuing UpdateAlertValue with mismatched
+    // data types (e.g. telemetry value on a status alert).
+    if trigger_type_changing.is_some() {
+        if let Ok(mut guard) = state.rule_cache.write() {
+            let keys_to_remove: Vec<_> = guard
+                .active_alerts
+                .keys()
+                .filter(|(rid, _)| rid == &rule_id)
+                .cloned()
+                .collect();
+            for key in keys_to_remove {
+                guard.active_alerts.remove(&key);
+            }
+        }
+    }
 
     refresh_rule_cache(&state).await;
 
