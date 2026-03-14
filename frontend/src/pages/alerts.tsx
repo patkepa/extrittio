@@ -18,8 +18,10 @@ import {
   useAlerts,
   useAcknowledgeAlert,
   useResolveAlert,
+  useReactivateAlert,
   useBulkAcknowledge,
   useBulkResolve,
+  useBulkReactivate,
 } from '../hooks/use-alerts';
 import { showSuccessToast, showErrorToast } from '../utils/toaster';
 import type { Alert } from '../types/alerts';
@@ -38,8 +40,10 @@ export const Alerts = () => {
   const alertsQuery = useAlerts(Object.keys(queryParams).length > 0 ? queryParams : undefined);
   const acknowledgeMutation = useAcknowledgeAlert();
   const resolveMutation = useResolveAlert();
+  const reactivateMutation = useReactivateAlert();
   const bulkAckMutation = useBulkAcknowledge();
   const bulkResolveMutation = useBulkResolve();
+  const bulkReactivateMutation = useBulkReactivate();
 
   const alerts = useMemo(() => alertsQuery.data?.data ?? [], [alertsQuery.data?.data]);
   const isLoading = alertsQuery.isLoading;
@@ -80,6 +84,25 @@ export const Alerts = () => {
     resolveMutation.mutate(alert.id, {
       onSuccess: () => void showSuccessToast('Alert resolved'),
       onError: () => void showErrorToast('Failed to resolve alert'),
+    });
+  };
+
+  const handleReactivate = (alert: Alert, e: React.MouseEvent) => {
+    e.stopPropagation();
+    reactivateMutation.mutate(alert.id, {
+      onSuccess: () => void showSuccessToast('Alert reactivated'),
+      onError: () => void showErrorToast('Failed to reactivate alert'),
+    });
+  };
+
+  const handleBulkReactivate = () => {
+    const ids = Array.from(selectedIds);
+    bulkReactivateMutation.mutate(ids, {
+      onSuccess: () => {
+        void showSuccessToast(`${ids.length} alert(s) reactivated`);
+        setSelectedIds(new Set());
+      },
+      onError: () => void showErrorToast('Failed to reactivate alerts'),
     });
   };
 
@@ -221,24 +244,39 @@ export const Alerts = () => {
             </Button>
           </div>
           <div className="alerts-bulk-bar-right">
-            <Button
-              icon="tick"
-              small
-              intent="warning"
-              onClick={handleBulkAcknowledge}
-              loading={bulkAckMutation.isPending}
-            >
-              Acknowledge
-            </Button>
-            <Button
-              icon="tick-circle"
-              small
-              intent="success"
-              onClick={handleBulkResolve}
-              loading={bulkResolveMutation.isPending}
-            >
-              Resolve
-            </Button>
+            {filterStatus !== 'acknowledged' && filterStatus !== 'resolved' && (
+              <Button
+                icon="tick"
+                small
+                intent="warning"
+                onClick={handleBulkAcknowledge}
+                loading={bulkAckMutation.isPending}
+              >
+                Acknowledge
+              </Button>
+            )}
+            {filterStatus !== 'resolved' && (
+              <Button
+                icon="tick-circle"
+                small
+                intent="success"
+                onClick={handleBulkResolve}
+                loading={bulkResolveMutation.isPending}
+              >
+                Resolve
+              </Button>
+            )}
+            {filterStatus !== 'active' && (
+              <Button
+                icon="undo"
+                small
+                intent="primary"
+                onClick={handleBulkReactivate}
+                loading={bulkReactivateMutation.isPending}
+              >
+                Reactivate
+              </Button>
+            )}
           </div>
         </div>
       )}
@@ -341,6 +379,17 @@ export const Alerts = () => {
                             small
                             intent="success"
                             onClick={(e) => handleResolve(alert, e)}
+                          />
+                        </Tooltip>
+                      )}
+                      {(alert.status === 'acknowledged' || alert.status === 'resolved') && (
+                        <Tooltip content="Reactivate" minimal hoverOpenDelay={150}>
+                          <Button
+                            icon="undo"
+                            minimal
+                            small
+                            intent="primary"
+                            onClick={(e) => handleReactivate(alert, e)}
                           />
                         </Tooltip>
                       )}

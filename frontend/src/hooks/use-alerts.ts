@@ -70,3 +70,25 @@ export function useBulkResolve() {
     },
   });
 }
+
+export function useReactivateAlert() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => reactivateAlert(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.alerts.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.alerts.summary });
+    },
+  });
+}
+
+export function useBulkReactivate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) => bulkReactivate(ids),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.alerts.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.alerts.summary });
+    },
+  });
+}
