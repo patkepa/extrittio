@@ -52,7 +52,7 @@
 }
 
 .page-description {
-  color: hsl(var(--muted));
+  color: hsl(var(--muted) / 0.7);
   font-size: 14px;
 }
 
@@ -77,19 +77,22 @@
 }
 
 .stat-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  background-color: transparent !important;
+  opacity: 0.6;
 }
 
 .stat-sparkline {
   flex: 1;
   max-width: 100px;
   height: 32px;
+  opacity: 0.6;
 }
 
 .sparkline-svg {
@@ -169,7 +172,7 @@
   align-items: center;
   gap: 10px;
   padding: 8px 0;
-  border-bottom: 1px solid hsl(0 0% 15% / 0.5);
+  border-bottom: 1px solid var(--border-color);
   font-size: 13px;
 }
 
