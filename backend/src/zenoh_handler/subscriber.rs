@@ -63,6 +63,8 @@ pub async fn run_subscriber(
     let heartbeat_metrics = zenoh_metrics.clone();
     let heartbeat_cache = rule_cache.clone();
     let heartbeat_client = http_client.clone();
+    let heartbeat_session = session.clone();
+    let heartbeat_zenoh_metrics = zenoh_metrics.clone();
     tokio::spawn(async move {
         loop {
             match heartbeat_sub.recv_async().await {
@@ -85,8 +87,10 @@ pub async fn run_subscriber(
                             let p = action_pool.clone();
                             let c = action_cache.clone();
                             let cl = client.clone();
+                            let s = heartbeat_session.clone();
+                            let m = heartbeat_zenoh_metrics.clone();
                             tokio::spawn(async move {
-                                execute_action(action, &p, &c, &cl).await;
+                                execute_action(action, &p, &c, &cl, &s, &m).await;
                             });
                         }
                     }
@@ -216,8 +220,10 @@ pub async fn run_subscriber(
                         let p = action_pool.clone();
                         let c = action_cache.clone();
                         let cl = client.clone();
+                        let s = session.clone();
+                        let m = zenoh_metrics.clone();
                         tokio::spawn(async move {
-                            execute_action(action, &p, &c, &cl).await;
+                            execute_action(action, &p, &c, &cl, &s, &m).await;
                         });
                     }
                 }
@@ -242,6 +248,8 @@ pub async fn execute_action(
     db_pool: &DbPool,
     rule_cache: &Arc<RwLock<RuleCache>>,
     http_client: &reqwest::Client,
+    zenoh_session: &Arc<zenoh::Session>,
+    zenoh_metrics: &Arc<ZenohMetrics>,
 ) {
     match action {
         PendingAction::CreateAlert {
@@ -255,6 +263,19 @@ pub async fn execute_action(
             let cache = rule_cache.clone();
             let rid = rule_id.clone();
             let did = device_id.clone();
+
+            // Atomically check-and-reserve to prevent duplicate alerts from
+            // concurrent telemetry messages triggering the same rule+device.
+            {
+                let mut guard = cache.write().unwrap();
+                let key = (rid.clone(), did.clone());
+                if guard.active_alerts.contains_key(&key) {
+                    return;
+                }
+                // Reserve the slot; replaced with the real alert ID below.
+                guard.active_alerts.insert(key, String::new());
+            }
+
             let result = tokio::task::spawn_blocking(move || {
                 let mut conn = pool.get().map_err(|e| e.to_string())?;
                 crate::services::alert_service::create_alert(
@@ -270,14 +291,23 @@ pub async fn execute_action(
             .await;
             match result {
                 Ok(Ok(alert)) => {
-                    // Update active_alerts in the cache
                     if let Ok(mut c) = cache.write() {
-                        c.active_alerts
-                            .insert((rid, did), alert.id);
+                        c.active_alerts.insert((rid, did), alert.id);
                     }
                 }
-                Ok(Err(msg)) => warn!("Failed to create alert: {}", msg),
-                Err(e) => warn!("CreateAlert task panicked: {}", e),
+                Ok(Err(msg)) => {
+                    // Roll back the reservation
+                    if let Ok(mut c) = cache.write() {
+                        c.active_alerts.remove(&(rid, did));
+                    }
+                    warn!("Failed to create alert: {}", msg);
+                }
+                Err(e) => {
+                    if let Ok(mut c) = cache.write() {
+                        c.active_alerts.remove(&(rid, did));
+                    }
+                    warn!("CreateAlert task panicked: {}", e);
+                }
             }
         }
         PendingAction::UpdateAlertValue {
@@ -304,7 +334,6 @@ pub async fn execute_action(
         PendingAction::ResolveAlert { alert_id } => {
             let pool = db_pool.clone();
             let cache = rule_cache.clone();
-            let aid = alert_id.clone();
             let result = tokio::task::spawn_blocking(move || {
                 let mut conn = pool.get().map_err(|e| e.to_string())?;
                 crate::services::alert_service::resolve_alert(&mut conn, &alert_id)
@@ -313,18 +342,11 @@ pub async fn execute_action(
             .await;
             match result {
                 Ok(Ok(alert)) => {
-                    // Remove from active_alerts cache
                     if let Ok(mut c) = cache.write() {
-                        // Find the key that contains this alert_id
-                        let key_to_remove = c
-                            .active_alerts
-                            .iter()
-                            .find(|(_, v)| **v == aid)
-                            .map(|(k, _)| k.clone());
-                        if let Some(key) = key_to_remove {
-                            c.active_alerts.remove(&key);
+                        if let Some(rule_id) = &alert.rule_id {
+                            c.active_alerts
+                                .remove(&(rule_id.clone(), alert.device_id.clone()));
                         }
-                        let _ = alert; // used above via aid
                     }
                 }
                 Ok(Err(msg)) => warn!("Failed to resolve alert: {}", msg),
@@ -375,37 +397,51 @@ pub async fn execute_action(
                     .collect(),
                 _ => std::collections::HashMap::new(),
             };
-            // Note: send_command requires zenoh_session and zenoh_metrics which
-            // are not available here. For rule-triggered commands, we insert the
-            // command record and publish via Zenoh. Since we don't have the
-            // session here, we'll do a DB-only insert and log it.
-            // TODO: Pass zenoh_session if full command sending is needed.
+            let session = zenoh_session.clone();
+            let metrics = zenoh_metrics.clone();
             let pool = db_pool.clone();
-            let result = tokio::task::spawn_blocking(move || {
+            let correlation_id = uuid::Uuid::new_v4().to_string();
+            let params_json =
+                serde_json::to_string(&params_map).unwrap_or_else(|_| "{}".to_string());
+            let cmd_clone = command.clone();
+            let did_clone = device_id.clone();
+            let cid_clone = correlation_id.clone();
+            // Persist to DB
+            let db_result = tokio::task::spawn_blocking(move || {
                 let mut conn = pool.get().map_err(|e| e.to_string())?;
-                // Just verify the device exists; actual command sending via
-                // Zenoh requires the session which is available in the subscriber scope.
-                crate::repositories::device_repo::find_device(&mut conn, &device_id)
+                crate::repositories::device_repo::find_device(&mut conn, &did_clone)
                     .map_err(|e| e.to_string())?;
-                let correlation_id = uuid::Uuid::new_v4().to_string();
-                let params_json =
-                    serde_json::to_string(&params_map).unwrap_or_else(|_| "{}".to_string());
                 crate::repositories::command_repo::insert_command(
                     &mut conn,
                     &crate::db::models::NewCommandRecord {
-                        id: correlation_id.clone(),
-                        device_id: device_id.clone(),
-                        command,
+                        id: cid_clone,
+                        device_id: did_clone,
+                        command: cmd_clone,
                         params: params_json,
                     },
                 )
-                .map_err(|e| e.to_string())?;
-                Ok::<String, String>(correlation_id)
+                .map_err(|e| e.to_string())
             })
             .await;
-            match result {
-                Ok(Ok(cid)) => {
-                    info!("Rule-triggered command recorded: {}", cid);
+            match db_result {
+                Ok(Ok(())) => {
+                    // Publish via Zenoh
+                    let proto_command = extrittio_common::extrittio::DeviceCommand {
+                        command,
+                        params: params_map,
+                        correlation_id: correlation_id.clone(),
+                    };
+                    let payload = prost::Message::encode_to_vec(&proto_command);
+                    let topic = extrittio_common::topics::commands(&device_id);
+                    match session.put(&topic, payload).await {
+                        Ok(()) => {
+                            metrics.messages_out.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            info!("Rule-triggered command sent: {}", correlation_id);
+                        }
+                        Err(e) => {
+                            warn!("Failed to publish rule-triggered command via Zenoh: {}", e);
+                        }
+                    }
                 }
                 Ok(Err(msg)) => warn!("Failed to record rule-triggered command: {}", msg),
                 Err(e) => warn!("SendCommand task panicked: {}", e),

@@ -123,8 +123,10 @@ async fn main() {
     let offline_timeout = config.offline_timeout_secs;
     let checker_cache = state.rule_cache.clone();
     let checker_client = state.http_client.clone();
+    let checker_session = zenoh_session.clone();
+    let checker_metrics = zenoh_metrics.clone();
     tokio::spawn(async move {
-        background::run_offline_checker(checker_pool, offline_timeout, checker_cache, checker_client).await;
+        background::run_offline_checker(checker_pool, offline_timeout, checker_cache, checker_client, checker_session, checker_metrics).await;
     });
 
     let retention_pool = db_pool.clone();

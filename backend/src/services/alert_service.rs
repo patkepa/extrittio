@@ -132,9 +132,12 @@ pub fn update_triggered_value(
     use crate::db::schema::alerts;
     use diesel::prelude::*;
 
-    diesel::update(alerts::table.find(id))
+    let rows = diesel::update(alerts::table.find(id))
         .set(alerts::triggered_value.eq(Some(value)))
         .execute(conn)?;
+    if rows == 0 {
+        return Err(AppError::NotFound(format!("Alert '{id}' not found")));
+    }
     Ok(())
 }
 

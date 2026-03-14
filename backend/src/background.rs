@@ -15,6 +15,8 @@ pub async fn run_offline_checker(
     timeout_secs: u64,
     rule_cache: Arc<RwLock<RuleCache>>,
     http_client: reqwest::Client,
+    zenoh_session: Arc<zenoh::Session>,
+    zenoh_metrics: Arc<crate::state::ZenohMetrics>,
 ) {
     let interval = Duration::from_secs(60); // check every minute
     info!("Offline checker started (timeout: {}s)", timeout_secs);
@@ -78,9 +80,11 @@ pub async fn run_offline_checker(
                     let p = db_pool.clone();
                     let c = rule_cache.clone();
                     let cl = http_client.clone();
+                    let s = zenoh_session.clone();
+                    let m = zenoh_metrics.clone();
                     tokio::spawn(async move {
                         crate::zenoh_handler::subscriber::execute_action(
-                            action, &p, &c, &cl,
+                            action, &p, &c, &cl, &s, &m,
                         )
                         .await;
                     });

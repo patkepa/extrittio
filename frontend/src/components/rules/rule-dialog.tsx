@@ -137,7 +137,14 @@ export function RuleDialog() {
     }
   }, [isRuleDialogOpen, resetCreate, resetUpdate]);
 
+  const hasEmptyConditions = conditions.some((c) => c.value.trim() === '');
+
   const handleSubmit = () => {
+    if (hasEmptyConditions) {
+      void showErrorToast('All conditions must have a value');
+      return;
+    }
+
     const body = {
       name,
       description: description || undefined,
@@ -145,7 +152,7 @@ export function RuleDialog() {
       target_type: targetType,
       target_id: targetType !== 'global' ? targetId || undefined : undefined,
       cooldown_seconds: cooldownSeconds,
-      conditions: conditions.filter((c) => c.value.trim() !== ''),
+      conditions,
       actions: actions.map((a) => ({ action_type: a.action_type, config: a.config })),
     };
 
@@ -497,7 +504,7 @@ export function RuleDialog() {
               icon={editingRuleId ? 'tick' : 'add'}
               onClick={handleSubmit}
               loading={isPending}
-              disabled={!name.trim()}
+              disabled={!name.trim() || hasEmptyConditions}
             >
               {editingRuleId ? 'Update Rule' : 'Add Rule'}
             </Button>

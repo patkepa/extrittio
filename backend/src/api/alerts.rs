@@ -184,13 +184,8 @@ pub(crate) async fn acknowledge_alert(
     })
     .await?;
 
-    // Remove from active_alerts cache
-    {
-        let mut guard = state.rule_cache.write().unwrap();
-        if let Some(rule_id) = &alert.rule_id {
-            guard.active_alerts.remove(&(rule_id.clone(), alert.device_id.clone()));
-        }
-    }
+    // Keep the alert in active_alerts cache so the rule engine continues to
+    // track it (UpdateAlertValue) rather than creating a duplicate alert.
 
     Ok(Json(to_alert_response(alert)))
 }
@@ -204,12 +199,32 @@ pub(crate) async fn resolve_alert_handler(
     })
     .await?;
 
-    // Remove from active_alerts cache
-    {
-        let mut guard = state.rule_cache.write().unwrap();
-        if let Some(rule_id) = &alert.rule_id {
-            guard.active_alerts.remove(&(rule_id.clone(), alert.device_id.clone()));
+    // Remove from active_alerts cache and set cooldown to prevent immediate re-fire
+    if let Some(rule_id) = &alert.rule_id {
+        let rid = rule_id.clone();
+        let did = alert.device_id.clone();
+        let now = chrono::Utc::now().naive_utc();
+        {
+            let mut guard = state.rule_cache.write().unwrap();
+            guard.active_alerts.remove(&(rid.clone(), did.clone()));
+            guard.cooldowns.insert((rid.clone(), did.clone()), now);
         }
+        let pool = state.db_pool.clone();
+        tokio::spawn(async move {
+            let _ = tokio::task::spawn_blocking(move || {
+                let mut conn = pool.get().map_err(|e| e.to_string())?;
+                crate::repositories::rule_repo::upsert_cooldown(
+                    &mut conn,
+                    &crate::db::models::RuleCooldown {
+                        rule_id: rid,
+                        device_id: did,
+                        last_fired_at: now,
+                    },
+                )
+                .map_err(|e| e.to_string())
+            })
+            .await;
+        });
     }
 
     Ok(Json(to_alert_response(alert)))
@@ -232,14 +247,8 @@ pub(crate) async fn bulk_acknowledge(
     })
     .await?;
 
-    {
-        let mut guard = state.rule_cache.write().unwrap();
-        for a in &results {
-            if let Some(rule_id) = &a.rule_id {
-                guard.active_alerts.remove(&(rule_id.clone(), a.device_id.clone()));
-            }
-        }
-    }
+    // Keep alerts in active_alerts cache so the rule engine continues to
+    // track them rather than creating duplicate alerts.
 
     Ok(Json(serde_json::json!({ "acknowledged": results.len() })))
 }
@@ -261,13 +270,40 @@ pub(crate) async fn bulk_resolve(
     })
     .await?;
 
+    // Remove from cache and set cooldowns to prevent immediate re-fire
+    let now = chrono::Utc::now().naive_utc();
+    let mut cooldown_entries = Vec::new();
     {
         let mut guard = state.rule_cache.write().unwrap();
         for a in &results {
             if let Some(rule_id) = &a.rule_id {
                 guard.active_alerts.remove(&(rule_id.clone(), a.device_id.clone()));
+                guard.cooldowns.insert((rule_id.clone(), a.device_id.clone()), now);
+                cooldown_entries.push((rule_id.clone(), a.device_id.clone()));
             }
         }
+    }
+    if !cooldown_entries.is_empty() {
+        let pool = state.db_pool.clone();
+        tokio::spawn(async move {
+            let _ = tokio::task::spawn_blocking(move || {
+                let mut conn = pool.get().map_err(|e| e.to_string())?;
+                for (rid, did) in cooldown_entries {
+                    if let Err(e) = crate::repositories::rule_repo::upsert_cooldown(
+                        &mut conn,
+                        &crate::db::models::RuleCooldown {
+                            rule_id: rid,
+                            device_id: did,
+                            last_fired_at: now,
+                        },
+                    ) {
+                        tracing::warn!("Failed to persist cooldown on bulk resolve: {}", e);
+                    }
+                }
+                Ok::<(), String>(())
+            })
+            .await;
+        });
     }
 
     Ok(Json(serde_json::json!({ "resolved": results.len() })))
