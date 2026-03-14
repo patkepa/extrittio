@@ -64,3 +64,8 @@ Thumbs.db
 *.sln
 *.sw?
 *~
+
+# ========================
+# C / CMake (sdk-c)
+# ========================
+client/sdk-c/build/

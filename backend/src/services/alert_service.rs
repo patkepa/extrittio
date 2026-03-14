@@ -102,6 +102,24 @@ pub fn resolve_alert(conn: &mut SqliteConnection, id: &str) -> Result<Alert, App
     get_alert(conn, id)
 }
 
+/// Transition an alert from `acknowledged` or `resolved` → `active`.
+/// Returns `BadRequest` if the alert is already active.
+pub fn reactivate_alert(conn: &mut SqliteConnection, id: &str) -> Result<Alert, AppError> {
+    let alert = get_alert(conn, id)?;
+    if alert.status == "active" {
+        return Err(AppError::BadRequest(format!(
+            "Alert '{id}' is already active"
+        )));
+    }
+    let changeset = UpdateAlert {
+        status: Some("active".to_string()),
+        acknowledged_at: Some(None),
+        resolved_at: Some(None),
+    };
+    alert_repo::update_alert(conn, id, &changeset)?;
+    get_alert(conn, id)
+}
+
 /// Update the `triggered_value` field of an existing alert (used by the rule
 /// engine when the same condition fires again with a new sensor reading).
 pub fn update_triggered_value(

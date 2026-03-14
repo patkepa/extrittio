@@ -34,3 +34,12 @@ export async function bulkAcknowledge(ids: string[]): Promise<void> {
 export async function bulkResolve(ids: string[]): Promise<void> {
   await client.put('/alerts/bulk-resolve', { ids });
 }
+
+export async function reactivateAlert(id: string): Promise<Alert> {
+  const { data } = await client.put<Alert>(`/alerts/${id}/reactivate`);
+  return data;
+}
+
+export async function bulkReactivate(ids: string[]): Promise<void> {
+  await client.put('/alerts/bulk-reactivate', { ids });
+}

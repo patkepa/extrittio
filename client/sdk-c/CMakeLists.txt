@@ -65,7 +65,7 @@ else()
         PRIVATE generated ${nanopb_SOURCE_DIR}
     )
     target_link_libraries(extrittio_sdk_c
-        PUBLIC zenohpico
+        PUBLIC zenohpico::lib
         PRIVATE protobuf-nanopb-static cjson
     )
 

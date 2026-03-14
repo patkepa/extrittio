@@ -12,6 +12,7 @@ import {
   Spinner,
   Switch,
   Alert,
+  Tooltip,
 } from '@blueprintjs/core';
 import { useRules, useDeleteRule, useToggleRule } from '../hooks/use-rules';
 import { useDeviceTypes } from '../hooks/use-device-types';
@@ -120,6 +121,19 @@ export const Rules = () => {
         return 'console';
       default:
         return 'cog';
+    }
+  };
+
+  const actionLabel = (action: Rule['actions'][number]) => {
+    switch (action.action_type) {
+      case 'alert':
+        return `Alert (${(action.config.severity as string) ?? 'warning'})`;
+      case 'webhook':
+        return `Webhook: ${(action.config.url as string) || 'no URL'}`;
+      case 'command':
+        return `Command: ${(action.config.command as string) || 'no command'}`;
+      default:
+        return action.action_type;
     }
   };
 
@@ -264,13 +278,13 @@ export const Rules = () => {
                   <td>
                     <div className="rule-actions-cell">
                       {(rule.actions ?? []).map((a) => (
-                        <Icon
-                          key={a.id}
-                          icon={actionIcon(a.action_type)}
-                          size={14}
-                          color="hsl(var(--muted))"
-                          title={a.action_type}
-                        />
+                        <Tooltip key={a.id} content={actionLabel(a)} minimal hoverOpenDelay={150}>
+                          <Icon
+                            icon={actionIcon(a.action_type)}
+                            size={14}
+                            color="hsl(var(--muted))"
+                          />
+                        </Tooltip>
                       ))}
                     </div>
                   </td>

@@ -96,8 +96,10 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/api/v1/alerts/{id}", get(get_alert))
         .route("/api/v1/alerts/{id}/acknowledge", put(acknowledge_alert))
         .route("/api/v1/alerts/{id}/resolve", put(resolve_alert_handler))
+        .route("/api/v1/alerts/{id}/reactivate", put(reactivate_alert_handler))
         .route("/api/v1/alerts/bulk-acknowledge", put(bulk_acknowledge))
         .route("/api/v1/alerts/bulk-resolve", put(bulk_resolve))
+        .route("/api/v1/alerts/bulk-reactivate", put(bulk_reactivate))
 }
 
 // ---------------------------------------------------------------------------
@@ -277,4 +279,61 @@ pub(crate) async fn bulk_resolve(
     }
 
     Ok(Json(serde_json::json!({ "resolved": updated.len() })))
+}
+
+pub(crate) async fn reactivate_alert_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<AlertResponse>, AppError> {
+    let alert = run_db(&state.db_pool, move |conn| {
+        alert_service::reactivate_alert(conn, &id)
+    })
+    .await?;
+
+    // Re-add to active_alerts cache
+    {
+        let mut guard = state.rule_cache.write().unwrap();
+        if let Some(rule_id) = &alert.rule_id {
+            guard
+                .active_alerts
+                .insert((rule_id.clone(), alert.device_id.clone()), alert.id.clone());
+        }
+    }
+
+    Ok(Json(to_alert_response(alert)))
+}
+
+pub(crate) async fn bulk_reactivate(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<BulkAlertIds>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let ids = body.ids.clone();
+    let mut updated = Vec::new();
+
+    for id in &ids {
+        let id_owned = id.clone();
+        let id_log = id.clone();
+        let alert = run_db(&state.db_pool, move |conn| {
+            alert_service::reactivate_alert(conn, &id_owned)
+        })
+        .await;
+
+        match alert {
+            Ok(a) => {
+                // Update cache
+                let mut guard = state.rule_cache.write().unwrap();
+                if let Some(rule_id) = &a.rule_id {
+                    guard
+                        .active_alerts
+                        .insert((rule_id.clone(), a.device_id.clone()), a.id.clone());
+                }
+                updated.push(a.id.clone());
+            }
+            Err(e) => {
+                tracing::warn!("Failed to reactivate alert {id_log}: {e}");
+            }
+        }
+    }
+
+    Ok(Json(serde_json::json!({ "reactivated": updated.len() })))
 }

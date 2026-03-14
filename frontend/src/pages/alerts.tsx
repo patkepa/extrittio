@@ -12,6 +12,7 @@ import {
   H4,
   Callout,
   Spinner,
+  Tooltip,
 } from '@blueprintjs/core';
 import {
   useAlerts,
@@ -323,23 +324,25 @@ export const Alerts = () => {
                   <td>
                     <div className="alert-row-actions">
                       {alert.status === 'active' && (
-                        <Button
-                          icon="tick"
-                          minimal
-                          small
-                          title="Acknowledge"
-                          onClick={(e) => handleAcknowledge(alert, e)}
-                        />
+                        <Tooltip content="Acknowledge" minimal hoverOpenDelay={150}>
+                          <Button
+                            icon="tick"
+                            minimal
+                            small
+                            onClick={(e) => handleAcknowledge(alert, e)}
+                          />
+                        </Tooltip>
                       )}
                       {(alert.status === 'active' || alert.status === 'acknowledged') && (
-                        <Button
-                          icon="tick-circle"
-                          minimal
-                          small
-                          intent="success"
-                          title="Resolve"
-                          onClick={(e) => handleResolve(alert, e)}
-                        />
+                        <Tooltip content="Resolve" minimal hoverOpenDelay={150}>
+                          <Button
+                            icon="tick-circle"
+                            minimal
+                            small
+                            intent="success"
+                            onClick={(e) => handleResolve(alert, e)}
+                          />
+                        </Tooltip>
                       )}
                     </div>
                   </td>

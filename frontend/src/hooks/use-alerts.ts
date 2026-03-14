@@ -4,8 +4,10 @@ import {
   getAlertSummary,
   acknowledgeAlert,
   resolveAlert,
+  reactivateAlert,
   bulkAcknowledge,
   bulkResolve,
+  bulkReactivate,
 } from '../api/alerts';
 import { queryKeys } from './query-keys';
 
