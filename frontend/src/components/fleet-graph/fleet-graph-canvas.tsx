@@ -1,14 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- react-force-graph-2d lacks proper TS types */
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
-// @ts-expect-error — d3-force-3d ships as transitive dep without types
-import { forceCollide } from 'd3-force-3d';
 import type { GraphData, GraphNode, GraphLink } from './build-force-graph-data';
 import type { Device } from '../../types/api';
 import { getHealthTier, getStalenessColor, getPulseFrequency } from './health-utils';
 import { TIER_COLORS, TYPE_ICON_PATHS, FALLBACK_ICON_PATHS, SELECTION_COLOR } from './constants';
-import { useSelectionStore } from '../../stores/selection-store';
 import type { ViewportInfo } from './fleet-graph-minimap';
+import { useForceSimulation } from './use-force-simulation';
+import { useLassoSelection } from './use-lasso-selection';
+import { useViewportControls } from './use-viewport-controls';
 
 export interface GraphActions {
   navigateTo: (x: number, y: number) => void;
@@ -91,24 +91,38 @@ export const FleetGraphCanvas = memo(
     const [hoverNode, setHoverNode] = useState<GraphNode | null>(null);
     const highlightNodes = useRef(new Set<GraphNode>());
     const highlightLinks = useRef(new Set<GraphLink>());
-    const hasInitialFit = useRef(false);
     const pulseClockRef = useRef(0);
     const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const canvasWrapperRef = useRef<HTMLDivElement>(null);
-    const lassoRef = useRef<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
-    const isLassoingRef = useRef(false);
-    const [shiftHeld, setShiftHeld] = useState(false);
-    const shiftHeldRef = useRef(false);
+    const hasInitialFit = useRef(false);
 
-    // Subscribe to selection store
-    const selectedDeviceIds = useSelectionStore((s) => s.selectedDeviceIds);
-    const addToSelection = useSelectionStore((s) => s.addToSelection);
-    const toggleDevice = useSelectionStore((s) => s.toggleDevice);
-    const clearSelection = useSelectionStore((s) => s.clearSelection);
+    // --- Custom hooks ---
+    const { updateNodeBounds, handleZoom } = useViewportControls(
+      graphRef,
+      canvasWrapperRef,
+      graphData,
+      width,
+      height,
+      hasInitialFit,
+      selectedNodeId,
+      onViewportChange,
+      graphActionsRef,
+    );
 
-    // Keep a ref so the lasso mousedown handler can read selection without re-registering
-    const selectionRef = useRef(selectedDeviceIds);
-    selectionRef.current = selectedDeviceIds;
+    const { handleEngineStop } = useForceSimulation(
+      graphRef,
+      updateNodeBounds,
+      hasInitialFit,
+    );
+
+    const {
+      shiftHeld,
+      selectedDeviceIds,
+      toggleDevice,
+      clearSelection,
+      enablePanInteraction,
+      paintLasso,
+    } = useLassoSelection(graphRef, canvasWrapperRef, graphData);
 
     useEffect(() => {
       let rafId: number;
@@ -120,31 +134,7 @@ export const FleetGraphCanvas = memo(
       return () => cancelAnimationFrame(rafId);
     }, []);
 
-    // Shift key tracking for lasso mode
-    useEffect(() => {
-      const onKeyDown = (e: KeyboardEvent) => {
-        if (e.key === 'Shift') {
-          shiftHeldRef.current = true;
-          setShiftHeld(true);
-        }
-      };
-      const onKeyUp = (e: KeyboardEvent) => {
-        if (e.key === 'Shift') {
-          shiftHeldRef.current = false;
-          setShiftHeld(false);
-        }
-      };
-      window.addEventListener('keydown', onKeyDown);
-      window.addEventListener('keyup', onKeyUp);
-      return () => {
-        window.removeEventListener('keydown', onKeyDown);
-        window.removeEventListener('keyup', onKeyUp);
-      };
-    }, []);
-
-    // Suppress browser's native context menu — attach to the wrapper div so it
-    // works regardless of when ForceGraph2D creates the inner canvas element
-    // (events bubble from canvas → wrapper).
+    // Suppress browser's native context menu
     useEffect(() => {
       const wrapper = canvasWrapperRef.current;
       if (!wrapper) return;
@@ -154,253 +144,6 @@ export const FleetGraphCanvas = memo(
       return () => wrapper.removeEventListener('contextmenu', suppress);
     }, []);
 
-    // Lasso mouse event handlers
-    useEffect(() => {
-      const fg = graphRef.current;
-      const wrapper = canvasWrapperRef.current;
-      if (!fg || !wrapper) return;
-      const canvasEl = wrapper.querySelector('canvas');
-      if (!canvasEl) return;
-
-      const onMouseDown = (e: MouseEvent) => {
-        if (e.button !== 0) return;
-
-        // Immediately deselect when clicking empty background (no shift, no node)
-        if (!e.shiftKey && selectionRef.current.size > 0) {
-          const coords = fg.screen2GraphCoords(e.offsetX, e.offsetY);
-          const hitNode = graphData.nodes.some((node) => {
-            if (node.x == null || node.y == null) return false;
-            const r = node.type === 'fleet' ? FLEET_RADIUS : DEVICE_RADIUS;
-            const dx = node.x - coords.x;
-            const dy = node.y - coords.y;
-            return dx * dx + dy * dy <= r * r;
-          });
-          if (!hitNode) {
-            clearSelection();
-          }
-        }
-
-        if (!e.shiftKey) return;
-        const coords = fg.screen2GraphCoords(e.offsetX, e.offsetY);
-        lassoRef.current = { x1: coords.x, y1: coords.y, x2: coords.x, y2: coords.y };
-        isLassoingRef.current = true;
-      };
-
-      const onMouseMove = (e: MouseEvent) => {
-        if (!isLassoingRef.current || !lassoRef.current) return;
-        const coords = fg.screen2GraphCoords(e.offsetX, e.offsetY);
-        lassoRef.current.x2 = coords.x;
-        lassoRef.current.y2 = coords.y;
-      };
-
-      const onMouseUp = () => {
-        if (!isLassoingRef.current || !lassoRef.current) return;
-        isLassoingRef.current = false;
-
-        const { x1, y1, x2, y2 } = lassoRef.current;
-        const minX = Math.min(x1, x2);
-        const maxX = Math.max(x1, x2);
-        const minY = Math.min(y1, y2);
-        const maxY = Math.max(y1, y2);
-
-        if (maxX - minX > 2 && maxY - minY > 2) {
-          const hitIds: string[] = [];
-          for (const node of graphData.nodes) {
-            if (
-              node.type === 'device' &&
-              node.x != null &&
-              node.y != null &&
-              node.x >= minX &&
-              node.x <= maxX &&
-              node.y >= minY &&
-              node.y <= maxY
-            ) {
-              hitIds.push(node.id);
-            }
-          }
-          if (hitIds.length > 0) {
-            addToSelection(hitIds);
-          }
-        }
-
-        lassoRef.current = null;
-      };
-
-      canvasEl.addEventListener('mousedown', onMouseDown);
-      canvasEl.addEventListener('mousemove', onMouseMove);
-      // Listen on window so releasing the mouse outside the canvas still
-      // completes the lasso (prevents stuck lasso state).
-      window.addEventListener('mouseup', onMouseUp);
-      return () => {
-        canvasEl.removeEventListener('mousedown', onMouseDown);
-        canvasEl.removeEventListener('mousemove', onMouseMove);
-        window.removeEventListener('mouseup', onMouseUp);
-      };
-    }, [graphData.nodes, addToSelection]);
-
-    // Configure forces after mount
-    useEffect(() => {
-      if (!graphRef.current) return;
-      const fg = graphRef.current;
-      fg.d3Force('charge').strength(-30);
-      fg.d3Force('link').distance(80);
-      fg.d3Force(
-        'collide',
-        forceCollide((node: GraphNode) =>
-          node.type === 'fleet' ? FLEET_RADIUS + 6 : DEVICE_RADIUS + 4,
-        ),
-      );
-    }, []);
-
-    // Expose graph actions via ref
-    useEffect(() => {
-      if (!graphActionsRef) return;
-      graphActionsRef.current = {
-        navigateTo: (x, y) => graphRef.current?.centerAt(x, y, 500),
-        fitView: () => graphRef.current?.zoomToFit(400, 60),
-        zoomIn: () => {
-          const fg = graphRef.current;
-          if (!fg) return;
-          const cur = fg.zoom();
-          fg.zoom(Math.min(cur * 1.4, 8), 300);
-        },
-        zoomOut: () => {
-          const fg = graphRef.current;
-          if (!fg) return;
-          const cur = fg.zoom();
-          fg.zoom(Math.max(cur / 1.4, 0.5), 300);
-        },
-      };
-    }, [graphActionsRef]);
-
-    // --- Viewport clamping via __zoom property interceptor ---
-    // d3-zoom stores its transform on canvas.__zoom. During drag panning, it
-    // recomputes the transform from scratch each mousemove and writes it to
-    // __zoom. By intercepting that write with Object.defineProperty, we can
-    // clamp the transform BEFORE d3-zoom emits the zoom event or renders.
-    // This avoids the jitter caused by centerAt() feedback loops.
-    const nodeBoundsRef = useRef<{
-      centerX: number;
-      centerY: number;
-      padX: number;
-      padY: number;
-    } | null>(null);
-    const dimensionsRef = useRef({ width, height });
-    dimensionsRef.current = { width, height };
-
-    // Recompute bounds when node positions settle
-    const updateNodeBounds = useCallback(() => {
-      const positioned = graphData.nodes.filter((n) => n.x != null && n.y != null);
-      if (positioned.length === 0) {
-        nodeBoundsRef.current = null;
-        return;
-      }
-
-      let minX = Infinity,
-        minY = Infinity,
-        maxX = -Infinity,
-        maxY = -Infinity;
-      for (const n of positioned) {
-        if (n.x! < minX) minX = n.x!;
-        if (n.y! < minY) minY = n.y!;
-        if (n.x! > maxX) maxX = n.x!;
-        if (n.y! > maxY) maxY = n.y!;
-      }
-      const rangeX = maxX - minX || 200;
-      const rangeY = maxY - minY || 200;
-      nodeBoundsRef.current = {
-        centerX: (minX + maxX) / 2,
-        centerY: (minY + maxY) / 2,
-        padX: Math.max(rangeX * 0.8, 300),
-        padY: Math.max(rangeY * 0.8, 300),
-      };
-    }, [graphData.nodes]);
-
-    useEffect(updateNodeBounds, [updateNodeBounds]);
-
-    // Install the __zoom interceptor on the canvas element
-    useEffect(() => {
-      const canvas = canvasWrapperRef.current?.querySelector('canvas');
-      if (!canvas) return;
-
-      // Grab the existing transform value that d3-zoom already set
-      let currentZoom = (canvas as any).__zoom;
-
-      Object.defineProperty(canvas, '__zoom', {
-        configurable: true,
-        enumerable: true,
-        get() {
-          return currentZoom;
-        },
-        set(val) {
-          const bounds = nodeBoundsRef.current;
-          const { width: w, height: h } = dimensionsRef.current;
-          if (!hasInitialFit.current || !bounds || !val) {
-            currentZoom = val;
-            return;
-          }
-
-          const k = val.k;
-          const viewCenterX = (w / 2 - val.x) / k;
-          const viewCenterY = (h / 2 - val.y) / k;
-
-          const clampedX = Math.max(
-            bounds.centerX - bounds.padX,
-            Math.min(bounds.centerX + bounds.padX, viewCenterX),
-          );
-          const clampedY = Math.max(
-            bounds.centerY - bounds.padY,
-            Math.min(bounds.centerY + bounds.padY, viewCenterY),
-          );
-
-          if (clampedX !== viewCenterX || clampedY !== viewCenterY) {
-            const newTx = w / 2 - clampedX * k;
-            const newTy = h / 2 - clampedY * k;
-            currentZoom = new val.constructor(k, newTx, newTy);
-          } else {
-            currentZoom = val;
-          }
-        },
-      });
-
-      return () => {
-        // Restore a normal data property on cleanup
-        Object.defineProperty(canvas, '__zoom', {
-          configurable: true,
-          writable: true,
-          enumerable: true,
-          value: currentZoom,
-        });
-      };
-    }, []); // Canvas element is stable — refs provide latest values
-
-    // Forward viewport changes to parent (for minimap)
-    const handleZoom = useCallback(
-      (transform: { k: number; x: number; y: number }) => {
-        onViewportChange?.(transform);
-      },
-      [onViewportChange],
-    );
-
-    // Center on selected node
-    useEffect(() => {
-      if (!selectedNodeId || !graphRef.current) return;
-      const node = graphData.nodes.find((n) => n.id === selectedNodeId);
-      if (node?.x != null && node?.y != null) {
-        graphRef.current.centerAt(node.x, node.y, 500);
-        graphRef.current.zoom(2, 500);
-      }
-    }, [selectedNodeId, graphData.nodes]);
-
-    // Fit to view only on initial simulation settle
-    const handleEngineStop = useCallback(() => {
-      if (!hasInitialFit.current) {
-        hasInitialFit.current = true;
-        graphRef.current?.zoomToFit(400, 60);
-      }
-      updateNodeBounds();
-    }, [updateNodeBounds]);
-
     // Hover handler — debounced to avoid flickering when quickly brushing over nodes
     const handleNodeHover = useCallback((node: GraphNode | null) => {
       if (hoverTimerRef.current) {
@@ -409,14 +152,12 @@ export const FleetGraphCanvas = memo(
       }
 
       if (!node) {
-        // Leaving a node — clear immediately
         highlightNodes.current.clear();
         highlightLinks.current.clear();
         setHoverNode(null);
         return;
       }
 
-      // Entering a node — delay before activating dim effect
       hoverTimerRef.current = setTimeout(() => {
         highlightNodes.current.clear();
         highlightLinks.current.clear();
@@ -437,7 +178,6 @@ export const FleetGraphCanvas = memo(
         if (node.type === 'device' && node.device) {
           onNodeClick(node.device, { x: event.clientX, y: event.clientY });
         } else {
-          // Clicking a non-device node (e.g. fleet hub) dismisses the popover
           onBackgroundClick(event);
         }
       },
@@ -466,13 +206,10 @@ export const FleetGraphCanvas = memo(
 
         if (node.x == null || node.y == null) return;
 
-        // Opacity
         ctx.globalAlpha = shouldDim ? DIM_OPACITY : 1;
 
-        // Scale on hover
         const radius = isHovered ? baseRadius * HOVER_SCALE : baseRadius;
 
-        // Glow effect for hovered/highlighted nodes (device nodes only)
         if (!isFleet && isHovered) {
           ctx.shadowColor = node.color;
           ctx.shadowBlur = 20;
@@ -484,7 +221,6 @@ export const FleetGraphCanvas = memo(
         }
 
         if (isFleet) {
-          // --- Fleet node: flat rectangle sized to text with integrated health bar ---
           const padX = 8;
           const padY = 4;
           const barH = 3;
@@ -497,14 +233,11 @@ export const FleetGraphCanvas = memo(
           const rx = node.x! - rectW / 2;
           const ry = node.y! - rectH / 2;
 
-          // Flat rect background (no rounded corners)
           ctx.fillStyle = node.color;
           ctx.fillRect(rx, ry, rectW, rectH);
 
-          // Reset shadow before bar and text
           ctx.shadowBlur = 0;
 
-          // Health bar integrated at the bottom of the rect
           if (node.tierRatios) {
             const scaledBarH = barH * hoverScale;
             const barY = ry + rectH - scaledBarH;
@@ -524,7 +257,6 @@ export const FleetGraphCanvas = memo(
               offsetX += segW;
             }
 
-            // Separator line between name area and health bar
             ctx.strokeStyle = 'rgba(0,0,0,0.6)';
             ctx.lineWidth = 0.5;
             ctx.beginPath();
@@ -533,19 +265,16 @@ export const FleetGraphCanvas = memo(
             ctx.stroke();
           }
 
-          // Outer border drawn last so it sits on top of health segments
           ctx.strokeStyle = 'rgba(0,0,0,0.6)';
           ctx.lineWidth = 0.5;
           ctx.strokeRect(rx, ry, rectW, rectH);
 
-          // Fleet name — shifted up by half the bar height to center in the name area
           ctx.font = FLEET_LABEL_FONT;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillStyle = '#ffffff';
           ctx.fillText(node.name, node.x!, node.y! - (barH * hoverScale) / 2);
 
-          // Device count below rect
           if (node.deviceCount != null) {
             ctx.font = '8px -apple-system, sans-serif';
             ctx.fillStyle = 'rgba(255,255,255,0.6)';
@@ -557,20 +286,17 @@ export const FleetGraphCanvas = memo(
           }
         } else {
           ctx.shadowBlur = 0;
-          // --- Device node: staleness-based color + pulse + uptime ring ---
           const now = Date.now();
           const stalenessMs = node.lastSeenTimestamp ? now - node.lastSeenTimestamp : NaN;
           const tier = getHealthTier(stalenessMs, node.status);
           const stalenessColor = getStalenessColor(stalenessMs, node.status);
           const pulseHz = getPulseFrequency(tier);
 
-          // Dead / never-connected nodes shrink slightly
           const effectiveRadius = tier === 'dead' || tier === 'never' ? radius * 0.85 : radius;
           const side = effectiveRadius * 2;
           const rx = node.x! - side / 2;
           const ry = node.y! - side / 2;
 
-          // Pulse glow (radial gradient behind node) — only for fresh/warm
           if (pulseHz > 0) {
             const t = pulseClockRef.current / 1000;
             const glowRadius = effectiveRadius + 4 + 4 * Math.sin(2 * Math.PI * pulseHz * t);
@@ -582,9 +308,6 @@ export const FleetGraphCanvas = memo(
               node.y!,
               glowRadius,
             );
-            // Use rgba() instead of 8-digit hex — Canvas 2D spec mandates CSS
-            // Color Level 3 parsing, which doesn't include #RRGGBBAA. Safari's
-            // canvas silently treats 8-digit hex as transparent.
             const r = parseInt(stalenessColor.slice(1, 3), 16);
             const g = parseInt(stalenessColor.slice(3, 5), 16);
             const b = parseInt(stalenessColor.slice(5, 7), 16);
@@ -596,11 +319,9 @@ export const FleetGraphCanvas = memo(
             ctx.fill();
           }
 
-          // Main rect
           ctx.fillStyle = stalenessColor;
           ctx.fillRect(rx, ry, side, side);
 
-          // Uptime ring — rect stroke outside the main rect
           if (node.uptimeArcAngle && node.uptimeArcAngle > 0) {
             const ringOffset = 3;
             ctx.strokeStyle = stalenessColor;
@@ -613,7 +334,6 @@ export const FleetGraphCanvas = memo(
             );
           }
 
-          // Selection ring
           if (selectedDeviceIds.has(node.id)) {
             const selOffset = 7;
             ctx.strokeStyle = SELECTION_COLOR;
@@ -626,20 +346,17 @@ export const FleetGraphCanvas = memo(
             );
           }
 
-          // Device type icon inside rect
           const iconPaths = getIconPaths(node.deviceTypeName);
           const iconSize = effectiveRadius * 1.2;
           ctx.fillStyle = '#ffffff';
           drawIcon(ctx, iconPaths, node.x!, node.y!, iconSize);
 
-          // Name label below
           const fontSize = Math.max(10, 12 / globalScale);
           ctx.font = `${fontSize}px -apple-system, sans-serif`;
           ctx.fillStyle = shouldDim ? `rgba(255,255,255,${DIM_OPACITY})` : 'rgba(255,255,255,0.8)';
           ctx.fillText(node.name, node.x!, node.y! + effectiveRadius + fontSize + 2);
         }
 
-        // Reset
         ctx.globalAlpha = 1;
       },
       [hoverNode, selectedDeviceIds],
@@ -650,12 +367,10 @@ export const FleetGraphCanvas = memo(
         const isHighlighted = highlightLinks.current.has(link);
         const shouldDim = hoverNode && !isHighlighted;
 
-        // D3 mutates source/target to objects
         const source = link.source as any as GraphNode;
         const target = link.target as any as GraphNode;
         if (source.x == null || target.x == null) return;
 
-        // Determine if the device end of the link is active
         const deviceNode =
           source.type === 'device' ? source : target.type === 'device' ? target : null;
         const isActive = deviceNode?.status === 'online' || deviceNode?.status === 'warning';
@@ -665,7 +380,6 @@ export const FleetGraphCanvas = memo(
         ctx.beginPath();
         if (isActive) {
           ctx.setLineDash([4, 4]);
-          // Animate dash offset so the dashes appear to flow
           ctx.lineDashOffset = -(pulseClockRef.current / 1000) * 12;
         } else {
           ctx.setLineDash([3, 5]);
@@ -715,13 +429,12 @@ export const FleetGraphCanvas = memo(
       [hoverNode],
     );
 
-    // Draw a grid in world-space (onRenderFramePre context is already transformed)
+    // Draw a grid in world-space
     const paintGrid = useCallback(
       (ctx: CanvasRenderingContext2D, globalScale: number) => {
         const fg = graphRef.current;
         if (!fg) return;
 
-        // Get visible world-space bounds
         const topLeft = fg.screen2GraphCoords(0, 0);
         const bottomRight = fg.screen2GraphCoords(width, height);
 
@@ -731,7 +444,6 @@ export const FleetGraphCanvas = memo(
         const endX = Math.ceil(bottomRight.x / step) * step;
         const endY = Math.ceil(bottomRight.y / step) * step;
 
-        // Draw in world-space — context already has the zoom/pan transform
         for (let x = startX; x <= endX; x += step) {
           const gridIdx = Math.round(x / step);
           ctx.strokeStyle = gridIdx % GRID_ACCENT_EVERY === 0 ? GRID_ACCENT_COLOR : GRID_COLOR;
@@ -755,31 +467,6 @@ export const FleetGraphCanvas = memo(
       [width, height],
     );
 
-    // Disable pan when Shift is held (lasso mode)
-    const enablePanInteraction = useCallback((ev: MouseEvent) => !ev.shiftKey, []);
-
-    // Draw lasso selection rectangle overlay
-    const paintLasso = useCallback((ctx: CanvasRenderingContext2D, globalScale: number) => {
-      if (!lassoRef.current) return;
-      const { x1, y1, x2, y2 } = lassoRef.current;
-      const x = Math.min(x1, x2);
-      const y = Math.min(y1, y2);
-      const w = Math.abs(x2 - x1);
-      const h = Math.abs(y2 - y1);
-
-      ctx.save();
-      ctx.fillStyle = 'rgba(45, 114, 210, 0.15)';
-      ctx.fillRect(x, y, w, h);
-      ctx.strokeStyle = SELECTION_COLOR;
-      ctx.lineWidth = 1 / globalScale;
-      ctx.setLineDash([4 / globalScale, 4 / globalScale]);
-      ctx.strokeRect(x, y, w, h);
-      ctx.setLineDash([]);
-      ctx.restore();
-    }, []);
-
-    // Post-render hook: redraw minimap every frame so it stays in sync with
-    // node dragging and force-simulation ticks.
     const handleRenderFramePost = useCallback(
       (ctx: CanvasRenderingContext2D, globalScale: number) => {
         paintLasso(ctx, globalScale);

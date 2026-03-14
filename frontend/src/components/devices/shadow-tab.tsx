@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Button, Callout, Divider, Spinner, Tag } from '@blueprintjs/core';
 import {
   useDeviceShadow,
@@ -68,12 +68,6 @@ export const ShadowTab = ({ deviceId }: ShadowTabProps) => {
     () => (shadow ? JSON.stringify(shadow.desired, null, 2) : ''),
     [shadow],
   );
-
-  useEffect(() => {
-    if (!isEditing && shadow) {
-      setEditValue(JSON.stringify(shadow.desired, null, 2));
-    }
-  }, [shadow, isEditing]);
 
   // Sync scroll between textarea and highlight layer
   const syncScroll = useCallback(() => {

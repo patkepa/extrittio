@@ -140,7 +140,7 @@ export const Devices = () => {
     ...(debouncedSearch ? { search: debouncedSearch } : {}),
   };
   const devicesQuery = useDevices(Object.keys(queryParams).length > 0 ? queryParams : undefined);
-  const devices = devicesQuery.data?.data ?? [];
+  const devices = useMemo(() => devicesQuery.data?.data ?? [], [devicesQuery.data?.data]);
   const totalDeviceCount = devicesQuery.data?.total ?? 0;
   const isLoading = devicesQuery.isLoading;
   const error = devicesQuery.error;

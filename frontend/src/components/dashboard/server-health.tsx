@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useState } from 'react';
 import { Card, Elevation, H5, ProgressBar, Tag } from '@blueprintjs/core';
 import type { Intent } from '@blueprintjs/core';
 import { MetricSparkline } from './metric-sparkline';
@@ -43,9 +43,8 @@ function severityColor(percent: number, memoryMode = false): string {
 export const ServerHealth = () => {
   const { data: current } = useCurrentMetrics();
 
-  const since = useMemo(
+  const [since] = useState(
     () => new Date(Date.now() - 3600_000).toISOString().replace(/\.\d+Z$/, 'Z'),
-    [],
   );
   const { data: history } = useMetricsHistory(since);
 

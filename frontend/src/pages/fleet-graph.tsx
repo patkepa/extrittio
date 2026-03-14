@@ -26,10 +26,11 @@ interface PopoverState {
 
 export const FleetGraph = () => {
   const devicesQuery = useDevices({ limit: 10000 }, { refetchInterval: 30_000 });
-  const devices = devicesQuery.data?.data ?? [];
+  const devices = useMemo(() => devicesQuery.data?.data ?? [], [devicesQuery.data?.data]);
   const devicesLoading = devicesQuery.isLoading;
   const devicesError = devicesQuery.error;
-  const { data: fleets = [], isLoading: fleetsLoading, error: fleetsError } = useFleets();
+  const { data: fleetsData, isLoading: fleetsLoading, error: fleetsError } = useFleets();
+  const fleets = useMemo(() => fleetsData ?? [], [fleetsData]);
   const [popover, setPopover] = useState<PopoverState | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const bulkFleetMutation = useBulkChangeFleet();
@@ -57,20 +58,28 @@ export const FleetGraph = () => {
     return () => observer.disconnect();
   }, []);
 
-  const prevNodesRef = useRef<GraphNode[]>();
+  // Graph data with position continuity — uses "adjusting state from props"
+  // pattern to avoid reading a ref during render while preserving previous
+  // node positions for smooth animation across data refreshes.
+  const [graphState, setGraphState] = useState<{
+    data: ReturnType<typeof buildForceGraphData> | null;
+    prevNodes: GraphNode[] | undefined;
+    inputDevices: typeof devices;
+    inputFleets: typeof fleets;
+  }>({ data: null, prevNodes: undefined, inputDevices: devices, inputFleets: fleets });
 
-  const graphData = useMemo(() => {
-    if (devices.length === 0) return null;
-    return buildForceGraphData(devices, fleets, prevNodesRef.current);
-  }, [devices, fleets]);
+  if (devices !== graphState.inputDevices || fleets !== graphState.inputFleets) {
+    const newData =
+      devices.length === 0 ? null : buildForceGraphData(devices, fleets, graphState.prevNodes);
+    setGraphState({
+      data: newData,
+      prevNodes: newData?.nodes ?? graphState.prevNodes,
+      inputDevices: devices,
+      inputFleets: fleets,
+    });
+  }
 
-  // Cache nodes for the next merge — kept outside useMemo to avoid
-  // side effects (React Strict Mode double-invokes useMemo in dev).
-  useEffect(() => {
-    if (graphData) {
-      prevNodesRef.current = graphData.nodes;
-    }
-  }, [graphData]);
+  const graphData = graphState.data;
 
   const handleNodeClick = useCallback((device: Device, screenPos: { x: number; y: number }) => {
     const rect = containerRef.current?.getBoundingClientRect() ?? {

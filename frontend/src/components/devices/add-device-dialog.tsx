@@ -39,11 +39,12 @@ export function AddDeviceDialog() {
   const caQuery = useCaCertificate();
 
   // Reset stale mutation error when dialog opens/closes
+  const resetCreateMutation = createDeviceMutation.reset;
   useEffect(() => {
     if (!isAddDeviceDialogOpen) {
-      createDeviceMutation.reset();
+      resetCreateMutation();
     }
-  }, [isAddDeviceDialogOpen]);
+  }, [isAddDeviceDialogOpen, resetCreateMutation]);
 
   const handleAddDevice = () => {
     createDeviceMutation.mutate(

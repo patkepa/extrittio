@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Menu,
@@ -42,21 +42,23 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
   const { data: dashboardStats } = useDashboardStats();
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
-  // Auto-expand parent items when a child route is active
-  useEffect(() => {
+  // Auto-expand parent items when the active route changes
+  const [prevPathname, setPrevPathname] = useState(location.pathname);
+  if (prevPathname !== location.pathname) {
+    setPrevPathname(location.pathname);
+    let updated = expandedItems;
     for (const group of navGroups) {
       for (const item of group.items) {
-        if (item.children && hasActiveChild(item, location.pathname)) {
-          setExpandedItems((prev) => {
-            if (prev.has(item.label)) return prev;
-            const next = new Set(prev);
-            next.add(item.label);
-            return next;
-          });
+        if (item.children && hasActiveChild(item, location.pathname) && !updated.has(item.label)) {
+          if (updated === expandedItems) updated = new Set(expandedItems);
+          updated.add(item.label);
         }
       }
     }
-  }, [location.pathname]);
+    if (updated !== expandedItems) {
+      setExpandedItems(updated);
+    }
+  }
   const [selectedProject, setSelectedProject] = useState(projects[0]!);
   const [projectSwitcherOpen, setProjectSwitcherOpen] = useState(false);
   const logout = useAuthStore((s) => s.logout);
