@@ -24,6 +24,7 @@
   align-items: center;
   padding: 0 16px;
   border-bottom: 1px solid var(--border-color);
+  overflow: hidden;
 }
 
 .sidebar-logo {
@@ -375,12 +376,11 @@
 
 /* ── Collapsed state ── */
 .app-sidebar.collapsed .sidebar-header {
-  padding: 0 14px;
-  justify-content: center;
+  padding: 0 16px;
 }
 
 .app-sidebar.collapsed .sidebar-logo {
-  justify-content: center;
+  justify-content: flex-start;
 }
 
 .app-sidebar.collapsed .logo-icon {
