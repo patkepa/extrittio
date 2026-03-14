@@ -13,10 +13,9 @@ import {
   H4,
   Callout,
   Spinner,
-  Alert,
 } from '@blueprintjs/core';
 import { AreaChart, Area, ResponsiveContainer } from 'recharts';
-import { useDevices, useDeleteDevice } from '../hooks/use-devices';
+import { useDevices } from '../hooks/use-devices';
 import { useFleets } from '../hooks/use-fleets';
 import { useUIStore } from '../stores/ui-store';
 import { AddDeviceDialog } from '../components/devices/add-device-dialog';
@@ -24,7 +23,6 @@ import { useDeviceHoverTooltip, DeviceHoverTooltip } from '../components/devices
 import { useSelectionStore } from '../stores/selection-store';
 import { BulkActionBar } from '../components/devices/bulk-action-bar';
 import type { Device, BulkDeviceFilters, ListDevicesParams } from '../types/api';
-import { showSuccessToast, showErrorToast } from '../utils/toaster';
 import './devices.css';
 
 type SortField = 'name' | 'status' | 'last_seen' | 'uptime';
@@ -67,9 +65,6 @@ export const Devices = () => {
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const { openAddDeviceDialog } = useUIStore();
-
-  // Delete confirmation state
-  const [deviceToDelete, setDeviceToDelete] = useState<Device | null>(null);
 
   // Hover tooltip
   const { hoveredDevice, hoverPos, onMouseEnter, onMouseLeave } = useDeviceHoverTooltip();
@@ -134,8 +129,6 @@ export const Devices = () => {
   const error = devicesQuery.error;
 
   const { data: fleets = [] } = useFleets();
-  const deleteDeviceMutation = useDeleteDevice();
-
   // Navigate to device detail when accessed with ?device= query param (from command palette)
   const deviceParam = searchParams.get('device');
   useEffect(() => {
@@ -339,7 +332,6 @@ export const Devices = () => {
                 <th>Firmware</th>
                 <th style={{ width: 80 }}>Activity</th>
                 <th>Uptime</th>
-                <th className="actions-column">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -405,18 +397,6 @@ export const Devices = () => {
                     <td>
                       <span className="mono-data">{device.uptime}</span>
                     </td>
-                    <td className="actions-column" onClick={(e) => e.stopPropagation()}>
-                      <Button icon="eye-open" minimal small onClick={() => handleViewDevice(device)} title="View Details" />
-                      <Button
-                        icon="trash"
-                        minimal
-                        small
-                        intent="danger"
-                        title="Delete Device"
-                        loading={deleteDeviceMutation.isPending && deleteDeviceMutation.variables === device.id}
-                        onClick={() => setDeviceToDelete(device)}
-                      />
-                    </td>
                   </tr>
               ))}
             </tbody>
@@ -426,32 +406,6 @@ export const Devices = () => {
 
       {/* Hover Summary Card */}
       <DeviceHoverTooltip device={hoveredDevice} position={hoverPos} />
-
-      {/* Delete Confirmation */}
-      <Alert
-        isOpen={deviceToDelete !== null}
-        icon="trash"
-        intent="danger"
-        confirmButtonText="Delete"
-        cancelButtonText="Cancel"
-        onConfirm={() => {
-          if (deviceToDelete) {
-            deleteDeviceMutation.mutate(deviceToDelete.id, {
-              onSuccess: () => {
-                setDeviceToDelete(null);
-                void showSuccessToast('Device deleted');
-              },
-              onError: () => {
-                setDeviceToDelete(null);
-                void showErrorToast('Failed to delete device');
-              },
-            });
-          }
-        }}
-        onCancel={() => setDeviceToDelete(null)}
-      >
-        <p>Are you sure you want to delete <strong>{deviceToDelete?.name}</strong>? This action cannot be undone.</p>
-      </Alert>
 
       <AddDeviceDialog />
     </div>

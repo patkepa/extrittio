@@ -234,12 +234,6 @@
   color: hsl(var(--accent));
 }
 
-/* Actions Column */
-.actions-column {
-  width: 120px;
-  text-align: right;
-}
-
 /* Empty State */
 .empty-state {
   display: flex;
