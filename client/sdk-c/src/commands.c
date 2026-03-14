@@ -66,9 +66,10 @@ static void command_handler(z_loaned_sample_t *sample, void *arg) {
 
     z_owned_slice_t slice;
     z_bytes_to_slice(z_sample_payload(sample), &slice);
+    const z_loaned_slice_t *s = z_slice_loan(&slice);
 
     extrittio_DeviceCommand pb = extrittio_DeviceCommand_init_zero;
-    pb_istream_t stream = pb_istream_from_buffer(z_slice_data(z_loan(slice)), z_slice_len(z_loan(slice)));
+    pb_istream_t stream = pb_istream_from_buffer(z_slice_data(s), z_slice_len(s));
     if (!pb_decode(&stream, extrittio_DeviceCommand_fields, &pb)) {
         z_slice_drop(z_slice_move(&slice));
         return;
