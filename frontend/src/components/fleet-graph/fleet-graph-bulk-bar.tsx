@@ -26,7 +26,7 @@ export const FleetGraphBulkBar = () => {
 
   if (count === 0) return null;
 
-  const deviceIds = Array.from(selectedDeviceIds);
+  const deviceIds = Array.from(selectedDeviceIds).map((id) => id.replace(/^device-/, ''));
 
   async function handleFleetChange(fleetId: number | null) {
     try {

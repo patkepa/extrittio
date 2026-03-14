@@ -98,8 +98,9 @@ export const FleetGraph = () => {
   }, []);
 
   const handleAssignFleet = useCallback(async (deviceIds: string[], fleetId: number) => {
+    const rawIds = deviceIds.map((id) => id.replace(/^device-/, ''));
     try {
-      const result = await bulkFleetMutation.mutateAsync({ device_ids: deviceIds, fleet_id: fleetId });
+      const result = await bulkFleetMutation.mutateAsync({ device_ids: rawIds, fleet_id: fleetId });
       void showSuccessToast(`${result.affected} device${result.affected !== 1 ? 's' : ''} moved to fleet`);
     } catch {
       void showErrorToast('Failed to change fleet');
@@ -107,8 +108,9 @@ export const FleetGraph = () => {
   }, [bulkFleetMutation]);
 
   const handleRemoveFromFleet = useCallback(async (deviceIds: string[]) => {
+    const rawIds = deviceIds.map((id) => id.replace(/^device-/, ''));
     try {
-      const result = await bulkFleetMutation.mutateAsync({ device_ids: deviceIds, fleet_id: null });
+      const result = await bulkFleetMutation.mutateAsync({ device_ids: rawIds, fleet_id: null });
       void showSuccessToast(`${result.affected} device${result.affected !== 1 ? 's' : ''} removed from fleet`);
     } catch {
       void showErrorToast('Failed to remove from fleet');
