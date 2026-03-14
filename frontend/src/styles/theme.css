@@ -516,6 +516,19 @@ p {
   color: hsl(var(--foreground));
 }
 
+/* Tooltip overrides — high contrast */
+.bp6-dark .bp6-tooltip .bp6-popover-content,
+.bp6-dark .bp6-tooltip.bp6-minimal .bp6-popover-content {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  font-weight: 500;
+}
+
+.bp6-dark .bp6-tooltip .bp6-popover-arrow-fill,
+.bp6-dark .bp6-tooltip.bp6-minimal .bp6-popover-arrow-fill {
+  fill: #ffffff !important;
+}
+
 /* Popover overrides */
 .bp6-dark .bp6-popover {
   background-color: var(--card-bg);
