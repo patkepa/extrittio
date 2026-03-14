@@ -2,10 +2,12 @@ use diesel::SqliteConnection;
 use diesel::r2d2::{ConnectionManager, Pool};
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::RwLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::error::AppError;
 use crate::rate_limit::{ApiKeyRateLimiter, RateLimiter};
+use crate::rule_engine::cache::RuleCache;
 
 pub type DbPool = Pool<ConnectionManager<SqliteConnection>>;
 
@@ -76,6 +78,8 @@ pub struct AppState {
     pub ci_rate_limiter: ApiKeyRateLimiter,
     pub metrics_accumulator: MetricsAccumulator,
     pub zenoh_metrics: Arc<ZenohMetrics>,
+    pub rule_cache: Arc<RwLock<RuleCache>>,
+    pub http_client: reqwest::Client,
 }
 
 /// Run a synchronous DB operation on a blocking thread to avoid starving the

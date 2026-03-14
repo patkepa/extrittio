@@ -12,6 +12,7 @@
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 use std::sync::Arc;
+use std::sync::RwLock;
 
 use axum::middleware as axum_middleware;
 use tower_http::cors::{Any, CorsLayer};
@@ -56,6 +57,19 @@ async fn main() {
         secret
     };
 
+    // Rule cache — built from the current DB state
+    let rule_cache = {
+        let mut conn = db_pool.get().expect("Failed to get DB connection for rule cache");
+        services::rule_service::build_cache(&mut conn).expect("Failed to build initial rule cache")
+    };
+    let rule_cache = Arc::new(RwLock::new(rule_cache));
+
+    // Shared HTTP client for webhook actions
+    let http_client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .expect("Failed to create HTTP client");
+
     // Zenoh
     let zenoh_session = Arc::new(
         init::open_zenoh_session(
@@ -80,6 +94,8 @@ async fn main() {
         ci_rate_limiter: ApiKeyRateLimiter::new(60, 60),
         metrics_accumulator: MetricsAccumulator::new(),
         zenoh_metrics: zenoh_metrics.clone(),
+        rule_cache,
+        http_client,
     });
 
     // Background tasks
