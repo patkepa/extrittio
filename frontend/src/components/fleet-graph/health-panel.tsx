@@ -21,6 +21,7 @@ interface HealthPanelProps {
   canvasWidth: number;
   canvasHeight: number;
   onMinimapNavigate: (worldX: number, worldY: number) => void;
+  collapsed?: boolean;
 }
 
 interface RowExtraProps {
@@ -67,7 +68,7 @@ function HealthRow({
   );
 }
 
-export const HealthPanel = ({ nodes, onDeviceClick, selectedNodeId, height, viewportRef, minimapDrawRef, canvasWidth, canvasHeight, onMinimapNavigate }: HealthPanelProps) => {
+export const HealthPanel = ({ nodes, onDeviceClick, selectedNodeId, height, viewportRef, minimapDrawRef, canvasWidth, canvasHeight, onMinimapNavigate, collapsed }: HealthPanelProps) => {
   // Tick every 5s so staleness labels and sort order stay reasonably fresh
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -122,7 +123,7 @@ export const HealthPanel = ({ nodes, onDeviceClick, selectedNodeId, height, view
   );
 
   return (
-    <div className="health-panel">
+    <div className={`health-panel${collapsed ? ' health-panel--collapsed' : ''}`}>
       <div className="health-panel-header">
         <span className="health-panel-title">Device Health</span>
         <div className="health-panel-summary-bar">

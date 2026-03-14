@@ -56,12 +56,21 @@
   font-size: 14px;
 }
 
+/* Dashboard Section */
+.dashboard-section {
+  margin-top: 24px;
+}
+
+.dashboard-section > h5 {
+  margin-bottom: 12px;
+}
+
 /* Stats Grid */
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 16px;
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 
 .stat-card {

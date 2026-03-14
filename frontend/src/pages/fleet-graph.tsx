@@ -255,7 +255,7 @@ export const FleetGraph = () => {
         )}
       </div>
 
-      {graphData && healthPanelOpen && (
+      {graphData && (
         <HealthPanel
           nodes={graphData.nodes}
           onDeviceClick={handlePanelDeviceClick}
@@ -266,6 +266,7 @@ export const FleetGraph = () => {
           canvasWidth={dimensions.width}
           canvasHeight={dimensions.height}
           onMinimapNavigate={handleMinimapNavigate}
+          collapsed={!healthPanelOpen}
         />
       )}
     </div>

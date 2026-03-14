@@ -16,7 +16,7 @@
   /* Base colors - HIGH CONTRAST dark theme
    * Pure black backgrounds with white text for maximum contrast
    */
-  --background: 0 0% 4%;           /* Near black #0a0a0a */
+  --background: 0 0% 9%;           /* Dark gray #171717 */
   --foreground: 0 0% 100%;         /* Pure white #FFFFFF */
 
   /* Primary - Softened blue */
@@ -24,7 +24,7 @@
   --primary-foreground: 220 20% 8%;
 
   /* Secondary - HIGH CONTRAST */
-  --secondary: 0 0% 7%;            /* Near black */
+  --secondary: 0 0% 5%;            /* Near black */
   --secondary-foreground: 0 0% 100%; /* Pure white */
 
   /* Accent - Softened blue */
@@ -39,20 +39,20 @@
   --ring: 213 68% 59%;
 
   /* Sidebar specific - HIGH CONTRAST */
-  --sidebar-bg: #0d0d0d;
+  --sidebar-bg: #060606;
   --sidebar-foreground: hsl(0, 0%, 100%);       /* Pure white text */
   --sidebar-primary: hsl(213, 68%, 59%);
   --sidebar-primary-foreground: hsl(0, 0%, 0%); /* Black text on blue background */
-  --sidebar-accent: #161616;
-  --sidebar-accent-hover: #1c1c1c;
+  --sidebar-accent: #101010;
+  --sidebar-accent-hover: #161616;
   --sidebar-muted-foreground: hsl(0, 0%, 85%);  /* Light gray for muted text */
   --sidebar-border: hsla(0, 0%, 100%, 0.08);
 
   /* Content area - HIGH CONTRAST */
-  --content-bg: #0a0a0a;
-  --navbar-bg: #0d0d0d;
-  --border-color: hsla(0, 0%, 100%, 0.08);
-  --card-bg: #111111;
+  --content-bg: #171717;
+  --navbar-bg: #060606;
+  --border-color: hsla(0, 0%, 100%, 0.10);
+  --card-bg: #1e1e1e;
 
   /* Status colors - Vibrant for dark bg (Blueprint GREEN3, ORANGE3, RED3) */
   --success: 152 69% 45%;      /* ~Blueprint GREEN3 */

@@ -107,6 +107,15 @@
   flex-direction: column;
   background-color: var(--sidebar-bg);
   border-left: 1px solid var(--border-color);
+  transition: width 0.25s ease, min-width 0.25s ease, opacity 0.25s ease;
+  overflow: hidden;
+}
+
+.health-panel--collapsed {
+  width: 0;
+  min-width: 0;
+  opacity: 0;
+  border-left-color: transparent;
 }
 
 .health-panel-header {
