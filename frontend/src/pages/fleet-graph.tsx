@@ -7,6 +7,7 @@ import { FleetGraphCanvas } from '../components/fleet-graph/fleet-graph-canvas';
 import { DevicePopover } from '../components/fleet-graph/device-popover';
 import { HealthPanel } from '../components/fleet-graph/health-panel';
 import { FleetGraphContextMenu, type ContextMenuState } from '../components/fleet-graph/fleet-graph-context-menu';
+import { FleetGraphBulkBar } from '../components/fleet-graph/fleet-graph-bulk-bar';
 import { useSelectionStore } from '../stores/selection-store';
 import { showSuccessToast, showErrorToast } from '../utils/toaster';
 import type { GraphNode } from '../components/fleet-graph/build-force-graph-data';
@@ -196,6 +197,8 @@ export const FleetGraph = () => {
             onRemoveFromFleet={(ids) => void handleRemoveFromFleet(ids)}
           />
         )}
+
+        <FleetGraphBulkBar />
 
         {graphData && (
           <Button
