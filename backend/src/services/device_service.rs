@@ -292,13 +292,15 @@ pub fn check_offline_devices(
 }
 
 /// Update a device from a heartbeat message.
+/// Returns `Some(StatusChange)` when the device's status actually changed,
+/// or `None` when the status remained the same.
 pub fn update_from_heartbeat(
     conn: &mut SqliteConnection,
     device_id: &str,
     reported_status: &str,
     firmware: &str,
     uptime_seconds: u64,
-) -> Result<(), AppError> {
+) -> Result<Option<crate::rule_engine::types::StatusChange>, AppError> {
     use extrittio_common::device_status;
 
     let status = if device_status::is_valid(reported_status) {
@@ -328,7 +330,7 @@ pub fn update_from_heartbeat(
 
     device_repo::update_device(conn, device_id, &changeset)?;
 
-    if let Some(prev) = &previous_status {
+    let status_change = if let Some(ref prev) = previous_status {
         if prev != &status {
             let message = format!("Device status changed from {prev} to {status}");
             let _ = log_repo::insert_log(
@@ -339,10 +341,18 @@ pub fn update_from_heartbeat(
                     message,
                 },
             );
+            Some(crate::rule_engine::types::StatusChange {
+                old_status: prev.clone(),
+                new_status: status,
+            })
+        } else {
+            None
         }
-    }
+    } else {
+        None
+    };
 
-    Ok(())
+    Ok(status_change)
 }
 
 /// Format uptime seconds into a human-readable string.

@@ -1,0 +1,11 @@
+version: "0.1.0"
+description: "Extrittio IoT Hub C SDK"
+dependencies:
+  idf:
+    version: ">=5.0.0"
+  zenohpico:
+    git: https://github.com/eclipse-zenoh/zenoh-pico.git
+    version: "1.2.1"
+  nanopb:
+    git: https://github.com/nanopb/nanopb.git
+    version: "0.4.9.1"

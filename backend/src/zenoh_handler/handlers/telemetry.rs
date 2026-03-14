@@ -1,6 +1,9 @@
 use prost::Message;
 use tracing::{info, warn};
 
+use crate::rule_engine::cache::RuleCache;
+use crate::rule_engine::evaluate::evaluate_telemetry;
+use crate::rule_engine::types::{PendingAction, TelemetryData};
 use crate::services::telemetry_service;
 use crate::state::DbPool;
 
@@ -9,13 +12,21 @@ use extrittio_common::extrittio::DeviceTelemetry;
 /// Decode a `DeviceTelemetry` protobuf message, insert a telemetry record, and
 /// update the device's `last_seen` timestamp.
 ///
+/// After a successful record, evaluates applicable rules against the telemetry
+/// data and returns the resulting `PendingAction`s for the subscriber to
+/// execute asynchronously.
+///
 /// Logs and drops messages from unregistered devices or malformed payloads.
-pub fn handle_telemetry(db_pool: &DbPool, payload: &[u8]) {
+pub fn handle_telemetry(
+    db_pool: &DbPool,
+    payload: &[u8],
+    rule_cache: &std::sync::RwLock<RuleCache>,
+) -> Vec<PendingAction> {
     let telemetry_msg = match DeviceTelemetry::decode(payload) {
         Ok(msg) => msg,
         Err(e) => {
             warn!("Failed to decode DeviceTelemetry: {}", e);
-            return;
+            return Vec::new();
         }
     };
 
@@ -23,7 +34,7 @@ pub fn handle_telemetry(db_pool: &DbPool, payload: &[u8]) {
         Ok(c) => c,
         Err(e) => {
             warn!("Failed to get DB connection: {}", e);
-            return;
+            return Vec::new();
         }
     };
 
@@ -49,13 +60,14 @@ pub fn handle_telemetry(db_pool: &DbPool, payload: &[u8]) {
         custom_json,
         payload.to_vec(),
     ) {
-        Ok(false) => {
+        Ok(None) => {
             warn!(
                 "Dropping telemetry from unregistered device: {}",
                 telemetry_msg.device_id
             );
+            Vec::new()
         }
-        Ok(true) => {
+        Ok(Some(device)) => {
             info!(
                 "Recorded telemetry from device {}: temp={}, humidity={}, battery={}",
                 telemetry_msg.device_id,
@@ -63,9 +75,33 @@ pub fn handle_telemetry(db_pool: &DbPool, payload: &[u8]) {
                 telemetry_msg.humidity,
                 telemetry_msg.battery_level
             );
+
+            // Evaluate rules against this telemetry data
+            let data = TelemetryData {
+                temperature: telemetry_msg.temperature,
+                humidity: telemetry_msg.humidity,
+                battery_level: telemetry_msg.battery_level,
+            };
+
+            let cache = match rule_cache.read() {
+                Ok(c) => c,
+                Err(e) => {
+                    warn!("Failed to read-lock rule cache: {}", e);
+                    return Vec::new();
+                }
+            };
+
+            evaluate_telemetry(
+                &telemetry_msg.device_id,
+                device.device_type_id,
+                device.fleet_id,
+                &data,
+                &cache,
+            )
         }
         Err(e) => {
             warn!("Failed to record telemetry: {}", e);
+            Vec::new()
         }
     }
 }

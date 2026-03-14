@@ -1,8 +1,9 @@
 use chrono::NaiveDateTime;
 use chrono::Utc;
 use diesel::SqliteConnection;
+use diesel::OptionalExtension;
 
-use crate::db::models::{NewTelemetryRecord, TelemetryRecord, UpdateDevice};
+use crate::db::models::{Device, NewTelemetryRecord, TelemetryRecord, UpdateDevice};
 use crate::error::AppError;
 use crate::repositories::{device_repo, telemetry_repo};
 
@@ -25,10 +26,15 @@ pub fn record(
     battery_level: Option<f32>,
     custom_json: Option<String>,
     payload: Vec<u8>,
-) -> Result<bool, AppError> {
-    if !device_repo::device_exists(conn, device_id)? {
-        return Ok(false);
-    }
+) -> Result<Option<Device>, AppError> {
+    let device: Option<Device> = device_repo::find_device(conn, device_id)
+        .optional()
+        .map_err(AppError::Database)?;
+
+    let device = match device {
+        Some(d) => d,
+        None => return Ok(None),
+    };
 
     let record = NewTelemetryRecord {
         device_id: device_id.to_string(),
@@ -48,5 +54,5 @@ pub fn record(
     };
     device_repo::update_device(conn, device_id, &changeset)?;
 
-    Ok(true)
+    Ok(Some(device))
 }

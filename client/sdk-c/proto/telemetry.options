@@ -1,0 +1,32 @@
+# nanopb options for Extrittio protobuf messages
+# Sets max string sizes for fixed-size buffers (no malloc)
+
+extrittio.DeviceTelemetry.device_id             max_size:64
+# DeviceTelemetry.metadata map is skipped in v1
+
+extrittio.DeviceHeartbeat.device_id             max_size:64
+extrittio.DeviceHeartbeat.status                max_size:16
+extrittio.DeviceHeartbeat.firmware              max_size:32
+
+extrittio.DeviceCommand.command                 max_size:64
+extrittio.DeviceCommand.correlation_id          max_size:64
+extrittio.DeviceCommand.params                  max_count:16
+extrittio.DeviceCommand.params.key              max_size:64
+extrittio.DeviceCommand.params.value            max_size:256
+
+extrittio.DeviceCommandResponse.correlation_id  max_size:64
+extrittio.DeviceCommandResponse.device_id       max_size:64
+extrittio.DeviceCommandResponse.status          max_size:16
+extrittio.DeviceCommandResponse.payload         max_size:512
+
+extrittio.ShadowReport.device_id                max_size:64
+extrittio.ShadowReport.state_json               max_size:1024
+
+extrittio.ShadowDelta.device_id                 max_size:64
+extrittio.ShadowDelta.delta_json                max_size:1024
+
+extrittio.ShadowGet.device_id                   max_size:64
+
+extrittio.DeviceLog.device_id                   max_size:64
+extrittio.DeviceLog.level                       max_size:8
+extrittio.DeviceLog.message                     max_size:256
