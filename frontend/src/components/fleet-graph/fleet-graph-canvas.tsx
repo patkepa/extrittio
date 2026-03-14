@@ -413,7 +413,7 @@ export const FleetGraphCanvas = ({
         // Selection ring (drawn after main circle and uptime ring so glow is visible)
         if (selectedDeviceIds.has(node.id)) {
           ctx.beginPath();
-          ctx.arc(node.x!, node.y!, effectiveRadius + 4, 0, 2 * Math.PI);
+          ctx.arc(node.x!, node.y!, effectiveRadius + 7, 0, 2 * Math.PI);
           ctx.strokeStyle = SELECTION_COLOR;
           ctx.lineWidth = 2;
           ctx.shadowColor = SELECTION_COLOR;
@@ -553,33 +553,33 @@ export const FleetGraphCanvas = ({
 
   return (
     <div ref={canvasWrapperRef} style={{ width, height }}>
-    <ForceGraph2D
-      ref={graphRef}
-      graphData={graphData}
-      width={width}
-      height={height}
-      backgroundColor="#000000"
-      onRenderFramePre={paintGrid as any}
-      onRenderFramePost={paintLasso as any}
-      nodeCanvasObject={paintNode as any}
-      nodeCanvasObjectMode={() => 'replace'}
-      linkCanvasObject={paintLink as any}
-      linkCanvasObjectMode={() => 'replace'}
-      onNodeHover={handleNodeHover as any}
-      onNodeClick={handleNodeClick as any}
-      onNodeRightClick={onNodeRightClick as any}
-      onBackgroundClick={handleBackgroundClickInternal as any}
-      onEngineStop={handleEngineStop}
-      enablePanInteraction={enablePanInteraction as any}
-      enableNodeDrag={!shiftHeld}
-      nodeVal="val"
-      d3AlphaDecay={0.02}
-      d3VelocityDecay={0.3}
-      warmupTicks={50}
-      cooldownTicks={200}
-      autoPauseRedraw={false}
-      nodeLabel=""
-    />
+      <ForceGraph2D
+        ref={graphRef}
+        graphData={graphData}
+        width={width}
+        height={height}
+        backgroundColor="#000000"
+        onRenderFramePre={paintGrid as any}
+        onRenderFramePost={paintLasso as any}
+        nodeCanvasObject={paintNode as any}
+        nodeCanvasObjectMode={() => 'replace'}
+        linkCanvasObject={paintLink as any}
+        linkCanvasObjectMode={() => 'replace'}
+        onNodeHover={handleNodeHover as any}
+        onNodeClick={handleNodeClick as any}
+        onNodeRightClick={onNodeRightClick as any}
+        onBackgroundClick={handleBackgroundClickInternal as any}
+        onEngineStop={handleEngineStop}
+        enablePanInteraction={enablePanInteraction as any}
+        enableNodeDrag={!shiftHeld}
+        nodeVal="val"
+        d3AlphaDecay={0.02}
+        d3VelocityDecay={0.3}
+        warmupTicks={50}
+        cooldownTicks={200}
+        autoPauseRedraw={false}
+        nodeLabel=""
+      />
     </div>
   );
 };
