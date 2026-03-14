@@ -113,7 +113,7 @@ export const HealthPanel = ({ nodes, onDeviceClick, selectedNodeId, height, view
     };
   }, [tierCounts, total]);
 
-  const listHeight = height - HEADER_HEIGHT - MINIMAP_SECTION_HEIGHT - FOOTER_HEIGHT;
+  const listHeight = height - HEADER_HEIGHT - FOOTER_HEIGHT - MINIMAP_SECTION_HEIGHT;
 
   const rowProps: RowExtraProps = useMemo(
     () => ({ deviceEntries, selectedNodeId, onDeviceClick }),
@@ -140,16 +140,6 @@ export const HealthPanel = ({ nodes, onDeviceClick, selectedNodeId, height, view
         </div>
       </div>
 
-      <div className="health-panel-minimap">
-        <FleetGraphMinimap
-          nodes={nodes}
-          viewport={viewport}
-          canvasWidth={canvasWidth}
-          canvasHeight={canvasHeight}
-          onNavigate={onMinimapNavigate}
-        />
-      </div>
-
       {listHeight > 0 && (
         <List<RowExtraProps>
           rowComponent={HealthRow}
@@ -166,6 +156,16 @@ export const HealthPanel = ({ nodes, onDeviceClick, selectedNodeId, height, view
         <span style={{ color: TIER_COLORS.warm }}>{tierCounts.warm + tierCounts.stale} stale</span>
         <span className="health-panel-dot">&middot;</span>
         <span style={{ color: TIER_COLORS.dead }}>{tierCounts.dead} dead</span>
+      </div>
+
+      <div className="health-panel-minimap">
+        <FleetGraphMinimap
+          nodes={nodes}
+          viewport={viewport}
+          canvasWidth={canvasWidth}
+          canvasHeight={canvasHeight}
+          onNavigate={onMinimapNavigate}
+        />
       </div>
     </div>
   );

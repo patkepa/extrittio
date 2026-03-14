@@ -649,7 +649,7 @@ export const FleetGraphCanvas = memo(({
         nodeLabel=""
         onZoom={handleZoom as any}
         onZoomEnd={handleZoomEnd as any}
-        minZoom={0.1}
+        minZoom={0.5}
         maxZoom={8}
       />
     </div>

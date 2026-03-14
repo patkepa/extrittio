@@ -154,7 +154,7 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
       {/* Header */}
       <div className="sidebar-header">
         <div className="sidebar-logo">
-          {!isCollapsed && <span className="sidebar-title">Extrittio</span>}
+          <span className="sidebar-title">{isCollapsed ? 'Ex' : 'Extrittio'}</span>
         </div>
       </div>
 
