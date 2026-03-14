@@ -19,6 +19,8 @@ const Settings = lazy(() =>
   import('./pages/settings/index').then((m) => ({ default: m.Settings })),
 );
 const Help = lazy(() => import('./pages/help').then((m) => ({ default: m.Help })));
+const Rules = lazy(() => import('./pages/rules').then((m) => ({ default: m.Rules })));
+const AlertsPage = lazy(() => import('./pages/alerts').then((m) => ({ default: m.Alerts })));
 
 // Import Blueprint.js styles
 import '@blueprintjs/core/lib/css/blueprint.css';
@@ -48,6 +50,8 @@ function App() {
                       <Route path="/devices" element={<Devices />} />
                       <Route path="/devices/:deviceId" element={<DeviceDetail />} />
                       <Route path="/fleet-graph" element={<FleetGraph />} />
+                      <Route path="/rules" element={<Rules />} />
+                      <Route path="/alerts" element={<AlertsPage />} />
                       <Route path="/help" element={<Help />} />
                       <Route path="/settings/*" element={<Settings />} />
                       <Route path="*" element={<Navigate to="/" replace />} />

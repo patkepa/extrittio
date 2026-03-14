@@ -15,6 +15,7 @@ import { navGroups, projects, currentUser } from '../../data/sidebar-data';
 import { useAuthStore } from '../../stores/auth-store';
 import { useUIStore } from '../../stores/ui-store';
 import { useDashboardStats } from '../../hooks/use-dashboard';
+import { useAlertSummary } from '../../hooks/use-alerts';
 import type { NavItem } from '../../types/navigation';
 import './app-sidebar.css';
 
@@ -40,6 +41,7 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { data: dashboardStats } = useDashboardStats();
+  const { data: alertSummary } = useAlertSummary();
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
   // Auto-expand parent items when the active route changes
@@ -87,7 +89,7 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
 
   const navBadges: Record<string, { count?: number; status?: 'online' | 'warning' | 'offline' }> = {
     ...(dashboardStats && { Devices: { count: dashboardStats.total_devices } }),
-    Alerts: { count: 3 },
+    ...(alertSummary && alertSummary.total_active > 0 && { Alerts: { count: alertSummary.total_active } }),
   };
 
   const renderNavItem = (item: NavItem, depth: number = 0) => {

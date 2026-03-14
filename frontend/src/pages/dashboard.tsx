@@ -5,6 +5,7 @@ import { UPlotChart } from '../components/charts/UPlot';
 import { SVGDonut } from '../components/charts/SVGDonut';
 import { toSparklineData, sparklineOpts } from '../components/charts/uplot-helpers';
 import { useDashboardStats } from '../hooks/use-dashboard';
+import { useAlertSummary } from '../hooks/use-alerts';
 import { ServerHealth } from '../components/dashboard/server-health';
 import './dashboard.css';
 
@@ -93,6 +94,9 @@ const DashboardSparkline = ({ data, color }: { data: number[]; color: string }) 
 
 export const Dashboard = () => {
   const { data: dashboardStats } = useDashboardStats();
+  const { data: alertSummary } = useAlertSummary();
+
+  const activeAlertCount = alertSummary ? alertSummary.total_active : 0;
 
   const stats: StatCard[] = dashboardStats
     ? [
@@ -132,6 +136,15 @@ export const Dashboard = () => {
           color: '#8F398F',
           sparkIndex: 3,
         },
+        {
+          label: 'Active Alerts',
+          value: formatCount(activeAlertCount),
+          delta: '',
+          deltaUp: false,
+          icon: 'notifications',
+          color: '#DB3737',
+          sparkIndex: 2,
+        },
       ]
     : [
         {
@@ -169,6 +182,15 @@ export const Dashboard = () => {
           icon: 'envelope',
           color: '#8F398F',
           sparkIndex: 3,
+        },
+        {
+          label: 'Active Alerts',
+          value: '\u2014',
+          delta: '',
+          deltaUp: false,
+          icon: 'notifications',
+          color: '#DB3737',
+          sparkIndex: 2,
         },
       ];
 

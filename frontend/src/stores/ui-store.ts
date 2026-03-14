@@ -10,6 +10,10 @@ interface UIStore {
   toggleCommandPalette: () => void;
   isSidebarCollapsed: boolean;
   toggleSidebar: () => void;
+  isRuleDialogOpen: boolean;
+  editingRuleId: string | null;
+  openRuleDialog: (ruleId?: string) => void;
+  closeRuleDialog: () => void;
 }
 
 export const useUIStore = create<UIStore>((set) => ({
@@ -22,4 +26,9 @@ export const useUIStore = create<UIStore>((set) => ({
   toggleCommandPalette: () => set((s) => ({ isCommandPaletteOpen: !s.isCommandPaletteOpen })),
   isSidebarCollapsed: false,
   toggleSidebar: () => set((s) => ({ isSidebarCollapsed: !s.isSidebarCollapsed })),
+  isRuleDialogOpen: false,
+  editingRuleId: null,
+  openRuleDialog: (ruleId?: string) =>
+    set({ isRuleDialogOpen: true, editingRuleId: ruleId ?? null }),
+  closeRuleDialog: () => set({ isRuleDialogOpen: false, editingRuleId: null }),
 }));

@@ -48,6 +48,17 @@ export const queryKeys = {
   apiKeys: {
     all: ['api-keys'] as const,
   },
+  rules: {
+    all: ['rules'] as const,
+    list: (params?: unknown) => ['rules', params] as const,
+    detail: (id: string) => ['rule', id] as const,
+  },
+  alerts: {
+    all: ['alerts'] as const,
+    list: (params?: unknown) => ['alerts', params] as const,
+    detail: (id: string) => ['alert', id] as const,
+    summary: ['alerts', 'summary'] as const,
+  },
   serverMetrics: {
     current: ['server-metrics-current'] as const,
     history: (params?: unknown) => ['server-metrics-history', params] as const,

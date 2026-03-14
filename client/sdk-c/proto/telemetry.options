@@ -11,8 +11,8 @@ extrittio.DeviceHeartbeat.firmware              max_size:32
 extrittio.DeviceCommand.command                 max_size:64
 extrittio.DeviceCommand.correlation_id          max_size:64
 extrittio.DeviceCommand.params                  max_count:16
-extrittio.DeviceCommand.params.key              max_size:64
-extrittio.DeviceCommand.params.value            max_size:256
+extrittio.DeviceCommand_ParamsEntry.key          max_size:64  type:FT_STATIC
+extrittio.DeviceCommand_ParamsEntry.value        max_size:256 type:FT_STATIC
 
 extrittio.DeviceCommandResponse.correlation_id  max_size:64
 extrittio.DeviceCommandResponse.device_id       max_size:64

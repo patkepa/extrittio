@@ -22,6 +22,21 @@ export const navGroups: NavGroup[] = [
     ],
   },
   {
+    label: 'Automation',
+    items: [
+      {
+        label: 'Rules',
+        icon: 'filter',
+        href: '/rules',
+      },
+      {
+        label: 'Alerts',
+        icon: 'warning-sign',
+        href: '/alerts',
+      },
+    ],
+  },
+  {
     label: 'Management',
     items: [
       {

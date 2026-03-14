@@ -1,0 +1,151 @@
+.rules-page {
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+.rules-page .page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 24px;
+}
+
+.rules-page .page-header h3 {
+  margin-bottom: 4px;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: hsl(var(--foreground));
+}
+
+.rules-page .page-description {
+  color: hsl(var(--muted) / 0.7);
+  font-size: 13px;
+  margin: 0;
+  font-weight: 500;
+}
+
+/* Controls */
+.rules-controls {
+  position: relative;
+  background-color: var(--card-bg);
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border-color);
+  animation: fadeIn 0.3s ease;
+}
+
+/* Table */
+.rules-card {
+  background-color: var(--card-bg);
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  animation: fadeIn 0.4s ease;
+}
+
+.rules-table {
+  width: 100%;
+  margin: 0;
+  border-collapse: collapse;
+}
+
+.rules-table thead th {
+  background-color: hsla(0, 0%, 100%, 0.03);
+  padding: 10px 16px;
+  font-weight: 700;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  text-align: left;
+  white-space: nowrap;
+  color: hsl(var(--muted));
+  border-bottom: 2px solid var(--border-color);
+}
+
+.rules-table tbody td {
+  padding: 10px 16px;
+  vertical-align: middle;
+  border-bottom: 1px solid hsla(0, 0%, 100%, 0.05);
+  font-size: 13px;
+}
+
+.rule-row {
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+}
+
+.rule-row:hover {
+  background-color: hsla(0, 0%, 100%, 0.03);
+}
+
+.rule-row:nth-child(even) {
+  background-color: rgba(255, 255, 255, 0.015);
+}
+
+.rule-row:nth-child(even):hover {
+  background-color: hsla(0, 0%, 100%, 0.03);
+}
+
+.rule-name-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.rule-name-cell strong {
+  font-weight: 600;
+  font-size: 13px;
+  color: hsl(var(--foreground));
+}
+
+.rule-description {
+  font-size: 11px;
+  color: hsl(var(--muted));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 300px;
+}
+
+.conditions-summary {
+  font-size: 12px;
+  color: hsl(var(--muted));
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rule-actions-cell {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+  .rules-controls .controls-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+@media (max-width: 768px) {
+  .rules-page .page-header {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .rules-page .page-header button {
+    width: 100%;
+  }
+
+  .rules-card {
+    overflow-x: auto;
+  }
+
+  .rules-table {
+    min-width: 800px;
+  }
+}

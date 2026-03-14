@@ -9,10 +9,11 @@ import { ConfigTab } from '../components/devices/config-tab';
 import { ShadowTab } from '../components/devices/shadow-tab';
 import { OtaTab } from '../components/devices/ota-tab';
 import { CommandsTab } from '../components/devices/commands-tab';
+import { AlertsTab } from '../components/devices/alerts-tab';
 import { ErrorBoundary } from '../components/error-boundary';
 import './device-detail.css';
 
-const VALID_TABS = ['overview', 'shadow', 'commands', 'telemetry', 'ota', 'config', 'logs'];
+const VALID_TABS = ['overview', 'shadow', 'commands', 'telemetry', 'ota', 'config', 'logs', 'alerts'];
 
 export const DeviceDetail = () => {
   const { deviceId } = useParams<{ deviceId: string }>();
@@ -75,6 +76,7 @@ export const DeviceDetail = () => {
           <Tab id="ota" title="OTA" />
           <Tab id="config" title="Config" />
           <Tab id="logs" title="Logs" />
+          <Tab id="alerts" title="Alerts" />
         </Tabs>
       </div>
 
@@ -112,6 +114,11 @@ export const DeviceDetail = () => {
         {currentTab === 'ota' && (
           <ErrorBoundary>
             <OtaTab device={device} />
+          </ErrorBoundary>
+        )}
+        {currentTab === 'alerts' && (
+          <ErrorBoundary>
+            <AlertsTab deviceId={device.id} />
           </ErrorBoundary>
         )}
       </div>
