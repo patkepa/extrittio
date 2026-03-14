@@ -19,11 +19,7 @@ export const ProfileSettings = () => {
               <InputGroup id="name-input" placeholder="Enter your name" />
             </FormGroup>
             <FormGroup label="Email" labelFor="email-input">
-              <InputGroup
-                id="email-input"
-                type="email"
-                placeholder="Enter your email"
-              />
+              <InputGroup id="email-input" type="email" placeholder="Enter your email" />
             </FormGroup>
           </div>
         </Card>

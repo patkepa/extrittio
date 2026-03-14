@@ -32,8 +32,12 @@ function lerpColor(colorA: string, colorB: string, t: number): string {
   const a = parseInt(colorA.slice(1), 16);
   const b = parseInt(colorB.slice(1), 16);
 
-  const rA = (a >> 16) & 0xff, gA = (a >> 8) & 0xff, bA = a & 0xff;
-  const rB = (b >> 16) & 0xff, gB = (b >> 8) & 0xff, bB = b & 0xff;
+  const rA = (a >> 16) & 0xff,
+    gA = (a >> 8) & 0xff,
+    bA = a & 0xff;
+  const rB = (b >> 16) & 0xff,
+    gB = (b >> 8) & 0xff,
+    bB = b & 0xff;
 
   const r = Math.round(rA + (rB - rA) * t);
   const g = Math.round(gA + (gB - gA) * t);

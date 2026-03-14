@@ -60,15 +60,31 @@ function HealthRow({
       className={`health-panel-row ${isSelected ? 'health-panel-row--selected' : ''}`}
       onClick={() => onDeviceClick(node.id)}
     >
-      <span className="health-panel-led" style={{ backgroundColor: color, boxShadow: `0 0 4px ${color}80` }} />
+      <span
+        className="health-panel-led"
+        style={{ backgroundColor: color, boxShadow: `0 0 4px ${color}80` }}
+      />
       <span className="health-panel-name">{node.name}</span>
-      <span className="health-panel-staleness" style={{ color }}>{formatStaleness(stalenessMs)}</span>
+      <span className="health-panel-staleness" style={{ color }}>
+        {formatStaleness(stalenessMs)}
+      </span>
       <span className="health-panel-fleet">{node.device?.fleet_name ?? '—'}</span>
     </div>
   );
 }
 
-export const HealthPanel = ({ nodes, links, onDeviceClick, selectedNodeId, height, viewportRef, minimapDrawRef, canvasWidth, canvasHeight, collapsed }: HealthPanelProps) => {
+export const HealthPanel = ({
+  nodes,
+  links,
+  onDeviceClick,
+  selectedNodeId,
+  height,
+  viewportRef,
+  minimapDrawRef,
+  canvasWidth,
+  canvasHeight,
+  collapsed,
+}: HealthPanelProps) => {
   // Tick every 5s so staleness labels and sort order stay reasonably fresh
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -91,7 +107,7 @@ export const HealthPanel = ({ nodes, links, onDeviceClick, selectedNodeId, heigh
         if (aVal !== bVal) return aVal - bVal;
         return (b.node.uptimeSeconds ?? 0) - (a.node.uptimeSeconds ?? 0);
       });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodes, tick]);
 
   // Tier counts
@@ -157,7 +173,9 @@ export const HealthPanel = ({ nodes, links, onDeviceClick, selectedNodeId, heigh
       )}
 
       <div className="health-panel-footer">
-        <span style={{ color: TIER_COLORS.fresh }}>{tierCounts.fresh + tierCounts.warm + tierCounts.stale} healthy</span>
+        <span style={{ color: TIER_COLORS.fresh }}>
+          {tierCounts.fresh + tierCounts.warm + tierCounts.stale} healthy
+        </span>
         <span style={{ color: TIER_COLORS.dead }}>{tierCounts.dead} disconnected</span>
         {tierCounts.never > 0 && (
           <span style={{ color: TIER_COLORS.never }}>{tierCounts.never} never connected</span>

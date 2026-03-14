@@ -92,9 +92,7 @@ export const CommandPalette = () => {
                 keywords={[device.device_type_name, device.id]}
                 onSelect={() => runAction(() => navigate(`/devices?device=${device.id}`))}
               >
-                <span
-                  className={`cmdk-device-led cmdk-device-led--${device.status}`}
-                />
+                <span className={`cmdk-device-led cmdk-device-led--${device.status}`} />
                 <span className="cmdk-item-label">{device.name}</span>
                 <span className="cmdk-item-meta">{device.device_type_name}</span>
               </Command.Item>
@@ -105,9 +103,7 @@ export const CommandPalette = () => {
                 onSelect={() => runAction(() => navigate('/devices'))}
               >
                 <Icon icon="more" size={16} />
-                <span className="cmdk-item-label">
-                  View all {devices.length} devices...
-                </span>
+                <span className="cmdk-item-label">View all {devices.length} devices...</span>
               </Command.Item>
             )}
           </Command.Group>

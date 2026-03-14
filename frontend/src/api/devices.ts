@@ -1,4 +1,4 @@
-import client from "./client";
+import client from './client';
 import type {
   Device,
   CreateDeviceRequest,
@@ -10,10 +10,10 @@ import type {
   BulkAffectedResponse,
   BulkResultResponse,
   PaginatedResponse,
-} from "../types/api";
+} from '../types/api';
 
 export async function getDevices(params?: ListDevicesParams): Promise<PaginatedResponse<Device>> {
-  const { data } = await client.get<PaginatedResponse<Device>>("/devices", { params });
+  const { data } = await client.get<PaginatedResponse<Device>>('/devices', { params });
   return data;
 }
 
@@ -23,14 +23,11 @@ export async function getDevice(id: string): Promise<Device> {
 }
 
 export async function createDevice(body: CreateDeviceRequest): Promise<Device> {
-  const { data } = await client.post<Device>("/devices", body);
+  const { data } = await client.post<Device>('/devices', body);
   return data;
 }
 
-export async function updateDevice(
-  id: string,
-  body: UpdateDeviceRequest
-): Promise<Device> {
+export async function updateDevice(id: string, body: UpdateDeviceRequest): Promise<Device> {
   const { data } = await client.put<Device>(`/devices/${id}`, body);
   return data;
 }
@@ -44,21 +41,21 @@ export async function restartDevice(id: string): Promise<void> {
 }
 
 export async function bulkChangeFleet(body: BulkFleetRequest): Promise<BulkAffectedResponse> {
-  const { data } = await client.post<BulkAffectedResponse>("/devices/bulk/fleet", body);
+  const { data } = await client.post<BulkAffectedResponse>('/devices/bulk/fleet', body);
   return data;
 }
 
 export async function bulkDeleteDevices(body: BulkTargeting): Promise<BulkAffectedResponse> {
-  const { data } = await client.post<BulkAffectedResponse>("/devices/bulk/delete", body);
+  const { data } = await client.post<BulkAffectedResponse>('/devices/bulk/delete', body);
   return data;
 }
 
 export async function bulkRestartDevices(body: BulkTargeting): Promise<BulkResultResponse> {
-  const { data } = await client.post<BulkResultResponse>("/devices/bulk/restart", body);
+  const { data } = await client.post<BulkResultResponse>('/devices/bulk/restart', body);
   return data;
 }
 
 export async function bulkTriggerOta(body: BulkOtaRequest): Promise<BulkResultResponse> {
-  const { data } = await client.post<BulkResultResponse>("/devices/bulk/ota", body);
+  const { data } = await client.post<BulkResultResponse>('/devices/bulk/ota', body);
   return data;
 }

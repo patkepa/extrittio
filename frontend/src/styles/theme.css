@@ -17,15 +17,15 @@
   /* Base colors - HIGH CONTRAST dark theme
    * Pure black backgrounds with white text for maximum contrast
    */
-  --background: 0 0% 9%;           /* Dark gray #171717 */
-  --foreground: 0 0% 100%;         /* Pure white #FFFFFF */
+  --background: 0 0% 9%; /* Dark gray #171717 */
+  --foreground: 0 0% 100%; /* Pure white #FFFFFF */
 
   /* Primary - Softened blue */
   --primary: 213 68% 59%;
   --primary-foreground: 220 20% 8%;
 
   /* Secondary - HIGH CONTRAST */
-  --secondary: 0 0% 5%;            /* Near black */
+  --secondary: 0 0% 5%; /* Near black */
   --secondary-foreground: 0 0% 100%; /* Pure white */
 
   /* Accent - Softened blue */
@@ -33,34 +33,34 @@
   --accent-hover: 214 84% 65%;
 
   /* Muted colors - HIGH CONTRAST muted (still light gray for readability) */
-  --muted: 0 0% 70%;               /* Light gray for muted elements */
-  --muted-foreground: 0 0% 85%;    /* Very light gray for muted text */
+  --muted: 0 0% 70%; /* Light gray for muted elements */
+  --muted-foreground: 0 0% 85%; /* Very light gray for muted text */
 
   /* Border and ring - More visible */
   --ring: 213 68% 59%;
 
   /* Sidebar specific - HIGH CONTRAST */
   --sidebar-bg: #060606;
-  --sidebar-foreground: hsl(0, 0%, 100%);       /* Pure white text */
+  --sidebar-foreground: hsl(0, 0%, 100%); /* Pure white text */
   --sidebar-primary: hsl(213, 68%, 59%);
   --sidebar-primary-foreground: hsl(0, 0%, 0%); /* Black text on blue background */
   --sidebar-accent: #101010;
   --sidebar-accent-hover: #161616;
-  --sidebar-muted-foreground: hsl(0, 0%, 85%);  /* Light gray for muted text */
+  --sidebar-muted-foreground: hsl(0, 0%, 85%); /* Light gray for muted text */
   --sidebar-border: hsla(0, 0%, 100%, 0.08);
 
   /* Content area - HIGH CONTRAST */
   --content-bg: #171717;
   --navbar-bg: #060606;
-  --border-color: hsla(0, 0%, 100%, 0.10);
+  --border-color: hsla(0, 0%, 100%, 0.1);
   --card-bg: #242424;
 
   /* Status colors - Vibrant for dark bg (Blueprint GREEN3, ORANGE3, RED3) */
-  --success: 152 69% 45%;      /* ~Blueprint GREEN3 */
+  --success: 152 69% 45%; /* ~Blueprint GREEN3 */
   --success-light: 152 50% 15%;
-  --warning: 38 92% 55%;       /* ~Blueprint ORANGE3 */
+  --warning: 38 92% 55%; /* ~Blueprint ORANGE3 */
   --warning-light: 38 70% 15%;
-  --danger: 0 84% 60%;         /* ~Blueprint RED3 */
+  --danger: 0 84% 60%; /* ~Blueprint RED3 */
   --danger-light: 0 60% 15%;
 }
 
@@ -75,7 +75,9 @@
 
 .status-led--online {
   background-color: hsl(var(--success));
-  box-shadow: 0 0 4px hsl(var(--success) / 0.3), 0 0 8px hsl(var(--success) / 0.15);
+  box-shadow:
+    0 0 4px hsl(var(--success) / 0.3),
+    0 0 8px hsl(var(--success) / 0.15);
   animation: led-pulse 2s ease-in-out infinite;
 }
 
@@ -91,13 +93,29 @@
 }
 
 @keyframes led-pulse {
-  0%, 100% { opacity: 1; box-shadow: 0 0 4px hsl(var(--success) / 0.3), 0 0 8px hsl(var(--success) / 0.15); }
-  50% { opacity: 0.7; box-shadow: 0 0 2px hsl(var(--success) / 0.15), 0 0 4px hsl(var(--success) / 0.08); }
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow:
+      0 0 4px hsl(var(--success) / 0.3),
+      0 0 8px hsl(var(--success) / 0.15);
+  }
+  50% {
+    opacity: 0.7;
+    box-shadow:
+      0 0 2px hsl(var(--success) / 0.15),
+      0 0 4px hsl(var(--success) / 0.08);
+  }
 }
 
 @keyframes led-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
 }
 
 /* Global styles */
@@ -110,9 +128,9 @@
 body {
   margin: 0;
   overflow: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell',
+    'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--content-bg);
@@ -122,8 +140,9 @@ body {
 }
 
 code {
-  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro',
-    'Menlo', 'Consolas', 'Courier New', monospace;
+  font-family:
+    'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', 'Menlo', 'Consolas',
+    'Courier New', monospace;
   font-size: 0.875em;
 }
 
@@ -150,7 +169,12 @@ code {
 }
 
 /* Typography improvements */
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
   font-weight: 600;
   letter-spacing: -0.025em;
   color: hsl(var(--foreground));
@@ -226,7 +250,9 @@ p {
 .bp6-button {
   font-weight: 500;
   letter-spacing: -0.01em;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
   background-color: hsla(0, 0%, 100%, 0.06);
   color: hsl(var(--foreground));
   border-color: var(--border-color);
@@ -234,7 +260,7 @@ p {
 }
 
 .bp6-button:hover {
-  background-color: hsla(0, 0%, 100%, 0.10);
+  background-color: hsla(0, 0%, 100%, 0.1);
   border-color: var(--border-color);
 }
 
@@ -283,7 +309,9 @@ p {
   background-color: var(--card-bg);
   color: hsl(var(--foreground));
   font-size: 14px;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .bp6-input:focus {
@@ -553,20 +581,38 @@ p {
 
 /* Stagger fade-in animation for card grids */
 @keyframes staggerFadeIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .stagger-item {
   animation: staggerFadeIn 0.4s ease-out both;
 }
 
-.stagger-item:nth-child(1) { animation-delay: 0ms; }
-.stagger-item:nth-child(2) { animation-delay: 40ms; }
-.stagger-item:nth-child(3) { animation-delay: 80ms; }
-.stagger-item:nth-child(4) { animation-delay: 120ms; }
-.stagger-item:nth-child(5) { animation-delay: 160ms; }
-.stagger-item:nth-child(6) { animation-delay: 200ms; }
+.stagger-item:nth-child(1) {
+  animation-delay: 0ms;
+}
+.stagger-item:nth-child(2) {
+  animation-delay: 40ms;
+}
+.stagger-item:nth-child(3) {
+  animation-delay: 80ms;
+}
+.stagger-item:nth-child(4) {
+  animation-delay: 120ms;
+}
+.stagger-item:nth-child(5) {
+  animation-delay: 160ms;
+}
+.stagger-item:nth-child(6) {
+  animation-delay: 200ms;
+}
 
 /* Device detail tab utilities */
 .tab-card {

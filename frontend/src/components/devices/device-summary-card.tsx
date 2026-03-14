@@ -14,7 +14,9 @@ export const DeviceSummaryCard = ({ device }: DeviceSummaryCardProps) => (
     <div className="summary-details">
       <Tag minimal>{device.device_type_name}</Tag>
       {device.fleet_name && (
-        <Tag minimal intent="primary">{device.fleet_name}</Tag>
+        <Tag minimal intent="primary">
+          {device.fleet_name}
+        </Tag>
       )}
     </div>
     <div className="summary-meta">

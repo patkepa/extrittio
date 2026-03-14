@@ -11,7 +11,11 @@ import {
   Spinner,
   Tag,
 } from '@blueprintjs/core';
-import { useFirmwareUpdates, useOtaDeployments, useTriggerOta } from '../../hooks/use-firmware-updates';
+import {
+  useFirmwareUpdates,
+  useOtaDeployments,
+  useTriggerOta,
+} from '../../hooks/use-firmware-updates';
 import { showSuccessToast, showErrorToast } from '../../utils/toaster';
 import { useDeviceShadow } from '../../hooks/use-shadow';
 import type { Device } from '../../types/api';
@@ -21,7 +25,11 @@ interface OtaTabProps {
 }
 
 export const OtaTab = ({ device }: OtaTabProps) => {
-  const { data: firmwareUpdates = [], isLoading, isError } = useFirmwareUpdates({
+  const {
+    data: firmwareUpdates = [],
+    isLoading,
+    isError,
+  } = useFirmwareUpdates({
     device_type_id: device.device_type_id,
   });
   const { data: shadow } = useDeviceShadow(device.id);
@@ -66,16 +74,20 @@ export const OtaTab = ({ device }: OtaTabProps) => {
           setIsConfirmOpen(false);
           void showErrorToast('Failed to trigger OTA update');
         },
-      }
+      },
     );
   };
 
   const statusIntent = (status: string) => {
     switch (status) {
-      case 'success': return 'success' as const;
-      case 'failed': return 'danger' as const;
-      case 'pending': return 'warning' as const;
-      default: return 'primary' as const;
+      case 'success':
+        return 'success' as const;
+      case 'failed':
+        return 'danger' as const;
+      case 'pending':
+        return 'warning' as const;
+      default:
+        return 'primary' as const;
     }
   };
 
@@ -94,10 +106,7 @@ export const OtaTab = ({ device }: OtaTabProps) => {
             </Tag>
           )}
           {reportedOta?.status && (
-            <Tag
-              intent={statusIntent(reportedOta.status)}
-              minimal
-            >
+            <Tag intent={statusIntent(reportedOta.status)} minimal>
               {reportedOta.status}
             </Tag>
           )}
@@ -116,21 +125,20 @@ export const OtaTab = ({ device }: OtaTabProps) => {
       {/* Deploy new firmware */}
       <span className="section-label">Deploy Firmware Update</span>
       <p className="tab-help-text">
-        Select a firmware release to push via device shadow. The device will receive the update URL in its shadow delta.
+        Select a firmware release to push via device shadow. The device will receive the update URL
+        in its shadow delta.
       </p>
 
       {firmwareUpdates.length === 0 ? (
         <Callout icon="info-sign" intent="primary">
-          No firmware releases registered for device type "{device.device_type_name}".
-          Register one in Settings &rarr; Firmware.
+          No firmware releases registered for device type "{device.device_type_name}". Register one
+          in Settings &rarr; Firmware.
         </Callout>
       ) : (
         <>
           <HTMLSelect
             value={selectedFwId ?? ''}
-            onChange={(e) =>
-              setSelectedFwId(e.target.value ? Number(e.target.value) : null)
-            }
+            onChange={(e) => setSelectedFwId(e.target.value ? Number(e.target.value) : null)}
             fill
             className="tab-input-spacing"
           >
@@ -146,17 +154,43 @@ export const OtaTab = ({ device }: OtaTabProps) => {
           {selectedFw && (
             <Card elevation={Elevation.ONE} className="tab-card-sm">
               <div style={{ fontSize: 13 }}>
-                <div><span className="tab-label-muted">Version: </span><span className="mono-data">v{selectedFw.version}</span></div>
+                <div>
+                  <span className="tab-label-muted">Version: </span>
+                  <span className="mono-data">v{selectedFw.version}</span>
+                </div>
                 {selectedFw.has_blob ? (
-                  <div><span className="tab-label-muted">Source: </span><Tag minimal intent="success" icon="document" style={{ verticalAlign: 'middle' }}>{selectedFw.filename}</Tag></div>
+                  <div>
+                    <span className="tab-label-muted">Source: </span>
+                    <Tag
+                      minimal
+                      intent="success"
+                      icon="document"
+                      style={{ verticalAlign: 'middle' }}
+                    >
+                      {selectedFw.filename}
+                    </Tag>
+                  </div>
                 ) : (
-                  <div><span className="tab-label-muted">URL: </span><span className="mono-data" style={{ fontSize: 12 }}>{selectedFw.url}</span></div>
+                  <div>
+                    <span className="tab-label-muted">URL: </span>
+                    <span className="mono-data" style={{ fontSize: 12 }}>
+                      {selectedFw.url}
+                    </span>
+                  </div>
                 )}
                 {selectedFw.sha256 && (
-                  <div><span className="tab-label-muted">SHA-256: </span><span className="mono-data" style={{ fontSize: 12 }}>{selectedFw.sha256}</span></div>
+                  <div>
+                    <span className="tab-label-muted">SHA-256: </span>
+                    <span className="mono-data" style={{ fontSize: 12 }}>
+                      {selectedFw.sha256}
+                    </span>
+                  </div>
                 )}
                 {selectedFw.description && (
-                  <div style={{ marginTop: 4 }}><span className="tab-label-muted">Notes: </span>{selectedFw.description}</div>
+                  <div style={{ marginTop: 4 }}>
+                    <span className="tab-label-muted">Notes: </span>
+                    {selectedFw.description}
+                  </div>
                 )}
               </div>
             </Card>
@@ -183,13 +217,14 @@ export const OtaTab = ({ device }: OtaTabProps) => {
             loading={triggerOtaMutation.isPending}
           >
             <p>
-              Push firmware <strong>v{selectedFw?.version}</strong> to device <strong>{device.name}</strong>?
+              Push firmware <strong>v{selectedFw?.version}</strong> to device{' '}
+              <strong>{device.name}</strong>?
             </p>
             <p style={{ fontSize: 12, opacity: 0.7 }}>
-              This will update the device shadow's desired state. The device will download and apply the firmware on its next sync.
+              This will update the device shadow's desired state. The device will download and apply
+              the firmware on its next sync.
             </p>
           </Alert>
-
         </>
       )}
 
@@ -221,9 +256,7 @@ export const OtaTab = ({ device }: OtaTabProps) => {
                         {dep.status}
                       </Tag>
                       {dep.error_message && (
-                        <span className="tab-text-secondary">
-                          {dep.error_message}
-                        </span>
+                        <span className="tab-text-secondary">{dep.error_message}</span>
                       )}
                     </td>
                     <td className="tab-cell-muted">{dep.initiated_at}</td>

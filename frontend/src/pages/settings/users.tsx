@@ -37,8 +37,10 @@ export const UsersSettings = () => {
           setNewPassword('');
           void showSuccessToast('User created');
         },
-        onError: () => { void showErrorToast('Failed to create user'); },
-      }
+        onError: () => {
+          void showErrorToast('Failed to create user');
+        },
+      },
     );
   };
 
@@ -65,7 +67,9 @@ export const UsersSettings = () => {
       <div className="page-header">
         <div>
           <H3>Users</H3>
-          <p className="page-description">{users.length} user{users.length !== 1 ? 's' : ''}</p>
+          <p className="page-description">
+            {users.length} user{users.length !== 1 ? 's' : ''}
+          </p>
         </div>
         <Button intent="primary" icon="add" onClick={() => setIsDialogOpen(true)}>
           Add User
@@ -91,7 +95,9 @@ export const UsersSettings = () => {
             <tbody>
               {users.map((user) => (
                 <tr key={user.id}>
-                  <td><strong>{user.username}</strong></td>
+                  <td>
+                    <strong>{user.username}</strong>
+                  </td>
                   <td>{user.role}</td>
                   <td className="actions-column">
                     <Button
@@ -100,7 +106,9 @@ export const UsersSettings = () => {
                       small
                       intent="danger"
                       disabled={users.length <= 1}
-                      loading={deleteUserMutation.isPending && deleteUserMutation.variables === user.id}
+                      loading={
+                        deleteUserMutation.isPending && deleteUserMutation.variables === user.id
+                      }
                       onClick={() =>
                         deleteUserMutation.mutate(user.id, {
                           onSuccess: () => void showSuccessToast('User deleted'),

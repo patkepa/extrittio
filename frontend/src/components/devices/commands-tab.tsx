@@ -66,18 +66,23 @@ export const CommandsTab = ({ deviceId }: CommandsTabProps) => {
           setIsConfirmOpen(false);
           void showErrorToast('Failed to send command');
         },
-      }
+      },
     );
   };
 
   const statusIntent = (status: string) => {
     switch (status) {
-      case 'succeeded': return 'success' as const;
-      case 'failed': return 'danger' as const;
-      case 'timed_out': return 'warning' as const;
+      case 'succeeded':
+        return 'success' as const;
+      case 'failed':
+        return 'danger' as const;
+      case 'timed_out':
+        return 'warning' as const;
       case 'sent':
-      case 'delivered': return 'primary' as const;
-      default: return 'none' as const;
+      case 'delivered':
+        return 'primary' as const;
+      default:
+        return 'none' as const;
     }
   };
 
@@ -157,19 +162,16 @@ export const CommandsTab = ({ deviceId }: CommandsTabProps) => {
           </p>
           {params.length > 0 && (
             <p style={{ fontSize: 12, opacity: 0.7 }}>
-              With {params.filter(p => p.key.trim()).length} parameter(s)
+              With {params.filter((p) => p.key.trim()).length} parameter(s)
             </p>
           )}
         </Alert>
-
       </Card>
 
       <Divider className="tab-divider" />
 
       <span className="section-label">Command History</span>
-      <p className="tab-help-text">
-        Auto-refreshes every 5 seconds.
-      </p>
+      <p className="tab-help-text">Auto-refreshes every 5 seconds.</p>
 
       {commands.length === 0 ? (
         <Callout icon="info-sign" intent="primary" className="tab-callout">
@@ -196,7 +198,9 @@ export const CommandsTab = ({ deviceId }: CommandsTabProps) => {
                     </Tag>
                     {cmd.params && Object.keys(cmd.params).length > 0 && (
                       <span className="tab-text-secondary">
-                        {Object.entries(cmd.params).map(([k, v]) => `${k}=${v}`).join(', ')}
+                        {Object.entries(cmd.params)
+                          .map(([k, v]) => `${k}=${v}`)
+                          .join(', ')}
                       </span>
                     )}
                   </td>
@@ -209,9 +213,7 @@ export const CommandsTab = ({ deviceId }: CommandsTabProps) => {
                   <td className="tab-cell-muted">{cmd.updated_at}</td>
                   <td className="tab-cell-muted">
                     {cmd.response_payload ? (
-                      <code style={{ fontSize: 11 }}>
-                        {JSON.stringify(cmd.response_payload)}
-                      </code>
+                      <code style={{ fontSize: 11 }}>{JSON.stringify(cmd.response_payload)}</code>
                     ) : (
                       '—'
                     )}

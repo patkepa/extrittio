@@ -1,7 +1,11 @@
 import { useRef, useState } from 'react';
 import { Button, Alert, Popover, Menu, MenuItem, MenuDivider } from '@blueprintjs/core';
 import { useFleets } from '../../hooks/use-fleets';
-import { useBulkChangeFleet, useBulkRestartDevices, useBulkTriggerOta } from '../../hooks/use-devices';
+import {
+  useBulkChangeFleet,
+  useBulkRestartDevices,
+  useBulkTriggerOta,
+} from '../../hooks/use-devices';
 import { useFirmwareUpdates } from '../../hooks/use-firmware-updates';
 import { useSelectionStore } from '../../stores/selection-store';
 import { showSuccessToast, showErrorToast, showWarningToast } from '../../utils/toaster';
@@ -23,9 +27,7 @@ export const FleetGraphBulkBar = () => {
   const bulkOtaMutation = useBulkTriggerOta();
 
   const isAnyPending =
-    bulkFleetMutation.isPending ||
-    bulkRestartMutation.isPending ||
-    bulkOtaMutation.isPending;
+    bulkFleetMutation.isPending || bulkRestartMutation.isPending || bulkOtaMutation.isPending;
 
   if (count === 0) return null;
 
@@ -59,7 +61,9 @@ export const FleetGraphBulkBar = () => {
           selectionFilters: null,
         });
       } else {
-        void showSuccessToast(`${result.succeeded} device${result.succeeded !== 1 ? 's' : ''} restarted`);
+        void showSuccessToast(
+          `${result.succeeded} device${result.succeeded !== 1 ? 's' : ''} restarted`,
+        );
         clearSelection();
       }
     } catch {
@@ -75,16 +79,16 @@ export const FleetGraphBulkBar = () => {
         firmware_update_id: firmwareUpdateId,
       });
       if (result.failed > 0) {
-        void showWarningToast(
-          `${result.succeeded} updated, ${result.failed} failed`,
-        );
+        void showWarningToast(`${result.succeeded} updated, ${result.failed} failed`);
         useSelectionStore.setState({
           selectedDeviceIds: new Set(result.errors.map((e) => e.device_id)),
           isAllMatchingSelected: false,
           selectionFilters: null,
         });
       } else {
-        void showSuccessToast(`OTA triggered on ${result.succeeded} device${result.succeeded !== 1 ? 's' : ''}`);
+        void showSuccessToast(
+          `OTA triggered on ${result.succeeded} device${result.succeeded !== 1 ? 's' : ''}`,
+        );
         clearSelection();
       }
     } catch {

@@ -12,8 +12,12 @@
 }
 
 @keyframes cmdk-overlay-show {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 /* Dialog content wrapper — centered horizontally, offset from top */
@@ -29,8 +33,14 @@
 }
 
 @keyframes cmdk-dialog-show {
-  from { opacity: 0; transform: translateX(-50%) scale(0.96); }
-  to   { opacity: 1; transform: translateX(-50%) scale(1); }
+  from {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
 }
 
 /* Root command container */

@@ -1,7 +1,7 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getUsers, createUser, deleteUser } from "../api/auth";
-import type { CreateUserRequest } from "../types/api";
-import { queryKeys } from "./query-keys";
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getUsers, createUser, deleteUser } from '../api/auth';
+import type { CreateUserRequest } from '../types/api';
+import { queryKeys } from './query-keys';
 
 export function useUsers() {
   return useQuery({

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState } from 'react';
 import {
   Button,
   Classes,
@@ -10,9 +10,9 @@ import {
   HTMLSelect,
   Callout,
   Code,
-} from "@blueprintjs/core";
-import { useCreateApiKey } from "../../hooks/use-api-keys";
-import { useDeviceTypes } from "../../hooks/use-device-types";
+} from '@blueprintjs/core';
+import { useCreateApiKey } from '../../hooks/use-api-keys';
+import { useDeviceTypes } from '../../hooks/use-device-types';
 
 interface Props {
   isOpen: boolean;
@@ -20,7 +20,7 @@ interface Props {
 }
 
 export const CreateApiKeyDialog = ({ isOpen, onClose }: Props) => {
-  const [name, setName] = useState("");
+  const [name, setName] = useState('');
   const [deviceTypeId, setDeviceTypeId] = useState<number | undefined>();
   const [createdKey, setCreatedKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -45,7 +45,7 @@ export const CreateApiKeyDialog = ({ isOpen, onClose }: Props) => {
   };
 
   const handleClose = () => {
-    setName("");
+    setName('');
     setDeviceTypeId(undefined);
     setCreatedKey(null);
     setCopied(false);
@@ -58,14 +58,14 @@ export const CreateApiKeyDialog = ({ isOpen, onClose }: Props) => {
         {createdKey ? (
           <Callout intent="warning" title="Save this key now">
             <p>This key will only be shown once. Copy it before closing this dialog.</p>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
-              <Code style={{ flex: 1, wordBreak: "break-all" }}>{createdKey}</Code>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
+              <Code style={{ flex: 1, wordBreak: 'break-all' }}>{createdKey}</Code>
               <Button
-                icon={copied ? "tick" : "clipboard"}
-                intent={copied ? "success" : "none"}
+                icon={copied ? 'tick' : 'clipboard'}
+                intent={copied ? 'success' : 'none'}
                 onClick={handleCopy}
               >
-                {copied ? "Copied" : "Copy"}
+                {copied ? 'Copied' : 'Copy'}
               </Button>
             </div>
           </Callout>
@@ -84,7 +84,7 @@ export const CreateApiKeyDialog = ({ isOpen, onClose }: Props) => {
               helperText="Restrict this key to a specific device type"
             >
               <HTMLSelect
-                value={deviceTypeId ?? ""}
+                value={deviceTypeId ?? ''}
                 onChange={(e) =>
                   setDeviceTypeId(e.target.value ? Number(e.target.value) : undefined)
                 }

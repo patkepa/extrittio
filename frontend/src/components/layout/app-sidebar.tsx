@@ -23,16 +23,16 @@ interface AppSidebarProps {
 }
 
 const envColors: Record<string, string> = {
-  'Development': 'hsl(var(--accent))',
-  'Testing': 'hsl(var(--warning))',
-  'Production': 'hsl(var(--success))',
+  Development: 'hsl(var(--accent))',
+  Testing: 'hsl(var(--warning))',
+  Production: 'hsl(var(--success))',
 };
 
 /** Check if any child route is currently active */
 const hasActiveChild = (item: NavItem, pathname: string): boolean => {
   if (!item.children) return false;
   return item.children.some((child) =>
-    child.href === '/' ? pathname === '/' : pathname.startsWith(child.href)
+    child.href === '/' ? pathname === '/' : pathname.startsWith(child.href),
   );
 };
 
@@ -84,8 +84,8 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
   };
 
   const navBadges: Record<string, { count?: number; status?: 'online' | 'warning' | 'offline' }> = {
-    ...(dashboardStats && { 'Devices': { count: dashboardStats.total_devices } }),
-    'Alerts': { count: 3 },
+    ...(dashboardStats && { Devices: { count: dashboardStats.total_devices } }),
+    Alerts: { count: 3 },
   };
 
   const renderNavItem = (item: NavItem, depth: number = 0) => {
@@ -113,13 +113,14 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
         labelElement={
           !isCollapsed ? (
             <span className="nav-item-right">
-              {badge && (
-                badge.status ? (
+              {badge &&
+                (badge.status ? (
                   <span className={`status-led status-led--${badge.status}`} />
                 ) : badge.count ? (
-                  <Tag minimal className="nav-count-badge">{badge.count}</Tag>
-                ) : null
-              )}
+                  <Tag minimal className="nav-count-badge">
+                    {badge.count}
+                  </Tag>
+                ) : null)}
               {hasChildren && (
                 <Icon icon={isExpanded ? 'chevron-down' : 'chevron-right'} size={12} />
               )}
@@ -127,10 +128,11 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
           ) : undefined
         }
         aria-expanded={hasChildren ? isExpanded : undefined}
-        className={[
-          active && 'sidebar-item-active',
-          hasChildren && isExpanded && 'sidebar-item-expanded',
-        ].filter(Boolean).join(' ') || undefined}
+        className={
+          [active && 'sidebar-item-active', hasChildren && isExpanded && 'sidebar-item-expanded']
+            .filter(Boolean)
+            .join(' ') || undefined
+        }
       />
     );
 
@@ -167,13 +169,9 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
       <div className="sidebar-nav">
         {navGroups.map((group, idx) => (
           <div key={group.label} className="nav-group">
-            {!isCollapsed && (
-              <div className="nav-group-label">{group.label.toUpperCase()}</div>
-            )}
+            {!isCollapsed && <div className="nav-group-label">{group.label.toUpperCase()}</div>}
             {isCollapsed && idx > 0 && <MenuDivider />}
-            <Menu className="sidebar-menu">
-              {group.items.map((item) => renderNavItem(item))}
-            </Menu>
+            <Menu className="sidebar-menu">{group.items.map((item) => renderNavItem(item))}</Menu>
           </div>
         ))}
       </div>
@@ -189,7 +187,14 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
                   <div className="user-name">{currentUser.name}</div>
                   <div className="user-email">{currentUser.email}</div>
                 </div>
-                <Button icon="log-out" minimal small className="user-logout" title="Sign out" onClick={logout} />
+                <Button
+                  icon="log-out"
+                  minimal
+                  small
+                  className="user-logout"
+                  title="Sign out"
+                  onClick={logout}
+                />
               </div>
             </div>
             <div className="sidebar-env-switcher">
@@ -202,7 +207,9 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
                     className="env-dot"
                     style={{ backgroundColor: envColors[selectedProject.environment] }}
                   />
-                  <span className="env-text mono-data">{selectedProject.environment.toUpperCase()}</span>
+                  <span className="env-text mono-data">
+                    {selectedProject.environment.toUpperCase()}
+                  </span>
                 </div>
                 <div className="env-switcher-right">
                   <span className="version-text mono-data">v0.1.0</span>
@@ -236,7 +243,9 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
           </>
         ) : (
           <Tooltip content={currentUser.name} position={Position.RIGHT} minimal>
-            <div className="user-avatar collapsed-avatar">{currentUser.name.charAt(0).toUpperCase()}</div>
+            <div className="user-avatar collapsed-avatar">
+              {currentUser.name.charAt(0).toUpperCase()}
+            </div>
           </Tooltip>
         )}
       </div>

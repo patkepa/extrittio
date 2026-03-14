@@ -15,7 +15,11 @@ export const DeviceHeader = ({ device }: DeviceHeaderProps) => (
         <Tooltip content="Click to copy" placement="top" compact minimal>
           <span
             className="mono-data copy-on-click"
-            onClick={() => void navigator.clipboard.writeText(device.id).then(() => showSuccessToast('Device ID copied'))}
+            onClick={() =>
+              void navigator.clipboard
+                .writeText(device.id)
+                .then(() => showSuccessToast('Device ID copied'))
+            }
           >
             {device.id}
           </span>
@@ -29,7 +33,14 @@ export const DeviceHeader = ({ device }: DeviceHeaderProps) => (
           </>
         )}
         <span className="banner-sep">|</span>
-        <span style={{ textTransform: 'uppercase', fontWeight: 700, fontSize: 12, letterSpacing: '0.06em' }}>
+        <span
+          style={{
+            textTransform: 'uppercase',
+            fontWeight: 700,
+            fontSize: 12,
+            letterSpacing: '0.06em',
+          }}
+        >
           {device.status}
         </span>
       </p>

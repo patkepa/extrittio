@@ -53,6 +53,6 @@ export function DeviceHoverTooltip({
     >
       <DeviceSummaryCard device={device} />
     </div>,
-    document.body
+    document.body,
   );
 }

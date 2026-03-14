@@ -7,7 +7,10 @@ import { FleetGraphCanvas } from '../components/fleet-graph/fleet-graph-canvas';
 import type { GraphActions } from '../components/fleet-graph/fleet-graph-canvas';
 import { DevicePopover } from '../components/fleet-graph/device-popover';
 import { HealthPanel } from '../components/fleet-graph/health-panel';
-import { FleetGraphContextMenu, type ContextMenuState } from '../components/fleet-graph/fleet-graph-context-menu';
+import {
+  FleetGraphContextMenu,
+  type ContextMenuState,
+} from '../components/fleet-graph/fleet-graph-context-menu';
 import { FleetGraphBulkBar } from '../components/fleet-graph/fleet-graph-bulk-bar';
 import { useSelectionStore } from '../stores/selection-store';
 import { showSuccessToast, showErrorToast } from '../utils/toaster';
@@ -69,18 +72,20 @@ export const FleetGraph = () => {
     }
   }, [graphData]);
 
-  const handleNodeClick = useCallback(
-    (device: Device, screenPos: { x: number; y: number }) => {
-      const rect = containerRef.current?.getBoundingClientRect() ?? { left: 0, top: 0, width: 0, height: 0 };
-      const x = Math.max(0, Math.min(screenPos.x - rect.left, rect.width - 280));
-      const y = Math.max(0, Math.min(screenPos.y - rect.top, rect.height - 300));
-      setPopover({
-        device,
-        position: { x, y },
-      });
-    },
-    [],
-  );
+  const handleNodeClick = useCallback((device: Device, screenPos: { x: number; y: number }) => {
+    const rect = containerRef.current?.getBoundingClientRect() ?? {
+      left: 0,
+      top: 0,
+      width: 0,
+      height: 0,
+    };
+    const x = Math.max(0, Math.min(screenPos.x - rect.left, rect.width - 280));
+    const y = Math.max(0, Math.min(screenPos.y - rect.top, rect.height - 300));
+    setPopover({
+      device,
+      position: { x, y },
+    });
+  }, []);
 
   const handleBackgroundClick = useCallback(() => {
     setPopover(null);
@@ -96,7 +101,12 @@ export const FleetGraph = () => {
 
   const handleContextMenuViewDetails = useCallback((node: GraphNode) => {
     if (node.type === 'device' && node.device) {
-      const rect = containerRef.current?.getBoundingClientRect() ?? { left: 0, top: 0, width: 0, height: 0 };
+      const rect = containerRef.current?.getBoundingClientRect() ?? {
+        left: 0,
+        top: 0,
+        width: 0,
+        height: 0,
+      };
       setPopover({
         device: node.device,
         position: { x: rect.width / 2 - 130, y: rect.height / 2 - 150 },
@@ -104,25 +114,38 @@ export const FleetGraph = () => {
     }
   }, []);
 
-  const handleAssignFleet = useCallback(async (deviceIds: string[], fleetId: number) => {
-    const rawIds = deviceIds.map((id) => id.replace(/^device-/, ''));
-    try {
-      const result = await bulkFleetMutation.mutateAsync({ device_ids: rawIds, fleet_id: fleetId });
-      void showSuccessToast(`${result.affected} device${result.affected !== 1 ? 's' : ''} moved to fleet`);
-    } catch {
-      void showErrorToast('Failed to change fleet');
-    }
-  }, [bulkFleetMutation]);
+  const handleAssignFleet = useCallback(
+    async (deviceIds: string[], fleetId: number) => {
+      const rawIds = deviceIds.map((id) => id.replace(/^device-/, ''));
+      try {
+        const result = await bulkFleetMutation.mutateAsync({
+          device_ids: rawIds,
+          fleet_id: fleetId,
+        });
+        void showSuccessToast(
+          `${result.affected} device${result.affected !== 1 ? 's' : ''} moved to fleet`,
+        );
+      } catch {
+        void showErrorToast('Failed to change fleet');
+      }
+    },
+    [bulkFleetMutation],
+  );
 
-  const handleRemoveFromFleet = useCallback(async (deviceIds: string[]) => {
-    const rawIds = deviceIds.map((id) => id.replace(/^device-/, ''));
-    try {
-      const result = await bulkFleetMutation.mutateAsync({ device_ids: rawIds, fleet_id: null });
-      void showSuccessToast(`${result.affected} device${result.affected !== 1 ? 's' : ''} removed from fleet`);
-    } catch {
-      void showErrorToast('Failed to remove from fleet');
-    }
-  }, [bulkFleetMutation]);
+  const handleRemoveFromFleet = useCallback(
+    async (deviceIds: string[]) => {
+      const rawIds = deviceIds.map((id) => id.replace(/^device-/, ''));
+      try {
+        const result = await bulkFleetMutation.mutateAsync({ device_ids: rawIds, fleet_id: null });
+        void showSuccessToast(
+          `${result.affected} device${result.affected !== 1 ? 's' : ''} removed from fleet`,
+        );
+      } catch {
+        void showErrorToast('Failed to remove from fleet');
+      }
+    },
+    [bulkFleetMutation],
+  );
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [healthPanelOpen, setHealthPanelOpen] = useState(true);
@@ -145,7 +168,12 @@ export const FleetGraph = () => {
       // Also open popover for the device
       const node = graphData?.nodes.find((n) => n.id === nodeId);
       if (node?.type === 'device' && node.device) {
-        const rect = containerRef.current?.getBoundingClientRect() ?? { left: 0, top: 0, width: 0, height: 0 };
+        const rect = containerRef.current?.getBoundingClientRect() ?? {
+          left: 0,
+          top: 0,
+          width: 0,
+          height: 0,
+        };
         setPopover({
           device: node.device,
           position: { x: rect.width / 2 - 130, y: rect.height / 2 - 150 },
@@ -202,7 +230,9 @@ export const FleetGraph = () => {
             Failed to load fleet data. Is the backend running?
           </Callout>
         ) : isLoading ? (
-          <div className="fleet-graph-empty"><Spinner /></div>
+          <div className="fleet-graph-empty">
+            <Spinner />
+          </div>
         ) : devices.length === 0 ? (
           <div className="fleet-graph-empty">
             <Icon icon="graph" size={48} />
@@ -286,7 +316,6 @@ export const FleetGraph = () => {
           minimapDrawRef={minimapDrawRef}
           canvasWidth={dimensions.width}
           canvasHeight={dimensions.height}
-
           collapsed={!healthPanelOpen}
         />
       )}

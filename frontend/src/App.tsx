@@ -7,12 +7,18 @@ import { AuthGuard } from './components/auth-guard';
 import { Login } from './pages/login';
 
 // Lazy-loaded pages — split into separate chunks
-const Dashboard = lazy(() => import('./pages/dashboard').then(m => ({ default: m.Dashboard })));
-const Devices = lazy(() => import('./pages/devices').then(m => ({ default: m.Devices })));
-const DeviceDetail = lazy(() => import('./pages/device-detail').then(m => ({ default: m.DeviceDetail })));
-const FleetGraph = lazy(() => import('./pages/fleet-graph').then(m => ({ default: m.FleetGraph })));
-const Settings = lazy(() => import('./pages/settings/index').then(m => ({ default: m.Settings })));
-const Help = lazy(() => import('./pages/help').then(m => ({ default: m.Help })));
+const Dashboard = lazy(() => import('./pages/dashboard').then((m) => ({ default: m.Dashboard })));
+const Devices = lazy(() => import('./pages/devices').then((m) => ({ default: m.Devices })));
+const DeviceDetail = lazy(() =>
+  import('./pages/device-detail').then((m) => ({ default: m.DeviceDetail })),
+);
+const FleetGraph = lazy(() =>
+  import('./pages/fleet-graph').then((m) => ({ default: m.FleetGraph })),
+);
+const Settings = lazy(() =>
+  import('./pages/settings/index').then((m) => ({ default: m.Settings })),
+);
+const Help = lazy(() => import('./pages/help').then((m) => ({ default: m.Help })));
 
 // Import Blueprint.js styles
 import '@blueprintjs/core/lib/css/blueprint.css';

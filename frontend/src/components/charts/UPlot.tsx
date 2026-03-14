@@ -27,11 +27,7 @@ export const UPlotChart = ({ options, data, width, height }: UPlotProps) => {
       if (chartRef.current) {
         chartRef.current.setSize({ width: w, height: h });
       } else {
-        chartRef.current = new uPlot(
-          { ...options, width: w, height: h },
-          data,
-          el,
-        );
+        chartRef.current = new uPlot({ ...options, width: w, height: h }, data, el);
       }
     });
 
@@ -53,10 +49,5 @@ export const UPlotChart = ({ options, data, width, height }: UPlotProps) => {
     }
   }, [data]);
 
-  return (
-    <div
-      ref={containerRef}
-      style={{ width: '100%', height: height ?? '100%' }}
-    />
-  );
+  return <div ref={containerRef} style={{ width: '100%', height: height ?? '100%' }} />;
 };

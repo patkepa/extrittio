@@ -1,8 +1,4 @@
-import {
-  useQuery,
-  useMutation,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type {
   ListDevicesParams,
   CreateDeviceRequest,
@@ -10,7 +6,7 @@ import type {
   BulkTargeting,
   BulkFleetRequest,
   BulkOtaRequest,
-} from "../types/api";
+} from '../types/api';
 import {
   getDevices,
   getDevice,
@@ -22,13 +18,10 @@ import {
   bulkDeleteDevices,
   bulkRestartDevices,
   bulkTriggerOta,
-} from "../api/devices";
-import { queryKeys } from "./query-keys";
+} from '../api/devices';
+import { queryKeys } from './query-keys';
 
-export function useDevices(
-  params?: ListDevicesParams,
-  options?: { refetchInterval?: number },
-) {
+export function useDevices(params?: ListDevicesParams, options?: { refetchInterval?: number }) {
   return useQuery({
     queryKey: queryKeys.devices.list(params),
     queryFn: () => getDevices(params),
@@ -39,7 +32,7 @@ export function useDevices(
 
 export function useDevice(id: string | null) {
   return useQuery({
-    queryKey: queryKeys.devices.detail(id ?? ""),
+    queryKey: queryKeys.devices.detail(id ?? ''),
     queryFn: () => getDevice(id!),
     enabled: !!id,
     staleTime: 30_000,
@@ -61,8 +54,7 @@ export function useCreateDevice() {
 export function useUpdateDevice() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, body }: { id: string; body: UpdateDeviceRequest }) =>
-      updateDevice(id, body),
+    mutationFn: ({ id, body }: { id: string; body: UpdateDeviceRequest }) => updateDevice(id, body),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.devices.all });
       void queryClient.invalidateQueries({ queryKey: queryKeys.devices.detailAll });

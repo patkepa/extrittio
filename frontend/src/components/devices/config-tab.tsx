@@ -47,8 +47,10 @@ export const ConfigTab = ({ deviceId }: ConfigTabProps) => {
           setNewValue('');
           void showSuccessToast('Config updated');
         },
-        onError: () => { void showErrorToast('Failed to update config'); },
-      }
+        onError: () => {
+          void showErrorToast('Failed to update config');
+        },
+      },
     );
   };
 
@@ -58,7 +60,7 @@ export const ConfigTab = ({ deviceId }: ConfigTabProps) => {
       {
         onSuccess: () => void showSuccessToast('Config entry removed'),
         onError: () => void showErrorToast('Failed to update config'),
-      }
+      },
     );
   };
 

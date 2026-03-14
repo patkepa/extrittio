@@ -14,10 +14,7 @@ import {
   Icon,
 } from '@blueprintjs/core';
 import { useDeviceTypes } from '../../hooks/use-device-types';
-import {
-  useFirmwareUpdates,
-  useDeleteFirmwareUpdate,
-} from '../../hooks/use-firmware-updates';
+import { useFirmwareUpdates, useDeleteFirmwareUpdate } from '../../hooks/use-firmware-updates';
 import { AddFirmwareDialog } from '../../components/settings/add-firmware-dialog';
 import './settings.css';
 
@@ -26,9 +23,11 @@ export const FirmwareSettings = () => {
   const [filterDeviceTypeId, setFilterDeviceTypeId] = useState<number | undefined>(undefined);
 
   const { data: deviceTypes = [] } = useDeviceTypes();
-  const { data: firmwareUpdates = [], isLoading, error } = useFirmwareUpdates(
-    filterDeviceTypeId ? { device_type_id: filterDeviceTypeId } : undefined
-  );
+  const {
+    data: firmwareUpdates = [],
+    isLoading,
+    error,
+  } = useFirmwareUpdates(filterDeviceTypeId ? { device_type_id: filterDeviceTypeId } : undefined);
   const deleteMutation = useDeleteFirmwareUpdate();
 
   if (error) {
@@ -55,7 +54,8 @@ export const FirmwareSettings = () => {
         <div>
           <H3>Firmware Updates</H3>
           <p className="page-description">
-            {firmwareUpdates.length} firmware release{firmwareUpdates.length !== 1 ? 's' : ''} registered
+            {firmwareUpdates.length} firmware release{firmwareUpdates.length !== 1 ? 's' : ''}{' '}
+            registered
           </p>
         </div>
         <Button intent="primary" icon="add" onClick={() => setIsAddDialogOpen(true)}>
@@ -67,9 +67,7 @@ export const FirmwareSettings = () => {
         <HTMLSelect
           value={filterDeviceTypeId ?? ''}
           onChange={(e) =>
-            setFilterDeviceTypeId(
-              e.target.value ? Number(e.target.value) : undefined
-            )
+            setFilterDeviceTypeId(e.target.value ? Number(e.target.value) : undefined)
           }
           style={{ minWidth: 200 }}
         >
@@ -125,29 +123,24 @@ export const FirmwareSettings = () => {
                   </td>
                   <td>{fw.device_type_name}</td>
                   <td>
-                    <Tag
-                      minimal
-                      intent={fw.source === 'ci' ? 'primary' : 'none'}
-                    >
+                    <Tag minimal intent={fw.source === 'ci' ? 'primary' : 'none'}>
                       {fw.source === 'ci' ? 'CI' : 'Manual'}
                     </Tag>
                   </td>
-                  <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <td
+                    style={{
+                      maxWidth: 200,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
                     {fw.description ?? '\u2014'}
                   </td>
                   <td className="actions-column">
                     {fw.has_blob && (
-                      <a
-                        href={fw.url}
-                        download
-                        style={{ marginRight: 4 }}
-                      >
-                        <Button
-                          icon="download"
-                          minimal
-                          small
-                          title="Download"
-                        />
+                      <a href={fw.url} download style={{ marginRight: 4 }}>
+                        <Button icon="download" minimal small title="Download" />
                       </a>
                     )}
                     <Button
@@ -173,10 +166,7 @@ export const FirmwareSettings = () => {
         )}
       </Card>
 
-      <AddFirmwareDialog
-        isOpen={isAddDialogOpen}
-        onClose={() => setIsAddDialogOpen(false)}
-      />
+      <AddFirmwareDialog isOpen={isAddDialogOpen} onClose={() => setIsAddDialogOpen(false)} />
     </div>
   );
 };

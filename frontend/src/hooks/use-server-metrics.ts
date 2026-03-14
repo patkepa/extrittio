@@ -1,6 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
-import { getCurrentMetrics, getMetricsHistory } from "../api/server-metrics";
-import { queryKeys } from "./query-keys";
+import { useQuery } from '@tanstack/react-query';
+import { getCurrentMetrics, getMetricsHistory } from '../api/server-metrics';
+import { queryKeys } from './query-keys';
 
 export function useCurrentMetrics() {
   return useQuery({

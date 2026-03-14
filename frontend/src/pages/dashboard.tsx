@@ -39,14 +39,50 @@ interface ActivityEvent {
 }
 
 const activityEvents: ActivityEvent[] = [
-  { id: '1', time: '14:32:01', device: 'Temperature Sensor 01', event: 'Came online', status: 'online' },
-  { id: '2', time: '14:28:45', device: 'Smart Lock 08', event: 'Firmware updated to v3.0.1', status: 'online' },
-  { id: '3', time: '14:15:22', device: 'Motion Detector 12', event: 'Went offline', status: 'offline' },
-  { id: '4', time: '13:58:03', device: 'Humidity Sensor 05', event: 'High humidity alert', status: 'warning' },
+  {
+    id: '1',
+    time: '14:32:01',
+    device: 'Temperature Sensor 01',
+    event: 'Came online',
+    status: 'online',
+  },
+  {
+    id: '2',
+    time: '14:28:45',
+    device: 'Smart Lock 08',
+    event: 'Firmware updated to v3.0.1',
+    status: 'online',
+  },
+  {
+    id: '3',
+    time: '14:15:22',
+    device: 'Motion Detector 12',
+    event: 'Went offline',
+    status: 'offline',
+  },
+  {
+    id: '4',
+    time: '13:58:03',
+    device: 'Humidity Sensor 05',
+    event: 'High humidity alert',
+    status: 'warning',
+  },
   { id: '5', time: '13:42:17', device: 'Smart Camera 03', event: 'Came online', status: 'online' },
-  { id: '6', time: '13:30:00', device: 'Temperature Sensor 04', event: 'Battery low warning', status: 'warning' },
+  {
+    id: '6',
+    time: '13:30:00',
+    device: 'Temperature Sensor 04',
+    event: 'Battery low warning',
+    status: 'warning',
+  },
   { id: '7', time: '13:15:44', device: 'Smart Lock 02', event: 'Came online', status: 'online' },
-  { id: '8', time: '12:58:12', device: 'Motion Detector 07', event: 'Went offline', status: 'offline' },
+  {
+    id: '8',
+    time: '12:58:12',
+    device: 'Motion Detector 07',
+    event: 'Went offline',
+    status: 'offline',
+  },
 ];
 
 const DashboardSparkline = ({ data, color }: { data: number[]; color: string }) => {
@@ -60,16 +96,80 @@ export const Dashboard = () => {
 
   const stats: StatCard[] = dashboardStats
     ? [
-        { label: 'Total Devices', value: formatCount(dashboardStats.total_devices), delta: '', deltaUp: true, icon: 'mobile-video', color: '#2965CC', sparkIndex: 0 },
-        { label: 'Active Devices', value: formatCount(dashboardStats.active_devices), delta: '', deltaUp: true, icon: 'tick-circle', color: '#0F9960', sparkIndex: 1 },
-        { label: 'Offline Devices', value: formatCount(dashboardStats.offline_devices), delta: '', deltaUp: false, icon: 'warning-sign', color: '#D99E0B', sparkIndex: 2 },
-        { label: 'Total Messages', value: formatCount(dashboardStats.total_messages), delta: '', deltaUp: true, icon: 'envelope', color: '#8F398F', sparkIndex: 3 },
+        {
+          label: 'Total Devices',
+          value: formatCount(dashboardStats.total_devices),
+          delta: '',
+          deltaUp: true,
+          icon: 'mobile-video',
+          color: '#2965CC',
+          sparkIndex: 0,
+        },
+        {
+          label: 'Active Devices',
+          value: formatCount(dashboardStats.active_devices),
+          delta: '',
+          deltaUp: true,
+          icon: 'tick-circle',
+          color: '#0F9960',
+          sparkIndex: 1,
+        },
+        {
+          label: 'Offline Devices',
+          value: formatCount(dashboardStats.offline_devices),
+          delta: '',
+          deltaUp: false,
+          icon: 'warning-sign',
+          color: '#D99E0B',
+          sparkIndex: 2,
+        },
+        {
+          label: 'Total Messages',
+          value: formatCount(dashboardStats.total_messages),
+          delta: '',
+          deltaUp: true,
+          icon: 'envelope',
+          color: '#8F398F',
+          sparkIndex: 3,
+        },
       ]
     : [
-        { label: 'Total Devices', value: '\u2014', delta: '', deltaUp: true, icon: 'mobile-video', color: '#2965CC', sparkIndex: 0 },
-        { label: 'Active Devices', value: '\u2014', delta: '', deltaUp: true, icon: 'tick-circle', color: '#0F9960', sparkIndex: 1 },
-        { label: 'Offline Devices', value: '\u2014', delta: '', deltaUp: false, icon: 'warning-sign', color: '#D99E0B', sparkIndex: 2 },
-        { label: 'Total Messages', value: '\u2014', delta: '', deltaUp: true, icon: 'envelope', color: '#8F398F', sparkIndex: 3 },
+        {
+          label: 'Total Devices',
+          value: '\u2014',
+          delta: '',
+          deltaUp: true,
+          icon: 'mobile-video',
+          color: '#2965CC',
+          sparkIndex: 0,
+        },
+        {
+          label: 'Active Devices',
+          value: '\u2014',
+          delta: '',
+          deltaUp: true,
+          icon: 'tick-circle',
+          color: '#0F9960',
+          sparkIndex: 1,
+        },
+        {
+          label: 'Offline Devices',
+          value: '\u2014',
+          delta: '',
+          deltaUp: false,
+          icon: 'warning-sign',
+          color: '#D99E0B',
+          sparkIndex: 2,
+        },
+        {
+          label: 'Total Messages',
+          value: '\u2014',
+          delta: '',
+          deltaUp: true,
+          icon: 'envelope',
+          color: '#8F398F',
+          sparkIndex: 3,
+        },
       ];
 
   const donutData = dashboardStats
@@ -100,10 +200,7 @@ export const Dashboard = () => {
                   <Icon icon={stat.icon} size={20} color="white" />
                 </div>
                 <div className="stat-sparkline">
-                  <DashboardSparkline
-                    data={sparklineData[stat.sparkIndex]!}
-                    color={stat.color}
-                  />
+                  <DashboardSparkline data={sparklineData[stat.sparkIndex]!} color={stat.color} />
                 </div>
               </div>
               <div className="stat-content">
@@ -123,7 +220,9 @@ export const Dashboard = () => {
           <Card elevation={Elevation.ONE} className="content-card stagger-item">
             <div className="card-header">
               <H5>Recent Activity</H5>
-              <span className="section-label" style={{ margin: 0 }}>{activityEvents.length} events</span>
+              <span className="section-label" style={{ margin: 0 }}>
+                {activityEvents.length} events
+              </span>
             </div>
             <div className="activity-timeline">
               {activityEvents.map((event) => (
@@ -141,7 +240,9 @@ export const Dashboard = () => {
           <Card elevation={Elevation.ONE} className="content-card stagger-item">
             <div className="card-header">
               <H5>Device Status</H5>
-              <span className="section-label" style={{ margin: 0 }}>{totalDevices} total</span>
+              <span className="section-label" style={{ margin: 0 }}>
+                {totalDevices} total
+              </span>
             </div>
             <div className="donut-container">
               <SVGDonut segments={donutData}>

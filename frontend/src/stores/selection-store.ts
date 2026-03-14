@@ -1,5 +1,5 @@
-import { create } from "zustand";
-import type { BulkDeviceFilters } from "../types/api";
+import { create } from 'zustand';
+import type { BulkDeviceFilters } from '../types/api';
 
 interface SelectionStore {
   selectedDeviceIds: Set<string>;

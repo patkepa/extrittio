@@ -1,6 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
-import { getDashboardStats } from "../api/dashboard";
-import { queryKeys } from "./query-keys";
+import { useQuery } from '@tanstack/react-query';
+import { getDashboardStats } from '../api/dashboard';
+import { queryKeys } from './query-keys';
 
 export function useDashboardStats() {
   return useQuery({

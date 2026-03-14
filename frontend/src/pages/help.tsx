@@ -14,8 +14,7 @@ export const Help = () => {
         <Card elevation={Elevation.ONE} className="settings-card">
           <span className="section-label">Source Code</span>
           <p style={{ marginTop: 12, marginBottom: 16 }}>
-            Extrittio is open-source. View the source code, report issues, or
-            contribute on GitHub.
+            Extrittio is open-source. View the source code, report issues, or contribute on GitHub.
           </p>
           <AnchorButton
             icon="git-repo"

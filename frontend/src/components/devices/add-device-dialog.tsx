@@ -25,7 +25,8 @@ export function AddDeviceDialog() {
   const { data: fleets = [] } = useFleets();
   const createDeviceMutation = useCreateDevice();
 
-  const defaultTypeId = deviceTypes.find((dt) => dt.name === 'default')?.id ?? deviceTypes[0]?.id ?? 0;
+  const defaultTypeId =
+    deviceTypes.find((dt) => dt.name === 'default')?.id ?? deviceTypes[0]?.id ?? 0;
 
   const [newDevice, setNewDevice] = useState({
     name: '',
@@ -71,13 +72,18 @@ export function AddDeviceDialog() {
         onError: () => {
           void showErrorToast('Failed to add device');
         },
-      }
+      },
     );
   };
 
   return (
     <>
-      <Dialog icon="add" title="Add Device" isOpen={isAddDeviceDialogOpen} onClose={closeAddDeviceDialog}>
+      <Dialog
+        icon="add"
+        title="Add Device"
+        isOpen={isAddDeviceDialogOpen}
+        onClose={closeAddDeviceDialog}
+      >
         <DialogBody>
           <FormGroup label="Name" labelInfo="(required)">
             <InputGroup
@@ -90,10 +96,14 @@ export function AddDeviceDialog() {
             <HTMLSelect
               fill
               value={newDevice.device_type_id || defaultTypeId}
-              onChange={(e) => setNewDevice({ ...newDevice, device_type_id: Number(e.target.value) })}
+              onChange={(e) =>
+                setNewDevice({ ...newDevice, device_type_id: Number(e.target.value) })
+              }
             >
               {deviceTypes.map((dt) => (
-                <option key={dt.id} value={dt.id}>{dt.name}</option>
+                <option key={dt.id} value={dt.id}>
+                  {dt.name}
+                </option>
               ))}
             </HTMLSelect>
           </FormGroup>
@@ -102,17 +112,24 @@ export function AddDeviceDialog() {
               fill
               value={newDevice.fleet_id ?? ''}
               onChange={(e) =>
-                setNewDevice({ ...newDevice, fleet_id: e.target.value ? Number(e.target.value) : undefined })
+                setNewDevice({
+                  ...newDevice,
+                  fleet_id: e.target.value ? Number(e.target.value) : undefined,
+                })
               }
             >
               <option value="">No fleet</option>
               {fleets.map((f) => (
-                <option key={f.id} value={f.id}>{f.name}</option>
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
               ))}
             </HTMLSelect>
           </FormGroup>
           {createDeviceMutation.isError && (
-            <Callout intent="danger" icon="error">Failed to create device. Please try again.</Callout>
+            <Callout intent="danger" icon="error">
+              Failed to create device. Please try again.
+            </Callout>
           )}
         </DialogBody>
         <DialogFooter

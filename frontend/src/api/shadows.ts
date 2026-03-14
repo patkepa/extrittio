@@ -1,5 +1,5 @@
-import client from "./client";
-import type { DeviceShadow } from "../types/api";
+import client from './client';
+import type { DeviceShadow } from '../types/api';
 
 export async function getDeviceShadow(deviceId: string): Promise<DeviceShadow> {
   const { data } = await client.get<DeviceShadow>(`/devices/${deviceId}/shadow`);
@@ -8,23 +8,17 @@ export async function getDeviceShadow(deviceId: string): Promise<DeviceShadow> {
 
 export async function updateDesiredState(
   deviceId: string,
-  state: Record<string, unknown>
+  state: Record<string, unknown>,
 ): Promise<DeviceShadow> {
-  const { data } = await client.put<DeviceShadow>(
-    `/devices/${deviceId}/shadow/desired`,
-    state
-  );
+  const { data } = await client.put<DeviceShadow>(`/devices/${deviceId}/shadow/desired`, state);
   return data;
 }
 
 export async function updateReportedState(
   deviceId: string,
-  state: Record<string, unknown>
+  state: Record<string, unknown>,
 ): Promise<DeviceShadow> {
-  const { data } = await client.put<DeviceShadow>(
-    `/devices/${deviceId}/shadow/reported`,
-    state
-  );
+  const { data } = await client.put<DeviceShadow>(`/devices/${deviceId}/shadow/reported`, state);
   return data;
 }
 

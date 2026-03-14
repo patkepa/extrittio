@@ -48,9 +48,7 @@ export const LogsTab = ({ deviceId }: LogsTabProps) => {
           options={LEVEL_OPTIONS}
           minimal
         />
-        <span className="mono-data tab-cell-muted">
-          {logs.length} entries
-        </span>
+        <span className="mono-data tab-cell-muted">{logs.length} entries</span>
       </div>
 
       {logs.length === 0 ? (
@@ -68,11 +66,7 @@ export const LogsTab = ({ deviceId }: LogsTabProps) => {
             return (
               <div key={entry.id} className="log-entry">
                 <span className="log-time mono-data">{time}</span>
-                <Tag
-                  minimal
-                  intent={LEVEL_INTENT[entry.level] ?? 'none'}
-                  className="log-level-tag"
-                >
+                <Tag minimal intent={LEVEL_INTENT[entry.level] ?? 'none'} className="log-level-tag">
                   {entry.level}
                 </Tag>
                 <span className="log-message">{entry.message}</span>

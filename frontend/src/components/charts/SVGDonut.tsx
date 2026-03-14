@@ -11,12 +11,7 @@ interface SVGDonutProps {
   children?: React.ReactNode;
 }
 
-export const SVGDonut = ({
-  segments,
-  size = 170,
-  strokeWidth = 25,
-  children,
-}: SVGDonutProps) => {
+export const SVGDonut = ({ segments, size = 170, strokeWidth = 25, children }: SVGDonutProps) => {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const total = segments.reduce((sum, s) => sum + s.value, 0);

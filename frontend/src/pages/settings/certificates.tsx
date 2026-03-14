@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState } from 'react';
 import {
   Alert,
   Button,
@@ -10,19 +10,19 @@ import {
   Icon,
   Spinner,
   Tooltip,
-} from "@blueprintjs/core";
-import { useDevices } from "../../hooks/use-devices";
+} from '@blueprintjs/core';
+import { useDevices } from '../../hooks/use-devices';
 import {
   useCaCertificate,
   useDeviceCertificateStatuses,
   useRegenerateDeviceCertificate,
-} from "../../hooks/use-certificates";
-import { CertificateDownloadDialog } from "../../components/certificates/certificate-download-dialog";
-import { downloadPem } from "../../utils/download-pem";
-import { showSuccessToast, showErrorToast } from "../../utils/toaster";
-import type { DeviceCertificateResponse } from "../../types/api";
-import "./settings.css";
-import "./certificates.css";
+} from '../../hooks/use-certificates';
+import { CertificateDownloadDialog } from '../../components/certificates/certificate-download-dialog';
+import { downloadPem } from '../../utils/download-pem';
+import { showSuccessToast, showErrorToast } from '../../utils/toaster';
+import type { DeviceCertificateResponse } from '../../types/api';
+import './settings.css';
+import './certificates.css';
 
 export function CertificatesSettings() {
   const [regenerateTarget, setRegenerateTarget] = useState<{
@@ -47,23 +47,21 @@ export function CertificatesSettings() {
     setRegenerateTarget(null);
     regenerateMutation.mutate(target.id, {
       onSuccess: (data) => {
-        void showSuccessToast("Certificate regenerated");
+        void showSuccessToast('Certificate regenerated');
         setDownloadBundle({ bundle: data, name: target.name });
       },
       onError: () => {
-        void showErrorToast("Failed to regenerate certificate");
+        void showErrorToast('Failed to regenerate certificate');
       },
     });
   };
 
   const copyToClipboard = (text: string) => {
     void navigator.clipboard.writeText(text);
-    void showSuccessToast("Copied to clipboard");
+    void showSuccessToast('Copied to clipboard');
   };
 
-  const targetIdx = regenerateTarget
-    ? devices.findIndex((d) => d.id === regenerateTarget.id)
-    : -1;
+  const targetIdx = regenerateTarget ? devices.findIndex((d) => d.id === regenerateTarget.id) : -1;
   const targetHasCert = targetIdx >= 0 && !!statusQueries[targetIdx]?.data;
 
   return (
@@ -71,9 +69,7 @@ export function CertificatesSettings() {
       <div className="page-header">
         <div>
           <H3>Certificates</H3>
-          <p className="page-description">
-            Manage CA and device TLS certificates
-          </p>
+          <p className="page-description">Manage CA and device TLS certificates</p>
         </div>
       </div>
 
@@ -92,19 +88,19 @@ export function CertificatesSettings() {
               <Tooltip content="Click to copy">
                 <div
                   className="ca-fingerprint"
-                  style={{ cursor: "pointer" }}
+                  style={{ cursor: 'pointer' }}
                   onClick={() => copyToClipboard(caQuery.data!.fingerprint)}
                 >
                   {caQuery.data.fingerprint}
                 </div>
               </Tooltip>
-              <div style={{ fontSize: 12, color: "hsl(var(--muted))" }}>
+              <div style={{ fontSize: 12, color: 'hsl(var(--muted))' }}>
                 Created: {new Date(caQuery.data.created_at).toLocaleDateString()}
               </div>
             </div>
             <Button
               icon="download"
-              onClick={() => downloadPem(caQuery.data!.certificate_pem, "ca.pem")}
+              onClick={() => downloadPem(caQuery.data!.certificate_pem, 'ca.pem')}
             >
               Download CA PEM
             </Button>
@@ -113,7 +109,7 @@ export function CertificatesSettings() {
       ) : null}
 
       {/* Device Certificates */}
-      <span className="section-label" style={{ marginTop: 8, display: "block" }}>
+      <span className="section-label" style={{ marginTop: 8, display: 'block' }}>
         Device Certificates
       </span>
       {devicesQuery.isLoading ? (
@@ -153,24 +149,14 @@ export function CertificatesSettings() {
                         <Spinner size={14} />
                       ) : status ? (
                         <Tooltip content={status.fingerprint}>
-                          <span className="cert-fingerprint">
-                            {status.fingerprint}
-                          </span>
+                          <span className="cert-fingerprint">{status.fingerprint}</span>
                         </Tooltip>
                       ) : (
                         <span className="cert-no-cert">No certificate</span>
                       )}
                     </td>
-                    <td>
-                      {status
-                        ? new Date(status.expires_at).toLocaleDateString()
-                        : "—"}
-                    </td>
-                    <td>
-                      {status
-                        ? new Date(status.created_at).toLocaleDateString()
-                        : "—"}
-                    </td>
+                    <td>{status ? new Date(status.expires_at).toLocaleDateString() : '—'}</td>
+                    <td>{status ? new Date(status.created_at).toLocaleDateString() : '—'}</td>
                     <td className="actions-column">
                       <Button
                         small
@@ -178,8 +164,7 @@ export function CertificatesSettings() {
                         intent="primary"
                         rightIcon="refresh"
                         loading={
-                          regenerateMutation.isPending &&
-                          regenerateMutation.variables === device.id
+                          regenerateMutation.isPending && regenerateMutation.variables === device.id
                         }
                         onClick={() =>
                           setRegenerateTarget({
@@ -188,7 +173,7 @@ export function CertificatesSettings() {
                           })
                         }
                       >
-                        {status ? "Regenerate" : "Generate"}
+                        {status ? 'Regenerate' : 'Generate'}
                       </Button>
                     </td>
                   </tr>
@@ -205,13 +190,13 @@ export function CertificatesSettings() {
         onConfirm={handleRegenerate}
         onCancel={() => setRegenerateTarget(null)}
         cancelButtonText="Cancel"
-        confirmButtonText={targetHasCert ? "Regenerate" : "Generate"}
+        confirmButtonText={targetHasCert ? 'Regenerate' : 'Generate'}
         intent="warning"
         icon="refresh"
       >
         <p>
           {targetHasCert
-            ? "This will revoke the current certificate and issue a new one. The device will need to be reconfigured with the new certificate."
+            ? 'This will revoke the current certificate and issue a new one. The device will need to be reconfigured with the new certificate.'
             : `Generate a certificate for ${regenerateTarget?.name}?`}
         </p>
       </Alert>
@@ -221,7 +206,7 @@ export function CertificatesSettings() {
         isOpen={downloadBundle !== null}
         onClose={() => setDownloadBundle(null)}
         certBundle={downloadBundle?.bundle ?? null}
-        deviceName={downloadBundle?.name ?? ""}
+        deviceName={downloadBundle?.name ?? ''}
       />
     </div>
   );

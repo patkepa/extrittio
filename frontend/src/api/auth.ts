@@ -1,23 +1,23 @@
-import client from "./client";
-import type { LoginRequest, LoginResponse, AuthUser, CreateUserRequest } from "../types/api";
+import client from './client';
+import type { LoginRequest, LoginResponse, AuthUser, CreateUserRequest } from '../types/api';
 
 export async function login(body: LoginRequest): Promise<LoginResponse> {
-  const { data } = await client.post<LoginResponse>("/auth/login", body);
+  const { data } = await client.post<LoginResponse>('/auth/login', body);
   return data;
 }
 
 export async function getMe(): Promise<AuthUser> {
-  const { data } = await client.get<AuthUser>("/auth/me");
+  const { data } = await client.get<AuthUser>('/auth/me');
   return data;
 }
 
 export async function getUsers(): Promise<AuthUser[]> {
-  const { data } = await client.get<{ data: AuthUser[] }>("/users");
+  const { data } = await client.get<{ data: AuthUser[] }>('/users');
   return data.data;
 }
 
 export async function createUser(body: CreateUserRequest): Promise<AuthUser> {
-  const { data } = await client.post<AuthUser>("/users", body);
+  const { data } = await client.post<AuthUser>('/users', body);
   return data;
 }
 

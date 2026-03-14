@@ -175,7 +175,9 @@ export const FleetGraphMinimap = ({
   // Register draw function so parent can call it imperatively on viewport changes
   useEffect(() => {
     drawRef.current = draw;
-    return () => { drawRef.current = null; };
+    return () => {
+      drawRef.current = null;
+    };
   }, [draw, drawRef]);
 
   // Draw on mount and when nodes/canvas size change

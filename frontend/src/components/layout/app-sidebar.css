@@ -179,7 +179,10 @@
   font-weight: 500;
   font-size: 13px;
   letter-spacing: -0.01em;
-  transition: background-color 0.12s ease, color 0.12s ease, font-weight 0.12s ease;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease,
+    font-weight 0.12s ease;
   padding: 8px 10px 8px 12px;
   border-radius: 0;
   border: none;
@@ -231,7 +234,6 @@
   color: currentColor;
   pointer-events: none;
 }
-
 
 /* Nav item right section */
 .nav-item-right {
@@ -484,12 +486,30 @@
   animation: slideInFromLeft 0.15s ease both;
 }
 
-.nav-group:nth-child(1) .bp6-menu-item:nth-child(1) { animation-delay: 0ms; }
-.nav-group:nth-child(1) .bp6-menu-item:nth-child(2) { animation-delay: 12ms; }
-.nav-group:nth-child(2) .bp6-menu-item:nth-child(1) { animation-delay: 24ms; }
-.nav-group:nth-child(2) .bp6-menu-item:nth-child(2) { animation-delay: 36ms; }
-.nav-group:nth-child(2) .bp6-menu-item:nth-child(3) { animation-delay: 48ms; }
-.nav-group:nth-child(3) .bp6-menu-item:nth-child(1) { animation-delay: 60ms; }
-.nav-group:nth-child(3) .bp6-menu-item:nth-child(2) { animation-delay: 72ms; }
-.nav-group:nth-child(3) .bp6-menu-item:nth-child(3) { animation-delay: 84ms; }
-.nav-group:nth-child(3) .bp6-menu-item:nth-child(4) { animation-delay: 96ms; }
+.nav-group:nth-child(1) .bp6-menu-item:nth-child(1) {
+  animation-delay: 0ms;
+}
+.nav-group:nth-child(1) .bp6-menu-item:nth-child(2) {
+  animation-delay: 12ms;
+}
+.nav-group:nth-child(2) .bp6-menu-item:nth-child(1) {
+  animation-delay: 24ms;
+}
+.nav-group:nth-child(2) .bp6-menu-item:nth-child(2) {
+  animation-delay: 36ms;
+}
+.nav-group:nth-child(2) .bp6-menu-item:nth-child(3) {
+  animation-delay: 48ms;
+}
+.nav-group:nth-child(3) .bp6-menu-item:nth-child(1) {
+  animation-delay: 60ms;
+}
+.nav-group:nth-child(3) .bp6-menu-item:nth-child(2) {
+  animation-delay: 72ms;
+}
+.nav-group:nth-child(3) .bp6-menu-item:nth-child(3) {
+  animation-delay: 84ms;
+}
+.nav-group:nth-child(3) .bp6-menu-item:nth-child(4) {
+  animation-delay: 96ms;
+}

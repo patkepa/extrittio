@@ -1,10 +1,10 @@
-import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getCaCertificate,
   getDeviceCertificateStatus,
   regenerateDeviceCertificate,
-} from "../api/certificates";
-import { queryKeys } from "./query-keys";
+} from '../api/certificates';
+import { queryKeys } from './query-keys';
 
 export function useCaCertificate() {
   return useQuery({

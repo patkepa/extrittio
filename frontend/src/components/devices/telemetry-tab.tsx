@@ -107,12 +107,12 @@ interface RangeConfig {
 
 const RANGES: Record<RangeKey, RangeConfig> = {
   '15m': { label: '15m', offsetMs: 15 * 60 * 1000, limit: 200 },
-  '1h':  { label: '1h',  offsetMs: 60 * 60 * 1000, limit: 500 },
-  '6h':  { label: '6h',  offsetMs: 6 * 60 * 60 * 1000, limit: 1000 },
+  '1h': { label: '1h', offsetMs: 60 * 60 * 1000, limit: 500 },
+  '6h': { label: '6h', offsetMs: 6 * 60 * 60 * 1000, limit: 1000 },
   '24h': { label: '24h', offsetMs: 24 * 60 * 60 * 1000, limit: 1000 },
-  '7d':  { label: '7d',  offsetMs: 7 * 24 * 60 * 60 * 1000, limit: 1000 },
+  '7d': { label: '7d', offsetMs: 7 * 24 * 60 * 60 * 1000, limit: 1000 },
   '30d': { label: '30d', offsetMs: 30 * 24 * 60 * 60 * 1000, limit: 1000 },
-  'all': { label: 'All', offsetMs: null, limit: 1000 },
+  all: { label: 'All', offsetMs: null, limit: 1000 },
 };
 
 const RANGE_OPTIONS = (Object.keys(RANGES) as RangeKey[]).map((key) => ({
@@ -132,8 +132,11 @@ function computeSince(range: RangeConfig): string | undefined {
 function formatTimestamp(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleString(undefined, {
-    month: 'short', day: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
   });
 }
 
@@ -202,10 +205,10 @@ export const TelemetryTab = ({ deviceId, deviceTypeName }: TelemetryTabProps) =>
 
   // Stabilize `since` so the React Query key doesn't change on every render
   const since = useMemo(() => computeSince(rangeConfig), [selectedRange]);
-  const boundedQuery = useDeviceTelemetry(
-    isAll ? null : deviceId,
-    { limit: rangeConfig.limit, since }
-  );
+  const boundedQuery = useDeviceTelemetry(isAll ? null : deviceId, {
+    limit: rangeConfig.limit,
+    since,
+  });
 
   // Paginated query (for "All" only)
   const allQuery = useAllDeviceTelemetry(isAll ? deviceId : null);
@@ -220,9 +223,7 @@ export const TelemetryTab = ({ deviceId, deviceTypeName }: TelemetryTabProps) =>
   const profile = getProfile(deviceTypeName);
 
   // "All" data is sorted ascending; others are descending. Latest is always newest.
-  const latest = isAll
-    ? telemetryRecords[telemetryRecords.length - 1]
-    : telemetryRecords[0];
+  const latest = isAll ? telemetryRecords[telemetryRecords.length - 1] : telemetryRecords[0];
   const latestFlat = latest ? flattenRecord(latest) : null;
   const latestCustom = parseCustomJson(latest?.custom_json);
 
@@ -230,7 +231,10 @@ export const TelemetryTab = ({ deviceId, deviceTypeName }: TelemetryTabProps) =>
   const chartData = useMemo(() => {
     const records = isAll
       ? telemetryRecords.map((r) => flattenRecord(r))
-      : telemetryRecords.slice().reverse().map((r) => flattenRecord(r));
+      : telemetryRecords
+          .slice()
+          .reverse()
+          .map((r) => flattenRecord(r));
     return records;
   }, [telemetryRecords, isAll]);
 
@@ -304,11 +308,7 @@ export const TelemetryTab = ({ deviceId, deviceTypeName }: TelemetryTabProps) =>
           </Callout>
         ) : (
           profile.charts.map((metric) => (
-            <TelemetryChart
-              key={metric.key}
-              metric={metric}
-              chartData={chartData}
-            />
+            <TelemetryChart key={metric.key} metric={metric} chartData={chartData} />
           ))
         )}
       </div>
@@ -333,7 +333,9 @@ export const TelemetryTab = ({ deviceId, deviceTypeName }: TelemetryTabProps) =>
                   <tr key={r.id}>
                     <td className="mono-data">{formatTimestamp(r.received_at)}</td>
                     {profile.tableColumns.map((col) => (
-                      <td key={col.key} className="mono-data">{formatValue(flat[col.key])}</td>
+                      <td key={col.key} className="mono-data">
+                        {formatValue(flat[col.key])}
+                      </td>
                     ))}
                   </tr>
                 );
@@ -350,7 +352,13 @@ export const TelemetryTab = ({ deviceId, deviceTypeName }: TelemetryTabProps) =>
 // Individual chart for a single metric (memoized options)
 // ---------------------------------------------------------------------------
 
-function TelemetryChart({ metric, chartData }: { metric: MetricDef; chartData: Record<string, number | string | null>[] }) {
+function TelemetryChart({
+  metric,
+  chartData,
+}: {
+  metric: MetricDef;
+  chartData: Record<string, number | string | null>[];
+}) {
   const latestValue = chartData[chartData.length - 1]?.[metric.key];
 
   const plotData = useMemo(
@@ -385,8 +393,7 @@ function TelemetryChart({ metric, chartData }: { metric: MetricDef; chartData: R
           grid: { stroke: 'rgba(255,255,255,0.06)', width: 1, dash: [3, 3] },
           gap: 4,
           size: 48,
-          values: (_u: uPlot, vals: number[]) =>
-            vals.map((v) => `${v}${metric.unit}`),
+          values: (_u: uPlot, vals: number[]) => vals.map((v) => `${v}${metric.unit}`),
         },
       ],
       scales: {
@@ -403,10 +410,7 @@ function TelemetryChart({ metric, chartData }: { metric: MetricDef; chartData: R
         },
       ],
       plugins: [
-        tooltipPlugin(
-          (_seriesIdx, val) => `${formatValue(val)} ${metric.unit}`,
-          formatTooltipTime,
-        ),
+        tooltipPlugin((_seriesIdx, val) => `${formatValue(val)} ${metric.unit}`, formatTooltipTime),
       ],
     };
   }, [metric.color, metric.key, metric.unit]);

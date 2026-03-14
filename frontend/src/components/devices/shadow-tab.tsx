@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Callout, Divider, Spinner, Tag } from '@blueprintjs/core';
-import { useDeviceShadow, useUpdateDesiredState, useDeleteDeviceShadow } from '../../hooks/use-shadow';
+import {
+  useDeviceShadow,
+  useUpdateDesiredState,
+  useDeleteDeviceShadow,
+} from '../../hooks/use-shadow';
 import { showSuccessToast, showErrorToast } from '../../utils/toaster';
 
 /**
@@ -11,7 +15,7 @@ import { showSuccessToast, showErrorToast } from '../../utils/toaster';
  */
 function classifyLines(
   originalText: string,
-  editedText: string
+  editedText: string,
 ): ('unchanged' | 'added' | 'modified')[] {
   const origLines = originalText.split('\n');
   const editLines = editedText.split('\n');
@@ -62,7 +66,7 @@ export const ShadowTab = ({ deviceId }: ShadowTabProps) => {
 
   const originalText = useMemo(
     () => (shadow ? JSON.stringify(shadow.desired, null, 2) : ''),
-    [shadow]
+    [shadow],
   );
 
   useEffect(() => {
@@ -185,7 +189,7 @@ export const ShadowTab = ({ deviceId }: ShadowTabProps) => {
     start: number,
     end: number,
     insert: string,
-    cursorOffset: number
+    cursorOffset: number,
   ) => {
     const before = ta.value.slice(0, start);
     const after = ta.value.slice(end);
@@ -249,10 +253,7 @@ export const ShadowTab = ({ deviceId }: ShadowTabProps) => {
       const charAfter = value[start];
 
       // Between opening and closing bracket: expand with extra indent
-      if (
-        (charBefore === '{' && charAfter === '}') ||
-        (charBefore === '[' && charAfter === ']')
-      ) {
+      if ((charBefore === '{' && charAfter === '}') || (charBefore === '[' && charAfter === ']')) {
         const inner = indent + '  ';
         const insert = '\n' + inner + '\n' + indent;
         const next = value.slice(0, start) + insert + value.slice(end);
@@ -280,7 +281,7 @@ export const ShadowTab = ({ deviceId }: ShadowTabProps) => {
             void showSuccessToast('Desired state updated');
           },
           onError: () => void showErrorToast('Failed to update desired state'),
-        }
+        },
       );
     } catch (e) {
       setJsonError((e as SyntaxError).message);
@@ -311,18 +312,11 @@ export const ShadowTab = ({ deviceId }: ShadowTabProps) => {
           {isEditing ? (
             <>
               <div className="shadow-editor-wrapper">
-                <pre
-                  ref={highlightRef}
-                  className="shadow-editor-highlights mono-data"
-                  aria-hidden
-                >
+                <pre ref={highlightRef} className="shadow-editor-highlights mono-data" aria-hidden>
                   {editValue.split('\n').map((line, i) => {
                     const cls = lineClassifications?.[i] ?? 'unchanged';
                     return (
-                      <span
-                        key={i}
-                        className={`editor-line editor-line--${cls}`}
-                      >
+                      <span key={i} className={`editor-line editor-line--${cls}`}>
                         {line || ' '}
                         {'\n'}
                       </span>
@@ -339,9 +333,7 @@ export const ShadowTab = ({ deviceId }: ShadowTabProps) => {
                   spellCheck={false}
                 />
               </div>
-              {jsonError && (
-                <div className="shadow-json-error">{jsonError}</div>
-              )}
+              {jsonError && <div className="shadow-json-error">{jsonError}</div>}
               <div className="shadow-edit-actions">
                 <Button
                   intent="primary"
@@ -359,16 +351,12 @@ export const ShadowTab = ({ deviceId }: ShadowTabProps) => {
               </div>
             </>
           ) : (
-            <pre className="shadow-json mono-data">
-              {JSON.stringify(shadow.desired, null, 2)}
-            </pre>
+            <pre className="shadow-json mono-data">{JSON.stringify(shadow.desired, null, 2)}</pre>
           )}
         </div>
         <div className="shadow-pane">
           <span className="section-label">Reported State</span>
-          <pre className="shadow-json mono-data">
-            {JSON.stringify(shadow.reported, null, 2)}
-          </pre>
+          <pre className="shadow-json mono-data">{JSON.stringify(shadow.reported, null, 2)}</pre>
         </div>
       </div>
 
@@ -383,13 +371,13 @@ export const ShadowTab = ({ deviceId }: ShadowTabProps) => {
                 lines.push(
                   <span key={`${key}-old`} className="diff-line diff-removed">
                     {`- "${key}": ${JSON.stringify(reportedVal)}`}
-                  </span>
+                  </span>,
                 );
               }
               lines.push(
                 <span key={`${key}-new`} className="diff-line diff-added">
                   {`+ "${key}": ${JSON.stringify(desiredVal)}`}
-                </span>
+                </span>,
               );
               return lines;
             })}

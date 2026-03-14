@@ -1,13 +1,7 @@
-import { useState } from "react";
-import {
-  Button,
-  Card,
-  HTMLTable,
-  NonIdealState,
-  Tag,
-} from "@blueprintjs/core";
-import { useApiKeys, useDeleteApiKey } from "../../hooks/use-api-keys";
-import { CreateApiKeyDialog } from "../../components/settings/create-api-key-dialog";
+import { useState } from 'react';
+import { Button, Card, HTMLTable, NonIdealState, Tag } from '@blueprintjs/core';
+import { useApiKeys, useDeleteApiKey } from '../../hooks/use-api-keys';
+import { CreateApiKeyDialog } from '../../components/settings/create-api-key-dialog';
 
 export const ApiKeysSettings = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -22,9 +16,9 @@ export const ApiKeysSettings = () => {
     <div>
       <div
         style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
           marginBottom: 16,
         }}
       >
@@ -44,7 +38,7 @@ export const ApiKeysSettings = () => {
             description="Create an API key to allow CI pipelines to register firmware."
           />
         ) : (
-          <HTMLTable striped style={{ width: "100%" }}>
+          <HTMLTable striped style={{ width: '100%' }}>
             <thead>
               <tr>
                 <th>Name</th>
@@ -63,9 +57,9 @@ export const ApiKeysSettings = () => {
                     <code>{key.key_prefix}...</code>
                   </td>
                   <td>
-                    <Tag minimal>{key.device_type_name ?? "All"}</Tag>
+                    <Tag minimal>{key.device_type_name ?? 'All'}</Tag>
                   </td>
-                  <td>{key.last_used_at ?? "Never"}</td>
+                  <td>{key.last_used_at ?? 'Never'}</td>
                   <td>{key.created_at}</td>
                   <td>
                     <Button
@@ -75,7 +69,7 @@ export const ApiKeysSettings = () => {
                       small
                       loading={deleteMutation.isPending}
                       onClick={() => {
-                        if (confirm("Revoke this API key? This cannot be undone.")) {
+                        if (confirm('Revoke this API key? This cannot be undone.')) {
                           deleteMutation.mutate(key.id);
                         }
                       }}
@@ -88,10 +82,7 @@ export const ApiKeysSettings = () => {
         )}
       </Card>
 
-      <CreateApiKeyDialog
-        isOpen={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-      />
+      <CreateApiKeyDialog isOpen={dialogOpen} onClose={() => setDialogOpen(false)} />
     </div>
   );
 };

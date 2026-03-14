@@ -1,23 +1,16 @@
-import { useState } from "react";
-import {
-  Button,
-  Alert,
-  Popover,
-  Menu,
-  MenuItem,
-  MenuDivider,
-} from "@blueprintjs/core";
-import { useFleets } from "../../hooks/use-fleets";
+import { useState } from 'react';
+import { Button, Alert, Popover, Menu, MenuItem, MenuDivider } from '@blueprintjs/core';
+import { useFleets } from '../../hooks/use-fleets';
 import {
   useBulkChangeFleet,
   useBulkDeleteDevices,
   useBulkRestartDevices,
   useBulkTriggerOta,
-} from "../../hooks/use-devices";
-import { useFirmwareUpdates } from "../../hooks/use-firmware-updates";
-import { useSelectionStore } from "../../stores/selection-store";
-import { showSuccessToast, showErrorToast, showWarningToast } from "../../utils/toaster";
-import type { BulkTargeting, BulkDeviceFilters } from "../../types/api";
+} from '../../hooks/use-devices';
+import { useFirmwareUpdates } from '../../hooks/use-firmware-updates';
+import { useSelectionStore } from '../../stores/selection-store';
+import { showSuccessToast, showErrorToast, showWarningToast } from '../../utils/toaster';
+import type { BulkTargeting, BulkDeviceFilters } from '../../types/api';
 
 interface BulkActionBarProps {
   totalMatchingCount: number;
@@ -57,11 +50,9 @@ export const BulkActionBar = ({
 
   const selectionLabel = isAllMatchingSelected
     ? `All ${totalMatchingCount} matching devices selected`
-    : `${selectedDeviceIds.size} device${selectedDeviceIds.size !== 1 ? "s" : ""} selected`;
+    : `${selectedDeviceIds.size} device${selectedDeviceIds.size !== 1 ? 's' : ''} selected`;
 
-  const confirmCount = isAllMatchingSelected
-    ? totalMatchingCount
-    : selectedDeviceIds.size;
+  const confirmCount = isAllMatchingSelected ? totalMatchingCount : selectedDeviceIds.size;
 
   function buildTargeting(): BulkTargeting {
     if (isAllMatchingSelected) {
@@ -78,22 +69,22 @@ export const BulkActionBar = ({
       });
       void showSuccessToast(
         fleetId === null
-          ? `${result.affected} device${result.affected !== 1 ? "s" : ""} removed from fleet`
-          : `${result.affected} device${result.affected !== 1 ? "s" : ""} moved to fleet`
+          ? `${result.affected} device${result.affected !== 1 ? 's' : ''} removed from fleet`
+          : `${result.affected} device${result.affected !== 1 ? 's' : ''} moved to fleet`,
       );
       clearSelection();
     } catch {
-      void showErrorToast("Failed to change fleet");
+      void showErrorToast('Failed to change fleet');
     }
   }
 
   async function handleDelete() {
     try {
       const result = await bulkDeleteMutation.mutateAsync(buildTargeting());
-      void showSuccessToast(`${result.affected} device${result.affected !== 1 ? "s" : ""} deleted`);
+      void showSuccessToast(`${result.affected} device${result.affected !== 1 ? 's' : ''} deleted`);
       clearSelection();
     } catch {
-      void showErrorToast("Failed to delete devices");
+      void showErrorToast('Failed to delete devices');
     }
     setDeleteAlertOpen(false);
   }
@@ -102,9 +93,7 @@ export const BulkActionBar = ({
     try {
       const result = await bulkRestartMutation.mutateAsync(buildTargeting());
       if (result.failed > 0) {
-        void showWarningToast(
-          `${result.succeeded} restarted, ${result.failed} failed`
-        );
+        void showWarningToast(`${result.succeeded} restarted, ${result.failed} failed`);
         // Narrow selection to failed devices
         useSelectionStore.setState({
           selectedDeviceIds: new Set(result.errors.map((e) => e.device_id)),
@@ -112,11 +101,13 @@ export const BulkActionBar = ({
           selectionFilters: null,
         });
       } else {
-        void showSuccessToast(`${result.succeeded} device${result.succeeded !== 1 ? "s" : ""} restarted`);
+        void showSuccessToast(
+          `${result.succeeded} device${result.succeeded !== 1 ? 's' : ''} restarted`,
+        );
         clearSelection();
       }
     } catch {
-      void showErrorToast("Failed to restart devices");
+      void showErrorToast('Failed to restart devices');
     }
     setRestartAlertOpen(false);
   }
@@ -129,7 +120,7 @@ export const BulkActionBar = ({
       });
       if (result.failed > 0) {
         void showWarningToast(
-          `${result.succeeded} updated, ${result.failed} failed (${result.errors[0]?.error ?? "unknown error"})`
+          `${result.succeeded} updated, ${result.failed} failed (${result.errors[0]?.error ?? 'unknown error'})`,
         );
         useSelectionStore.setState({
           selectedDeviceIds: new Set(result.errors.map((e) => e.device_id)),
@@ -137,11 +128,13 @@ export const BulkActionBar = ({
           selectionFilters: null,
         });
       } else {
-        void showSuccessToast(`OTA triggered on ${result.succeeded} device${result.succeeded !== 1 ? "s" : ""}`);
+        void showSuccessToast(
+          `OTA triggered on ${result.succeeded} device${result.succeeded !== 1 ? 's' : ''}`,
+        );
         clearSelection();
       }
     } catch {
-      void showErrorToast("Failed to trigger OTA update");
+      void showErrorToast('Failed to trigger OTA update');
     }
   }
 
@@ -158,12 +151,7 @@ export const BulkActionBar = ({
         <Button icon="cross" minimal small onClick={clearSelection} title="Clear selection" />
 
         {showSelectAllBanner && (
-          <Button
-            minimal
-            small
-            intent="primary"
-            onClick={() => selectAllMatching(currentFilters)}
-          >
+          <Button minimal small intent="primary" onClick={() => selectAllMatching(currentFilters)}>
             Select all {totalMatchingCount} matching devices
           </Button>
         )}
@@ -259,8 +247,8 @@ export const BulkActionBar = ({
         onCancel={() => setDeleteAlertOpen(false)}
       >
         <p>
-          Delete <strong>{confirmCount}</strong> device{confirmCount !== 1 ? "s" : ""}?
-          This action cannot be undone.
+          Delete <strong>{confirmCount}</strong> device{confirmCount !== 1 ? 's' : ''}? This action
+          cannot be undone.
         </p>
       </Alert>
 
@@ -275,7 +263,7 @@ export const BulkActionBar = ({
         onCancel={() => setRestartAlertOpen(false)}
       >
         <p>
-          Restart <strong>{confirmCount}</strong> device{confirmCount !== 1 ? "s" : ""}?
+          Restart <strong>{confirmCount}</strong> device{confirmCount !== 1 ? 's' : ''}?
         </p>
       </Alert>
     </div>

@@ -66,9 +66,15 @@ export const OverviewTab = ({ device }: OverviewTabProps) => {
         >
           Restart
         </Button>
-        <Button icon="cloud-upload" fill onClick={() => navigateToTab('ota')}>Update FW</Button>
-        <Button icon="chart" fill onClick={() => navigateToTab('telemetry')}>Telemetry</Button>
-        <Button icon="cog" fill onClick={() => navigateToTab('config')}>Configure</Button>
+        <Button icon="cloud-upload" fill onClick={() => navigateToTab('ota')}>
+          Update FW
+        </Button>
+        <Button icon="chart" fill onClick={() => navigateToTab('telemetry')}>
+          Telemetry
+        </Button>
+        <Button icon="cog" fill onClick={() => navigateToTab('config')}>
+          Configure
+        </Button>
       </div>
     </>
   );

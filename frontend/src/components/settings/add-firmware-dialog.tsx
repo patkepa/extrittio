@@ -49,8 +49,7 @@ export const AddFirmwareDialog = ({ isOpen, onClose }: AddFirmwareDialogProps) =
   const isError = createMutation.isError || uploadMutation.isError;
 
   const canSubmit =
-    !!selectedDeviceTypeId &&
-    (uploadMode === 'file' ? !!selectedFile : !!url.trim());
+    !!selectedDeviceTypeId && (uploadMode === 'file' ? !!selectedFile : !!url.trim());
 
   const handleAdd = () => {
     if (!selectedDeviceTypeId) return;
@@ -64,7 +63,13 @@ export const AddFirmwareDialog = ({ isOpen, onClose }: AddFirmwareDialogProps) =
           description: description.trim() || undefined,
           file: selectedFile,
         },
-        { onSuccess: () => { onClose(); void showSuccessToast('Firmware uploaded'); }, onError: () => void showErrorToast('Failed to upload firmware') }
+        {
+          onSuccess: () => {
+            onClose();
+            void showSuccessToast('Firmware uploaded');
+          },
+          onError: () => void showErrorToast('Failed to upload firmware'),
+        },
       );
     } else {
       if (!url.trim()) return;
@@ -76,7 +81,13 @@ export const AddFirmwareDialog = ({ isOpen, onClose }: AddFirmwareDialogProps) =
           sha256: sha256.trim() || undefined,
           description: description.trim() || undefined,
         },
-        { onSuccess: () => { onClose(); void showSuccessToast('Firmware registered'); }, onError: () => void showErrorToast('Failed to register firmware') }
+        {
+          onSuccess: () => {
+            onClose();
+            void showSuccessToast('Firmware registered');
+          },
+          onError: () => void showErrorToast('Failed to register firmware'),
+        },
       );
     }
   };
@@ -95,12 +106,7 @@ export const AddFirmwareDialog = ({ isOpen, onClose }: AddFirmwareDialogProps) =
   };
 
   return (
-    <Dialog
-      icon="upload"
-      title="Register Firmware Update"
-      isOpen={isOpen}
-      onClose={handleClose}
-    >
+    <Dialog icon="upload" title="Register Firmware Update" isOpen={isOpen} onClose={handleClose}>
       <DialogBody>
         <FormGroup label="Device Type" labelInfo="(required)">
           <HTMLSelect
@@ -146,7 +152,11 @@ export const AddFirmwareDialog = ({ isOpen, onClose }: AddFirmwareDialogProps) =
         </FormGroup>
 
         {uploadMode === 'file' ? (
-          <FormGroup label="Firmware File" labelInfo="(required)" helperText="Binary will be stored in the database. SHA-256 is computed automatically.">
+          <FormGroup
+            label="Firmware File"
+            labelInfo="(required)"
+            helperText="Binary will be stored in the database. SHA-256 is computed automatically."
+          >
             <input
               ref={fileInputRef}
               type="file"
@@ -154,10 +164,7 @@ export const AddFirmwareDialog = ({ isOpen, onClose }: AddFirmwareDialogProps) =
               onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
             />
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Button
-                icon="document-open"
-                onClick={() => fileInputRef.current?.click()}
-              >
+              <Button icon="document-open" onClick={() => fileInputRef.current?.click()}>
                 Choose File
               </Button>
               {selectedFile ? (
@@ -182,7 +189,10 @@ export const AddFirmwareDialog = ({ isOpen, onClose }: AddFirmwareDialogProps) =
                 className="mono-data"
               />
             </FormGroup>
-            <FormGroup label="SHA-256 Hash" helperText="Optional hash for binary verification on device">
+            <FormGroup
+              label="SHA-256 Hash"
+              helperText="Optional hash for binary verification on device"
+            >
               <InputGroup
                 placeholder="e.g. a1b2c3d4..."
                 value={sha256}

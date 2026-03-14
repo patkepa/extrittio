@@ -1,6 +1,16 @@
-import { Button, ButtonGroup, Callout, Dialog, DialogBody, DialogFooter, Menu, MenuItem, Popover } from "@blueprintjs/core";
-import type { DeviceCertificateResponse } from "../../types/api";
-import { downloadPem } from "../../utils/download-pem";
+import {
+  Button,
+  ButtonGroup,
+  Callout,
+  Dialog,
+  DialogBody,
+  DialogFooter,
+  Menu,
+  MenuItem,
+  Popover,
+} from '@blueprintjs/core';
+import type { DeviceCertificateResponse } from '../../types/api';
+import { downloadPem } from '../../utils/download-pem';
 
 interface CertificateDownloadDialogProps {
   isOpen: boolean;
@@ -17,12 +27,12 @@ export function CertificateDownloadDialog({
 }: CertificateDownloadDialogProps) {
   if (!certBundle) return null;
 
-  const safeName = deviceName.replace(/[^a-zA-Z0-9_-]/g, "-");
+  const safeName = deviceName.replace(/[^a-zA-Z0-9_-]/g, '-');
 
   const downloadAll = () => {
     downloadPem(certBundle.certificate_pem, `${safeName}.pem`);
     setTimeout(() => downloadPem(certBundle.private_key_pem, `${safeName}-key.pem`), 100);
-    setTimeout(() => downloadPem(certBundle.ca_pem, "ca.pem"), 200);
+    setTimeout(() => downloadPem(certBundle.ca_pem, 'ca.pem'), 200);
   };
 
   return (
@@ -37,7 +47,7 @@ export function CertificateDownloadDialog({
         <Callout intent="warning" icon="warning-sign" style={{ marginBottom: 16 }}>
           Save these files now. The private key will not be available again.
         </Callout>
-        <ButtonGroup style={{ display: "flex", width: "100%" }}>
+        <ButtonGroup style={{ display: 'flex', width: '100%' }}>
           <Button icon="download" intent="primary" fill onClick={downloadAll}>
             Download All
           </Button>
@@ -59,7 +69,7 @@ export function CertificateDownloadDialog({
                 <MenuItem
                   icon="shield"
                   text="CA Certificate"
-                  onClick={() => downloadPem(certBundle.ca_pem, "ca.pem")}
+                  onClick={() => downloadPem(certBundle.ca_pem, 'ca.pem')}
                 />
               </Menu>
             }
@@ -68,22 +78,26 @@ export function CertificateDownloadDialog({
           </Popover>
         </ButtonGroup>
         <div style={{ marginTop: 12 }}>
-          <div style={{ fontSize: 11, color: "hsl(var(--muted))", marginBottom: 4 }}>Fingerprint</div>
-          <code style={{
-            display: "block",
-            fontSize: 11,
-            padding: "6px 8px",
-            background: "rgba(0,0,0,0.25)",
-            borderRadius: 3,
-            wordBreak: "break-all",
-            lineHeight: 1.6,
-            color: "hsl(var(--muted))",
-          }}>{certBundle.fingerprint}</code>
+          <div style={{ fontSize: 11, color: 'hsl(var(--muted))', marginBottom: 4 }}>
+            Fingerprint
+          </div>
+          <code
+            style={{
+              display: 'block',
+              fontSize: 11,
+              padding: '6px 8px',
+              background: 'rgba(0,0,0,0.25)',
+              borderRadius: 3,
+              wordBreak: 'break-all',
+              lineHeight: 1.6,
+              color: 'hsl(var(--muted))',
+            }}
+          >
+            {certBundle.fingerprint}
+          </code>
         </div>
       </DialogBody>
-      <DialogFooter
-        actions={<Button onClick={onClose}>Done</Button>}
-      />
+      <DialogFooter actions={<Button onClick={onClose}>Done</Button>} />
     </Dialog>
   );
 }

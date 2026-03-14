@@ -6,35 +6,33 @@
  * unchanged.
  */
 
-import type { components, operations } from "./openapi";
+import type { components, operations } from './openapi';
 
 // ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
 
-export type LoginRequest = components["schemas"]["LoginRequest"];
-export type LoginResponse = components["schemas"]["LoginResponse"];
-export type AuthUser = components["schemas"]["UserResponse"];
-export type CreateUserRequest = components["schemas"]["CreateUserRequest"];
-export type ChangePasswordRequest = components["schemas"]["ChangePasswordRequest"];
+export type LoginRequest = components['schemas']['LoginRequest'];
+export type LoginResponse = components['schemas']['LoginResponse'];
+export type AuthUser = components['schemas']['UserResponse'];
+export type CreateUserRequest = components['schemas']['CreateUserRequest'];
+export type ChangePasswordRequest = components['schemas']['ChangePasswordRequest'];
 
 // ---------------------------------------------------------------------------
 // Dashboard
 // ---------------------------------------------------------------------------
 
-export type DashboardStats = components["schemas"]["DashboardStats"];
+export type DashboardStats = components['schemas']['DashboardStats'];
 
 // ---------------------------------------------------------------------------
 // Devices
 // ---------------------------------------------------------------------------
 
-export type Device = components["schemas"]["DeviceResponse"];
-export type CreateDeviceRequest = components["schemas"]["NewDeviceRequest"];
-export type UpdateDeviceRequest = components["schemas"]["UpdateDeviceRequest"];
+export type Device = components['schemas']['DeviceResponse'];
+export type CreateDeviceRequest = components['schemas']['NewDeviceRequest'];
+export type UpdateDeviceRequest = components['schemas']['UpdateDeviceRequest'];
 
-export type ListDevicesParams = NonNullable<
-  operations["list_devices"]["parameters"]["query"]
->;
+export type ListDevicesParams = NonNullable<operations['list_devices']['parameters']['query']>;
 
 // ---------------------------------------------------------------------------
 // Bulk Operations
@@ -86,48 +84,46 @@ export interface PaginatedResponse<T> {
 // Device Types
 // ---------------------------------------------------------------------------
 
-export type DeviceType = components["schemas"]["DeviceTypeResponse"];
-export type CreateDeviceTypeRequest = components["schemas"]["NewDeviceTypeRequest"];
+export type DeviceType = components['schemas']['DeviceTypeResponse'];
+export type CreateDeviceTypeRequest = components['schemas']['NewDeviceTypeRequest'];
 
 // ---------------------------------------------------------------------------
 // Fleets
 // ---------------------------------------------------------------------------
 
-export type Fleet = components["schemas"]["FleetResponse"];
-export type CreateFleetRequest = components["schemas"]["NewFleetRequest"];
+export type Fleet = components['schemas']['FleetResponse'];
+export type CreateFleetRequest = components['schemas']['NewFleetRequest'];
 
 // ---------------------------------------------------------------------------
 // Shadows
 // ---------------------------------------------------------------------------
 
-export type DeviceShadow = components["schemas"]["ShadowResponse"];
+export type DeviceShadow = components['schemas']['ShadowResponse'];
 
 // ---------------------------------------------------------------------------
 // Telemetry
 // ---------------------------------------------------------------------------
 
-export type TelemetryRecord = components["schemas"]["TelemetryResponse"];
+export type TelemetryRecord = components['schemas']['TelemetryResponse'];
 
 export type TelemetryParams = NonNullable<
-  operations["get_device_telemetry"]["parameters"]["query"]
+  operations['get_device_telemetry']['parameters']['query']
 >;
 
 // ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------
 
-export type CommandRecord = components["schemas"]["CommandResponse"];
-export type SendCommandRequest = components["schemas"]["SendCommandRequest"];
+export type CommandRecord = components['schemas']['CommandResponse'];
+export type SendCommandRequest = components['schemas']['SendCommandRequest'];
 
-export type CommandsParams = NonNullable<
-  operations["list_commands"]["parameters"]["query"]
->;
+export type CommandsParams = NonNullable<operations['list_commands']['parameters']['query']>;
 
 // ---------------------------------------------------------------------------
 // Firmware Updates & OTA
 // ---------------------------------------------------------------------------
 
-export type FirmwareUpdate = components["schemas"]["FirmwareUpdateResponse"] & {
+export type FirmwareUpdate = components['schemas']['FirmwareUpdateResponse'] & {
   source?: string | null;
   commit_sha?: string | null;
   branch?: string | null;
@@ -135,38 +131,37 @@ export type FirmwareUpdate = components["schemas"]["FirmwareUpdateResponse"] & {
   build_timestamp?: string | null;
   changelog?: string | null;
 };
-export type CreateFirmwareUpdateRequest = components["schemas"]["NewFirmwareUpdateRequest"];
-export type NextVersionResponse = components["schemas"]["NextVersionResponse"];
-export type TriggerOtaRequest = components["schemas"]["TriggerOtaRequest"];
-export type OtaDeployment = components["schemas"]["OtaDeploymentResponse"];
+export type CreateFirmwareUpdateRequest = components['schemas']['NewFirmwareUpdateRequest'];
+export type NextVersionResponse = components['schemas']['NextVersionResponse'];
+export type TriggerOtaRequest = components['schemas']['TriggerOtaRequest'];
+export type OtaDeployment = components['schemas']['OtaDeploymentResponse'];
 
 export type FirmwareUpdatesParams = NonNullable<
-  operations["list_firmware_updates"]["parameters"]["query"]
+  operations['list_firmware_updates']['parameters']['query']
 >;
 
 // ---------------------------------------------------------------------------
 // Logs
 // ---------------------------------------------------------------------------
 
-export type LogRecord = components["schemas"]["LogResponse"];
+export type LogRecord = components['schemas']['LogResponse'];
 
-export type LogsParams = NonNullable<
-  operations["get_device_logs"]["parameters"]["query"]
->;
+export type LogsParams = NonNullable<operations['get_device_logs']['parameters']['query']>;
 
 // ---------------------------------------------------------------------------
 // Device Config
 // ---------------------------------------------------------------------------
 
-export type DeviceConfigResponse = components["schemas"]["ConfigResponse"];
+export type DeviceConfigResponse = components['schemas']['ConfigResponse'];
 
 // ---------------------------------------------------------------------------
 // Certificates
 // ---------------------------------------------------------------------------
 
-export type CaCertificateResponse = components["schemas"]["CaCertificateResponse"];
-export type DeviceCertificateResponse = components["schemas"]["DeviceCertificateResponse"];
-export type DeviceCertificateStatusResponse = components["schemas"]["DeviceCertificateStatusResponse"];
+export type CaCertificateResponse = components['schemas']['CaCertificateResponse'];
+export type DeviceCertificateResponse = components['schemas']['DeviceCertificateResponse'];
+export type DeviceCertificateStatusResponse =
+  components['schemas']['DeviceCertificateStatusResponse'];
 
 // ---------------------------------------------------------------------------
 // API Keys
@@ -199,9 +194,9 @@ export interface CreateApiKeyResponse {
 // Health
 // ---------------------------------------------------------------------------
 
-export type HealthResponse = components["schemas"]["HealthResponse"];
-export type ReadyResponse = components["schemas"]["ReadyResponse"];
-export type ErrorBody = components["schemas"]["ErrorBody"];
+export type HealthResponse = components['schemas']['HealthResponse'];
+export type ReadyResponse = components['schemas']['ReadyResponse'];
+export type ErrorBody = components['schemas']['ErrorBody'];
 
 // ---------------------------------------------------------------------------
 // Server Metrics

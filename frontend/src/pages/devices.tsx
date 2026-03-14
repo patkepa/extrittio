@@ -20,7 +20,10 @@ import { useDevices } from '../hooks/use-devices';
 import { useFleets } from '../hooks/use-fleets';
 import { useUIStore } from '../stores/ui-store';
 import { AddDeviceDialog } from '../components/devices/add-device-dialog';
-import { useDeviceHoverTooltip, DeviceHoverTooltip } from '../components/devices/device-hover-tooltip';
+import {
+  useDeviceHoverTooltip,
+  DeviceHoverTooltip,
+} from '../components/devices/device-hover-tooltip';
 import { useSelectionStore } from '../stores/selection-store';
 import { BulkActionBar } from '../components/devices/bulk-action-bar';
 import type { Device, BulkDeviceFilters, ListDevicesParams } from '../types/api';
@@ -29,22 +32,30 @@ import './devices.css';
 type SortField = 'name' | 'status' | 'last_seen' | 'uptime';
 type SortDir = 'asc' | 'desc';
 
-const SortHeader = memo(({ field, sortField, sortDir, onSort, children }: {
-  field: SortField;
-  sortField: SortField;
-  sortDir: SortDir;
-  onSort: (field: SortField) => void;
-  children: React.ReactNode;
-}) => (
-  <th className="sortable-th" onClick={() => onSort(field)}>
-    <span className="th-content">
-      {children}
-      {sortField === field && (
-        <Icon icon={sortDir === 'asc' ? 'chevron-up' : 'chevron-down'} size={12} />
-      )}
-    </span>
-  </th>
-));
+const SortHeader = memo(
+  ({
+    field,
+    sortField,
+    sortDir,
+    onSort,
+    children,
+  }: {
+    field: SortField;
+    sortField: SortField;
+    sortDir: SortDir;
+    onSort: (field: SortField) => void;
+    children: React.ReactNode;
+  }) => (
+    <th className="sortable-th" onClick={() => onSort(field)}>
+      <span className="th-content">
+        {children}
+        {sortField === field && (
+          <Icon icon={sortDir === 'asc' ? 'chevron-up' : 'chevron-down'} size={12} />
+        )}
+      </span>
+    </th>
+  ),
+);
 
 const sparklineCache = new Map<string, number[]>();
 
@@ -128,9 +139,7 @@ export const Devices = () => {
     ...(filterFleetId ? { fleet_id: filterFleetId } : {}),
     ...(debouncedSearch ? { search: debouncedSearch } : {}),
   };
-  const devicesQuery = useDevices(
-    Object.keys(queryParams).length > 0 ? queryParams : undefined
-  );
+  const devicesQuery = useDevices(Object.keys(queryParams).length > 0 ? queryParams : undefined);
   const devices = devicesQuery.data?.data ?? [];
   const totalDeviceCount = devicesQuery.data?.total ?? 0;
   const isLoading = devicesQuery.isLoading;
@@ -145,11 +154,14 @@ export const Devices = () => {
       if (device) {
         navigate(`/devices/${device.id}`, { replace: true });
       } else {
-        setSearchParams((prev) => {
-          const next = new URLSearchParams(prev);
-          next.delete('device');
-          return next;
-        }, { replace: true });
+        setSearchParams(
+          (prev) => {
+            const next = new URLSearchParams(prev);
+            next.delete('device');
+            return next;
+          },
+          { replace: true },
+        );
       }
     }
   }, [deviceParam, devices, navigate, setSearchParams]);
@@ -161,7 +173,8 @@ export const Devices = () => {
       const dir = sortDir === 'asc' ? 1 : -1;
       if (sortField === 'name') return a.name.localeCompare(b.name) * dir;
       if (sortField === 'status') return a.status.localeCompare(b.status) * dir;
-      if (sortField === 'last_seen') return (a.last_seen ?? '').localeCompare(b.last_seen ?? '') * dir;
+      if (sortField === 'last_seen')
+        return (a.last_seen ?? '').localeCompare(b.last_seen ?? '') * dir;
       if (sortField === 'uptime') return (a.uptime ?? '').localeCompare(b.uptime ?? '') * dir;
       return 0;
     });
@@ -179,17 +192,23 @@ export const Devices = () => {
     navigate(`/devices/${device.id}`);
   };
 
-  const statusCounts = useMemo(() => ({
-    all: devices.length,
-    online: devices.filter((d) => d.status === 'online').length,
-    offline: devices.filter((d) => d.status === 'offline').length,
-  }), [devices]);
+  const statusCounts = useMemo(
+    () => ({
+      all: devices.length,
+      online: devices.filter((d) => d.status === 'online').length,
+      offline: devices.filter((d) => d.status === 'offline').length,
+    }),
+    [devices],
+  );
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'online': return '#0F9960';
-      case 'offline': return '#E76A6E';
-      default: return '#888';
+      case 'online':
+        return '#0F9960';
+      case 'offline':
+        return '#E76A6E';
+      default:
+        return '#888';
     }
   };
 
@@ -223,7 +242,10 @@ export const Devices = () => {
           <p className="page-description">
             {filteredDevices.length} of {devices.length} devices
             {activeFleetName && (
-              <span> in <strong>{activeFleetName}</strong></span>
+              <span>
+                {' '}
+                in <strong>{activeFleetName}</strong>
+              </span>
             )}
           </p>
         </div>
@@ -268,7 +290,9 @@ export const Devices = () => {
                   onClick={() => setFilterStatus(status)}
                 >
                   {status !== 'all' && <span className={`status-led status-led--${status}`} />}
-                  <span className="pill-label">{status === 'all' ? 'All' : status.charAt(0).toUpperCase() + status.slice(1)}</span>
+                  <span className="pill-label">
+                    {status === 'all' ? 'All' : status.charAt(0).toUpperCase() + status.slice(1)}
+                  </span>
                   <span className="pill-count mono-data">{statusCounts[status]}</span>
                 </button>
               ))}
@@ -316,8 +340,7 @@ export const Devices = () => {
                 <th style={{ width: 40 }} onClick={(e) => e.stopPropagation()}>
                   <Checkbox
                     checked={
-                      filteredDevices.length > 0 &&
-                      filteredDevices.every((d) => isSelected(d.id))
+                      filteredDevices.length > 0 && filteredDevices.every((d) => isSelected(d.id))
                     }
                     indeterminate={
                       filteredDevices.some((d) => isSelected(d.id)) &&
@@ -334,7 +357,14 @@ export const Devices = () => {
                   />
                 </th>
                 <th style={{ width: 40 }}></th>
-                <SortHeader field="name" sortField={sortField} sortDir={sortDir} onSort={handleSort}>Name</SortHeader>
+                <SortHeader
+                  field="name"
+                  sortField={sortField}
+                  sortDir={sortDir}
+                  onSort={handleSort}
+                >
+                  Name
+                </SortHeader>
                 <th>Type</th>
                 <th>Fleet</th>
                 <th>Last Seen</th>
@@ -345,54 +375,56 @@ export const Devices = () => {
             </thead>
             <tbody>
               {filteredDevices.map((device) => (
-                  <tr
-                    key={device.id}
-                    className={`device-row ${isSelected(device.id) ? 'device-row--selected' : ''}`}
-                    onClick={() => handleViewDevice(device)}
-                    onMouseEnter={(e) => onMouseEnter(device, e)}
-                    onMouseLeave={onMouseLeave}
-                  >
-                    <td onClick={(e) => e.stopPropagation()}>
-                      <Checkbox
-                        checked={isSelected(device.id)}
-                        onChange={() => toggleDevice(device.id)}
-                        style={{ marginBottom: 0 }}
-                      />
-                    </td>
-                    <td>
-                      <span className={`status-led status-led--${device.status}`} />
-                    </td>
-                    <td>
-                      <div className="device-name-cell">
-                        <strong>{device.name}</strong>
-                        <span className="device-id mono-data">{device.id}</span>
-                      </div>
-                    </td>
-                    <td>
-                      <Tag minimal>{device.device_type_name}</Tag>
-                    </td>
-                    <td>
-                      {device.fleet_name ? (
-                        <Tag minimal intent="primary">{device.fleet_name}</Tag>
-                      ) : (
-                        <span style={{ color: 'hsl(var(--muted))', fontSize: 12 }}>—</span>
-                      )}
-                    </td>
-                    <td>
-                      <span className="mono-data">{device.last_seen}</span>
-                    </td>
-                    <td>
-                      <code className="firmware-badge">{device.firmware}</code>
-                    </td>
-                    <td>
-                      <div className="row-sparkline">
-                        <RowSparkline deviceId={device.id} color={getStatusColor(device.status)} />
-                      </div>
-                    </td>
-                    <td>
-                      <span className="mono-data">{device.uptime}</span>
-                    </td>
-                  </tr>
+                <tr
+                  key={device.id}
+                  className={`device-row ${isSelected(device.id) ? 'device-row--selected' : ''}`}
+                  onClick={() => handleViewDevice(device)}
+                  onMouseEnter={(e) => onMouseEnter(device, e)}
+                  onMouseLeave={onMouseLeave}
+                >
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                      checked={isSelected(device.id)}
+                      onChange={() => toggleDevice(device.id)}
+                      style={{ marginBottom: 0 }}
+                    />
+                  </td>
+                  <td>
+                    <span className={`status-led status-led--${device.status}`} />
+                  </td>
+                  <td>
+                    <div className="device-name-cell">
+                      <strong>{device.name}</strong>
+                      <span className="device-id mono-data">{device.id}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <Tag minimal>{device.device_type_name}</Tag>
+                  </td>
+                  <td>
+                    {device.fleet_name ? (
+                      <Tag minimal intent="primary">
+                        {device.fleet_name}
+                      </Tag>
+                    ) : (
+                      <span style={{ color: 'hsl(var(--muted))', fontSize: 12 }}>—</span>
+                    )}
+                  </td>
+                  <td>
+                    <span className="mono-data">{device.last_seen}</span>
+                  </td>
+                  <td>
+                    <code className="firmware-badge">{device.firmware}</code>
+                  </td>
+                  <td>
+                    <div className="row-sparkline">
+                      <RowSparkline deviceId={device.id} color={getStatusColor(device.status)} />
+                    </div>
+                  </td>
+                  <td>
+                    <span className="mono-data">{device.uptime}</span>
+                  </td>
+                </tr>
               ))}
             </tbody>
           </HTMLTable>

@@ -1,15 +1,15 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getDeviceShadow,
   updateDesiredState,
   updateReportedState,
   deleteDeviceShadow,
-} from "../api/shadows";
-import { queryKeys } from "./query-keys";
+} from '../api/shadows';
+import { queryKeys } from './query-keys';
 
 export function useDeviceShadow(deviceId: string | null) {
   return useQuery({
-    queryKey: queryKeys.shadow.detail(deviceId ?? ""),
+    queryKey: queryKeys.shadow.detail(deviceId ?? ''),
     queryFn: () => getDeviceShadow(deviceId!),
     enabled: !!deviceId,
     staleTime: 10_000,

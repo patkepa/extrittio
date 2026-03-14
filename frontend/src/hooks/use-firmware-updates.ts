@@ -1,9 +1,9 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type {
   CreateFirmwareUpdateRequest,
   FirmwareUpdatesParams,
   TriggerOtaRequest,
-} from "../types/api";
+} from '../types/api';
 import {
   getFirmwareUpdates,
   createFirmwareUpdate,
@@ -12,9 +12,9 @@ import {
   getOtaDeployments,
   triggerOta,
   uploadFirmwareUpdate,
-} from "../api/firmware-updates";
-import type { UploadFirmwareRequest } from "../api/firmware-updates";
-import { queryKeys } from "./query-keys";
+} from '../api/firmware-updates';
+import type { UploadFirmwareRequest } from '../api/firmware-updates';
+import { queryKeys } from './query-keys';
 
 export function useFirmwareUpdates(params?: FirmwareUpdatesParams) {
   return useQuery({
@@ -45,8 +45,7 @@ export function useOtaDeployments(deviceId: string | null) {
 export function useCreateFirmwareUpdate() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: CreateFirmwareUpdateRequest) =>
-      createFirmwareUpdate(body),
+    mutationFn: (body: CreateFirmwareUpdateRequest) => createFirmwareUpdate(body),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.firmware.all });
       void queryClient.invalidateQueries({
@@ -85,13 +84,8 @@ export function useDeleteFirmwareUpdate() {
 export function useTriggerOta() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      deviceId,
-      body,
-    }: {
-      deviceId: string;
-      body: TriggerOtaRequest;
-    }) => triggerOta(deviceId, body),
+    mutationFn: ({ deviceId, body }: { deviceId: string; body: TriggerOtaRequest }) =>
+      triggerOta(deviceId, body),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
         queryKey: queryKeys.shadow.detail(variables.deviceId),

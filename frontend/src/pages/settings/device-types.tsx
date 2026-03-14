@@ -41,8 +41,10 @@ export const DeviceTypesSettings = () => {
           setNewName('');
           void showSuccessToast('Device type created');
         },
-        onError: () => { void showErrorToast('Failed to create device type'); },
-      }
+        onError: () => {
+          void showErrorToast('Failed to create device type');
+        },
+      },
     );
   };
 

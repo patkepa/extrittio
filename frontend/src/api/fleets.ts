@@ -1,13 +1,13 @@
-import client from "./client";
-import type { Fleet, CreateFleetRequest } from "../types/api";
+import client from './client';
+import type { Fleet, CreateFleetRequest } from '../types/api';
 
 export async function getFleets(): Promise<Fleet[]> {
-  const { data } = await client.get<{ data: Fleet[] }>("/fleets");
+  const { data } = await client.get<{ data: Fleet[] }>('/fleets');
   return data.data;
 }
 
 export async function createFleet(body: CreateFleetRequest): Promise<Fleet> {
-  const { data } = await client.post<Fleet>("/fleets", body);
+  const { data } = await client.post<Fleet>('/fleets', body);
   return data;
 }
 

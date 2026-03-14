@@ -18,12 +18,7 @@ import {
   Spinner,
   Icon,
 } from '@blueprintjs/core';
-import {
-  useFleets,
-  useCreateFleet,
-  useUpdateFleet,
-  useDeleteFleet,
-} from '../../hooks/use-fleets';
+import { useFleets, useCreateFleet, useUpdateFleet, useDeleteFleet } from '../../hooks/use-fleets';
 import './settings.css';
 
 export const FleetsSettings = () => {
@@ -47,8 +42,10 @@ export const FleetsSettings = () => {
           setNewName('');
           void showSuccessToast('Fleet created');
         },
-        onError: () => { void showErrorToast('Failed to create fleet'); },
-      }
+        onError: () => {
+          void showErrorToast('Failed to create fleet');
+        },
+      },
     );
   };
 
@@ -62,8 +59,10 @@ export const FleetsSettings = () => {
           setEditName('');
           void showSuccessToast('Fleet renamed');
         },
-        onError: () => { void showErrorToast('Failed to rename fleet'); },
-      }
+        onError: () => {
+          void showErrorToast('Failed to rename fleet');
+        },
+      },
     );
   };
 
@@ -211,11 +210,7 @@ export const FleetsSettings = () => {
       >
         <DialogBody>
           <FormGroup label="Name" labelInfo="(required)">
-            <InputGroup
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              autoFocus
-            />
+            <InputGroup value={editName} onChange={(e) => setEditName(e.target.value)} autoFocus />
           </FormGroup>
           {updateMutation.isError && (
             <Callout intent="danger" icon="error">

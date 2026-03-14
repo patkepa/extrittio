@@ -23,15 +23,18 @@ export const DeviceDetail = () => {
   const currentTab = VALID_TABS.includes(activeTab) ? activeTab : 'overview';
 
   const handleTabChange = (newTab: string) => {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      if (newTab === 'overview') {
-        next.delete('tab');
-      } else {
-        next.set('tab', newTab);
-      }
-      return next;
-    }, { replace: true });
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (newTab === 'overview') {
+          next.delete('tab');
+        } else {
+          next.set('tab', newTab);
+        }
+        return next;
+      },
+      { replace: true },
+    );
   };
 
   if (!deviceId) return <Navigate to="/devices" replace />;
@@ -76,13 +79,41 @@ export const DeviceDetail = () => {
       </div>
 
       <div className="detail-tab-content">
-        {currentTab === 'overview' && <ErrorBoundary><OverviewTab device={device} /></ErrorBoundary>}
-        {currentTab === 'telemetry' && <ErrorBoundary><TelemetryTab deviceId={device.id} deviceTypeName={device.device_type_name} /></ErrorBoundary>}
-        {currentTab === 'logs' && <ErrorBoundary><LogsTab deviceId={device.id} /></ErrorBoundary>}
-        {currentTab === 'config' && <ErrorBoundary><ConfigTab deviceId={device.id} /></ErrorBoundary>}
-        {currentTab === 'shadow' && <ErrorBoundary><ShadowTab deviceId={device.id} /></ErrorBoundary>}
-        {currentTab === 'commands' && <ErrorBoundary><CommandsTab deviceId={device.id} /></ErrorBoundary>}
-        {currentTab === 'ota' && <ErrorBoundary><OtaTab device={device} /></ErrorBoundary>}
+        {currentTab === 'overview' && (
+          <ErrorBoundary>
+            <OverviewTab device={device} />
+          </ErrorBoundary>
+        )}
+        {currentTab === 'telemetry' && (
+          <ErrorBoundary>
+            <TelemetryTab deviceId={device.id} deviceTypeName={device.device_type_name} />
+          </ErrorBoundary>
+        )}
+        {currentTab === 'logs' && (
+          <ErrorBoundary>
+            <LogsTab deviceId={device.id} />
+          </ErrorBoundary>
+        )}
+        {currentTab === 'config' && (
+          <ErrorBoundary>
+            <ConfigTab deviceId={device.id} />
+          </ErrorBoundary>
+        )}
+        {currentTab === 'shadow' && (
+          <ErrorBoundary>
+            <ShadowTab deviceId={device.id} />
+          </ErrorBoundary>
+        )}
+        {currentTab === 'commands' && (
+          <ErrorBoundary>
+            <CommandsTab deviceId={device.id} />
+          </ErrorBoundary>
+        )}
+        {currentTab === 'ota' && (
+          <ErrorBoundary>
+            <OtaTab device={device} />
+          </ErrorBoundary>
+        )}
       </div>
     </div>
   );

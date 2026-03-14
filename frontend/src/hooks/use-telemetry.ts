@@ -1,14 +1,11 @@
-import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import type { TelemetryParams, TelemetryRecord } from "../types/api";
-import { getDeviceTelemetry } from "../api/telemetry";
-import { queryKeys } from "./query-keys";
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
+import type { TelemetryParams, TelemetryRecord } from '../types/api';
+import { getDeviceTelemetry } from '../api/telemetry';
+import { queryKeys } from './query-keys';
 
-export function useDeviceTelemetry(
-  deviceId: string | null,
-  params?: TelemetryParams
-) {
+export function useDeviceTelemetry(deviceId: string | null, params?: TelemetryParams) {
   return useQuery({
-    queryKey: queryKeys.telemetry.list(deviceId ?? "", params),
+    queryKey: queryKeys.telemetry.list(deviceId ?? '', params),
     queryFn: () => getDeviceTelemetry(deviceId!, params),
     enabled: !!deviceId,
     staleTime: 10_000,
@@ -21,7 +18,7 @@ const ALL_MAX_RECORDS = 50_000;
 
 export function useAllDeviceTelemetry(deviceId: string | null) {
   return useQuery({
-    queryKey: queryKeys.telemetry.all(deviceId ?? ""),
+    queryKey: queryKeys.telemetry.all(deviceId ?? ''),
     queryFn: async () => {
       if (!deviceId) return [];
       const allRecords: TelemetryRecord[] = [];
@@ -48,7 +45,7 @@ export function useAllDeviceTelemetry(deviceId: string | null) {
       // Backend returns DESC per page; explicit sort guarantees correct order
       // regardless of page boundaries or duplicate timestamps.
       allRecords.sort(
-        (a, b) => new Date(a.received_at).getTime() - new Date(b.received_at).getTime()
+        (a, b) => new Date(a.received_at).getTime() - new Date(b.received_at).getTime(),
       );
 
       return allRecords;

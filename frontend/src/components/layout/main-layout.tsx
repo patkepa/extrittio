@@ -47,31 +47,30 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
 
   const currentRoute = deviceDetailMatch
     ? null
-    : routeNames[location.pathname]
-      ?? location.pathname.split('/').filter(Boolean).map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' / ');
+    : (routeNames[location.pathname] ??
+      location.pathname
+        .split('/')
+        .filter(Boolean)
+        .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+        .join(' / '));
 
   return (
     <div className="main-layout">
-      <AppSidebar
-        isCollapsed={sidebarCollapsed}
-      />
+      <AppSidebar isCollapsed={sidebarCollapsed} />
 
       <div className="main-content">
         <Navbar className="top-navbar">
           <NavbarGroup>
             <Button
               className="desktop-collapse-button"
-              icon={sidebarCollapsed ? "double-chevron-right" : "double-chevron-left"}
+              icon={sidebarCollapsed ? 'double-chevron-right' : 'double-chevron-left'}
               minimal
               onClick={toggleSidebar}
               title="Toggle Sidebar (⌘B)"
             />
             {deviceDetailMatch ? (
               <span className="navbar-breadcrumb">
-                <span
-                  className="breadcrumb-link"
-                  onClick={() => navigate('/devices')}
-                >
+                <span className="breadcrumb-link" onClick={() => navigate('/devices')}>
                   Devices
                 </span>
                 <span className="breadcrumb-sep"> / </span>
@@ -83,19 +82,12 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
           </NavbarGroup>
 
           <NavbarGroup align="right">
-            <Button
-              icon="search"
-              minimal
-              title="Search (⌘K)"
-              onClick={openCommandPalette}
-            />
+            <Button icon="search" minimal title="Search (⌘K)" onClick={openCommandPalette} />
           </NavbarGroup>
         </Navbar>
 
         <div className="page-content">
-          <ErrorBoundary>
-            {children}
-          </ErrorBoundary>
+          <ErrorBoundary>{children}</ErrorBoundary>
         </div>
       </div>
 

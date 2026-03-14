@@ -1,10 +1,5 @@
 import type { Device, Fleet } from '../../types/api';
-import {
-  STATUS_COLORS,
-  FLEET_COLOR,
-  DEFAULT_COLOR,
-  TYPE_ABBREVS,
-} from './constants';
+import { STATUS_COLORS, FLEET_COLOR, DEFAULT_COLOR, TYPE_ABBREVS } from './constants';
 import { getUptimeArcAngle, getHealthTier } from './health-utils';
 
 function getTypeAbbrev(deviceTypeName: string): string {
@@ -26,7 +21,7 @@ export interface GraphNode {
   // Health data (computed from last_seen_at / uptime_seconds)
   lastSeenTimestamp?: number; // parsed epoch ms, cached for per-frame staleness
   uptimeSeconds?: number;
-  uptimeArcAngle?: number;   // radians, computed once per refresh
+  uptimeArcAngle?: number; // radians, computed once per refresh
   // Fleet hub aggregate health (proportions 0-1)
   tierRatios?: { fresh: number; warm: number; stale: number; dead: number; never: number };
   // Cross-linked by buildForceGraphData after construction
@@ -78,7 +73,10 @@ export function buildForceGraphData(
       neighbors: [],
       links: [],
     };
-    if (prev) { node.x = prev.x; node.y = prev.y; }
+    if (prev) {
+      node.x = prev.x;
+      node.y = prev.y;
+    }
     nodes.push(node);
     nodeMap.set(node.id, node);
   }
@@ -99,21 +97,21 @@ export function buildForceGraphData(
       neighbors: [],
       links: [],
     };
-    if (prev) { node.x = prev.x; node.y = prev.y; }
+    if (prev) {
+      node.x = prev.x;
+      node.y = prev.y;
+    }
     nodes.push(node);
     nodeMap.set(node.id, node);
   }
 
   // Device nodes + links
   for (const device of devices) {
-    const fleetNodeId =
-      device.fleet_id != null ? `fleet-${device.fleet_id}` : 'fleet-unassigned';
+    const fleetNodeId = device.fleet_id != null ? `fleet-${device.fleet_id}` : 'fleet-unassigned';
 
     const nodeId = `device-${device.id}`;
     const prev = prevNodeMap.get(nodeId);
-    const lastSeenTimestamp = device.last_seen_at
-      ? new Date(device.last_seen_at).getTime()
-      : NaN;
+    const lastSeenTimestamp = device.last_seen_at ? new Date(device.last_seen_at).getTime() : NaN;
     const uptimeSeconds = device.uptime_seconds ?? 0;
 
     const node: GraphNode = {
@@ -133,7 +131,10 @@ export function buildForceGraphData(
       neighbors: [],
       links: [],
     };
-    if (prev) { node.x = prev.x; node.y = prev.y; }
+    if (prev) {
+      node.x = prev.x;
+      node.y = prev.y;
+    }
     nodes.push(node);
     nodeMap.set(node.id, node);
 
@@ -163,7 +164,11 @@ export function buildForceGraphData(
       continue;
     }
     const now = Date.now();
-    let fresh = 0, warm = 0, stale = 0, dead = 0, never = 0;
+    let fresh = 0,
+      warm = 0,
+      stale = 0,
+      dead = 0,
+      never = 0;
     for (const dn of deviceNeighbors) {
       const staleness = dn.lastSeenTimestamp ? now - dn.lastSeenTimestamp : NaN;
       const tier = getHealthTier(staleness, dn.status);

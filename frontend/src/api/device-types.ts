@@ -1,15 +1,13 @@
-import client from "./client";
-import type { DeviceType, CreateDeviceTypeRequest } from "../types/api";
+import client from './client';
+import type { DeviceType, CreateDeviceTypeRequest } from '../types/api';
 
 export async function getDeviceTypes(): Promise<DeviceType[]> {
-  const { data } = await client.get<{ data: DeviceType[] }>("/device-types");
+  const { data } = await client.get<{ data: DeviceType[] }>('/device-types');
   return data.data;
 }
 
-export async function createDeviceType(
-  body: CreateDeviceTypeRequest
-): Promise<DeviceType> {
-  const { data } = await client.post<DeviceType>("/device-types", body);
+export async function createDeviceType(body: CreateDeviceTypeRequest): Promise<DeviceType> {
+  const { data } = await client.post<DeviceType>('/device-types', body);
   return data;
 }
 

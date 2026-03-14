@@ -1,11 +1,7 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { CreateDeviceTypeRequest } from "../types/api";
-import {
-  getDeviceTypes,
-  createDeviceType,
-  deleteDeviceType,
-} from "../api/device-types";
-import { queryKeys } from "./query-keys";
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import type { CreateDeviceTypeRequest } from '../types/api';
+import { getDeviceTypes, createDeviceType, deleteDeviceType } from '../api/device-types';
+import { queryKeys } from './query-keys';
 
 export function useDeviceTypes() {
   return useQuery({

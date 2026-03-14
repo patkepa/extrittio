@@ -31,12 +31,8 @@ export const FleetGraphContextMenu = ({
   onRemoveFromFleet,
 }: FleetGraphContextMenuProps) => {
   const { data: fleets = [] } = useFleets();
-  const {
-    selectedDeviceIds,
-    toggleDevice,
-    addToSelection,
-    removeFromSelection,
-  } = useSelectionStore();
+  const { selectedDeviceIds, toggleDevice, addToSelection, removeFromSelection } =
+    useSelectionStore();
 
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -50,9 +46,7 @@ export const FleetGraphContextMenu = ({
   const hasMultiSelection = isSelected && selectedDeviceIds.size > 1;
 
   // Determine which device IDs an action applies to
-  const actionDeviceIds = hasMultiSelection
-    ? Array.from(selectedDeviceIds)
-    : [target.node.id];
+  const actionDeviceIds = hasMultiSelection ? Array.from(selectedDeviceIds) : [target.node.id];
 
   const handleClickOutside = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -68,7 +62,10 @@ export const FleetGraphContextMenu = ({
       <div
         className="fleet-graph-context-menu-backdrop"
         onClick={handleClickOutside}
-        onContextMenu={(e) => { e.preventDefault(); onClose(); }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          onClose();
+        }}
       >
         <div
           ref={menuRef}
@@ -81,12 +78,18 @@ export const FleetGraphContextMenu = ({
             <MenuItem
               icon="select"
               text={`Select all ${fleetDeviceIds.length} devices`}
-              onClick={() => { addToSelection(fleetDeviceIds); onClose(); }}
+              onClick={() => {
+                addToSelection(fleetDeviceIds);
+                onClose();
+              }}
             />
             <MenuItem
               icon="disable"
               text="Deselect all devices"
-              onClick={() => { removeFromSelection(fleetDeviceIds); onClose(); }}
+              onClick={() => {
+                removeFromSelection(fleetDeviceIds);
+                onClose();
+              }}
             />
           </Menu>
         </div>
@@ -100,7 +103,10 @@ export const FleetGraphContextMenu = ({
     <div
       className="fleet-graph-context-menu-backdrop"
       onClick={handleClickOutside}
-      onContextMenu={(e) => { e.preventDefault(); onClose(); }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onClose();
+      }}
     >
       <div
         ref={menuRef}
@@ -113,7 +119,10 @@ export const FleetGraphContextMenu = ({
           <MenuItem
             icon="eye-open"
             text="View Details"
-            onClick={() => { onViewDetails(target.node); onClose(); }}
+            onClick={() => {
+              onViewDetails(target.node);
+              onClose();
+            }}
           />
           <MenuDivider />
           <MenuItem icon="flows" text="Assign to Fleet">
@@ -142,7 +151,10 @@ export const FleetGraphContextMenu = ({
           <MenuItem
             icon={isSelected ? 'disable' : 'select'}
             text={isSelected ? 'Deselect' : 'Select'}
-            onClick={() => { toggleDevice(target.node.id); onClose(); }}
+            onClick={() => {
+              toggleDevice(target.node.id);
+              onClose();
+            }}
           />
         </Menu>
       </div>

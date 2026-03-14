@@ -10,9 +10,7 @@ export function toAlignedData(
   yKeys: string[],
 ): uPlot.AlignedData {
   const xs = new Float64Array(rows.length);
-  const series: (Float64Array | (number | null)[])[] = yKeys.map(
-    () => new Array(rows.length),
-  );
+  const series: (Float64Array | (number | null)[])[] = yKeys.map(() => new Array(rows.length));
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]!;
