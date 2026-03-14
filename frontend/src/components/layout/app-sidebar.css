@@ -73,7 +73,7 @@
 
 .env-switcher-btn:hover {
   background-color: var(--sidebar-accent-hover);
-  border-color: hsl(var(--accent) / 0.3);
+  border-color: hsla(0, 0%, 100%, 0.12);
 }
 
 .env-switcher-left {
@@ -289,14 +289,9 @@
 /* User card */
 .user-card {
   padding: 10px;
-  background-color: var(--sidebar-accent);
-  border: 1px solid var(--sidebar-border);
+  background-color: transparent;
+  border: none;
   border-radius: 8px;
-  transition: border-color 0.15s ease;
-}
-
-.user-card:hover {
-  border-color: hsl(var(--accent) / 0.2);
 }
 
 .user-info {
@@ -317,7 +312,6 @@
   flex-shrink: 0;
   font-weight: 700;
   font-size: 13px;
-  box-shadow: 0 2px 6px hsl(var(--accent) / 0.25);
 }
 
 .collapsed-avatar {
