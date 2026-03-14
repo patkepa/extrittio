@@ -33,8 +33,8 @@ typedef struct _extrittio_DeviceHeartbeat {
 } extrittio_DeviceHeartbeat;
 
 typedef struct _extrittio_DeviceCommand_ParamsEntry {
-    pb_callback_t key;
-    pb_callback_t value;
+    char key[64];
+    char value[256];
 } extrittio_DeviceCommand_ParamsEntry;
 
 typedef struct _extrittio_DeviceCommand {
@@ -86,7 +86,7 @@ extern "C" {
 #define extrittio_DeviceTelemetry_MetadataEntry_init_default {{{NULL}, NULL}, {{NULL}, NULL}}
 #define extrittio_DeviceHeartbeat_init_default   {"", 0, "", "", 0}
 #define extrittio_DeviceCommand_init_default     {"", 0, {extrittio_DeviceCommand_ParamsEntry_init_default, extrittio_DeviceCommand_ParamsEntry_init_default, extrittio_DeviceCommand_ParamsEntry_init_default, extrittio_DeviceCommand_ParamsEntry_init_default, extrittio_DeviceCommand_ParamsEntry_init_default, extrittio_DeviceCommand_ParamsEntry_init_default, extrittio_DeviceCommand_ParamsEntry_init_default, extrittio_DeviceCommand_ParamsEntry_init_default, extrittio_DeviceCommand_ParamsEntry_init_default, extrittio_DeviceCommand_ParamsEntry_init_default, extrittio_DeviceCommand_ParamsEntry_init_default, extrittio_DeviceCommand_ParamsEntry_init_default, extrittio_DeviceCommand_ParamsEntry_init_default, extrittio_DeviceCommand_ParamsEntry_init_default, extrittio_DeviceCommand_ParamsEntry_init_default, extrittio_DeviceCommand_ParamsEntry_init_default}, ""}
-#define extrittio_DeviceCommand_ParamsEntry_init_default {{{NULL}, NULL}, {{NULL}, NULL}}
+#define extrittio_DeviceCommand_ParamsEntry_init_default {"", ""}
 #define extrittio_DeviceCommandResponse_init_default {"", "", "", "", 0}
 #define extrittio_ShadowReport_init_default      {"", 0, "", 0}
 #define extrittio_ShadowDelta_init_default       {"", "", 0}
@@ -96,7 +96,7 @@ extern "C" {
 #define extrittio_DeviceTelemetry_MetadataEntry_init_zero {{{NULL}, NULL}, {{NULL}, NULL}}
 #define extrittio_DeviceHeartbeat_init_zero      {"", 0, "", "", 0}
 #define extrittio_DeviceCommand_init_zero        {"", 0, {extrittio_DeviceCommand_ParamsEntry_init_zero, extrittio_DeviceCommand_ParamsEntry_init_zero, extrittio_DeviceCommand_ParamsEntry_init_zero, extrittio_DeviceCommand_ParamsEntry_init_zero, extrittio_DeviceCommand_ParamsEntry_init_zero, extrittio_DeviceCommand_ParamsEntry_init_zero, extrittio_DeviceCommand_ParamsEntry_init_zero, extrittio_DeviceCommand_ParamsEntry_init_zero, extrittio_DeviceCommand_ParamsEntry_init_zero, extrittio_DeviceCommand_ParamsEntry_init_zero, extrittio_DeviceCommand_ParamsEntry_init_zero, extrittio_DeviceCommand_ParamsEntry_init_zero, extrittio_DeviceCommand_ParamsEntry_init_zero, extrittio_DeviceCommand_ParamsEntry_init_zero, extrittio_DeviceCommand_ParamsEntry_init_zero, extrittio_DeviceCommand_ParamsEntry_init_zero}, ""}
-#define extrittio_DeviceCommand_ParamsEntry_init_zero {{{NULL}, NULL}, {{NULL}, NULL}}
+#define extrittio_DeviceCommand_ParamsEntry_init_zero {"", ""}
 #define extrittio_DeviceCommandResponse_init_zero {"", "", "", "", 0}
 #define extrittio_ShadowReport_init_zero         {"", 0, "", 0}
 #define extrittio_ShadowDelta_init_zero          {"", "", 0}
@@ -176,9 +176,9 @@ X(a, STATIC,   SINGULAR, STRING,   correlation_id,    3)
 #define extrittio_DeviceCommand_params_MSGTYPE extrittio_DeviceCommand_ParamsEntry
 
 #define extrittio_DeviceCommand_ParamsEntry_FIELDLIST(X, a) \
-X(a, CALLBACK, SINGULAR, STRING,   key,               1) \
-X(a, CALLBACK, SINGULAR, STRING,   value,             2)
-#define extrittio_DeviceCommand_ParamsEntry_CALLBACK pb_default_field_callback
+X(a, STATIC,   SINGULAR, STRING,   key,               1) \
+X(a, STATIC,   SINGULAR, STRING,   value,             2)
+#define extrittio_DeviceCommand_ParamsEntry_CALLBACK NULL
 #define extrittio_DeviceCommand_ParamsEntry_DEFAULT NULL
 
 #define extrittio_DeviceCommandResponse_FIELDLIST(X, a) \
@@ -244,10 +244,10 @@ extern const pb_msgdesc_t extrittio_DeviceLog_msg;
 /* Maximum encoded size of messages (where known) */
 /* extrittio_DeviceTelemetry_size depends on runtime parameters */
 /* extrittio_DeviceTelemetry_MetadataEntry_size depends on runtime parameters */
-/* extrittio_DeviceCommand_size depends on runtime parameters */
-/* extrittio_DeviceCommand_ParamsEntry_size depends on runtime parameters */
-#define EXTRITTIO_PROTO_TELEMETRY_PB_H_MAX_SIZE  extrittio_ShadowReport_size
+#define EXTRITTIO_PROTO_TELEMETRY_PB_H_MAX_SIZE  extrittio_DeviceCommand_size
 #define extrittio_DeviceCommandResponse_size     672
+#define extrittio_DeviceCommand_ParamsEntry_size 323
+#define extrittio_DeviceCommand_size             5346
 #define extrittio_DeviceHeartbeat_size           137
 #define extrittio_DeviceLog_size                 343
 #define extrittio_ShadowDelta_size               1102
