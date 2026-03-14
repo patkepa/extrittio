@@ -63,23 +63,6 @@
   --danger-light: 0 60% 15%;
 }
 
-/* Lattice-style grid background texture */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-  background-size: 40px 40px;
-}
-
-#root {
-  position: relative;
-  z-index: 1;
-}
 
 /* LED Status Indicator System */
 .status-led {
@@ -169,7 +152,7 @@ code {
 /* Typography improvements */
 h1, h2, h3, h4, h5, h6 {
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
   color: hsl(var(--foreground));
 }
 
