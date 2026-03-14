@@ -54,7 +54,7 @@ export const SVGDonut = ({
                 strokeWidth={strokeWidth}
                 strokeDasharray={`${Math.max(0, arcLength)} ${circumference - Math.max(0, arcLength)}`}
                 strokeDashoffset={-offset}
-                strokeLinecap="round"
+                strokeLinecap="butt"
               />
             );
             offset += fraction * circumference;
