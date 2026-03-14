@@ -1,8 +1,10 @@
 import { useState, useMemo } from 'react';
 import { Callout, SegmentedControl, Spinner } from '@blueprintjs/core';
-import { AreaChart, Area, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
+import { UPlotChart } from '../charts/UPlot';
+import { toAlignedData, tooltipPlugin } from '../charts/uplot-helpers';
 import { useDeviceTelemetry, useAllDeviceTelemetry } from '../../hooks/use-telemetry';
 import type { TelemetryRecord } from '../../types/api';
+import type uPlot from 'uplot';
 
 interface TelemetryTabProps {
   deviceId: string;
@@ -172,47 +174,21 @@ function flattenRecord(r: TelemetryRecord): Record<string, number | string | nul
   return flat;
 }
 
-/** Short time label for X-axis ticks, range-aware */
-function formatAxisTime(iso: string, rangeKey: RangeKey): string {
-  const d = new Date(iso);
-  if (rangeKey === '15m' || rangeKey === '1h') {
-    return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  }
-  if (rangeKey === '6h' || rangeKey === '24h') {
-    return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-  }
-  if (rangeKey === '7d') {
-    return d.toLocaleDateString(undefined, { weekday: 'short' }) + ' ' +
-           d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-  }
-  // 30d, all
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
-
 /** Whether a metric should use a 0-100 domain (percentage metrics) */
 function isPercentMetric(unit: string): boolean {
   return unit === '%';
 }
 
-/** Custom tooltip */
-function ChartTooltip({ active, payload, metric }: {
-  active?: boolean;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  payload?: Array<{ value: number; payload: any }>;
-  label?: string;
-  metric: MetricDef;
-}) {
-  const entry = payload?.[0];
-  if (!active || !entry) return null;
-  const time = entry.payload?.received_at;
-  return (
-    <div className="telemetry-tooltip">
-      {time && <div className="telemetry-tooltip-time">{formatTimestamp(String(time))}</div>}
-      <div className="telemetry-tooltip-value" style={{ color: metric.color }}>
-        {formatValue(entry.value)} {metric.unit}
-      </div>
-    </div>
-  );
+function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+/** Format unix seconds to locale time string */
+function formatTooltipTime(unixSec: number): string {
+  return formatTimestamp(new Date(unixSec * 1000).toISOString());
 }
 
 // ---------------------------------------------------------------------------
@@ -251,9 +227,12 @@ export const TelemetryTab = ({ deviceId, deviceTypeName }: TelemetryTabProps) =>
   const latestCustom = parseCustomJson(latest?.custom_json);
 
   // "All" data is pre-sorted ascending from the hook; others need reversing
-  const chartData = isAll
-    ? telemetryRecords.map((r) => flattenRecord(r))
-    : telemetryRecords.slice().reverse().map((r) => flattenRecord(r));
+  const chartData = useMemo(() => {
+    const records = isAll
+      ? telemetryRecords.map((r) => flattenRecord(r))
+      : telemetryRecords.slice().reverse().map((r) => flattenRecord(r));
+    return records;
+  }, [telemetryRecords, isAll]);
 
   if (isLoading) return <Spinner />;
 
@@ -324,64 +303,13 @@ export const TelemetryTab = ({ deviceId, deviceTypeName }: TelemetryTabProps) =>
             No telemetry data in this time range.
           </Callout>
         ) : (
-          profile.charts.map((metric) => {
-            const latestValue = chartData[chartData.length - 1]?.[metric.key];
-            const yDomain: [number | 'auto', number | 'auto'] = isPercentMetric(metric.unit)
-              ? [0, 100]
-              : ['auto', 'auto'];
-            return (
-              <div key={metric.key} className="telemetry-chart">
-                <div className="telemetry-header">
-                  <span className="section-label">{metric.label}</span>
-                  <span className="mono-data" style={{ fontSize: 14, color: metric.color }}>
-                    {latestValue != null ? `${formatValue(latestValue)}${metric.unit}` : '—'}
-                  </span>
-                </div>
-                <ResponsiveContainer width="100%" height={160}>
-                  <AreaChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -12 }}>
-                    <defs>
-                      <linearGradient id={`tel-${metric.key}`} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={metric.color} stopOpacity={0.3} />
-                        <stop offset="100%" stopColor={metric.color} stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
-                    <XAxis
-                      dataKey="received_at"
-                      tickFormatter={(v: string) => formatAxisTime(v, selectedRange)}
-                      tick={{ fontSize: 11, fill: 'rgba(255,255,255,0.4)' }}
-                      axisLine={{ stroke: 'rgba(255,255,255,0.08)' }}
-                      tickLine={false}
-                      minTickGap={40}
-                    />
-                    <YAxis
-                      domain={yDomain}
-                      tick={{ fontSize: 11, fill: 'rgba(255,255,255,0.4)' }}
-                      axisLine={false}
-                      tickLine={false}
-                      width={40}
-                      tickFormatter={(v: number) => `${v}${metric.unit}`}
-                    />
-                    <Tooltip
-                      content={<ChartTooltip metric={metric} />}
-                      cursor={{ stroke: 'rgba(255,255,255,0.15)' }}
-                      isAnimationActive={false}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey={metric.key}
-                      stroke={metric.color}
-                      strokeWidth={1.5}
-                      fill={`url(#tel-${metric.key})`}
-                      dot={false}
-                      isAnimationActive={false}
-                      connectNulls
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            );
-          })
+          profile.charts.map((metric) => (
+            <TelemetryChart
+              key={metric.key}
+              metric={metric}
+              chartData={chartData}
+            />
+          ))
         )}
       </div>
 
@@ -417,3 +345,81 @@ export const TelemetryTab = ({ deviceId, deviceTypeName }: TelemetryTabProps) =>
     </div>
   );
 };
+
+// ---------------------------------------------------------------------------
+// Individual chart for a single metric (memoized options)
+// ---------------------------------------------------------------------------
+
+function TelemetryChart({ metric, chartData }: { metric: MetricDef; chartData: Record<string, number | string | null>[] }) {
+  const latestValue = chartData[chartData.length - 1]?.[metric.key];
+
+  const plotData = useMemo(
+    () => toAlignedData(chartData, 'received_at', [metric.key]),
+    [chartData, metric.key],
+  );
+
+  const opts = useMemo((): Omit<uPlot.Options, 'width' | 'height'> => {
+    const yRange: uPlot.Range.MinMax | undefined = isPercentMetric(metric.unit)
+      ? [0, 100]
+      : undefined;
+
+    return {
+      cursor: {
+        x: true,
+        y: false,
+        drag: { x: false, y: false },
+      },
+      legend: { show: false },
+      axes: [
+        {
+          stroke: 'rgba(255,255,255,0.4)',
+          font: '11px system-ui',
+          ticks: { stroke: 'rgba(255,255,255,0.06)', width: 1 },
+          grid: { show: false },
+          gap: 8,
+        },
+        {
+          stroke: 'rgba(255,255,255,0.4)',
+          font: '11px system-ui',
+          ticks: { show: false },
+          grid: { stroke: 'rgba(255,255,255,0.06)', width: 1, dash: [3, 3] },
+          gap: 4,
+          size: 48,
+          values: (_u: uPlot, vals: number[]) =>
+            vals.map((v) => `${v}${metric.unit}`),
+        },
+      ],
+      scales: {
+        y: yRange ? { range: () => yRange } : {},
+      },
+      series: [
+        {},
+        {
+          stroke: metric.color,
+          width: 1.5,
+          fill: hexToRgba(metric.color, 0.15),
+          points: { show: false },
+          spanGaps: true,
+        },
+      ],
+      plugins: [
+        tooltipPlugin(
+          (_seriesIdx, val) => `${formatValue(val)} ${metric.unit}`,
+          formatTooltipTime,
+        ),
+      ],
+    };
+  }, [metric.color, metric.key, metric.unit]);
+
+  return (
+    <div className="telemetry-chart">
+      <div className="telemetry-header">
+        <span className="section-label">{metric.label}</span>
+        <span className="mono-data" style={{ fontSize: 14, color: metric.color }}>
+          {latestValue != null ? `${formatValue(latestValue)}${metric.unit}` : '—'}
+        </span>
+      </div>
+      <UPlotChart options={opts} data={plotData} height={160} />
+    </div>
+  );
+}

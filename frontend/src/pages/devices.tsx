@@ -14,7 +14,8 @@ import {
   Callout,
   Spinner,
 } from '@blueprintjs/core';
-import { AreaChart, Area, ResponsiveContainer } from 'recharts';
+import { UPlotChart } from '../components/charts/UPlot';
+import { toSparklineData, sparklineOpts } from '../components/charts/uplot-helpers';
 import { useDevices } from '../hooks/use-devices';
 import { useFleets } from '../hooks/use-fleets';
 import { useUIStore } from '../stores/ui-store';
@@ -45,17 +46,24 @@ const SortHeader = memo(({ field, sortField, sortDir, onSort, children }: {
   </th>
 ));
 
-const sparklineCache = new Map<string, { v: number; i: number }[]>();
+const sparklineCache = new Map<string, number[]>();
 
-function getSparklineData(id: string): { v: number; i: number }[] {
+function getSparklineValues(id: string): number[] {
   let cached = sparklineCache.get(id);
   if (cached) return cached;
   let hash = 0;
   for (const ch of id) hash = ((hash << 5) - hash + ch.charCodeAt(0)) | 0;
-  cached = Array.from({ length: 7 }, (_, i) => ({ v: Math.abs((hash * (i + 1)) % 100), i }));
+  cached = Array.from({ length: 7 }, (_, i) => Math.abs((hash * (i + 1)) % 100));
   sparklineCache.set(id, cached);
   return cached;
 }
+
+const RowSparkline = memo(({ deviceId, color }: { deviceId: string; color: string }) => {
+  const values = getSparklineValues(deviceId);
+  const plotData = useMemo(() => toSparklineData(values), [values]);
+  const opts = useMemo(() => sparklineOpts(color, 0.15), [color]);
+  return <UPlotChart options={opts} data={plotData} height={24} />;
+});
 
 export const Devices = () => {
   const navigate = useNavigate();
@@ -378,20 +386,7 @@ export const Devices = () => {
                     </td>
                     <td>
                       <div className="row-sparkline">
-                        <ResponsiveContainer width="100%" height={24}>
-                          <AreaChart data={getSparklineData(device.id)}>
-                            <Area
-                              type="monotone"
-                              dataKey="v"
-                              stroke={getStatusColor(device.status)}
-                              strokeWidth={1}
-                              fill={getStatusColor(device.status)}
-                              fillOpacity={0.15}
-                              dot={false}
-                              isAnimationActive={false}
-                            />
-                          </AreaChart>
-                        </ResponsiveContainer>
+                        <RowSparkline deviceId={device.id} color={getStatusColor(device.status)} />
                       </div>
                     </td>
                     <td>

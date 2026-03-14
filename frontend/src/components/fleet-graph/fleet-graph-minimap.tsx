@@ -78,23 +78,50 @@ export const FleetGraphMinimap = ({
     const bounds = computeWorldBounds(nodes);
     if (!bounds) return;
 
-    const { minX, minY, maxX, maxY } = bounds;
+    let { minX, minY, maxX, maxY } = bounds;
+
+    // Expand world bounds to match the minimap aspect ratio so the
+    // content fills the entire minimap with no empty strips.
+    const availW = w - PAD * 2;
+    const availH = h - PAD * 2;
     const worldW = maxX - minX;
     const worldH = maxY - minY;
+    const worldAspect = worldW / worldH;
+    const minimapAspect = availW / availH;
 
-    const scale = Math.min((w - PAD * 2) / worldW, (h - PAD * 2) / worldH);
-    const offsetX = (w - worldW * scale) / 2;
-    const offsetY = (h - worldH * scale) / 2;
+    if (worldAspect < minimapAspect) {
+      // World is taller than minimap — expand horizontally
+      const targetW = worldH * minimapAspect;
+      const cx = (minX + maxX) / 2;
+      minX = cx - targetW / 2;
+      maxX = cx + targetW / 2;
+    } else {
+      // World is wider than minimap — expand vertically
+      const targetH = worldW / minimapAspect;
+      const cy = (minY + maxY) / 2;
+      minY = cy - targetH / 2;
+      maxY = cy + targetH / 2;
+    }
+
+    const finalW = maxX - minX;
+    const finalH = maxY - minY;
+    const scale = Math.min(availW / finalW, availH / finalH);
+    const offsetX = (w - finalW * scale) / 2;
+    const offsetY = (h - finalH * scale) / 2;
 
     const toMX = (wx: number) => (wx - minX) * scale + offsetX;
     const toMY = (wy: number) => (wy - minY) * scale + offsetY;
 
     // Viewport rectangle (drawn behind nodes)
+    // force-graph's onZoom passes { k, x, y } where x,y are the world-space
+    // CENTER of the viewport (not d3-zoom screen-space translation).
     if (viewport && canvasWidth > 0 && canvasHeight > 0) {
-      const vMinX = (0 - viewport.x) / viewport.k;
-      const vMinY = (0 - viewport.y) / viewport.k;
-      const vMaxX = (canvasWidth - viewport.x) / viewport.k;
-      const vMaxY = (canvasHeight - viewport.y) / viewport.k;
+      const halfW = canvasWidth / viewport.k / 2;
+      const halfH = canvasHeight / viewport.k / 2;
+      const vMinX = viewport.x - halfW;
+      const vMinY = viewport.y - halfH;
+      const vMaxX = viewport.x + halfW;
+      const vMaxY = viewport.y + halfH;
 
       const rx = toMX(vMinX);
       const ry = toMY(vMinY);

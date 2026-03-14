@@ -1,13 +1,9 @@
+import { useMemo } from 'react';
 import { Card, Elevation, H5, Icon } from '@blueprintjs/core';
 import type { IconName } from '@blueprintjs/icons';
-import {
-  AreaChart,
-  Area,
-  PieChart,
-  Pie,
-  Cell,
-  ResponsiveContainer,
-} from 'recharts';
+import { UPlotChart } from '../components/charts/UPlot';
+import { SVGDonut } from '../components/charts/SVGDonut';
+import { toSparklineData, sparklineOpts } from '../components/charts/uplot-helpers';
 import { useDashboardStats } from '../hooks/use-dashboard';
 import { ServerHealth } from '../components/dashboard/server-health';
 import './dashboard.css';
@@ -52,6 +48,12 @@ const activityEvents: ActivityEvent[] = [
   { id: '7', time: '13:15:44', device: 'Smart Lock 02', event: 'Came online', status: 'online' },
   { id: '8', time: '12:58:12', device: 'Motion Detector 07', event: 'Went offline', status: 'offline' },
 ];
+
+const DashboardSparkline = ({ data, color }: { data: number[]; color: string }) => {
+  const plotData = useMemo(() => toSparklineData(data), [data]);
+  const opts = useMemo(() => sparklineOpts(color, 0.3), [color]);
+  return <UPlotChart options={opts} data={plotData} height={32} />;
+};
 
 export const Dashboard = () => {
   const { data: dashboardStats } = useDashboardStats();
@@ -98,25 +100,10 @@ export const Dashboard = () => {
                   <Icon icon={stat.icon} size={20} color="white" />
                 </div>
                 <div className="stat-sparkline">
-                  <ResponsiveContainer width="100%" height={32}>
-                    <AreaChart data={sparklineData[stat.sparkIndex]!.map((v, i) => ({ v, i }))}>
-                      <defs>
-                        <linearGradient id={`spark-${stat.sparkIndex}`} x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor={stat.color} stopOpacity={0.3} />
-                          <stop offset="100%" stopColor={stat.color} stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <Area
-                        type="monotone"
-                        dataKey="v"
-                        stroke={stat.color}
-                        strokeWidth={1.5}
-                        fill={`url(#spark-${stat.sparkIndex})`}
-                        dot={false}
-                        isAnimationActive={false}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                  <DashboardSparkline
+                    data={sparklineData[stat.sparkIndex]!}
+                    color={stat.color}
+                  />
                 </div>
               </div>
               <div className="stat-content">
@@ -157,29 +144,10 @@ export const Dashboard = () => {
               <span className="section-label" style={{ margin: 0 }}>{totalDevices} total</span>
             </div>
             <div className="donut-container">
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie
-                    data={donutData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={85}
-                    paddingAngle={3}
-                    dataKey="value"
-                    strokeWidth={0}
-                    isAnimationActive={false}
-                  >
-                    {donutData.map((entry) => (
-                      <Cell key={entry.name} fill={entry.color} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="donut-center">
+              <SVGDonut segments={donutData}>
                 <span className="donut-total mono-data">{totalDevices.toLocaleString()}</span>
                 <span className="donut-label">Devices</span>
-              </div>
+              </SVGDonut>
             </div>
             <div className="donut-legend">
               {donutData.map((entry) => (

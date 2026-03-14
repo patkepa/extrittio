@@ -7,7 +7,7 @@ export default defineConfig({
       output: {
         manualChunks: {
           blueprint: ["@blueprintjs/core", "@blueprintjs/icons"],
-          charts: ["recharts"],
+          charts: ["uplot"],
           query: ["@tanstack/react-query", "axios"],
         },
       },

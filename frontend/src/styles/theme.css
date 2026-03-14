@@ -651,3 +651,13 @@ p {
     animation: none;
   }
 }
+
+/* uPlot dark theme overrides */
+.uplot .u-cursor-x,
+.uplot .u-cursor-y {
+  border-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+.uplot .u-select {
+  background: rgba(41, 101, 204, 0.15) !important;
+}
