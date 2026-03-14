@@ -250,7 +250,7 @@
   color: var(--sidebar-muted-foreground);
 }
 
-/* Fleet Graph Bulk Action Bar */
+/* Fleet Graph Bulk Action Bar — styled to match app sidebar */
 .fleet-graph-bulk-bar {
   position: absolute;
   bottom: 16px;
@@ -258,11 +258,11 @@
   transform: translateX(-50%);
   z-index: 20;
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 16px;
-  background-color: var(--card-bg);
-  border: 1px solid var(--border-color);
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+  background-color: var(--sidebar-bg);
+  border: 1px solid var(--sidebar-border);
   border-radius: 2px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
   animation: fleet-graph-bulk-bar-slide-in 150ms ease-out;
@@ -282,19 +282,69 @@
 .fleet-graph-bulk-bar-left {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  padding: 0 12px;
+  border-right: 1px solid var(--sidebar-border);
+  min-height: 38px;
 }
 
 .fleet-graph-bulk-label {
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   white-space: nowrap;
+  color: var(--sidebar-foreground);
 }
 
 .fleet-graph-bulk-bar-right {
   display: flex;
+  align-items: stretch;
+  align-self: stretch;
+}
+
+.fleet-graph-bulk-bar-right > * {
+  display: flex;
+  align-items: stretch;
+  border-left: 1px solid var(--sidebar-border);
+}
+
+.fleet-graph-bulk-bar-right .bp6-popover-target {
+  display: flex;
+  align-items: stretch;
+}
+
+.fleet-graph-bulk-bar-right .bp6-button.bp6-button.bp6-button {
+  border-radius: 0 !important;
+  border: none;
+  background-color: var(--sidebar-accent) !important;
+  color: var(--sidebar-muted-foreground) !important;
+  font-weight: 500;
+  font-size: 13px;
+  padding: 0 14px;
+  min-width: 130px;
+  justify-content: center;
   align-items: center;
-  gap: 6px;
+  height: auto;
+  box-shadow: none !important;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.fleet-graph-bulk-bar-right .bp6-button.bp6-button.bp6-button:hover {
+  background-color: var(--sidebar-accent-hover) !important;
+  color: var(--sidebar-foreground) !important;
+}
+
+.fleet-graph-bulk-bar-right .bp6-button.bp6-button.bp6-button:active {
+  background-color: hsla(0, 0%, 100%, 0.08) !important;
+  color: var(--sidebar-foreground) !important;
+}
+
+.fleet-graph-bulk-bar-left .bp6-button {
+  color: var(--sidebar-muted-foreground);
+  opacity: 0.6;
+}
+
+.fleet-graph-bulk-bar-left .bp6-button:hover {
+  opacity: 1;
 }
 
 /* Zoom controls — bottom-left corner */
