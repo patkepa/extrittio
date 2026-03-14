@@ -40,7 +40,7 @@
 .logo-icon {
   width: 28px;
   height: 28px;
-  border-radius: 8px;
+  border-radius: 2px;
   background: linear-gradient(135deg, hsl(var(--accent)) 0%, hsl(var(--accent-hover)) 100%);
   display: flex;
   align-items: center;

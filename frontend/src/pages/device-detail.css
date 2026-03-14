@@ -52,7 +52,7 @@
 .shadow-panes-horizontal .shadow-pane {
   background: hsla(0, 0%, 100%, 0.03);
   border: 1px solid hsla(0, 0%, 100%, 0.06);
-  border-radius: 6px;
+  border-radius: 2px;
   padding: 16px;
 }
 
@@ -70,7 +70,7 @@
 .shadow-delta-pane {
   background: hsla(0, 0%, 100%, 0.03);
   border: 1px solid hsla(0, 0%, 100%, 0.06);
-  border-radius: 6px;
+  border-radius: 2px;
   padding: 16px;
 }
 
@@ -86,7 +86,7 @@
 .diff-line {
   display: block;
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: 2px;
 }
 
 .diff-removed {
@@ -108,7 +108,7 @@
 .telemetry-current-table {
   margin-top: 8px;
   border: 1px solid hsla(0, 0%, 100%, 0.06);
-  border-radius: 6px;
+  border-radius: 2px;
   overflow: hidden;
 }
 
@@ -144,7 +144,7 @@
 .telemetry-table-wrap {
   margin-top: 8px;
   border: 1px solid hsla(0, 0%, 100%, 0.06);
-  border-radius: 6px;
+  border-radius: 2px;
   overflow-x: auto;
   max-height: 400px;
   overflow-y: auto;
@@ -196,7 +196,7 @@
 .telemetry-tooltip {
   background: rgba(20, 20, 22, 0.95);
   border: 1px solid hsla(0, 0%, 100%, 0.12);
-  border-radius: 6px;
+  border-radius: 2px;
   padding: 8px 12px;
   font-size: 13px;
   line-height: 1.4;
@@ -246,7 +246,7 @@
   align-items: center;
   gap: 10px;
   padding: 6px 8px;
-  border-radius: 4px;
+  border-radius: 2px;
   font-size: 13px;
 }
 
@@ -276,7 +276,7 @@
 /* Config tab */
 .config-table {
   border: 1px solid hsla(0, 0%, 100%, 0.06);
-  border-radius: 6px;
+  border-radius: 2px;
   overflow: hidden;
 }
 

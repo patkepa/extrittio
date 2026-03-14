@@ -22,7 +22,7 @@
   justify-content: center;
   width: 48px;
   height: 48px;
-  border-radius: 12px;
+  border-radius: 2px;
   background: hsl(var(--accent));
   color: #fff;
   margin-bottom: 12px;

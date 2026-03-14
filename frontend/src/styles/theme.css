@@ -13,6 +13,7 @@
 /* Dark Theme Only - Deep blacks with electric accents and consistent colors */
 :root,
 :root.dark {
+  --bp-surface-border-radius: 2px;
   /* Base colors - HIGH CONTRAST dark theme
    * Pure black backgrounds with white text for maximum contrast
    */
@@ -229,6 +230,7 @@ p {
   background-color: hsla(0, 0%, 100%, 0.06);
   color: hsl(var(--foreground));
   border-color: var(--border-color);
+  border-radius: 2px;
 }
 
 .bp6-button:hover {
@@ -240,7 +242,6 @@ p {
   background-color: hsl(var(--primary));
   color: hsl(var(--primary-foreground));
   border-color: transparent;
-  border-radius: 2px;
 }
 
 .bp6-button.bp6-intent-primary:hover {
@@ -404,6 +405,12 @@ p {
   background-color: hsl(var(--success-light));
   border-left-color: hsl(var(--success));
   color: hsl(var(--foreground));
+}
+
+/* Rectangular progress bars */
+.bp6-progress-bar,
+.bp6-progress-bar .bp6-progress-meter {
+  border-radius: 2px !important;
 }
 
 /* Divider */

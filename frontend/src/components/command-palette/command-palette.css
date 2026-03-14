@@ -84,7 +84,7 @@
   color: hsl(var(--muted));
   background: var(--sidebar-accent);
   border: 1px solid var(--border-color);
-  border-radius: 4px;
+  border-radius: 2px;
   padding: 2px 6px;
   line-height: 1;
   flex-shrink: 0;

@@ -18,7 +18,7 @@
   z-index: 10;
   background-color: var(--card-bg);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: 2px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
   min-width: 260px;
   overflow: hidden;
@@ -141,7 +141,7 @@
 .health-panel-summary-bar {
   display: flex;
   height: 6px;
-  border-radius: 3px;
+  border-radius: 2px;
   overflow: hidden;
   gap: 1px;
 }
@@ -168,7 +168,7 @@
 
 .fleet-graph-minimap {
   display: block;
-  border-radius: 4px;
+  border-radius: 2px;
 }
 
 /* Device list rows — styled like sidebar menu items */
@@ -263,7 +263,7 @@
   padding: 8px 16px;
   background-color: var(--card-bg);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: 2px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
   animation: fleet-graph-bulk-bar-slide-in 150ms ease-out;
 }
