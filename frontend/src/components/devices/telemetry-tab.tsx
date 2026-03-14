@@ -7,6 +7,7 @@ import type { TelemetryRecord } from '../../types/api';
 import type uPlot from 'uplot';
 import { getProfile, RANGES, RANGE_OPTIONS, computeSince } from './telemetry-profiles';
 import type { RangeKey, MetricDef } from './telemetry-profiles';
+import { hexToRgba } from '../../utils/color';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -65,12 +66,6 @@ function isPercentMetric(unit: string): boolean {
   return unit === '%';
 }
 
-function hexToRgba(hex: string, alpha: number): string {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
-}
 
 /** Format unix seconds to locale time string */
 function formatTooltipTime(unixSec: number): string {
