@@ -121,6 +121,18 @@ export const FleetGraphCanvas = ({
     };
   }, []);
 
+  // Suppress browser's native context menu on canvas
+  useEffect(() => {
+    const wrapper = canvasWrapperRef.current;
+    if (!wrapper) return;
+    const canvasEl = wrapper.querySelector('canvas');
+    if (!canvasEl) return;
+
+    const suppress = (e: Event) => e.preventDefault();
+    canvasEl.addEventListener('contextmenu', suppress);
+    return () => canvasEl.removeEventListener('contextmenu', suppress);
+  }, []);
+
   // Lasso mouse event handlers
   useEffect(() => {
     const fg = graphRef.current;

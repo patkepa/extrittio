@@ -134,6 +134,26 @@ export const FleetGraph = () => {
     [graphData],
   );
 
+  // Prune stale selections on data refresh
+  useEffect(() => {
+    if (!graphData) return;
+    const currentDeviceIds = new Set(
+      graphData.nodes.filter((n) => n.type === 'device').map((n) => n.id),
+    );
+    const { selectedDeviceIds, removeFromSelection } = useSelectionStore.getState();
+    const staleIds = Array.from(selectedDeviceIds).filter((id) => !currentDeviceIds.has(id));
+    if (staleIds.length > 0) {
+      removeFromSelection(staleIds);
+    }
+  }, [graphData]);
+
+  // Clear selection when navigating away from fleet graph page
+  useEffect(() => {
+    return () => {
+      useSelectionStore.getState().clearSelection();
+    };
+  }, []);
+
   // Dismiss context menu → popover → selection on Escape key (priority ordering)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
