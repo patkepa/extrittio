@@ -63,7 +63,6 @@
   --danger-light: 0 60% 15%;
 }
 
-
 /* LED Status Indicator System */
 .status-led {
   width: 8px;
@@ -446,15 +445,12 @@ p {
   color: currentColor;
 }
 
-/* Elevation shadows */
+/* Elevation shadows — 1 and 2 are intentionally identical (near-black bg absorbs shadow depth) */
 .bp6-elevation-0 {
   box-shadow: none;
 }
 
-.bp6-elevation-1 {
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-}
-
+.bp6-elevation-1,
 .bp6-elevation-2 {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
