@@ -154,9 +154,6 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
       {/* Header */}
       <div className="sidebar-header">
         <div className="sidebar-logo">
-          <div className="logo-icon">
-            <Icon icon="cube" size={18} />
-          </div>
           {!isCollapsed && <span className="sidebar-title">Extrittio</span>}
         </div>
       </div>
