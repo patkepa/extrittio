@@ -117,7 +117,7 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
                 badge.status ? (
                   <span className={`status-led status-led--${badge.status}`} />
                 ) : badge.count ? (
-                  <Tag minimal round className="nav-count-badge">{badge.count}</Tag>
+                  <Tag minimal className="nav-count-badge">{badge.count}</Tag>
                 ) : null
               )}
               {hasChildren && (

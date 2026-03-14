@@ -248,6 +248,7 @@
   border: none !important;
   padding: 0 6px !important;
   line-height: 18px;
+  border-radius: 2px !important;
 }
 
 /* Expanded parent — subtle indicator, doesn't compete with active child */
