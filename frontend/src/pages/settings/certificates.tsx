@@ -176,7 +176,7 @@ export function CertificatesSettings() {
                         small
                         minimal
                         intent="primary"
-                        icon="refresh"
+                        rightIcon="refresh"
                         loading={
                           regenerateMutation.isPending &&
                           regenerateMutation.variables === device.id

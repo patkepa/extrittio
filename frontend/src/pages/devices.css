@@ -28,10 +28,23 @@
 
 /* Controls */
 .devices-controls {
+  position: relative;
   background-color: var(--card-bg);
   padding: 16px 20px;
   margin-bottom: 16px;
   border: 1px solid var(--border-color);
+}
+
+.controls-content--hidden {
+  visibility: hidden;
+}
+
+.bulk-action-bar-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  padding: 16px 20px;
 }
 
 /* Bulk Action Bar */
@@ -63,7 +76,7 @@
 /* Selected row highlight */
 .device-row--selected {
   background-color: hsl(var(--accent) / 0.06) !important;
-  border-left: 2px solid hsl(var(--accent));
+  border-left-color: hsl(var(--accent));
 }
 
 .device-row--selected:hover {
@@ -185,6 +198,7 @@
 .device-row {
   cursor: pointer;
   transition: background-color 0.1s ease;
+  border-left: 2px solid transparent;
 }
 
 .device-row:hover {

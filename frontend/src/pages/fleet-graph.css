@@ -157,7 +157,7 @@
 
 .health-panel > div::-webkit-scrollbar-thumb {
   background: var(--border-color);
-  border-radius: 2px;
+  border-radius: 0;
 }
 
 /* Minimap section */

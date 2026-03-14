@@ -225,16 +225,17 @@ export const Devices = () => {
       </div>
 
       {/* Filters and Search / Bulk Action Bar */}
-      {hasSelection ? (
-        <Card elevation={Elevation.ONE} className="devices-controls">
-          <BulkActionBar
-            totalMatchingCount={totalDeviceCount}
-            visibleCount={filteredDevices.length}
-            currentFilters={currentFilters}
-          />
-        </Card>
-      ) : (
-        <Card elevation={Elevation.ONE} className="devices-controls">
+      <Card elevation={Elevation.ONE} className="devices-controls">
+        {hasSelection && (
+          <div className="bulk-action-bar-overlay">
+            <BulkActionBar
+              totalMatchingCount={totalDeviceCount}
+              visibleCount={filteredDevices.length}
+              currentFilters={currentFilters}
+            />
+          </div>
+        )}
+        <div className={`controls-content ${hasSelection ? 'controls-content--hidden' : ''}`}>
           <div className="controls-row">
             <div className="search-section">
               <InputGroup
@@ -289,8 +290,8 @@ export const Devices = () => {
               </div>
             </div>
           )}
-        </Card>
-      )}
+        </div>
+      </Card>
 
       {/* Devices Table */}
       <Card elevation={Elevation.ONE} className="devices-card">

@@ -1,4 +1,4 @@
-import { Button, Callout, Dialog, DialogBody, DialogFooter, Icon } from "@blueprintjs/core";
+import { Button, ButtonGroup, Callout, Dialog, DialogBody, DialogFooter, Menu, MenuItem, Popover } from "@blueprintjs/core";
 import type { DeviceCertificateResponse } from "../../types/api";
 import { downloadPem } from "../../utils/download-pem";
 
@@ -19,6 +19,12 @@ export function CertificateDownloadDialog({
 
   const safeName = deviceName.replace(/[^a-zA-Z0-9_-]/g, "-");
 
+  const downloadAll = () => {
+    downloadPem(certBundle.certificate_pem, `${safeName}.pem`);
+    setTimeout(() => downloadPem(certBundle.private_key_pem, `${safeName}-key.pem`), 100);
+    setTimeout(() => downloadPem(certBundle.ca_pem, "ca.pem"), 200);
+  };
+
   return (
     <Dialog
       icon="lock"
@@ -31,29 +37,37 @@ export function CertificateDownloadDialog({
         <Callout intent="warning" icon="warning-sign" style={{ marginBottom: 16 }}>
           Save these files now. The private key will not be available again.
         </Callout>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <Button
-            icon="download"
-            onClick={() => downloadPem(certBundle.certificate_pem, `${safeName}.pem`)}
-          >
-            Download Device Certificate
+        <ButtonGroup style={{ display: "flex", width: "100%" }}>
+          <Button icon="download" intent="primary" fill onClick={downloadAll}>
+            Download All
           </Button>
-          <Button
-            icon="download"
-            intent="primary"
-            onClick={() => downloadPem(certBundle.private_key_pem, `${safeName}-key.pem`)}
+          <Popover
+            interactionKind="hover"
+            placement="bottom-end"
+            content={
+              <Menu>
+                <MenuItem
+                  icon="document"
+                  text="Device Certificate"
+                  onClick={() => downloadPem(certBundle.certificate_pem, `${safeName}.pem`)}
+                />
+                <MenuItem
+                  icon="key"
+                  text="Private Key"
+                  onClick={() => downloadPem(certBundle.private_key_pem, `${safeName}-key.pem`)}
+                />
+                <MenuItem
+                  icon="shield"
+                  text="CA Certificate"
+                  onClick={() => downloadPem(certBundle.ca_pem, "ca.pem")}
+                />
+              </Menu>
+            }
           >
-            Download Private Key
-          </Button>
-          <Button
-            icon="download"
-            onClick={() => downloadPem(certBundle.ca_pem, "ca.pem")}
-          >
-            Download CA Certificate
-          </Button>
-        </div>
+            <Button intent="primary" icon="caret-down" />
+          </Popover>
+        </ButtonGroup>
         <div style={{ marginTop: 16, fontSize: 12, color: "hsl(var(--muted))" }}>
-          <Icon icon="info-sign" size={12} style={{ marginRight: 4 }} />
           Fingerprint: <code>{certBundle.fingerprint}</code>
         </div>
       </DialogBody>
