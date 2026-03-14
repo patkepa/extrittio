@@ -269,7 +269,7 @@
   align-items: center;
   gap: 14px;
   padding: 16px;
-  background: linear-gradient(135deg, var(--sidebar-accent) 0%, var(--card-bg) 100%);
+  background: linear-gradient(135deg, hsla(0, 0%, 100%, 0.04) 0%, var(--card-bg) 100%);
   border-radius: 8px;
   border: 1px solid var(--border-color);
 }
@@ -339,7 +339,7 @@
 
 .telemetry-chart {
   padding: 12px;
-  background-color: var(--sidebar-accent);
+  background-color: hsla(0, 0%, 100%, 0.04);
   border-radius: 6px;
   border: 1px solid var(--border-color);
 }

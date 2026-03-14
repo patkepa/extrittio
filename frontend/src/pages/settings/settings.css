@@ -55,7 +55,7 @@
 }
 
 .settings-page .page-description {
-  color: hsl(var(--muted));
+  color: hsl(var(--muted) / 0.7);
   font-size: 13px;
   margin: 0;
   font-weight: 500;
