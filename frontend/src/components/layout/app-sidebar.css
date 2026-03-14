@@ -194,6 +194,7 @@
   background-color: hsla(0, 0%, 100%, 0.08);
   border-color: transparent;
   border-left: 2px solid hsl(var(--accent));
+  padding-left: 11px; /* 12px base - 1px extra border width */
   color: var(--sidebar-foreground);
   font-weight: 600;
 }
@@ -418,6 +419,12 @@
 
 .app-sidebar.collapsed .sidebar-menu .bp6-menu-item:hover {
   transform: none;
+}
+
+.app-sidebar.collapsed .sidebar-menu .bp6-menu-item.bp6-active,
+.app-sidebar.collapsed .sidebar-menu .bp6-menu-item.sidebar-item-active {
+  border-left: none;
+  padding-left: 8px;
 }
 
 .app-sidebar.collapsed .sidebar-footer {
