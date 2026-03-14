@@ -81,8 +81,8 @@ export const Devices = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [sortField, setSortField] = useState<SortField>('name');
-  const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [sortField, setSortField] = useState<SortField>('last_seen');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
   const { openAddDeviceDialog } = useUIStore();
 
   // Hover tooltip
@@ -174,7 +174,7 @@ export const Devices = () => {
       if (sortField === 'name') return a.name.localeCompare(b.name) * dir;
       if (sortField === 'status') return a.status.localeCompare(b.status) * dir;
       if (sortField === 'last_seen')
-        return (a.last_seen ?? '').localeCompare(b.last_seen ?? '') * dir;
+        return (a.last_seen_at ?? '').localeCompare(b.last_seen_at ?? '') * dir;
       if (sortField === 'uptime') return (a.uptime ?? '').localeCompare(b.uptime ?? '') * dir;
       return 0;
     });
@@ -367,7 +367,14 @@ export const Devices = () => {
                 </SortHeader>
                 <th>Type</th>
                 <th>Fleet</th>
-                <th>Last Seen</th>
+                <SortHeader
+                  field="last_seen"
+                  sortField={sortField}
+                  sortDir={sortDir}
+                  onSort={handleSort}
+                >
+                  Last Seen
+                </SortHeader>
                 <th>Firmware</th>
                 <th style={{ width: 80 }}>Activity</th>
                 <th>Uptime</th>
