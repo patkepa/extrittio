@@ -167,10 +167,11 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 16px;
+  padding: 0 14px 0 16px;
   cursor: pointer;
-  transition: all 0.12s ease;
+  transition: background-color 0.12s ease, color 0.12s ease;
   color: var(--sidebar-muted-foreground);
+  border-left: 2px solid transparent;
 }
 
 .health-panel-row:hover {
@@ -178,10 +179,14 @@
   color: var(--sidebar-foreground);
 }
 
+.health-panel-row:active {
+  background-color: hsla(0, 0%, 100%, 0.08);
+  color: var(--sidebar-foreground);
+}
+
 .health-panel-row--selected {
   background-color: hsla(0, 0%, 100%, 0.08);
-  border-left: 2px solid hsl(var(--accent));
-  padding-left: 14px;
+  border-left-color: hsl(var(--accent));
   color: var(--sidebar-foreground);
 }
 

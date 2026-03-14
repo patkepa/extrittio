@@ -87,8 +87,8 @@ export const HealthPanel = ({ nodes, onDeviceClick, selectedNodeId, height, view
       .sort((a, b) => {
         const aVal = Number.isNaN(a.stalenessMs) ? Infinity : a.stalenessMs;
         const bVal = Number.isNaN(b.stalenessMs) ? Infinity : b.stalenessMs;
-        if (bVal !== aVal) return bVal - aVal;
-        return (a.node.uptimeSeconds ?? 0) - (b.node.uptimeSeconds ?? 0);
+        if (aVal !== bVal) return aVal - bVal;
+        return (b.node.uptimeSeconds ?? 0) - (a.node.uptimeSeconds ?? 0);
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodes, tick]);

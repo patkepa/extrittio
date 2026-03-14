@@ -9,6 +9,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { useDashboardStats } from '../hooks/use-dashboard';
+import { useCurrentMetrics } from '../hooks/use-server-metrics';
 import { ServerHealth } from '../components/dashboard/server-health';
 import './dashboard.css';
 
@@ -53,15 +54,38 @@ const activityEvents: ActivityEvent[] = [
   { id: '8', time: '12:58:12', device: 'Motion Detector 07', event: 'Went offline', status: 'offline' },
 ];
 
-const healthMetrics = [
-  { label: 'UPTIME', value: '99.97%', status: 'online' as const },
-  { label: 'API LATENCY', value: '23ms', status: 'online' as const },
-  { label: 'LAST SYNC', value: '14:32:01', status: 'online' as const },
-  { label: 'CONNECTIONS', value: '987', status: 'online' as const },
-];
+function healthStatus(value: number, warnAt: number, dangerAt: number): 'online' | 'warning' | 'offline' {
+  if (value >= dangerAt) return 'offline';
+  if (value >= warnAt) return 'warning';
+  return 'online';
+}
+
+function latencyStatus(ms: number): 'online' | 'warning' | 'offline' {
+  if (ms >= 500) return 'offline';
+  if (ms >= 200) return 'warning';
+  return 'online';
+}
 
 export const Dashboard = () => {
   const { data: dashboardStats } = useDashboardStats();
+  const { data: currentMetrics } = useCurrentMetrics();
+
+  const system = currentMetrics?.system ?? null;
+  const app = currentMetrics?.app ?? null;
+
+  const cpuPct = system?.cpu_usage_percent ?? 0;
+  const memPct = system && system.memory_total_bytes > 0
+    ? (system.memory_used_bytes / system.memory_total_bytes) * 100
+    : 0;
+  const avgLatency = app?.avg_latency_ms ?? 0;
+  const errorCount = app?.error_count ?? 0;
+
+  const healthMetrics = [
+    { label: 'CPU', value: `${cpuPct.toFixed(1)}%`, status: healthStatus(cpuPct, 80, 95) },
+    { label: 'MEMORY', value: `${memPct.toFixed(1)}%`, status: healthStatus(memPct, 85, 95) },
+    { label: 'API LATENCY', value: `${avgLatency.toFixed(0)}ms`, status: latencyStatus(avgLatency) },
+    { label: 'ERRORS', value: `${errorCount}`, status: errorCount > 0 ? 'offline' as const : 'online' as const },
+  ];
 
   const stats: StatCard[] = dashboardStats
     ? [
@@ -107,50 +131,53 @@ export const Dashboard = () => {
         <p className="page-description">Extrittio IoT Hub — Operational Overview</p>
       </div>
 
-      {/* Stat Cards */}
-      <div className="stats-grid">
-        {stats.map((stat) => (
-          <Card key={stat.label} elevation={Elevation.ONE} className="stat-card stagger-item">
-            <div className="stat-card-top">
-              <div className="stat-icon" style={{ backgroundColor: stat.color }}>
-                <Icon icon={stat.icon} size={20} color="white" />
-              </div>
-              <div className="stat-sparkline">
-                <ResponsiveContainer width="100%" height={32}>
-                  <AreaChart data={sparklineData[stat.sparkIndex]!.map((v, i) => ({ v, i }))}>
-                    <defs>
-                      <linearGradient id={`spark-${stat.sparkIndex}`} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={stat.color} stopOpacity={0.3} />
-                        <stop offset="100%" stopColor={stat.color} stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <Area
-                      type="monotone"
-                      dataKey="v"
-                      stroke={stat.color}
-                      strokeWidth={1.5}
-                      fill={`url(#spark-${stat.sparkIndex})`}
-                      dot={false}
-                      isAnimationActive={false}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-            <div className="stat-content">
-              <span className="stat-value mono-data">{stat.value}</span>
-              <span className="stat-label">{stat.label}</span>
-              <span className={`stat-delta ${stat.deltaUp ? 'delta-up' : 'delta-down'}`}>
-                <Icon icon={stat.deltaUp ? 'trending-up' : 'trending-down'} size={12} />
-                {stat.delta}
-              </span>
-            </div>
-          </Card>
-        ))}
-      </div>
+      {/* Server Health */}
+      <ServerHealth />
 
-      {/* Content Grid */}
-      <div className="dashboard-content">
+      {/* Devices Section */}
+      <div className="dashboard-section">
+        <H5>Devices</H5>
+        <div className="stats-grid">
+          {stats.map((stat) => (
+            <Card key={stat.label} elevation={Elevation.ONE} className="stat-card stagger-item">
+              <div className="stat-card-top">
+                <div className="stat-icon" style={{ backgroundColor: stat.color }}>
+                  <Icon icon={stat.icon} size={20} color="white" />
+                </div>
+                <div className="stat-sparkline">
+                  <ResponsiveContainer width="100%" height={32}>
+                    <AreaChart data={sparklineData[stat.sparkIndex]!.map((v, i) => ({ v, i }))}>
+                      <defs>
+                        <linearGradient id={`spark-${stat.sparkIndex}`} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor={stat.color} stopOpacity={0.3} />
+                          <stop offset="100%" stopColor={stat.color} stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <Area
+                        type="monotone"
+                        dataKey="v"
+                        stroke={stat.color}
+                        strokeWidth={1.5}
+                        fill={`url(#spark-${stat.sparkIndex})`}
+                        dot={false}
+                        isAnimationActive={false}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+              <div className="stat-content">
+                <span className="stat-value mono-data">{stat.value}</span>
+                <span className="stat-label">{stat.label}</span>
+                <span className={`stat-delta ${stat.deltaUp ? 'delta-up' : 'delta-down'}`}>
+                  <Icon icon={stat.deltaUp ? 'trending-up' : 'trending-down'} size={12} />
+                  {stat.delta}
+                </span>
+              </div>
+            </Card>
+          ))}
+        </div>
+
         <div className="content-grid">
           {/* Activity Timeline */}
           <Card elevation={Elevation.ONE} className="content-card stagger-item">
@@ -213,9 +240,6 @@ export const Dashboard = () => {
           </Card>
         </div>
       </div>
-
-      {/* Server Health */}
-      <ServerHealth />
     </div>
   );
 };
