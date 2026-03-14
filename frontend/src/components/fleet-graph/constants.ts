@@ -21,6 +21,7 @@ export const TIER_COLORS = {
   warm: '#D9822B',    // Amber
   stale: '#C87619',   // Orange
   dead: '#E76A6E',    // Deep red
+  never: '#5C7080',   // Grey — never connected
 } as const;
 
 export type HealthTier = keyof typeof TIER_COLORS;

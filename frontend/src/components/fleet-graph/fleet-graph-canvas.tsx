@@ -415,9 +415,12 @@ export const FleetGraphCanvas = memo(({
       }
       if (node.type === 'device' && node.device) {
         onNodeClick(node.device, { x: event.clientX, y: event.clientY });
+      } else {
+        // Clicking a non-device node (e.g. fleet hub) dismisses the popover
+        onBackgroundClick(event);
       }
     },
-    [onNodeClick, toggleDevice],
+    [onNodeClick, onBackgroundClick, toggleDevice],
   );
 
   // Background click: clear selection unless Shift is held
@@ -489,6 +492,7 @@ export const FleetGraphCanvas = memo(({
             [node.tierRatios.warm, TIER_COLORS.warm],
             [node.tierRatios.stale, TIER_COLORS.stale],
             [node.tierRatios.dead, TIER_COLORS.dead],
+            [node.tierRatios.never, TIER_COLORS.never],
           ];
           let offsetX = 0;
           for (const [ratio, color] of segments) {
@@ -539,8 +543,8 @@ export const FleetGraphCanvas = memo(({
         const stalenessColor = getStalenessColor(stalenessMs, node.status);
         const pulseHz = getPulseFrequency(tier);
 
-        // Dead nodes shrink slightly
-        const effectiveRadius = tier === 'dead' ? radius * 0.85 : radius;
+        // Dead / never-connected nodes shrink slightly
+        const effectiveRadius = tier === 'dead' || tier === 'never' ? radius * 0.85 : radius;
         const side = effectiveRadius * 2;
         const rx = node.x! - side / 2;
         const ry = node.y! - side / 2;
@@ -584,10 +588,7 @@ export const FleetGraphCanvas = memo(({
           const selOffset = 7;
           ctx.strokeStyle = SELECTION_COLOR;
           ctx.lineWidth = 2;
-          ctx.shadowColor = SELECTION_COLOR;
-          ctx.shadowBlur = 8;
           ctx.strokeRect(rx - selOffset, ry - selOffset, side + selOffset * 2, side + selOffset * 2);
-          ctx.shadowBlur = 0;
         }
 
         // Device type icon inside rect

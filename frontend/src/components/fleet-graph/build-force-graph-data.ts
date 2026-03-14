@@ -28,7 +28,7 @@ export interface GraphNode {
   uptimeSeconds?: number;
   uptimeArcAngle?: number;   // radians, computed once per refresh
   // Fleet hub aggregate health (proportions 0-1)
-  tierRatios?: { fresh: number; warm: number; stale: number; dead: number };
+  tierRatios?: { fresh: number; warm: number; stale: number; dead: number; never: number };
   // Cross-linked by buildForceGraphData after construction
   neighbors: GraphNode[];
   links: GraphLink[];
@@ -159,17 +159,18 @@ export function buildForceGraphData(
     const deviceNeighbors = node.neighbors.filter((n) => n.type === 'device');
     const total = deviceNeighbors.length;
     if (total === 0) {
-      node.tierRatios = { fresh: 0, warm: 0, stale: 0, dead: 0 };
+      node.tierRatios = { fresh: 0, warm: 0, stale: 0, dead: 0, never: 0 };
       continue;
     }
     const now = Date.now();
-    let fresh = 0, warm = 0, stale = 0, dead = 0;
+    let fresh = 0, warm = 0, stale = 0, dead = 0, never = 0;
     for (const dn of deviceNeighbors) {
       const staleness = dn.lastSeenTimestamp ? now - dn.lastSeenTimestamp : NaN;
       const tier = getHealthTier(staleness, dn.status);
       if (tier === 'fresh') fresh++;
       else if (tier === 'warm') warm++;
       else if (tier === 'stale') stale++;
+      else if (tier === 'never') never++;
       else dead++;
     }
     node.tierRatios = {
@@ -177,6 +178,7 @@ export function buildForceGraphData(
       warm: warm / total,
       stale: stale / total,
       dead: dead / total,
+      never: never / total,
     };
   }
 

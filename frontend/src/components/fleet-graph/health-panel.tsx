@@ -96,7 +96,7 @@ export const HealthPanel = ({ nodes, links, onDeviceClick, selectedNodeId, heigh
 
   // Tier counts
   const tierCounts = useMemo(() => {
-    const counts: Record<HealthTier, number> = { fresh: 0, warm: 0, stale: 0, dead: 0 };
+    const counts: Record<HealthTier, number> = { fresh: 0, warm: 0, stale: 0, dead: 0, never: 0 };
     for (const { stalenessMs, status } of deviceEntries) {
       counts[getHealthTier(stalenessMs, status)]++;
     }
@@ -106,12 +106,13 @@ export const HealthPanel = ({ nodes, links, onDeviceClick, selectedNodeId, heigh
   const total = deviceEntries.length;
 
   const summaryRatios = useMemo(() => {
-    if (total === 0) return { fresh: 0, warm: 0, stale: 0, dead: 0 };
+    if (total === 0) return { fresh: 0, warm: 0, stale: 0, dead: 0, never: 0 };
     return {
       fresh: tierCounts.fresh / total,
       warm: tierCounts.warm / total,
       stale: tierCounts.stale / total,
       dead: tierCounts.dead / total,
+      never: tierCounts.never / total,
     };
   }, [tierCounts, total]);
 
@@ -139,6 +140,9 @@ export const HealthPanel = ({ nodes, links, onDeviceClick, selectedNodeId, heigh
           {summaryRatios.dead > 0 && (
             <div style={{ flex: summaryRatios.dead, backgroundColor: TIER_COLORS.dead }} />
           )}
+          {summaryRatios.never > 0 && (
+            <div style={{ flex: summaryRatios.never, backgroundColor: TIER_COLORS.never }} />
+          )}
         </div>
       </div>
 
@@ -154,8 +158,10 @@ export const HealthPanel = ({ nodes, links, onDeviceClick, selectedNodeId, heigh
 
       <div className="health-panel-footer">
         <span style={{ color: TIER_COLORS.fresh }}>{tierCounts.fresh + tierCounts.warm + tierCounts.stale} healthy</span>
-        <span className="health-panel-dot">&middot;</span>
         <span style={{ color: TIER_COLORS.dead }}>{tierCounts.dead} disconnected</span>
+        {tierCounts.never > 0 && (
+          <span style={{ color: TIER_COLORS.never }}>{tierCounts.never} never connected</span>
+        )}
       </div>
 
       <div className="health-panel-minimap">

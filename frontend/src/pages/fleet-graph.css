@@ -12,6 +12,13 @@
   overflow: hidden;
 }
 
+/* Device Popover backdrop — closes popover on any click outside */
+.fleet-graph-popover-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+}
+
 /* Device Popover (absolute positioned inside canvas container) */
 .fleet-graph-popover {
   position: absolute;

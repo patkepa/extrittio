@@ -20,6 +20,7 @@ export function getHealthTier(stalenessMs: number, status?: string): HealthTier 
   // Fallback to backend-reported status when staleness is unknown
   if (status === 'online') return 'fresh';
   if (status === 'warning') return 'warm';
+  if (status === 'offline') return 'never';
   return 'dead';
 }
 

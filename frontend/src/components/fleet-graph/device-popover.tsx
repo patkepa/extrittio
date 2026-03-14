@@ -12,10 +12,12 @@ export const DevicePopover = ({ device, position, onClose }: DevicePopoverProps)
   const navigate = useNavigate();
 
   return (
+    <>
+    <div className="fleet-graph-popover-backdrop" onMouseDown={onClose} />
     <div
       className="fleet-graph-popover"
       style={{ left: position.x, top: position.y }}
-      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="popover-header">
         <strong>{device.name}</strong>
@@ -61,5 +63,6 @@ export const DevicePopover = ({ device, position, onClose }: DevicePopoverProps)
         </Button>
       </div>
     </div>
+    </>
   );
 };
