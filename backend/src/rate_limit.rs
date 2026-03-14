@@ -61,8 +61,19 @@ impl RateLimiter {
     }
 }
 
-/// Extract the client IP from X-Forwarded-For (first hop) or fall back to localhost.
+/// Extract the client IP from the socket address (via axum's ConnectInfo) if
+/// available, falling back to X-Forwarded-For only when the socket address is
+/// absent (e.g. behind a trusted reverse proxy that strips ConnectInfo).
+///
+/// NOTE: X-Forwarded-For is trivially spoofable. Only trust it when you control
+/// the reverse proxy and it overwrites the header.
 fn extract_client_ip(request: &Request) -> IpAddr {
+    // Prefer the real socket address injected by axum's ConnectInfo
+    if let Some(connect_info) = request.extensions().get::<axum::extract::ConnectInfo<std::net::SocketAddr>>() {
+        return connect_info.0.ip();
+    }
+
+    // Fallback: X-Forwarded-For (first hop) — only safe behind a trusted proxy
     request
         .headers()
         .get("x-forwarded-for")

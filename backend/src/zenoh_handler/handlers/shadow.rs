@@ -79,6 +79,14 @@ pub fn handle_shadow_report(db_pool: &DbPool, payload: &[u8]) {
         }
     };
 
+    // Warn if the device's reported version doesn't match the current shadow version
+    if report.version != 0 && report.version != i64::from(shadow.version) {
+        warn!(
+            "Shadow version mismatch for device {}: device reported version={}, server version={}",
+            report.device_id, report.version, shadow.version
+        );
+    }
+
     info!(
         "Shadow report from device {}: version={}",
         report.device_id, shadow.version

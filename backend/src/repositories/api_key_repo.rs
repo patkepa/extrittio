@@ -13,7 +13,7 @@ pub fn insert_api_key(
             .execute(conn)?;
 
         api_keys::table
-            .order(api_keys::id.desc())
+            .filter(api_keys::key_hash.eq(&new_key.key_hash))
             .select(ApiKey::as_select())
             .first(conn)
     })

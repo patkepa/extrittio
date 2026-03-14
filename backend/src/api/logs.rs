@@ -89,7 +89,9 @@ pub(crate) async fn get_device_logs(
 
     let response = run_db(&state.db_pool, move |conn| {
         // Verify device exists
-        device_repo::device_exists(conn, &id)?;
+        if !device_repo::device_exists(conn, &id)? {
+            return Err(AppError::NotFound(format!("Device '{id}' not found")));
+        }
 
         let limit = params.limit.unwrap_or(100).clamp(1, 1000);
 

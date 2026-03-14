@@ -139,7 +139,9 @@ pub(crate) async fn list_commands(
 ) -> Result<Json<Vec<CommandResponse>>, AppError> {
     let response = run_db(&state.db_pool, move |conn| {
         // Verify device exists
-        device_repo::device_exists(conn, &id)?;
+        if !device_repo::device_exists(conn, &id)? {
+            return Err(AppError::NotFound(format!("Device '{id}' not found")));
+        }
 
         let limit = params.limit.unwrap_or(50).min(500);
 

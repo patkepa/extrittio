@@ -160,6 +160,8 @@ export const Devices = () => {
       const dir = sortDir === 'asc' ? 1 : -1;
       if (sortField === 'name') return a.name.localeCompare(b.name) * dir;
       if (sortField === 'status') return a.status.localeCompare(b.status) * dir;
+      if (sortField === 'last_seen') return (a.last_seen ?? '').localeCompare(b.last_seen ?? '') * dir;
+      if (sortField === 'uptime') return (a.uptime ?? '').localeCompare(b.uptime ?? '') * dir;
       return 0;
     });
 

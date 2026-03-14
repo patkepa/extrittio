@@ -211,7 +211,7 @@ export const ShadowTab = ({ deviceId }: ShadowTabProps) => {
     if (PAIRS[e.key] && start === end) {
       if (e.key === '"' && value[start] === '"') {
         e.preventDefault();
-        handleChange(value, start + 1);
+        setRawValue(value, start + 1);
         return;
       }
       e.preventDefault();
@@ -223,7 +223,7 @@ export const ShadowTab = ({ deviceId }: ShadowTabProps) => {
     // Skip over closing bracket/brace/quote if it's already the next char
     if (CLOSERS.has(e.key) && start === end && value[start] === e.key) {
       e.preventDefault();
-      handleChange(value, start + 1);
+      setRawValue(value, start + 1);
       return;
     }
 

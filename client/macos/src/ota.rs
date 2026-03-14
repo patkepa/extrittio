@@ -89,7 +89,7 @@ pub async fn handle_ota(
     // Skip if already running this version
     {
         let current = firmware_version.lock().await;
-        if current.contains(&fw_version) {
+        if *current == format!("v{fw_version}") {
             tracing::info!("OTA: already running v{}, skipping", fw_version);
             report_ota_status(
                 &reported_state, &device_id, &session, &report_topic,

@@ -183,12 +183,17 @@ pub(crate) async fn delete_shadow(
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
     run_db(&state.db_pool, move |conn| {
+        // Read current shadow to get the version for monotonic increment
+        let current = shadow_repo::find_shadow(conn, &id).map_err(|_| {
+            AppError::NotFound(format!("Shadow for device '{id}' not found"))
+        })?;
+
         let now = Utc::now().naive_utc();
         let changeset = UpdateShadow {
             desired: Some("{}".to_string()),
             reported: Some("{}".to_string()),
             delta: Some("{}".to_string()),
-            version: Some(1),
+            version: Some(current.version + 1),
             updated_at: Some(now),
         };
 

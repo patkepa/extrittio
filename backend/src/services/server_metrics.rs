@@ -174,6 +174,6 @@ fn compute_p95(samples: &[u64]) -> f32 {
     let mut sorted = samples.to_vec();
     sorted.sort_unstable();
     let idx = ((sorted.len() as f64) * 0.95).ceil() as usize;
-    let idx = idx.min(sorted.len()) - 1;
+    let idx = idx.saturating_sub(1).min(sorted.len() - 1);
     sorted[idx] as f32 / 1000.0
 }

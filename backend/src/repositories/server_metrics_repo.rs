@@ -150,10 +150,9 @@ pub fn list_server_metrics_downsampled(
     since: NaiveDateTime,
     resolution_secs: i64,
 ) -> Result<Vec<DownsampledServerMetric>, diesel::result::Error> {
-    let res = resolution_secs;
-    let sql = format!(
-        "SELECT \
-            (CAST(strftime('%s', recorded_at) AS INTEGER) / {res}) * {res} AS bucket, \
+    let sql = "\
+        SELECT \
+            (CAST(strftime('%s', recorded_at) AS INTEGER) / ?) * ? AS bucket, \
             AVG(cpu_usage_percent) AS cpu_usage_percent, \
             AVG(memory_used_bytes) AS memory_used_bytes, \
             AVG(memory_total_bytes) AS memory_total_bytes, \
@@ -167,10 +166,11 @@ pub fn list_server_metrics_downsampled(
          FROM server_metrics \
          WHERE recorded_at > ? \
          GROUP BY bucket \
-         ORDER BY bucket ASC"
-    );
+         ORDER BY bucket ASC";
 
     diesel::sql_query(sql)
+        .bind::<BigInt, _>(resolution_secs)
+        .bind::<BigInt, _>(resolution_secs)
         .bind::<Timestamp, _>(since)
         .load(conn)
 }
@@ -180,10 +180,9 @@ pub fn list_app_metrics_downsampled(
     since: NaiveDateTime,
     resolution_secs: i64,
 ) -> Result<Vec<DownsampledAppMetric>, diesel::result::Error> {
-    let res = resolution_secs;
-    let sql = format!(
-        "SELECT \
-            (CAST(strftime('%s', recorded_at) AS INTEGER) / {res}) * {res} AS bucket, \
+    let sql = "\
+        SELECT \
+            (CAST(strftime('%s', recorded_at) AS INTEGER) / ?) * ? AS bucket, \
             SUM(request_count) AS request_count, \
             SUM(error_count) AS error_count, \
             AVG(avg_latency_ms) AS avg_latency_ms, \
@@ -195,10 +194,11 @@ pub fn list_app_metrics_downsampled(
          FROM app_metrics \
          WHERE recorded_at > ? \
          GROUP BY bucket \
-         ORDER BY bucket ASC"
-    );
+         ORDER BY bucket ASC";
 
     diesel::sql_query(sql)
+        .bind::<BigInt, _>(resolution_secs)
+        .bind::<BigInt, _>(resolution_secs)
         .bind::<Timestamp, _>(since)
         .load(conn)
 }

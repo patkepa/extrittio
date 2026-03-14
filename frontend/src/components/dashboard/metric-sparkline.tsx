@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
 
 interface MetricSparklineProps {
@@ -11,8 +12,9 @@ export const MetricSparkline = ({
   color,
   height = 32,
 }: MetricSparklineProps) => {
+  const uid = useId();
   const chartData = data.map((v, i) => ({ v, i }));
-  const gradientId = `sparkline-${color.replace("#", "")}`;
+  const gradientId = `sparkline-${color.replace("#", "")}-${uid}`;
 
   return (
     <ResponsiveContainer width="100%" height={height}>

@@ -89,7 +89,14 @@ pub fn auto_register_device(
         firmware: firmware.to_string(),
     };
 
-    if let Err(e) = device_repo::insert_device(conn, &new_device) {
+    if let Err(e) = conn.transaction(|conn| {
+        device_repo::insert_device(conn, &new_device)?;
+        let new_shadow = NewDeviceShadow {
+            device_id: device_id.to_string(),
+        };
+        shadow_repo::insert_shadow(conn, &new_shadow)?;
+        Ok::<(), diesel::result::Error>(())
+    }) {
         warn!("Failed to auto-register device {}: {}", device_id, e);
         return None;
     }

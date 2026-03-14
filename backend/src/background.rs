@@ -3,6 +3,8 @@ use std::time::Duration;
 use tracing::{info, warn};
 
 use crate::db::models::NewDeviceLog;
+use diesel::Connection;
+
 use crate::repositories::{command_repo, device_repo, log_repo};
 use crate::state::DbPool;
 
@@ -20,12 +22,12 @@ pub async fn run_offline_checker(db_pool: DbPool, timeout_secs: u64) {
         let result = tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().map_err(|e| e.to_string())?;
 
-            // Find which devices will go offline before marking them
-            let going_offline = device_repo::find_devices_going_offline(&mut conn, cutoff)
-                .map_err(|e| e.to_string())?;
-
-            let count =
-                device_repo::mark_devices_offline(&mut conn, cutoff).map_err(|e| e.to_string())?;
+            // Find and mark devices offline atomically within a transaction
+            let (going_offline, count) = conn.transaction::<_, diesel::result::Error, _>(|conn| {
+                let going_offline = device_repo::find_devices_going_offline(conn, cutoff)?;
+                let count = device_repo::mark_devices_offline(conn, cutoff)?;
+                Ok((going_offline, count))
+            }).map_err(|e| e.to_string())?;
 
             // Log an entry for each device that went offline
             for device_id in &going_offline {

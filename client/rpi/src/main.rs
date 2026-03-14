@@ -329,8 +329,9 @@ async fn main() {
                     }
                 }
                 Err(e) => {
-                    tracing::warn!("Shadow subscriber error: {}", e);
-                    break;
+                    tracing::warn!("Shadow subscriber error: {}, retrying in 5s...", e);
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    continue;
                 }
             }
         }
@@ -476,7 +477,7 @@ async fn handle_ota(
 
     {
         let current = firmware_version.lock().await;
-        if current.contains(&fw_version) {
+        if *current == format!("v{fw_version}") {
             info!("OTA: already running v{}, skipping", fw_version);
             report_ota_status(
                 &reported_state,

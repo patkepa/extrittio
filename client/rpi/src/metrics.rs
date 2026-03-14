@@ -39,7 +39,7 @@ pub fn memory_usage_percent() -> f32 {
     }
 
     match (total, available) {
-        (Some(t), Some(a)) if t > 0 => ((t - a) as f32 / t as f32) * 100.0,
+        (Some(t), Some(a)) if t > 0 => (t.saturating_sub(a) as f32 / t as f32) * 100.0,
         _ => 0.0,
     }
 }

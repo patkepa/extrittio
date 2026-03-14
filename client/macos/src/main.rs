@@ -323,8 +323,9 @@ async fn run_async(cfg: config::Config, device_id: String) {
                     }
                 }
                 Err(e) => {
-                    tracing::warn!("Shadow subscriber error: {}", e);
-                    break;
+                    tracing::warn!("Shadow subscriber error: {}, retrying in 5s...", e);
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    continue;
                 }
             }
         }

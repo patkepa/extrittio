@@ -64,7 +64,9 @@ pub(crate) async fn get_config(
 ) -> Result<Json<ConfigResponse>, AppError> {
     let response = run_db(&state.db_pool, move |conn| {
         // Verify device exists
-        device_repo::device_exists(conn, &id)?;
+        if !device_repo::device_exists(conn, &id)? {
+            return Err(AppError::NotFound(format!("Device '{id}' not found")));
+        }
 
         // Get or create config
         let config = config_repo::find_config(conn, &id)?;
@@ -114,7 +116,9 @@ pub(crate) async fn update_config(
 ) -> Result<Json<ConfigResponse>, AppError> {
     let response = run_db(&state.db_pool, move |conn| {
         // Verify device exists
-        device_repo::device_exists(conn, &id)?;
+        if !device_repo::device_exists(conn, &id)? {
+            return Err(AppError::NotFound(format!("Device '{id}' not found")));
+        }
 
         // Read current config
         let existing = config_repo::find_config(conn, &id)?;

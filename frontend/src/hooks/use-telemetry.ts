@@ -38,7 +38,10 @@ export function useAllDeviceTelemetry(deviceId: string | null) {
         if (batch.length < ALL_PAGE_SIZE) break;
         // Use the oldest record's timestamp as cursor for next page
         const lastRecord = batch[batch.length - 1];
+        const prevCursor = cursor;
         cursor = lastRecord?.received_at;
+        // Guard against infinite loop when timestamps don't advance
+        if (cursor === prevCursor) break;
       }
 
       // Sort chronologically (oldest first) for consistent chart rendering.
@@ -51,6 +54,6 @@ export function useAllDeviceTelemetry(deviceId: string | null) {
       return allRecords;
     },
     enabled: !!deviceId,
-    staleTime: Infinity,
+    staleTime: 60_000,
   });
 }

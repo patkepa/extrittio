@@ -24,6 +24,6 @@ pub fn get_offline_devices(conn: &mut SqliteConnection) -> Result<i64, diesel::r
         .first(conn)
 }
 
-pub fn get_total_firmware(conn: &mut SqliteConnection) -> Result<i64, diesel::result::Error> {
+pub fn get_total_messages(conn: &mut SqliteConnection) -> Result<i64, diesel::result::Error> {
     telemetry::table.select(count_star()).first(conn)
 }

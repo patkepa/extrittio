@@ -63,18 +63,22 @@ pub fn insert_firmware_update(
     conn: &mut SqliteConnection,
     record: &NewFirmwareUpdate,
 ) -> Result<FirmwareUpdate, diesel::result::Error> {
-    diesel::insert_into(firmware_updates::table)
-        .values(record)
-        .execute(conn)?;
+    use diesel::Connection;
 
-    firmware_updates::table
-        .filter(
-            firmware_updates::device_type_id
-                .eq(record.device_type_id)
-                .and(firmware_updates::version.eq(&record.version)),
-        )
-        .select(FirmwareUpdate::as_select())
-        .first(conn)
+    conn.transaction(|conn| {
+        diesel::insert_into(firmware_updates::table)
+            .values(record)
+            .execute(conn)?;
+
+        firmware_updates::table
+            .filter(
+                firmware_updates::device_type_id
+                    .eq(record.device_type_id)
+                    .and(firmware_updates::version.eq(&record.version)),
+            )
+            .select(FirmwareUpdate::as_select())
+            .first(conn)
+    })
 }
 
 pub fn delete_firmware_update(

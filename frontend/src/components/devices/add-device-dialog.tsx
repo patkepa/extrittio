@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Button,
   Callout,
@@ -36,6 +36,13 @@ export function AddDeviceDialog() {
   const [certBundle, setCertBundle] = useState<DeviceCertificateResponse | null>(null);
   const [createdDeviceName, setCreatedDeviceName] = useState('');
   const caQuery = useCaCertificate();
+
+  // Reset stale mutation error when dialog opens/closes
+  useEffect(() => {
+    if (!isAddDeviceDialogOpen) {
+      createDeviceMutation.reset();
+    }
+  }, [isAddDeviceDialogOpen]);
 
   const handleAddDevice = () => {
     createDeviceMutation.mutate(

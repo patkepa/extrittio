@@ -36,7 +36,7 @@ pub(crate) async fn get_stats(
         let total_devices = dashboard_repo::get_total_devices(conn)?;
         let active_devices = dashboard_repo::get_online_devices(conn)?;
         let offline_devices = dashboard_repo::get_offline_devices(conn)?;
-        let total_messages = dashboard_repo::get_total_firmware(conn)?;
+        let total_messages = dashboard_repo::get_total_messages(conn)?;
 
         Ok(DashboardStats {
             total_devices,
