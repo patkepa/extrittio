@@ -11,7 +11,7 @@
   padding: 0;
   margin-bottom: 24px;
   border: 1px solid var(--border-color);
-  border-radius: 6px;
+  border-radius: 0;
   background-color: var(--card-bg);
   overflow: hidden;
 }

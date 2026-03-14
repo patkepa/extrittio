@@ -52,7 +52,7 @@
   --content-bg: #171717;
   --navbar-bg: #060606;
   --border-color: hsla(0, 0%, 100%, 0.10);
-  --card-bg: #1e1e1e;
+  --card-bg: #242424;
 
   /* Status colors - Vibrant for dark bg (Blueprint GREEN3, ORANGE3, RED3) */
   --success: 152 69% 45%;      /* ~Blueprint GREEN3 */
@@ -181,9 +181,11 @@ p {
   background-color: transparent;
 }
 
-.bp6-card {
+.bp6-card,
+.bp6-dark .bp6-card {
   background-color: var(--card-bg);
   border: 1px solid var(--border-color);
+  border-radius: 0;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   transition: border-color 0.15s ease;
 }

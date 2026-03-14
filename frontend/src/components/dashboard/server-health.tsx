@@ -102,9 +102,40 @@ export const ServerHealth = () => {
     system &&
     (system.load_avg_1m !== 0 || system.load_avg_5m !== 0 || system.load_avg_15m !== 0);
 
+  const avgLatency = app?.avg_latency_ms ?? 0;
+  const errorCount = app?.error_count ?? 0;
+
+  function healthStatus(value: number, warnAt: number, dangerAt: number): 'online' | 'warning' | 'offline' {
+    if (value >= dangerAt) return 'offline';
+    if (value >= warnAt) return 'warning';
+    return 'online';
+  }
+
+  function latencyStatus(ms: number): 'online' | 'warning' | 'offline' {
+    if (ms >= 500) return 'offline';
+    if (ms >= 200) return 'warning';
+    return 'online';
+  }
+
+  const healthMetrics = [
+    { label: 'CPU', value: `${cpuPct.toFixed(1)}%`, status: healthStatus(cpuPct, 80, 95) },
+    { label: 'MEMORY', value: `${memPct.toFixed(1)}%`, status: healthStatus(memPct, 85, 95) },
+    { label: 'API LATENCY', value: `${avgLatency.toFixed(0)}ms`, status: latencyStatus(avgLatency) },
+    { label: 'ERRORS', value: `${errorCount}`, status: errorCount > 0 ? 'offline' as const : 'online' as const },
+  ];
+
   return (
     <div className="server-health-section">
       <H5>Server Health</H5>
+      <div className="health-strip">
+        {healthMetrics.map((metric) => (
+          <div key={metric.label} className="health-metric">
+            <span className={`status-led status-led--${metric.status}`} />
+            <span className="health-label">{metric.label}</span>
+            <span className="health-value mono-data">{metric.value}</span>
+          </div>
+        ))}
+      </div>
       <div className="server-health-grid">
         {/* ---- System Resources ---- */}
         <Card elevation={Elevation.ONE} className="content-card">

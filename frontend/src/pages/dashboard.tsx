@@ -1,4 +1,4 @@
-import { Card, Elevation, H3, H5, Icon } from '@blueprintjs/core';
+import { Card, Elevation, H5, Icon } from '@blueprintjs/core';
 import type { IconName } from '@blueprintjs/icons';
 import {
   AreaChart,
@@ -9,7 +9,6 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { useDashboardStats } from '../hooks/use-dashboard';
-import { useCurrentMetrics } from '../hooks/use-server-metrics';
 import { ServerHealth } from '../components/dashboard/server-health';
 import './dashboard.css';
 
@@ -54,38 +53,8 @@ const activityEvents: ActivityEvent[] = [
   { id: '8', time: '12:58:12', device: 'Motion Detector 07', event: 'Went offline', status: 'offline' },
 ];
 
-function healthStatus(value: number, warnAt: number, dangerAt: number): 'online' | 'warning' | 'offline' {
-  if (value >= dangerAt) return 'offline';
-  if (value >= warnAt) return 'warning';
-  return 'online';
-}
-
-function latencyStatus(ms: number): 'online' | 'warning' | 'offline' {
-  if (ms >= 500) return 'offline';
-  if (ms >= 200) return 'warning';
-  return 'online';
-}
-
 export const Dashboard = () => {
   const { data: dashboardStats } = useDashboardStats();
-  const { data: currentMetrics } = useCurrentMetrics();
-
-  const system = currentMetrics?.system ?? null;
-  const app = currentMetrics?.app ?? null;
-
-  const cpuPct = system?.cpu_usage_percent ?? 0;
-  const memPct = system && system.memory_total_bytes > 0
-    ? (system.memory_used_bytes / system.memory_total_bytes) * 100
-    : 0;
-  const avgLatency = app?.avg_latency_ms ?? 0;
-  const errorCount = app?.error_count ?? 0;
-
-  const healthMetrics = [
-    { label: 'CPU', value: `${cpuPct.toFixed(1)}%`, status: healthStatus(cpuPct, 80, 95) },
-    { label: 'MEMORY', value: `${memPct.toFixed(1)}%`, status: healthStatus(memPct, 85, 95) },
-    { label: 'API LATENCY', value: `${avgLatency.toFixed(0)}ms`, status: latencyStatus(avgLatency) },
-    { label: 'ERRORS', value: `${errorCount}`, status: errorCount > 0 ? 'offline' as const : 'online' as const },
-  ];
 
   const stats: StatCard[] = dashboardStats
     ? [
@@ -115,22 +84,6 @@ export const Dashboard = () => {
 
   return (
     <div className="dashboard-page">
-      {/* System Health Strip */}
-      <div className="health-strip">
-        {healthMetrics.map((metric) => (
-          <div key={metric.label} className="health-metric">
-            <span className={`status-led status-led--${metric.status}`} />
-            <span className="health-label">{metric.label}</span>
-            <span className="health-value mono-data">{metric.value}</span>
-          </div>
-        ))}
-      </div>
-
-      <div className="page-header">
-        <H3>Dashboard</H3>
-        <p className="page-description">Extrittio IoT Hub — Operational Overview</p>
-      </div>
-
       {/* Server Health */}
       <ServerHealth />
 
