@@ -92,7 +92,7 @@ export const TelemetryTab = ({ deviceId, deviceTypeName }: TelemetryTabProps) =>
   const isAll = selectedRange === 'all';
 
   // Stabilize `since` so the React Query key doesn't change on every render
-  const since = useMemo(() => computeSince(rangeConfig), [selectedRange]);
+  const since = useMemo(() => computeSince(rangeConfig), [rangeConfig]);
   const boundedQuery = useDeviceTelemetry(isAll ? null : deviceId, {
     limit: rangeConfig.limit,
     since,
@@ -103,7 +103,7 @@ export const TelemetryTab = ({ deviceId, deviceTypeName }: TelemetryTabProps) =>
 
   // Pick the active query result
   const activeQuery = isAll ? allQuery : boundedQuery;
-  const telemetryRecords = activeQuery.data ?? [];
+  const telemetryRecords = useMemo(() => activeQuery.data ?? [], [activeQuery.data]);
   const isLoading = activeQuery.isLoading;
   const isFetching = activeQuery.isFetching;
   const isError = activeQuery.isError;
@@ -301,7 +301,7 @@ function TelemetryChart({
         tooltipPlugin((_seriesIdx, val) => `${formatValue(val)} ${metric.unit}`, formatTooltipTime),
       ],
     };
-  }, [metric.color, metric.key, metric.unit]);
+  }, [metric.color, metric.unit]);
 
   return (
     <div className="telemetry-chart">
