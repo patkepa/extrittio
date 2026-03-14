@@ -34,8 +34,8 @@
 }
 
 .logo-icon {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border-radius: 8px;
   background: linear-gradient(135deg, hsl(var(--accent)) 0%, hsl(var(--accent-hover)) 100%);
   display: flex;
@@ -43,7 +43,6 @@
   justify-content: center;
   flex-shrink: 0;
   color: white;
-  box-shadow: 0 2px 8px hsl(var(--accent) / 0.3);
 }
 
 .sidebar-title {
@@ -158,7 +157,7 @@
   color: var(--sidebar-muted-foreground);
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  opacity: 0.7;
+  opacity: 0.5;
 }
 
 .sidebar-menu {
@@ -180,9 +179,8 @@
 
 .sidebar-menu .bp6-menu-item:hover {
   color: var(--sidebar-foreground);
-  background-color: var(--sidebar-accent);
-  border-color: var(--sidebar-border);
-  transform: translateX(2px);
+  background-color: hsla(0, 0%, 100%, 0.04);
+  border-color: transparent;
 }
 
 .sidebar-menu .bp6-menu-item .bp6-menu-item-label,
@@ -193,9 +191,10 @@
 /* Active state */
 .sidebar-menu .bp6-menu-item.bp6-active,
 .sidebar-menu .bp6-menu-item.sidebar-item-active {
-  background-color: hsl(var(--accent) / 0.12);
-  border-color: hsl(var(--accent) / 0.25);
-  color: hsl(var(--accent));
+  background-color: hsla(0, 0%, 100%, 0.08);
+  border-color: transparent;
+  border-left: 2px solid hsl(var(--accent));
+  color: var(--sidebar-foreground);
   font-weight: 600;
 }
 
@@ -226,8 +225,8 @@
   font-weight: 700;
   min-width: 24px;
   text-align: center;
-  background-color: hsl(var(--accent) / 0.12) !important;
-  color: hsl(var(--accent)) !important;
+  background-color: hsla(0, 0%, 100%, 0.08) !important;
+  color: hsl(var(--foreground)) !important;
   border: none !important;
   padding: 0 6px !important;
   line-height: 18px;
@@ -241,7 +240,7 @@
 /* Submenu */
 .sidebar-submenu {
   margin-left: 20px;
-  border-left: 2px solid hsl(var(--accent) / 0.15);
+  border-left: 2px solid hsla(0, 0%, 100%, 0.06);
   padding-left: 4px;
   margin-top: 2px;
   margin-bottom: 4px;
@@ -462,11 +461,11 @@
 }
 
 .nav-group:nth-child(1) .bp6-menu-item:nth-child(1) { animation-delay: 0ms; }
-.nav-group:nth-child(1) .bp6-menu-item:nth-child(2) { animation-delay: 30ms; }
-.nav-group:nth-child(2) .bp6-menu-item:nth-child(1) { animation-delay: 60ms; }
-.nav-group:nth-child(2) .bp6-menu-item:nth-child(2) { animation-delay: 90ms; }
-.nav-group:nth-child(2) .bp6-menu-item:nth-child(3) { animation-delay: 120ms; }
-.nav-group:nth-child(3) .bp6-menu-item:nth-child(1) { animation-delay: 150ms; }
-.nav-group:nth-child(3) .bp6-menu-item:nth-child(2) { animation-delay: 180ms; }
-.nav-group:nth-child(3) .bp6-menu-item:nth-child(3) { animation-delay: 210ms; }
-.nav-group:nth-child(3) .bp6-menu-item:nth-child(4) { animation-delay: 240ms; }
+.nav-group:nth-child(1) .bp6-menu-item:nth-child(2) { animation-delay: 12ms; }
+.nav-group:nth-child(2) .bp6-menu-item:nth-child(1) { animation-delay: 24ms; }
+.nav-group:nth-child(2) .bp6-menu-item:nth-child(2) { animation-delay: 36ms; }
+.nav-group:nth-child(2) .bp6-menu-item:nth-child(3) { animation-delay: 48ms; }
+.nav-group:nth-child(3) .bp6-menu-item:nth-child(1) { animation-delay: 60ms; }
+.nav-group:nth-child(3) .bp6-menu-item:nth-child(2) { animation-delay: 72ms; }
+.nav-group:nth-child(3) .bp6-menu-item:nth-child(3) { animation-delay: 84ms; }
+.nav-group:nth-child(3) .bp6-menu-item:nth-child(4) { animation-delay: 96ms; }
