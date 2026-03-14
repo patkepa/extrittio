@@ -167,11 +167,14 @@ p {
 .bp6-navbar {
   background-color: var(--navbar-bg);
   border-bottom: 1px solid var(--border-color);
+  box-shadow: none;
+  height: 48px;
 }
 
 /* Override Blueprint's default backgrounds */
 .bp6-dark .bp6-navbar {
   background-color: var(--navbar-bg);
+  box-shadow: none;
 }
 
 .bp6-dark .bp6-menu {

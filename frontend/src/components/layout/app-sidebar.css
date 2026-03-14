@@ -7,7 +7,7 @@
   width: 260px;
   min-width: 60px;
   background-color: var(--sidebar-bg);
-  border-right: 1px solid var(--sidebar-border);
+  border-right: 1px solid var(--border-color);
   transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
   flex-shrink: 0;
@@ -19,8 +19,11 @@
 
 /* ── Header ── */
 .sidebar-header {
-  padding: 16px;
-  border-bottom: 1px solid var(--sidebar-border);
+  height: 48px;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .sidebar-logo {
@@ -63,7 +66,7 @@
   width: 100%;
   padding: 6px 10px;
   background-color: var(--sidebar-accent);
-  border: 1px solid var(--sidebar-border);
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -119,7 +122,7 @@
 
 .env-option:hover {
   background-color: var(--sidebar-accent);
-  border-color: var(--sidebar-border);
+  border-color: var(--border-color);
   color: var(--sidebar-foreground);
 }
 
@@ -265,7 +268,7 @@
 /* ── Footer ── */
 .sidebar-footer {
   padding: 12px;
-  border-top: 1px solid var(--sidebar-border);
+  border-top: 1px solid var(--border-color);
   background-color: var(--sidebar-bg);
 }
 
@@ -368,14 +371,13 @@
 }
 
 .sidebar-nav::-webkit-scrollbar-thumb {
-  background: var(--sidebar-border);
+  background: var(--border-color);
   border-radius: 2px;
 }
 
 /* ── Collapsed state ── */
 .app-sidebar.collapsed .sidebar-header {
-  padding: 14px;
-  display: flex;
+  padding: 0 14px;
   justify-content: center;
 }
 
@@ -440,7 +442,7 @@
 
 /* ── Menu divider ── */
 .bp6-menu-divider {
-  border-color: var(--sidebar-border);
+  border-color: var(--border-color);
   margin: 8px 12px;
   opacity: 0.5;
 }
