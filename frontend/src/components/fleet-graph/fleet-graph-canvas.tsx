@@ -87,6 +87,7 @@ export const FleetGraphCanvas = memo(({
   const highlightLinks = useRef(new Set<GraphLink>());
   const hasInitialFit = useRef(false);
   const pulseClockRef = useRef(0);
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const canvasWrapperRef = useRef<HTMLDivElement>(null);
   const lassoRef = useRef<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   const isLassoingRef = useRef(false);
@@ -295,18 +296,30 @@ export const FleetGraphCanvas = memo(({
     }
   }, []);
 
-  // Hover handler — update highlight sets
+  // Hover handler — debounced to avoid flickering when quickly brushing over nodes
   const handleNodeHover = useCallback((node: GraphNode | null) => {
-    highlightNodes.current.clear();
-    highlightLinks.current.clear();
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
 
-    if (node) {
+    if (!node) {
+      // Leaving a node — clear immediately
+      highlightNodes.current.clear();
+      highlightLinks.current.clear();
+      setHoverNode(null);
+      return;
+    }
+
+    // Entering a node — delay before activating dim effect
+    hoverTimerRef.current = setTimeout(() => {
+      highlightNodes.current.clear();
+      highlightLinks.current.clear();
       highlightNodes.current.add(node);
       node.neighbors.forEach((n) => highlightNodes.current.add(n));
       node.links.forEach((l) => highlightLinks.current.add(l));
-    }
-
-    setHoverNode(node);
+      setHoverNode(node);
+    }, 15);
   }, []);
 
   // Click handler

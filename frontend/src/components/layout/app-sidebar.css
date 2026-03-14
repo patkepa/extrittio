@@ -35,6 +35,8 @@
   font-size: 18px;
   font-weight: 700;
   letter-spacing: -0.03em;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .logo-icon {
@@ -53,6 +55,8 @@
   white-space: nowrap;
   font-weight: 700;
   color: var(--sidebar-foreground);
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 /* ── Environment Switcher (Footer) ── */
