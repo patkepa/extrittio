@@ -104,6 +104,10 @@ export const FleetGraphCanvas = memo(({
   const toggleDevice = useSelectionStore((s) => s.toggleDevice);
   const clearSelection = useSelectionStore((s) => s.clearSelection);
 
+  // Keep a ref so the lasso mousedown handler can read selection without re-registering
+  const selectionRef = useRef(selectedDeviceIds);
+  selectionRef.current = selectedDeviceIds;
+
   useEffect(() => {
     let rafId: number;
     const tick = () => {
@@ -157,7 +161,24 @@ export const FleetGraphCanvas = memo(({
     if (!canvasEl) return;
 
     const onMouseDown = (e: MouseEvent) => {
-      if (!e.shiftKey || e.button !== 0) return;
+      if (e.button !== 0) return;
+
+      // Immediately deselect when clicking empty background (no shift, no node)
+      if (!e.shiftKey && selectionRef.current.size > 0) {
+        const coords = fg.screen2GraphCoords(e.offsetX, e.offsetY);
+        const hitNode = graphData.nodes.some((node) => {
+          if (node.x == null || node.y == null) return false;
+          const r = node.type === 'fleet' ? FLEET_RADIUS : DEVICE_RADIUS;
+          const dx = node.x - coords.x;
+          const dy = node.y - coords.y;
+          return dx * dx + dy * dy <= r * r;
+        });
+        if (!hitNode) {
+          clearSelection();
+        }
+      }
+
+      if (!e.shiftKey) return;
       const coords = fg.screen2GraphCoords(e.offsetX, e.offsetY);
       lassoRef.current = { x1: coords.x, y1: coords.y, x2: coords.x, y2: coords.y };
       isLassoingRef.current = true;
