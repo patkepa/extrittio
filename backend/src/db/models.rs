@@ -2,9 +2,10 @@ use chrono::NaiveDateTime;
 use diesel::prelude::*;
 
 use super::schema::{
-    api_keys, app_metrics, ca_certificates, command_history, device_certificates, device_configs,
-    device_logs, device_shadows, device_types, devices, firmware_blobs, firmware_updates, fleets,
-    ota_deployments, server_config, server_metrics, telemetry, users,
+    alerts, api_keys, app_metrics, ca_certificates, command_history, device_certificates,
+    device_configs, device_logs, device_shadows, device_types, devices, firmware_blobs,
+    firmware_updates, fleets, ota_deployments, rule_actions, rule_conditions, rule_cooldowns,
+    rules, server_config, server_metrics, telemetry, users,
 };
 
 // ---------------------------------------------------------------------------
@@ -484,4 +485,160 @@ pub struct NewAppMetric {
     pub db_pool_idle: i32,
     pub zenoh_messages_in: i32,
     pub zenoh_messages_out: i32,
+}
+
+// ---------------------------------------------------------------------------
+// Rules
+// ---------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug, Clone)]
+#[diesel(table_name = rules)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct Rule {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub enabled: bool,
+    pub trigger_type: String,
+    pub target_type: String,
+    pub target_id: Option<String>,
+    pub cooldown_seconds: i32,
+    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = rules)]
+pub struct NewRule {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub enabled: bool,
+    pub trigger_type: String,
+    pub target_type: String,
+    pub target_id: Option<String>,
+    pub cooldown_seconds: i32,
+}
+
+#[derive(AsChangeset, Debug, Default)]
+#[diesel(table_name = rules)]
+pub struct UpdateRule {
+    pub name: Option<String>,
+    pub description: Option<Option<String>>,
+    pub enabled: Option<bool>,
+    pub trigger_type: Option<String>,
+    pub target_type: Option<String>,
+    pub target_id: Option<Option<String>>,
+    pub cooldown_seconds: Option<i32>,
+    pub updated_at: Option<NaiveDateTime>,
+}
+
+// ---------------------------------------------------------------------------
+// Rule Conditions
+// ---------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug, Clone)]
+#[diesel(table_name = rule_conditions)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct RuleCondition {
+    pub id: String,
+    pub rule_id: String,
+    pub field: String,
+    pub operator: String,
+    pub value: String,
+    pub condition_group: i32,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = rule_conditions)]
+pub struct NewRuleCondition {
+    pub id: String,
+    pub rule_id: String,
+    pub field: String,
+    pub operator: String,
+    pub value: String,
+    pub condition_group: i32,
+}
+
+// ---------------------------------------------------------------------------
+// Rule Actions
+// ---------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug, Clone)]
+#[diesel(table_name = rule_actions)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct RuleAction {
+    pub id: String,
+    pub rule_id: String,
+    pub action_type: String,
+    pub config: String,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = rule_actions)]
+pub struct NewRuleAction {
+    pub id: String,
+    pub rule_id: String,
+    pub action_type: String,
+    pub config: String,
+}
+
+// ---------------------------------------------------------------------------
+// Alerts
+// ---------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug, Clone)]
+#[diesel(table_name = alerts)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct Alert {
+    pub id: String,
+    pub rule_id: Option<String>,
+    pub device_id: String,
+    pub severity: String,
+    pub status: String,
+    pub message: String,
+    pub triggered_value: Option<String>,
+    pub resolved_at: Option<NaiveDateTime>,
+    pub acknowledged_at: Option<NaiveDateTime>,
+    pub created_at: NaiveDateTime,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = alerts)]
+pub struct NewAlert {
+    pub id: String,
+    pub rule_id: Option<String>,
+    pub device_id: String,
+    pub severity: String,
+    pub message: String,
+    pub triggered_value: Option<String>,
+}
+
+#[derive(AsChangeset, Debug, Default)]
+#[diesel(table_name = alerts)]
+pub struct UpdateAlert {
+    pub status: Option<String>,
+    pub resolved_at: Option<Option<NaiveDateTime>>,
+    pub acknowledged_at: Option<Option<NaiveDateTime>>,
+}
+
+// ---------------------------------------------------------------------------
+// Rule Cooldowns
+// ---------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug, Clone)]
+#[diesel(table_name = rule_cooldowns)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct RuleCooldown {
+    pub rule_id: String,
+    pub device_id: String,
+    pub last_fired_at: NaiveDateTime,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = rule_cooldowns)]
+pub struct NewRuleCooldown {
+    pub rule_id: String,
+    pub device_id: String,
+    pub last_fired_at: NaiveDateTime,
 }
