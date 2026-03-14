@@ -4,8 +4,11 @@ use rcgen::{
 };
 use sha2::{Digest, Sha256};
 
-use crate::db::models::{CaCertificate, NewCaCertificate, NewDeviceCertificate};
+use diesel::SqliteConnection;
+
+use crate::db::models::{CaCertificate, DeviceCertificate, NewCaCertificate, NewDeviceCertificate};
 use crate::error::AppError;
+use crate::repositories::{cert_repo, device_repo};
 
 /// Generate a self-signed root CA certificate (ECDSA P-256, 10-year validity).
 pub fn generate_ca_certificate() -> Result<NewCaCertificate, AppError> {
@@ -143,4 +146,62 @@ pub fn fingerprint_from_pem(pem_str: &str) -> Result<String, AppError> {
     let parsed =
         pem::parse(pem_str).map_err(|e| AppError::Internal(format!("Failed to parse PEM: {e}")))?;
     Ok(compute_fingerprint(parsed.contents()))
+}
+
+/// Bundle returned from certificate retrieval.
+pub struct CertBundle {
+    pub device_cert: DeviceCertificate,
+    pub ca_cert_pem: String,
+    pub private_key_pem: Option<String>,
+}
+
+/// Get the device certificate bundle. One-time private key download.
+pub fn get_device_certificate_bundle(
+    conn: &mut SqliteConnection,
+    device_id: &str,
+) -> Result<CertBundle, AppError> {
+    device_repo::find_device(conn, device_id)?;
+
+    let cert = cert_repo::get_device_certificate(conn, device_id)?
+        .ok_or_else(|| AppError::NotFound(format!("No certificate found for device '{device_id}'")))?;
+
+    let ca = cert_repo::get_ca_certificate(conn)?
+        .ok_or_else(|| AppError::Internal("CA certificate not found".into()))?;
+
+    let private_key = if !cert.private_key_pem.is_empty() {
+        cert_repo::clear_device_private_key(conn, cert.id)?;
+        Some(cert.private_key_pem.clone())
+    } else {
+        None
+    };
+
+    Ok(CertBundle {
+        device_cert: cert,
+        ca_cert_pem: ca.certificate_pem,
+        private_key_pem: private_key,
+    })
+}
+
+/// Get certificate status (metadata only, no private key).
+pub fn get_device_certificate_status(
+    conn: &mut SqliteConnection,
+    device_id: &str,
+) -> Result<Option<DeviceCertificate>, AppError> {
+    device_repo::find_device(conn, device_id)?;
+    Ok(cert_repo::get_device_certificate(conn, device_id)?)
+}
+
+/// Delete old certificates and generate a new one.
+pub fn regenerate_device_certificate(
+    conn: &mut SqliteConnection,
+    device_id: &str,
+) -> Result<DeviceCertificate, AppError> {
+    device_repo::find_device(conn, device_id)?;
+
+    let ca = cert_repo::get_ca_certificate(conn)?
+        .ok_or_else(|| AppError::Internal("CA certificate not found".into()))?;
+
+    cert_repo::delete_device_certificates(conn, device_id)?;
+    let new_cert = generate_device_certificate(device_id, &ca)?;
+    Ok(cert_repo::insert_device_certificate(conn, &new_cert)?)
 }

@@ -4,6 +4,8 @@ use prost::Message;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use diesel::SqliteConnection;
+
 use crate::db::models::{CommandRecord, NewCommandRecord};
 use crate::error::AppError;
 use crate::repositories::{command_repo, device_repo};
@@ -69,4 +71,61 @@ pub async fn send_command(
         Ok(command_repo::find_command(conn, &corr_id)?)
     })
     .await
+}
+
+/// Terminal command statuses — commands in these states should not be updated.
+const TERMINAL_STATUSES: &[&str] = &["succeeded", "failed", "timed_out"];
+
+/// Handle a command response from a device (used by Zenoh handler).
+pub fn handle_response(
+    conn: &mut SqliteConnection,
+    correlation_id: &str,
+    device_id: &str,
+    device_status: &str,
+    payload: Option<&str>,
+) -> Result<Option<String>, AppError> {
+    if correlation_id.is_empty() {
+        return Ok(None);
+    }
+
+    let command = command_repo::find_command(conn, correlation_id)?;
+    if command.device_id != device_id {
+        return Ok(None);
+    }
+
+    if TERMINAL_STATUSES.contains(&command.status.as_str()) {
+        return Ok(None);
+    }
+
+    let new_status = match device_status {
+        "ack" => "delivered",
+        "succeeded" | "failed" => device_status,
+        _ => "delivered",
+    };
+
+    let now = chrono::Utc::now().naive_utc();
+    command_repo::update_command_status(conn, correlation_id, new_status, payload, now)?;
+
+    Ok(Some(new_status.to_string()))
+}
+
+/// List commands for a device with optional status filter.
+pub fn list_commands(
+    conn: &mut SqliteConnection,
+    device_id: &str,
+    status: Option<&str>,
+    limit: i64,
+) -> Result<Vec<CommandRecord>, AppError> {
+    Ok(command_repo::list_commands(conn, device_id, status, limit)?)
+}
+
+/// Mark stale commands as timed out.
+pub fn timeout_stale(
+    conn: &mut SqliteConnection,
+    timeout_secs: u64,
+) -> Result<usize, AppError> {
+    #[allow(clippy::cast_possible_wrap)]
+    let cutoff = chrono::Utc::now().naive_utc() - chrono::TimeDelta::seconds(timeout_secs as i64);
+    let now = chrono::Utc::now().naive_utc();
+    Ok(command_repo::timeout_stale_commands(conn, cutoff, now)?)
 }

@@ -4,7 +4,7 @@ use diesel::prelude::*;
 use crate::db::models::{Device, DeviceType, Fleet, NewDevice, UpdateDevice};
 use crate::db::schema::{device_types, devices, fleets};
 
-type DeviceWithJoins = (Device, DeviceType, Option<Fleet>);
+pub type DeviceWithJoins = (Device, DeviceType, Option<Fleet>);
 
 pub fn list_devices(
     conn: &mut SqliteConnection,
@@ -143,4 +143,69 @@ pub fn mark_devices_offline(
     )
     .set(devices::status.eq("offline"))
     .execute(conn)
+}
+
+/// Return device IDs that are about to go offline (non-offline, last_seen < cutoff).
+pub fn find_devices_going_offline(
+    conn: &mut SqliteConnection,
+    cutoff: chrono::NaiveDateTime,
+) -> Result<Vec<String>, diesel::result::Error> {
+    devices::table
+        .filter(devices::status.ne("offline"))
+        .filter(devices::last_seen.lt(cutoff))
+        .select(devices::id)
+        .load(conn)
+}
+
+/// Resolve device IDs from optional filters (for bulk operations).
+pub fn resolve_device_ids(
+    conn: &mut SqliteConnection,
+    status_filter: Option<&str>,
+    search_filter: Option<&str>,
+    fleet_id_filter: Option<i32>,
+) -> Result<Vec<String>, diesel::result::Error> {
+    let mut query = devices::table
+        .inner_join(device_types::table)
+        .into_boxed();
+
+    if let Some(status) = status_filter {
+        query = query.filter(devices::status.eq(status));
+    }
+    if let Some(search) = search_filter {
+        let pattern = format!("%{search}%");
+        query = query.filter(
+            devices::name
+                .like(pattern.clone())
+                .or(device_types::name.like(pattern.clone()))
+                .or(devices::location.like(pattern)),
+        );
+    }
+    if let Some(fleet_id) = fleet_id_filter {
+        query = query.filter(devices::fleet_id.eq(fleet_id));
+    }
+
+    query.select(devices::id).load(conn)
+}
+
+/// Bulk-update fleet assignment for a list of device IDs.
+pub fn bulk_update_fleet(
+    conn: &mut SqliteConnection,
+    ids: &[String],
+    fleet_id: Option<i32>,
+    now: chrono::NaiveDateTime,
+) -> Result<usize, diesel::result::Error> {
+    diesel::update(devices::table.filter(devices::id.eq_any(ids)))
+        .set((
+            devices::fleet_id.eq(fleet_id),
+            devices::updated_at.eq(now),
+        ))
+        .execute(conn)
+}
+
+/// Bulk-delete devices by IDs.
+pub fn bulk_delete_devices(
+    conn: &mut SqliteConnection,
+    ids: &[String],
+) -> Result<usize, diesel::result::Error> {
+    diesel::delete(devices::table.filter(devices::id.eq_any(ids))).execute(conn)
 }
