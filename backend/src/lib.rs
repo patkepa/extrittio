@@ -19,6 +19,7 @@ pub mod middleware;
 pub mod pagination;
 pub mod rate_limit;
 pub mod repositories;
+pub mod rule_engine;
 pub mod services;
 pub mod state;
 pub mod util;

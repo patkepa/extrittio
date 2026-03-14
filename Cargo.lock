@@ -891,6 +891,7 @@ dependencies = [
  "prost",
  "rand 0.8.5",
  "rcgen",
+ "reqwest",
  "serde",
  "serde_json",
  "sha2",
