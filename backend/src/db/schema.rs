@@ -1,6 +1,21 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    alerts (id) {
+        id -> Text,
+        rule_id -> Nullable<Text>,
+        device_id -> Text,
+        severity -> Text,
+        status -> Text,
+        message -> Text,
+        triggered_value -> Nullable<Text>,
+        resolved_at -> Nullable<Timestamp>,
+        acknowledged_at -> Nullable<Timestamp>,
+        created_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     api_keys (id) {
         id -> Integer,
         name -> Text,
@@ -161,6 +176,49 @@ diesel::table! {
 }
 
 diesel::table! {
+    rule_actions (id) {
+        id -> Text,
+        rule_id -> Text,
+        action_type -> Text,
+        config -> Text,
+    }
+}
+
+diesel::table! {
+    rule_conditions (id) {
+        id -> Text,
+        rule_id -> Text,
+        field -> Text,
+        operator -> Text,
+        value -> Text,
+        condition_group -> Integer,
+    }
+}
+
+diesel::table! {
+    rule_cooldowns (rule_id, device_id) {
+        rule_id -> Text,
+        device_id -> Text,
+        last_fired_at -> Timestamp,
+    }
+}
+
+diesel::table! {
+    rules (id) {
+        id -> Text,
+        name -> Text,
+        description -> Nullable<Text>,
+        enabled -> Bool,
+        trigger_type -> Text,
+        target_type -> Text,
+        target_id -> Nullable<Text>,
+        cooldown_seconds -> Integer,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     server_config (key) {
         key -> Text,
         value -> Text,
@@ -207,6 +265,8 @@ diesel::table! {
     }
 }
 
+diesel::joinable!(alerts -> devices (device_id));
+diesel::joinable!(alerts -> rules (rule_id));
 diesel::joinable!(api_keys -> device_types (device_type_id));
 diesel::joinable!(command_history -> devices (device_id));
 diesel::joinable!(device_certificates -> devices (device_id));
@@ -219,9 +279,14 @@ diesel::joinable!(firmware_blobs -> firmware_updates (firmware_update_id));
 diesel::joinable!(firmware_updates -> device_types (device_type_id));
 diesel::joinable!(ota_deployments -> devices (device_id));
 diesel::joinable!(ota_deployments -> firmware_updates (firmware_update_id));
+diesel::joinable!(rule_actions -> rules (rule_id));
+diesel::joinable!(rule_conditions -> rules (rule_id));
+diesel::joinable!(rule_cooldowns -> devices (device_id));
+diesel::joinable!(rule_cooldowns -> rules (rule_id));
 diesel::joinable!(telemetry -> devices (device_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
+    alerts,
     api_keys,
     app_metrics,
     ca_certificates,
@@ -236,6 +301,10 @@ diesel::allow_tables_to_appear_in_same_query!(
     firmware_updates,
     fleets,
     ota_deployments,
+    rule_actions,
+    rule_conditions,
+    rule_cooldowns,
+    rules,
     server_config,
     server_metrics,
     telemetry,
