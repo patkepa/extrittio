@@ -3,6 +3,7 @@ import { List } from 'react-window';
 import type { GraphNode } from './build-force-graph-data';
 import { getHealthTier, getStalenessColor, formatStaleness } from './health-utils';
 import { TIER_COLORS, type HealthTier } from './constants';
+import { FleetGraphMinimap, type ViewportInfo } from './fleet-graph-minimap';
 
 interface DeviceEntry {
   node: GraphNode;
@@ -15,6 +16,10 @@ interface HealthPanelProps {
   onDeviceClick: (nodeId: string) => void;
   selectedNodeId?: string | null;
   height: number;
+  viewport: ViewportInfo | null;
+  canvasWidth: number;
+  canvasHeight: number;
+  onMinimapNavigate: (worldX: number, worldY: number) => void;
 }
 
 interface RowExtraProps {
@@ -24,6 +29,7 @@ interface RowExtraProps {
 }
 
 const HEADER_HEIGHT = 60;
+const MINIMAP_SECTION_HEIGHT = 112;
 const FOOTER_HEIGHT = 32;
 const ROW_HEIGHT = 48;
 
@@ -60,7 +66,7 @@ function HealthRow({
   );
 }
 
-export const HealthPanel = ({ nodes, onDeviceClick, selectedNodeId, height }: HealthPanelProps) => {
+export const HealthPanel = ({ nodes, onDeviceClick, selectedNodeId, height, viewport, canvasWidth, canvasHeight, onMinimapNavigate }: HealthPanelProps) => {
   // Tick every 5s so staleness labels and sort order stay reasonably fresh
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -107,7 +113,7 @@ export const HealthPanel = ({ nodes, onDeviceClick, selectedNodeId, height }: He
     };
   }, [tierCounts, total]);
 
-  const listHeight = height - HEADER_HEIGHT - FOOTER_HEIGHT;
+  const listHeight = height - HEADER_HEIGHT - MINIMAP_SECTION_HEIGHT - FOOTER_HEIGHT;
 
   const rowProps: RowExtraProps = useMemo(
     () => ({ deviceEntries, selectedNodeId, onDeviceClick }),
@@ -132,6 +138,16 @@ export const HealthPanel = ({ nodes, onDeviceClick, selectedNodeId, height }: He
             <div style={{ flex: summaryRatios.dead, backgroundColor: TIER_COLORS.dead }} />
           )}
         </div>
+      </div>
+
+      <div className="health-panel-minimap">
+        <FleetGraphMinimap
+          nodes={nodes}
+          viewport={viewport}
+          canvasWidth={canvasWidth}
+          canvasHeight={canvasHeight}
+          onNavigate={onMinimapNavigate}
+        />
       </div>
 
       {listHeight > 0 && (

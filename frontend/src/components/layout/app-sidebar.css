@@ -67,7 +67,7 @@
   padding: 6px 10px;
   background-color: var(--sidebar-accent);
   border: 1px solid var(--border-color);
-  border-radius: 6px;
+  border-radius: 2px;
   cursor: pointer;
   transition: all 0.15s ease;
   font-family: inherit;
@@ -112,7 +112,7 @@
   padding: 6px 10px;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 2px;
   cursor: pointer;
   font-family: inherit;
   color: var(--sidebar-muted-foreground);
@@ -273,7 +273,7 @@
 .env-dot {
   width: 6px;
   height: 6px;
-  border-radius: 50%;
+  border-radius: 1px;
   flex-shrink: 0;
 }
 
@@ -293,7 +293,7 @@
   padding: 10px;
   background-color: transparent;
   border: none;
-  border-radius: 8px;
+  border-radius: 2px;
 }
 
 .user-info {
@@ -305,7 +305,7 @@
 .user-avatar {
   width: 32px;
   height: 32px;
-  border-radius: 8px;
+  border-radius: 2px;
   background: linear-gradient(135deg, hsl(var(--accent)) 0%, hsl(var(--accent-hover)) 100%);
   display: flex;
   align-items: center;

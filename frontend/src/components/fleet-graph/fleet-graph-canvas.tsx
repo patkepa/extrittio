@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
 // @ts-ignore — d3-force-3d ships as transitive dep without types
 import { forceCollide } from 'd3-force-3d';
@@ -7,6 +7,12 @@ import type { Device } from '../../types/api';
 import { getHealthTier, getStalenessColor, getPulseFrequency } from './health-utils';
 import { TIER_COLORS, TYPE_ICON_PATHS, FALLBACK_ICON_PATHS, SELECTION_COLOR } from './constants';
 import { useSelectionStore } from '../../stores/selection-store';
+import type { ViewportInfo } from './fleet-graph-minimap';
+
+export interface GraphActions {
+  navigateTo: (x: number, y: number) => void;
+  fitView: () => void;
+}
 
 // --- Constants ---
 const FLEET_RADIUS = 14;
@@ -60,9 +66,11 @@ interface FleetGraphCanvasProps {
   onBackgroundClick: (event?: MouseEvent) => void;
   onNodeRightClick?: (node: GraphNode, event: MouseEvent) => void;
   selectedNodeId?: string | null;
+  onViewportChange?: (transform: ViewportInfo) => void;
+  graphActionsRef?: React.MutableRefObject<GraphActions | null>;
 }
 
-export const FleetGraphCanvas = ({
+export const FleetGraphCanvas = memo(({
   graphData,
   width,
   height,
@@ -70,6 +78,8 @@ export const FleetGraphCanvas = ({
   onBackgroundClick,
   onNodeRightClick,
   selectedNodeId,
+  onViewportChange,
+  graphActionsRef,
 }: FleetGraphCanvasProps) => {
   const graphRef = useRef<any>(null);
   const [hoverNode, setHoverNode] = useState<GraphNode | null>(null);
@@ -211,6 +221,61 @@ export const FleetGraphCanvas = ({
       forceCollide((node: GraphNode) => (node.type === 'fleet' ? FLEET_RADIUS + 6 : DEVICE_RADIUS + 4)),
     );
   }, []);
+
+  // Expose graph actions via ref
+  useEffect(() => {
+    if (!graphActionsRef) return;
+    graphActionsRef.current = {
+      navigateTo: (x, y) => graphRef.current?.centerAt(x, y, 500),
+      fitView: () => graphRef.current?.zoomToFit(400, 60),
+    };
+  }, [graphActionsRef]);
+
+  // Forward viewport changes to parent (for minimap)
+  const handleZoom = useCallback(
+    (transform: { k: number; x: number; y: number }) => {
+      onViewportChange?.(transform);
+    },
+    [onViewportChange],
+  );
+
+  // Clamp viewport when pan/zoom ends to prevent drifting too far
+  const handleZoomEnd = useCallback(
+    (transform: { k: number; x: number; y: number }) => {
+      if (!hasInitialFit.current) return;
+      const fg = graphRef.current;
+      if (!fg) return;
+
+      const positioned = graphData.nodes.filter((n) => n.x != null && n.y != null);
+      if (positioned.length === 0) return;
+
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const n of positioned) {
+        if (n.x! < minX) minX = n.x!;
+        if (n.y! < minY) minY = n.y!;
+        if (n.x! > maxX) maxX = n.x!;
+        if (n.y! > maxY) maxY = n.y!;
+      }
+
+      const rangeX = maxX - minX || 200;
+      const rangeY = maxY - minY || 200;
+      const padX = Math.max(rangeX * 1.5, 500);
+      const padY = Math.max(rangeY * 1.5, 500);
+      const boundsCenterX = (minX + maxX) / 2;
+      const boundsCenterY = (minY + maxY) / 2;
+
+      const centerWorldX = (width / 2 - transform.x) / transform.k;
+      const centerWorldY = (height / 2 - transform.y) / transform.k;
+
+      const clampedX = Math.max(boundsCenterX - padX, Math.min(boundsCenterX + padX, centerWorldX));
+      const clampedY = Math.max(boundsCenterY - padY, Math.min(boundsCenterY + padY, centerWorldY));
+
+      if (clampedX !== centerWorldX || clampedY !== centerWorldY) {
+        fg.centerAt(clampedX, clampedY, 300);
+      }
+    },
+    [graphData.nodes, width, height],
+  );
 
   // Center on selected node
   useEffect(() => {
@@ -582,7 +647,11 @@ export const FleetGraphCanvas = ({
         cooldownTicks={200}
         autoPauseRedraw={false}
         nodeLabel=""
+        onZoom={handleZoom as any}
+        onZoomEnd={handleZoomEnd as any}
+        minZoom={0.1}
+        maxZoom={8}
       />
     </div>
   );
-};
+});

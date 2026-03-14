@@ -131,6 +131,17 @@
   gap: 1px;
 }
 
+/* Minimap section */
+.health-panel-minimap {
+  padding: 8px 14px 4px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.fleet-graph-minimap {
+  display: block;
+  border-radius: 4px;
+}
+
 /* Device list rows */
 .health-panel-row {
   display: flex;

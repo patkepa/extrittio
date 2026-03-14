@@ -4,6 +4,7 @@ import { useDevices, useBulkChangeFleet } from '../hooks/use-devices';
 import { useFleets } from '../hooks/use-fleets';
 import { buildForceGraphData } from '../components/fleet-graph/build-force-graph-data';
 import { FleetGraphCanvas } from '../components/fleet-graph/fleet-graph-canvas';
+import type { GraphActions } from '../components/fleet-graph/fleet-graph-canvas';
 import { DevicePopover } from '../components/fleet-graph/device-popover';
 import { HealthPanel } from '../components/fleet-graph/health-panel';
 import { FleetGraphContextMenu, type ContextMenuState } from '../components/fleet-graph/fleet-graph-context-menu';
@@ -11,6 +12,7 @@ import { FleetGraphBulkBar } from '../components/fleet-graph/fleet-graph-bulk-ba
 import { useSelectionStore } from '../stores/selection-store';
 import { showSuccessToast, showErrorToast } from '../utils/toaster';
 import type { GraphNode } from '../components/fleet-graph/build-force-graph-data';
+import type { ViewportInfo } from '../components/fleet-graph/fleet-graph-minimap';
 import type { Device } from '../types/api';
 import './fleet-graph.css';
 
@@ -124,6 +126,16 @@ export const FleetGraph = () => {
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [healthPanelOpen, setHealthPanelOpen] = useState(true);
+  const [viewport, setViewport] = useState<ViewportInfo | null>(null);
+  const graphActionsRef = useRef<GraphActions | null>(null);
+
+  const handleViewportChange = useCallback((t: ViewportInfo) => {
+    setViewport(t);
+  }, []);
+
+  const handleMinimapNavigate = useCallback((worldX: number, worldY: number) => {
+    graphActionsRef.current?.navigateTo(worldX, worldY);
+  }, []);
 
   const handlePanelDeviceClick = useCallback(
     (nodeId: string) => {
@@ -204,6 +216,8 @@ export const FleetGraph = () => {
             onBackgroundClick={handleBackgroundClick}
             onNodeRightClick={handleNodeRightClick}
             selectedNodeId={selectedNodeId}
+            onViewportChange={handleViewportChange}
+            graphActionsRef={graphActionsRef}
           />
         ) : null}
 
@@ -245,6 +259,10 @@ export const FleetGraph = () => {
           onDeviceClick={handlePanelDeviceClick}
           selectedNodeId={selectedNodeId}
           height={dimensions.height || 600}
+          viewport={viewport}
+          canvasWidth={dimensions.width}
+          canvasHeight={dimensions.height}
+          onMinimapNavigate={handleMinimapNavigate}
         />
       )}
     </div>
