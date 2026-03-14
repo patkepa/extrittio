@@ -16,6 +16,7 @@ export function useAlerts(params?: Record<string, unknown>) {
     queryKey: queryKeys.alerts.list(params),
     queryFn: () => getAlerts(params),
     staleTime: 10_000,
+    refetchInterval: 10_000,
   });
 }
 
@@ -24,6 +25,7 @@ export function useAlertSummary() {
     queryKey: queryKeys.alerts.summary,
     queryFn: getAlertSummary,
     staleTime: 15_000,
+    refetchInterval: 30_000,
   });
 }
 

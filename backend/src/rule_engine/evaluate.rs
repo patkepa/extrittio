@@ -236,11 +236,25 @@ pub fn evaluate_telemetry(
                                 .unwrap_or("")
                                 .to_string();
                             let payload = json!({
-                                "rule_id": rule.id,
-                                "device_id": device_id,
+                                "event": "rule_triggered",
+                                "timestamp": chrono::Utc::now().to_rfc3339(),
+                                "rule": {
+                                    "id": rule.id,
+                                    "name": rule.name,
+                                },
+                                "device": {
+                                    "id": device_id,
+                                },
                                 "trigger": "telemetry",
+                                "triggered_values": {
+                                    "temperature": data.temperature,
+                                    "humidity": data.humidity,
+                                    "battery_level": data.battery_level,
+                                },
                             });
-                            actions.push(PendingAction::SendWebhook { url, payload });
+                            let mut headers = std::collections::HashMap::new();
+                            headers.insert("X-Extrittio-Event".to_string(), "rule_triggered".to_string());
+                            actions.push(PendingAction::SendWebhook { url, headers, payload });
                         }
                         "command" => {
                             let config: Value =
@@ -305,7 +319,7 @@ pub fn evaluate_status_change(
 
     for rule in rules {
         // Only handle status-triggered rules here.
-        if rule.trigger_type != "status" {
+        if rule.trigger_type != "device_status" {
             continue;
         }
 
@@ -358,12 +372,23 @@ pub fn evaluate_status_change(
                                 .unwrap_or("")
                                 .to_string();
                             let payload = json!({
-                                "rule_id": rule.id,
-                                "device_id": device_id,
-                                "trigger": "status",
-                                "new_status": change.new_status,
+                                "event": "rule_triggered",
+                                "timestamp": chrono::Utc::now().to_rfc3339(),
+                                "rule": {
+                                    "id": rule.id,
+                                    "name": rule.name,
+                                },
+                                "device": {
+                                    "id": device_id,
+                                },
+                                "trigger": "device_status",
+                                "triggered_values": {
+                                    "status": change.new_status,
+                                },
                             });
-                            actions.push(PendingAction::SendWebhook { url, payload });
+                            let mut headers = std::collections::HashMap::new();
+                            headers.insert("X-Extrittio-Event".to_string(), "rule_triggered".to_string());
+                            actions.push(PendingAction::SendWebhook { url, headers, payload });
                         }
                         "command" => {
                             let config: Value =
@@ -1007,7 +1032,7 @@ mod tests {
         let mut cache = empty_cache();
         let rule = make_rule(
             "r2",
-            "status",
+            "device_status",
             "global",
             None,
             0,
@@ -1035,7 +1060,7 @@ mod tests {
         let mut cache = empty_cache();
         let rule = make_rule(
             "r2",
-            "status",
+            "device_status",
             "global",
             None,
             0,
@@ -1057,7 +1082,7 @@ mod tests {
         let mut cache = empty_cache();
         let rule = make_rule(
             "r2",
-            "status",
+            "device_status",
             "global",
             None,
             0,
@@ -1089,7 +1114,7 @@ mod tests {
         let mut cache = empty_cache();
         let rule = make_rule(
             "r2",
-            "status",
+            "device_status",
             "global",
             None,
             0,
@@ -1116,7 +1141,7 @@ mod tests {
         let mut cache = empty_cache();
         let rule = make_rule(
             "r2",
-            "status",
+            "device_status",
             "global",
             None,
             0,
@@ -1142,7 +1167,7 @@ mod tests {
         let mut cache = empty_cache();
         let rule = make_rule(
             "r2",
-            "status",
+            "device_status",
             "global",
             None,
             0,
@@ -1173,7 +1198,7 @@ mod tests {
         // A status rule should be ignored by evaluate_telemetry.
         let rule = make_rule(
             "r3",
-            "status",
+            "device_status",
             "global",
             None,
             0,

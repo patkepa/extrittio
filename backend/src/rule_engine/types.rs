@@ -52,6 +52,7 @@ pub enum PendingAction {
     },
     SendWebhook {
         url: String,
+        headers: std::collections::HashMap<String, String>,
         payload: Value,
     },
     SendCommand {

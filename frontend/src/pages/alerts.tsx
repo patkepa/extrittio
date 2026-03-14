@@ -32,8 +32,10 @@ export const Alerts = () => {
   const [filterStatus, setFilterStatus] = useState<string>('active');
   const [filterSeverity, setFilterSeverity] = useState<string>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [page, setPage] = useState(0);
+  const pageSize = 50;
 
-  const queryParams: Record<string, unknown> = {};
+  const queryParams: Record<string, unknown> = { limit: pageSize, offset: page * pageSize };
   if (filterStatus !== 'all') queryParams.status = filterStatus;
   if (filterSeverity !== 'all') queryParams.severity = filterSeverity;
 
@@ -46,6 +48,8 @@ export const Alerts = () => {
   const bulkReactivateMutation = useBulkReactivate();
 
   const alerts = useMemo(() => alertsQuery.data?.data ?? [], [alertsQuery.data?.data]);
+  const total = alertsQuery.data?.total ?? 0;
+  const totalPages = Math.ceil(total / pageSize);
   const isLoading = alertsQuery.isLoading;
   const error = alertsQuery.error;
 
@@ -185,7 +189,7 @@ export const Alerts = () => {
       <div className="page-header">
         <div>
           <H3>Alerts</H3>
-          <p className="page-description">{alerts.length} alerts</p>
+          <p className="page-description">{total} alerts</p>
         </div>
       </div>
 
@@ -200,6 +204,7 @@ export const Alerts = () => {
                 onClick={() => {
                   setFilterStatus(status);
                   setSelectedIds(new Set());
+                  setPage(0);
                 }}
               >
                 <span className="pill-label">
@@ -216,6 +221,7 @@ export const Alerts = () => {
                 onClick={() => {
                   setFilterSeverity(severity);
                   setSelectedIds(new Set());
+                  setPage(0);
                 }}
               >
                 {severity !== 'all' && (
@@ -401,6 +407,27 @@ export const Alerts = () => {
           </HTMLTable>
         )}
       </Card>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="pagination-controls">
+          <Button
+            icon="chevron-left"
+            minimal
+            disabled={page === 0}
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+          />
+          <span className="pagination-info mono-data">
+            Page {page + 1} of {totalPages}
+          </span>
+          <Button
+            icon="chevron-right"
+            minimal
+            disabled={page >= totalPages - 1}
+            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+          />
+        </div>
+      )}
     </div>
   );
 };

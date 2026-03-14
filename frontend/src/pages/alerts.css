@@ -242,6 +242,20 @@
   font-size: 13px;
 }
 
+/* Pagination */
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px 0;
+}
+
+.pagination-info {
+  font-size: 13px;
+  color: hsl(var(--muted));
+}
+
 /* Animation */
 @keyframes alerts-fadeIn {
   from {

@@ -173,6 +173,11 @@ fn validate_rule(
                         "webhook action config must have a non-empty 'url'".into(),
                     ));
                 }
+                if !url.starts_with("http://") && !url.starts_with("https://") {
+                    return Err(AppError::BadRequest(
+                        "webhook url must start with http:// or https://".into(),
+                    ));
+                }
             }
             "command" => {
                 let cfg: Value = serde_json::from_str(config_str)
@@ -210,6 +215,26 @@ pub fn list_rules(
     target_type: Option<&str>,
 ) -> Result<Vec<Rule>, AppError> {
     Ok(rule_repo::list_rules(conn, enabled, trigger_type, target_type)?)
+}
+
+/// Load filtered rules together with their conditions and actions in batch
+/// (3 queries total, regardless of rule count). This avoids the N+1 query
+/// problem that occurs when fetching details for each rule individually.
+pub fn list_rules_with_details(
+    conn: &mut SqliteConnection,
+    enabled: Option<bool>,
+    trigger_type: Option<&str>,
+    target_type: Option<&str>,
+) -> Result<Vec<RuleWithDetails>, AppError> {
+    let rows = rule_repo::load_rules_with_details(conn, enabled, trigger_type, target_type)?;
+    Ok(rows
+        .into_iter()
+        .map(|(rule, conditions, actions)| RuleWithDetails {
+            rule,
+            conditions,
+            actions,
+        })
+        .collect())
 }
 
 pub fn get_rule(conn: &mut SqliteConnection, id: &str) -> Result<RuleWithDetails, AppError> {
@@ -266,14 +291,13 @@ pub fn create_rule(
 
     let new_conditions: Vec<NewRuleCondition> = conditions
         .into_iter()
-        .enumerate()
-        .map(|(i, (field, operator, value))| NewRuleCondition {
+        .map(|(field, operator, value)| NewRuleCondition {
             id: Uuid::new_v4().to_string(),
             rule_id: rule_id.clone(),
             field,
             operator,
             value,
-            condition_group: i as i32,
+            condition_group: 0,
         })
         .collect();
 
@@ -385,14 +409,13 @@ pub fn update_rule(
             rule_repo::delete_conditions_for_rule(conn, id)?;
             let new_conditions: Vec<NewRuleCondition> = new_conds
                 .into_iter()
-                .enumerate()
-                .map(|(i, (field, operator, value))| NewRuleCondition {
+                .map(|(field, operator, value)| NewRuleCondition {
                     id: Uuid::new_v4().to_string(),
                     rule_id: id.to_string(),
                     field,
                     operator,
                     value,
-                    condition_group: i as i32,
+                    condition_group: 0,
                 })
                 .collect();
             if !new_conditions.is_empty() {
@@ -423,27 +446,18 @@ pub fn update_rule(
 }
 
 pub fn delete_rule(conn: &mut SqliteConnection, id: &str) -> Result<(), AppError> {
-    use diesel::Connection;
-    conn.transaction(|conn| {
-        rule_repo::delete_conditions_for_rule(conn, id)?;
-        rule_repo::delete_actions_for_rule(conn, id)?;
-        let rows = rule_repo::delete_rule(conn, id)?;
-        if rows == 0 {
-            return Err(diesel::result::Error::NotFound);
-        }
-        Ok::<(), diesel::result::Error>(())
-    })
-    .map_err(|e| match e {
-        diesel::result::Error::NotFound => AppError::NotFound(format!("Rule '{id}' not found")),
-        other => AppError::Database(other),
-    })
+    let rows = rule_repo::delete_rule(conn, id)?;
+    if rows == 0 {
+        return Err(AppError::NotFound(format!("Rule '{id}' not found")));
+    }
+    Ok(())
 }
 
 pub fn toggle_rule(
     conn: &mut SqliteConnection,
     id: &str,
     enabled: bool,
-) -> Result<Rule, AppError> {
+) -> Result<(), AppError> {
     let now = Utc::now().naive_utc();
     let changeset = UpdateRule {
         enabled: Some(enabled),
@@ -454,8 +468,7 @@ pub fn toggle_rule(
     if rows == 0 {
         return Err(AppError::NotFound(format!("Rule '{id}' not found")));
     }
-    let rule = rule_repo::find_rule(conn, id)?;
-    Ok(rule)
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

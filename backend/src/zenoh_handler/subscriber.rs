@@ -331,10 +331,13 @@ pub async fn execute_action(
                 Err(e) => warn!("ResolveAlert task panicked: {}", e),
             }
         }
-        PendingAction::SendWebhook { url, payload } => {
-            let result = http_client
-                .post(&url)
-                .json(&payload)
+        PendingAction::SendWebhook { url, headers, payload } => {
+            let mut req = http_client.post(&url).json(&payload);
+            for (k, v) in &headers {
+                req = req.header(k, v);
+            }
+            req = req.header("Content-Type", "application/json");
+            let result = req
                 .timeout(std::time::Duration::from_secs(10))
                 .send()
                 .await;

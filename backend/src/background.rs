@@ -143,18 +143,32 @@ pub async fn run_alert_retention(db_pool: DbPool, retention_days: u64) {
             #[allow(clippy::cast_possible_wrap)]
             let cutoff = chrono::Utc::now().naive_utc()
                 - chrono::Duration::days(retention_days as i64);
-            crate::services::alert_service::delete_resolved_older_than(&mut conn, cutoff)
-                .map_err(|e| e.to_string())
+            let alert_count =
+                crate::services::alert_service::delete_resolved_older_than(&mut conn, cutoff)
+                    .map_err(|e| e.to_string())?;
+
+            // Prune stale cooldowns (older than max cooldown window of 24h)
+            let cooldown_cutoff =
+                chrono::Utc::now().naive_utc() - chrono::Duration::seconds(86400);
+            let cooldown_count =
+                crate::repositories::rule_repo::delete_cooldowns_older_than(&mut conn, cooldown_cutoff)
+                    .map_err(|e| e.to_string())?;
+
+            Ok::<(usize, usize), String>((alert_count, cooldown_count))
         })
         .await;
 
         match result {
-            Ok(Ok(count)) if count > 0 => {
-                info!("Alert retention: deleted {} resolved alerts", count);
+            Ok(Ok((alert_count, cooldown_count))) => {
+                if alert_count > 0 {
+                    info!("Alert retention: deleted {} resolved alerts", alert_count);
+                }
+                if cooldown_count > 0 {
+                    info!("Cooldown pruning: deleted {} stale cooldowns", cooldown_count);
+                }
             }
             Ok(Err(msg)) => warn!("Alert retention error: {}", msg),
             Err(e) => warn!("Alert retention task panicked: {}", e),
-            _ => {}
         }
     }
 }

@@ -142,21 +142,18 @@ pub fn delete_actions_for_rule(
 // Bulk load for cache building
 // ---------------------------------------------------------------------------
 
-/// Load all enabled rules together with their conditions and actions in one
-/// logical operation. Returns a vec of `(Rule, Vec<Condition>, Vec<Action>)`.
-pub fn load_all_enabled_rules(
+/// Attach conditions and actions to a pre-loaded set of rules using only two
+/// additional queries (one for conditions, one for actions) regardless of rule
+/// count. Returns `Vec<(Rule, Vec<RuleCondition>, Vec<RuleAction>)>`.
+fn attach_conditions_and_actions(
     conn: &mut SqliteConnection,
+    rules_vec: Vec<Rule>,
 ) -> Result<Vec<(Rule, Vec<RuleCondition>, Vec<RuleAction>)>, diesel::result::Error> {
-    let enabled_rules: Vec<Rule> = rules::table
-        .filter(rules::enabled.eq(true))
-        .select(Rule::as_select())
-        .load(conn)?;
-
-    if enabled_rules.is_empty() {
+    if rules_vec.is_empty() {
         return Ok(vec![]);
     }
 
-    let ids: Vec<&str> = enabled_rules.iter().map(|r| r.id.as_str()).collect();
+    let ids: Vec<&str> = rules_vec.iter().map(|r| r.id.as_str()).collect();
 
     let all_conditions: Vec<RuleCondition> = rule_conditions::table
         .filter(rule_conditions::rule_id.eq_any(&ids))
@@ -168,24 +165,54 @@ pub fn load_all_enabled_rules(
         .select(RuleAction::as_select())
         .load(conn)?;
 
-    let result = enabled_rules
+    // Group by rule_id using HashMaps for O(n) assembly instead of O(n*m).
+    use std::collections::HashMap;
+
+    let mut cond_map: HashMap<String, Vec<RuleCondition>> = HashMap::new();
+    for c in all_conditions {
+        cond_map.entry(c.rule_id.clone()).or_default().push(c);
+    }
+
+    let mut action_map: HashMap<String, Vec<RuleAction>> = HashMap::new();
+    for a in all_actions {
+        action_map.entry(a.rule_id.clone()).or_default().push(a);
+    }
+
+    let result = rules_vec
         .into_iter()
         .map(|rule| {
-            let conditions: Vec<RuleCondition> = all_conditions
-                .iter()
-                .filter(|c| c.rule_id == rule.id)
-                .cloned()
-                .collect();
-            let actions: Vec<RuleAction> = all_actions
-                .iter()
-                .filter(|a| a.rule_id == rule.id)
-                .cloned()
-                .collect();
+            let conditions = cond_map.remove(&rule.id).unwrap_or_default();
+            let actions = action_map.remove(&rule.id).unwrap_or_default();
             (rule, conditions, actions)
         })
         .collect();
 
     Ok(result)
+}
+
+/// Load all enabled rules together with their conditions and actions in one
+/// logical operation. Returns a vec of `(Rule, Vec<Condition>, Vec<Action>)`.
+pub fn load_all_enabled_rules(
+    conn: &mut SqliteConnection,
+) -> Result<Vec<(Rule, Vec<RuleCondition>, Vec<RuleAction>)>, diesel::result::Error> {
+    let enabled_rules: Vec<Rule> = rules::table
+        .filter(rules::enabled.eq(true))
+        .select(Rule::as_select())
+        .load(conn)?;
+
+    attach_conditions_and_actions(conn, enabled_rules)
+}
+
+/// Load filtered rules with their conditions and actions in batch (3 queries
+/// total regardless of rule count).
+pub fn load_rules_with_details(
+    conn: &mut SqliteConnection,
+    enabled: Option<bool>,
+    trigger_type: Option<&str>,
+    target_type: Option<&str>,
+) -> Result<Vec<(Rule, Vec<RuleCondition>, Vec<RuleAction>)>, diesel::result::Error> {
+    let filtered_rules = list_rules(conn, enabled, trigger_type, target_type)?;
+    attach_conditions_and_actions(conn, filtered_rules)
 }
 
 // ---------------------------------------------------------------------------
@@ -198,6 +225,16 @@ pub fn load_all_cooldowns(
     rule_cooldowns::table
         .select(RuleCooldown::as_select())
         .load(conn)
+}
+
+/// Delete cooldown records whose `last_fired_at` is older than `cutoff`.
+/// Returns the number of rows deleted.
+pub fn delete_cooldowns_older_than(
+    conn: &mut SqliteConnection,
+    cutoff: NaiveDateTime,
+) -> Result<usize, diesel::result::Error> {
+    diesel::delete(rule_cooldowns::table.filter(rule_cooldowns::last_fired_at.lt(cutoff)))
+        .execute(conn)
 }
 
 /// Insert or replace a cooldown record. Uses SQLite's `REPLACE INTO` semantics

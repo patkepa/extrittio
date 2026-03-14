@@ -26,5 +26,5 @@ export async function deleteRule(id: string): Promise<void> {
 }
 
 export async function toggleRule(id: string, enabled: boolean): Promise<void> {
-  await client.put(`/rules/${id}`, { enabled });
+  await client.put(`/rules/${id}/enabled`, { enabled });
 }

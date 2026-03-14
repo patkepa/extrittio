@@ -187,19 +187,16 @@ pub(crate) async fn list_rules(
     Query(params): Query<ListRulesQuery>,
 ) -> Result<Json<Vec<RuleResponse>>, AppError> {
     let responses = run_db(&state.db_pool, move |conn| {
-        let rules = rule_service::list_rules(
+        let details_list = rule_service::list_rules_with_details(
             conn,
             params.enabled,
             params.trigger_type.as_deref(),
             params.target_type.as_deref(),
         )?;
 
-        rules
+        details_list
             .into_iter()
-            .map(|rule| {
-                let details = rule_service::get_rule(conn, &rule.id)?;
-                to_rule_response(details)
-            })
+            .map(to_rule_response)
             .collect::<Result<Vec<_>, _>>()
     })
     .await?;
@@ -314,21 +311,13 @@ pub(crate) async fn toggle_rule(
     Path(id): Path<String>,
     Json(body): Json<EnabledInput>,
 ) -> Result<Json<RuleResponse>, AppError> {
-    let rule = run_db(&state.db_pool, move |conn| {
-        rule_service::toggle_rule(conn, &id, body.enabled)
+    let details = run_db(&state.db_pool, move |conn| {
+        rule_service::toggle_rule(conn, &id, body.enabled)?;
+        rule_service::get_rule(conn, &id)
     })
     .await?;
 
     refresh_rule_cache(&state).await;
 
-    let details = rule_service::RuleWithDetails {
-        conditions: vec![],
-        actions: vec![],
-        rule,
-    };
-
-    // Fetch full details for the response by re-reading from DB after toggle
-    // We already have the rule; return it with empty conditions/actions for efficiency
-    // or do a full get. Let's return a minimal response consistent with the rule data.
     Ok(Json(to_rule_response(details)?))
 }

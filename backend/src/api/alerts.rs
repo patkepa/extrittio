@@ -219,66 +219,58 @@ pub(crate) async fn bulk_acknowledge(
     State(state): State<Arc<AppState>>,
     Json(body): Json<BulkAlertIds>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let ids = body.ids.clone();
-    let mut updated = Vec::new();
-
-    for id in &ids {
-        let id_owned = id.clone();
-        let id_log = id.clone();
-        let alert = run_db(&state.db_pool, move |conn| {
-            alert_service::acknowledge_alert(conn, &id_owned)
-        })
-        .await;
-
-        match alert {
-            Ok(a) => {
-                // Update cache
-                let mut guard = state.rule_cache.write().unwrap();
-                if let Some(rule_id) = &a.rule_id {
-                    guard.active_alerts.remove(&(rule_id.clone(), a.device_id.clone()));
-                }
-                updated.push(a.id.clone());
+    let ids = body.ids;
+    let results = run_db(&state.db_pool, move |conn| {
+        let mut updated = Vec::new();
+        for id in &ids {
+            match alert_service::acknowledge_alert(conn, id) {
+                Ok(a) => updated.push(a),
+                Err(e) => tracing::warn!("Failed to acknowledge alert {id}: {e}"),
             }
-            Err(e) => {
-                tracing::warn!("Failed to acknowledge alert {id_log}: {e}");
+        }
+        Ok::<_, crate::error::AppError>(updated)
+    })
+    .await?;
+
+    {
+        let mut guard = state.rule_cache.write().unwrap();
+        for a in &results {
+            if let Some(rule_id) = &a.rule_id {
+                guard.active_alerts.remove(&(rule_id.clone(), a.device_id.clone()));
             }
         }
     }
 
-    Ok(Json(serde_json::json!({ "acknowledged": updated.len() })))
+    Ok(Json(serde_json::json!({ "acknowledged": results.len() })))
 }
 
 pub(crate) async fn bulk_resolve(
     State(state): State<Arc<AppState>>,
     Json(body): Json<BulkAlertIds>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let ids = body.ids.clone();
-    let mut updated = Vec::new();
-
-    for id in &ids {
-        let id_owned = id.clone();
-        let id_log = id.clone();
-        let alert = run_db(&state.db_pool, move |conn| {
-            alert_service::resolve_alert(conn, &id_owned)
-        })
-        .await;
-
-        match alert {
-            Ok(a) => {
-                // Update cache
-                let mut guard = state.rule_cache.write().unwrap();
-                if let Some(rule_id) = &a.rule_id {
-                    guard.active_alerts.remove(&(rule_id.clone(), a.device_id.clone()));
-                }
-                updated.push(a.id.clone());
+    let ids = body.ids;
+    let results = run_db(&state.db_pool, move |conn| {
+        let mut updated = Vec::new();
+        for id in &ids {
+            match alert_service::resolve_alert(conn, id) {
+                Ok(a) => updated.push(a),
+                Err(e) => tracing::warn!("Failed to resolve alert {id}: {e}"),
             }
-            Err(e) => {
-                tracing::warn!("Failed to resolve alert {id_log}: {e}");
+        }
+        Ok::<_, crate::error::AppError>(updated)
+    })
+    .await?;
+
+    {
+        let mut guard = state.rule_cache.write().unwrap();
+        for a in &results {
+            if let Some(rule_id) = &a.rule_id {
+                guard.active_alerts.remove(&(rule_id.clone(), a.device_id.clone()));
             }
         }
     }
 
-    Ok(Json(serde_json::json!({ "resolved": updated.len() })))
+    Ok(Json(serde_json::json!({ "resolved": results.len() })))
 }
 
 pub(crate) async fn reactivate_alert_handler(
@@ -307,33 +299,29 @@ pub(crate) async fn bulk_reactivate(
     State(state): State<Arc<AppState>>,
     Json(body): Json<BulkAlertIds>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let ids = body.ids.clone();
-    let mut updated = Vec::new();
-
-    for id in &ids {
-        let id_owned = id.clone();
-        let id_log = id.clone();
-        let alert = run_db(&state.db_pool, move |conn| {
-            alert_service::reactivate_alert(conn, &id_owned)
-        })
-        .await;
-
-        match alert {
-            Ok(a) => {
-                // Update cache
-                let mut guard = state.rule_cache.write().unwrap();
-                if let Some(rule_id) = &a.rule_id {
-                    guard
-                        .active_alerts
-                        .insert((rule_id.clone(), a.device_id.clone()), a.id.clone());
-                }
-                updated.push(a.id.clone());
+    let ids = body.ids;
+    let results = run_db(&state.db_pool, move |conn| {
+        let mut updated = Vec::new();
+        for id in &ids {
+            match alert_service::reactivate_alert(conn, id) {
+                Ok(a) => updated.push(a),
+                Err(e) => tracing::warn!("Failed to reactivate alert {id}: {e}"),
             }
-            Err(e) => {
-                tracing::warn!("Failed to reactivate alert {id_log}: {e}");
+        }
+        Ok::<_, crate::error::AppError>(updated)
+    })
+    .await?;
+
+    {
+        let mut guard = state.rule_cache.write().unwrap();
+        for a in &results {
+            if let Some(rule_id) = &a.rule_id {
+                guard
+                    .active_alerts
+                    .insert((rule_id.clone(), a.device_id.clone()), a.id.clone());
             }
         }
     }
 
-    Ok(Json(serde_json::json!({ "reactivated": updated.len() })))
+    Ok(Json(serde_json::json!({ "reactivated": results.len() })))
 }
