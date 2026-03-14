@@ -522,6 +522,7 @@ p {
   background-color: #ffffff !important;
   color: #000000 !important;
   font-weight: 500;
+  border-radius: 0 !important;
 }
 
 .bp6-dark .bp6-tooltip .bp6-popover-arrow-fill,
