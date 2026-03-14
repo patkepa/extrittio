@@ -1,6 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- react-force-graph-2d lacks proper TS types */
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
-// @ts-ignore — d3-force-3d ships as transitive dep without types
+// @ts-expect-error — d3-force-3d ships as transitive dep without types
 import { forceCollide } from 'd3-force-3d';
 import type { GraphData, GraphNode, GraphLink } from './build-force-graph-data';
 import type { Device } from '../../types/api';
@@ -623,6 +624,7 @@ export const FleetGraphCanvas = memo(({
       // Determine if the device end of the link is active
       const deviceNode = source.type === 'device' ? source : target.type === 'device' ? target : null;
       const isActive = deviceNode?.status === 'online' || deviceNode?.status === 'warning';
+      const isNever = deviceNode != null && !deviceNode.lastSeenTimestamp && deviceNode.status === 'offline';
 
       ctx.beginPath();
       if (isActive) {
@@ -636,19 +638,23 @@ export const FleetGraphCanvas = memo(({
       ctx.lineTo(target.x!, target.y!);
 
       if (isHighlighted) {
-        ctx.strokeStyle = isActive ? 'rgba(0, 200, 80, 0.9)' : 'rgba(255, 60, 60, 0.8)';
+        const hlColor = isActive ? 'rgba(0, 200, 80, 0.9)' : isNever ? 'rgba(92, 112, 128, 0.9)' : 'rgba(255, 60, 60, 0.8)';
+        const hlGlow = isActive ? 'rgba(0, 200, 80, 0.4)' : isNever ? 'rgba(92, 112, 128, 0.4)' : 'rgba(255, 60, 60, 0.3)';
+        ctx.strokeStyle = hlColor;
         ctx.lineWidth = 1.5;
-        ctx.shadowColor = isActive ? 'rgba(0, 200, 80, 0.4)' : 'rgba(255, 60, 60, 0.3)';
+        ctx.shadowColor = hlGlow;
         ctx.shadowBlur = 6;
       } else if (shouldDim) {
-        ctx.strokeStyle = isActive
+        const dimColor = isActive
           ? `rgba(0, 200, 80, ${DIM_OPACITY * 0.5})`
+          : isNever ? `rgba(92, 112, 128, ${DIM_OPACITY * 0.5})`
           : `rgba(255, 60, 60, ${DIM_OPACITY * 0.5})`;
+        ctx.strokeStyle = dimColor;
         ctx.lineWidth = 0.5;
         ctx.shadowBlur = 0;
       } else {
-        ctx.strokeStyle = isActive ? 'rgba(0, 200, 80, 0.6)' : 'rgba(255, 60, 60, 0.45)';
-        ctx.lineWidth = isActive ? 1 : 0.5;
+        ctx.strokeStyle = isActive ? 'rgba(0, 200, 80, 0.6)' : isNever ? 'rgba(92, 112, 128, 0.8)' : 'rgba(255, 60, 60, 0.45)';
+        ctx.lineWidth = isActive ? 1 : isNever ? 0.8 : 0.5;
         ctx.shadowBlur = 0;
       }
 
