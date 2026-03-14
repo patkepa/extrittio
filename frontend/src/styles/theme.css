@@ -75,24 +75,24 @@
 
 .status-led--online {
   background-color: hsl(var(--success));
-  box-shadow: 0 0 6px hsl(var(--success) / 0.6), 0 0 12px hsl(var(--success) / 0.3);
+  box-shadow: 0 0 4px hsl(var(--success) / 0.3), 0 0 8px hsl(var(--success) / 0.15);
   animation: led-pulse 2s ease-in-out infinite;
 }
 
 .status-led--offline {
   background-color: hsl(var(--danger));
-  box-shadow: 0 0 4px hsl(var(--danger) / 0.4);
+  box-shadow: 0 0 3px hsl(var(--danger) / 0.2);
 }
 
 .status-led--warning {
   background-color: hsl(var(--warning));
-  box-shadow: 0 0 6px hsl(var(--warning) / 0.5);
+  box-shadow: 0 0 4px hsl(var(--warning) / 0.25);
   animation: led-blink 1.5s ease-in-out infinite;
 }
 
 @keyframes led-pulse {
-  0%, 100% { opacity: 1; box-shadow: 0 0 6px hsl(var(--success) / 0.6), 0 0 12px hsl(var(--success) / 0.3); }
-  50% { opacity: 0.7; box-shadow: 0 0 3px hsl(var(--success) / 0.3), 0 0 6px hsl(var(--success) / 0.15); }
+  0%, 100% { opacity: 1; box-shadow: 0 0 4px hsl(var(--success) / 0.3), 0 0 8px hsl(var(--success) / 0.15); }
+  50% { opacity: 0.7; box-shadow: 0 0 2px hsl(var(--success) / 0.15), 0 0 4px hsl(var(--success) / 0.08); }
 }
 
 @keyframes led-blink {
@@ -183,12 +183,12 @@ p {
 .bp6-card {
   background-color: var(--card-bg);
   border: 1px solid var(--border-color);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
-  transition: box-shadow 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: border-color 0.15s ease;
 }
 
-.bp6-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+.bp6-card.bp6-interactive:hover {
+  border-color: hsla(0, 0%, 100%, 0.14);
 }
 
 .bp6-menu {
@@ -429,11 +429,11 @@ p {
 }
 
 .bp6-elevation-1 {
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 4px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .bp6-elevation-2 {
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 /* Scrollbar styling - minimal and elegant */
@@ -517,11 +517,11 @@ p {
 }
 
 .stagger-item:nth-child(1) { animation-delay: 0ms; }
-.stagger-item:nth-child(2) { animation-delay: 80ms; }
-.stagger-item:nth-child(3) { animation-delay: 160ms; }
-.stagger-item:nth-child(4) { animation-delay: 240ms; }
-.stagger-item:nth-child(5) { animation-delay: 320ms; }
-.stagger-item:nth-child(6) { animation-delay: 400ms; }
+.stagger-item:nth-child(2) { animation-delay: 40ms; }
+.stagger-item:nth-child(3) { animation-delay: 80ms; }
+.stagger-item:nth-child(4) { animation-delay: 120ms; }
+.stagger-item:nth-child(5) { animation-delay: 160ms; }
+.stagger-item:nth-child(6) { animation-delay: 200ms; }
 
 /* Device detail tab utilities */
 .tab-card {
