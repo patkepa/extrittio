@@ -351,11 +351,11 @@ export const FleetGraphCanvas = memo(({
       // Scale on hover
       const radius = isHovered ? baseRadius * HOVER_SCALE : baseRadius;
 
-      // Glow effect for hovered/highlighted nodes
-      if (isHovered) {
+      // Glow effect for hovered/highlighted nodes (device nodes only)
+      if (!isFleet && isHovered) {
         ctx.shadowColor = node.color;
         ctx.shadowBlur = 20;
-      } else if (isHighlighted) {
+      } else if (!isFleet && isHighlighted) {
         ctx.shadowColor = node.color;
         ctx.shadowBlur = 10;
       } else {
@@ -363,36 +363,67 @@ export const FleetGraphCanvas = memo(({
       }
 
       if (isFleet) {
-        // --- Fleet node: rounded rectangle sized to text ---
+        // --- Fleet node: flat rectangle sized to text with integrated health bar ---
         const padX = 8;
         const padY = 4;
-        const cornerRadius = 4;
-        const hoverScale = isHovered ? HOVER_SCALE : 1;
+        const barH = 3;
+        const hoverScale = isHovered ? 1.1 : 1;
 
         ctx.font = FLEET_LABEL_FONT;
         const textWidth = ctx.measureText(node.name).width;
         const rectW = (textWidth + padX * 2) * hoverScale;
-        const rectH = (FLEET_RADIUS + padY) * hoverScale;
+        const rectH = (FLEET_RADIUS + padY + barH) * hoverScale;
         const rx = node.x! - rectW / 2;
         const ry = node.y! - rectH / 2;
 
-        // Rounded rect background
-        ctx.beginPath();
-        ctx.roundRect(rx, ry, rectW, rectH, cornerRadius * hoverScale);
+        // Flat rect background (no rounded corners)
         ctx.fillStyle = node.color;
-        ctx.fill();
+        ctx.fillRect(rx, ry, rectW, rectH);
 
-        // Reset shadow for text
+        // Reset shadow before bar and text
         ctx.shadowBlur = 0;
 
-        // Fleet name
+        // Health bar integrated at the bottom of the rect
+        if (node.tierRatios) {
+          const scaledBarH = barH * hoverScale;
+          const barY = ry + rectH - scaledBarH;
+          const segments: [number, string][] = [
+            [node.tierRatios.fresh, TIER_COLORS.fresh],
+            [node.tierRatios.warm, TIER_COLORS.warm],
+            [node.tierRatios.stale, TIER_COLORS.stale],
+            [node.tierRatios.dead, TIER_COLORS.dead],
+          ];
+          let offsetX = 0;
+          for (const [ratio, color] of segments) {
+            if (ratio <= 0) continue;
+            const segW = ratio * rectW;
+            ctx.fillStyle = color;
+            ctx.fillRect(rx + offsetX, barY, segW, scaledBarH);
+            offsetX += segW;
+          }
+
+          // Separator line between name area and health bar
+          ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+          ctx.lineWidth = 0.5;
+          ctx.beginPath();
+          ctx.moveTo(rx, barY);
+          ctx.lineTo(rx + rectW, barY);
+          ctx.stroke();
+        }
+
+        // Outer border drawn last so it sits on top of health segments
+        ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(rx, ry, rectW, rectH);
+
+        // Fleet name — shifted up by half the bar height to center in the name area
         ctx.font = FLEET_LABEL_FONT;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = '#ffffff';
-        ctx.fillText(node.name, node.x!, node.y!);
+        ctx.fillText(node.name, node.x!, node.y! - (barH * hoverScale) / 2);
 
-        // Device count below
+        // Device count below rect
         if (node.deviceCount != null) {
           ctx.font = '8px -apple-system, sans-serif';
           ctx.fillStyle = 'rgba(255,255,255,0.6)';
@@ -401,30 +432,6 @@ export const FleetGraphCanvas = memo(({
             node.x!,
             node.y! + rectH / 2 + 10,
           );
-        }
-
-        // Health summary bar below the rectangle
-        if (node.tierRatios) {
-          const barY = node.y! + rectH / 2 + 2;
-          const barH = 3;
-          const barW = rectW - 4;
-          const barX = node.x! - barW / 2;
-
-          const segments: [number, string][] = [
-            [node.tierRatios.fresh, TIER_COLORS.fresh],
-            [node.tierRatios.warm, TIER_COLORS.warm],
-            [node.tierRatios.stale, TIER_COLORS.stale],
-            [node.tierRatios.dead, TIER_COLORS.dead],
-          ];
-
-          let offsetX = 0;
-          for (const [ratio, color] of segments) {
-            if (ratio <= 0) continue;
-            const segW = ratio * barW;
-            ctx.fillStyle = color;
-            ctx.fillRect(barX + offsetX, barY, segW, barH);
-            offsetX += segW;
-          }
         }
       } else {
         // Reset shadow before drawing device node — shadow glow is applied
