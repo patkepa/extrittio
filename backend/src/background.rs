@@ -1,8 +1,7 @@
-use chrono::Utc;
 use std::time::Duration;
 use tracing::{info, warn};
 
-use crate::repositories::{command_repo, device_repo};
+use crate::services::{command_service, device_service};
 use crate::state::DbPool;
 
 pub async fn run_offline_checker(db_pool: DbPool, timeout_secs: u64) {
@@ -12,13 +11,11 @@ pub async fn run_offline_checker(db_pool: DbPool, timeout_secs: u64) {
     loop {
         tokio::time::sleep(interval).await;
 
-        #[allow(clippy::cast_possible_wrap)]
-        let cutoff = Utc::now().naive_utc() - chrono::TimeDelta::seconds(timeout_secs as i64);
-
         let pool = db_pool.clone();
         let result = tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().map_err(|e| e.to_string())?;
-            device_repo::mark_devices_offline(&mut conn, cutoff).map_err(|e| e.to_string())
+            device_service::check_offline_devices(&mut conn, timeout_secs)
+                .map_err(|e| e.to_string())
         })
         .await;
 
@@ -48,14 +45,11 @@ pub async fn run_command_timeout_checker(db_pool: DbPool, timeout_secs: u64) {
     loop {
         tokio::time::sleep(interval).await;
 
-        #[allow(clippy::cast_possible_wrap)]
-        let cutoff = Utc::now().naive_utc() - chrono::TimeDelta::seconds(timeout_secs as i64);
-        let now = Utc::now().naive_utc();
-
         let pool = db_pool.clone();
         let result = tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().map_err(|e| e.to_string())?;
-            command_repo::timeout_stale_commands(&mut conn, cutoff, now).map_err(|e| e.to_string())
+            command_service::timeout_stale(&mut conn, timeout_secs)
+                .map_err(|e| e.to_string())
         })
         .await;
 

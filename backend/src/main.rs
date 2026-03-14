@@ -28,10 +28,10 @@ use tracing_subscriber::EnvFilter;
 use extrittio_backend::auth::hash_password;
 use extrittio_backend::config::AppConfig;
 use extrittio_backend::db::models::{NewServerConfigEntry, NewUser, ServerConfigEntry};
-use extrittio_backend::db::schema::{ca_certificates, server_config, users};
+use extrittio_backend::db::schema::server_config;
 use extrittio_backend::middleware::auth_middleware;
 use extrittio_backend::rate_limit::{self, RateLimiter};
-use extrittio_backend::repositories::cert_repo;
+use extrittio_backend::repositories::{cert_repo, user_repo};
 use extrittio_backend::services::cert_service;
 use extrittio_backend::state::AppState;
 use extrittio_backend::{MIGRATIONS, api, background, zenoh_handler};
@@ -146,9 +146,7 @@ async fn main() {
         };
 
         // Seed default admin user if no users exist
-        let user_count: i64 = users::table
-            .count()
-            .get_result(&mut conn)
+        let (_, user_count) = user_repo::list_users(&mut conn, 1, 0)
             .expect("Failed to count users");
 
         if user_count == 0 {
@@ -157,9 +155,7 @@ async fn main() {
                 username: "admin".to_string(),
                 password_hash,
             };
-            diesel::insert_into(users::table)
-                .values(&admin)
-                .execute(&mut conn)
+            user_repo::insert_user(&mut conn, &admin)
                 .expect("Failed to seed admin user");
             tracing::warn!(
                 "Default admin user created (username: admin, password: admin). Change this immediately!"
@@ -167,12 +163,10 @@ async fn main() {
         }
 
         // Initialize CA certificate if not present
-        let ca_exists: i64 = ca_certificates::table
-            .count()
-            .get_result(&mut conn)
-            .expect("Failed to count CA certificates");
+        let existing_ca = cert_repo::get_ca_certificate(&mut conn)
+            .expect("Failed to check CA certificate");
 
-        if ca_exists == 0 {
+        if existing_ca.is_none() {
             let new_ca =
                 cert_service::generate_ca_certificate().expect("Failed to generate CA certificate");
             cert_repo::insert_ca_certificate(&mut conn, &new_ca)
