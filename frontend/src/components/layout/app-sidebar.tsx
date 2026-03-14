@@ -13,6 +13,7 @@ import {
 } from '@blueprintjs/core';
 import { navGroups, projects, currentUser } from '../../data/sidebar-data';
 import { useAuthStore } from '../../stores/auth-store';
+import { useUIStore } from '../../stores/ui-store';
 import { useDashboardStats } from '../../hooks/use-dashboard';
 import type { NavItem } from '../../types/navigation';
 import './app-sidebar.css';
@@ -59,6 +60,7 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
   const [selectedProject, setSelectedProject] = useState(projects[0]!);
   const [projectSwitcherOpen, setProjectSwitcherOpen] = useState(false);
   const logout = useAuthStore((s) => s.logout);
+  const expandSidebar = useUIStore((s) => s.toggleSidebar);
 
   const toggleExpanded = (label: string) => {
     setExpandedItems((prev) => {
@@ -100,6 +102,9 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
         active={active}
         onClick={() => {
           if (hasChildren) {
+            if (isCollapsed) {
+              expandSidebar();
+            }
             toggleExpanded(item.label);
           } else {
             handleNavigation(item.href);
