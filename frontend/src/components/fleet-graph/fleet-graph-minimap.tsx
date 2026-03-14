@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import type { GraphNode } from './build-force-graph-data';
+import type { GraphNode, GraphLink } from './build-force-graph-data';
 import { getStalenessColor } from './health-utils';
 
 export interface ViewportInfo {
@@ -10,6 +10,7 @@ export interface ViewportInfo {
 
 interface FleetGraphMinimapProps {
   nodes: GraphNode[];
+  links: GraphLink[];
   viewportRef: React.RefObject<ViewportInfo | null>;
   canvasWidth: number;
   canvasHeight: number;
@@ -43,6 +44,7 @@ function computeWorldBounds(nodes: GraphNode[]) {
 
 export const FleetGraphMinimap = ({
   nodes,
+  links,
   viewportRef,
   canvasWidth,
   canvasHeight,
@@ -135,6 +137,20 @@ export const FleetGraphMinimap = ({
       ctx.strokeRect(rx, ry, rw, rh);
     }
 
+    // Links (drawn before nodes so nodes appear on top)
+    ctx.lineWidth = 1.5;
+    for (const link of links) {
+      const src = typeof link.source === 'string' ? null : link.source;
+      const tgt = typeof link.target === 'string' ? null : link.target;
+      if (!src?.x || !src?.y || !tgt?.x || !tgt?.y) continue;
+
+      ctx.beginPath();
+      ctx.moveTo(toMX(src.x), toMY(src.y));
+      ctx.lineTo(toMX(tgt.x), toMY(tgt.y));
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+      ctx.stroke();
+    }
+
     // Nodes
     const positioned = nodes.filter((n) => n.x != null && n.y != null);
     for (const node of positioned) {
@@ -154,7 +170,7 @@ export const FleetGraphMinimap = ({
         ctx.fill();
       }
     }
-  }, [nodes, viewportRef, canvasWidth, canvasHeight]);
+  }, [nodes, links, viewportRef, canvasWidth, canvasHeight]);
 
   // Register draw function so parent can call it imperatively on viewport changes
   useEffect(() => {

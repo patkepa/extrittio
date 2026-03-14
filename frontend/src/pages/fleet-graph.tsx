@@ -135,6 +135,10 @@ export const FleetGraph = () => {
     minimapDrawRef.current?.();
   }, []);
 
+  const handleFrameRedraw = useCallback(() => {
+    minimapDrawRef.current?.();
+  }, []);
+
   const handlePanelDeviceClick = useCallback(
     (nodeId: string) => {
       setSelectedNodeId(nodeId);
@@ -216,6 +220,7 @@ export const FleetGraph = () => {
             selectedNodeId={selectedNodeId}
             onViewportChange={handleViewportChange}
             graphActionsRef={graphActionsRef}
+            onFrameRedraw={handleFrameRedraw}
           />
         ) : null}
 
@@ -273,6 +278,7 @@ export const FleetGraph = () => {
       {graphData && (
         <HealthPanel
           nodes={graphData.nodes}
+          links={graphData.links}
           onDeviceClick={handlePanelDeviceClick}
           selectedNodeId={selectedNodeId}
           height={dimensions.height || 600}

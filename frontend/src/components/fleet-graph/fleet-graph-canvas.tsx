@@ -70,6 +70,7 @@ interface FleetGraphCanvasProps {
   selectedNodeId?: string | null;
   onViewportChange?: (transform: ViewportInfo) => void;
   graphActionsRef?: React.MutableRefObject<GraphActions | null>;
+  onFrameRedraw?: () => void;
 }
 
 export const FleetGraphCanvas = memo(({
@@ -82,6 +83,7 @@ export const FleetGraphCanvas = memo(({
   selectedNodeId,
   onViewportChange,
   graphActionsRef,
+  onFrameRedraw,
 }: FleetGraphCanvasProps) => {
   const graphRef = useRef<any>(null);
   const [hoverNode, setHoverNode] = useState<GraphNode | null>(null);
@@ -696,6 +698,13 @@ export const FleetGraphCanvas = memo(({
     ctx.restore();
   }, []);
 
+  // Post-render hook: redraw minimap every frame so it stays in sync with
+  // node dragging and force-simulation ticks.
+  const handleRenderFramePost = useCallback((ctx: CanvasRenderingContext2D, globalScale: number) => {
+    paintLasso(ctx, globalScale);
+    onFrameRedraw?.();
+  }, [paintLasso, onFrameRedraw]);
+
   return (
     <div ref={canvasWrapperRef} style={{ width, height }}>
       <ForceGraph2D
@@ -705,7 +714,7 @@ export const FleetGraphCanvas = memo(({
         height={height}
         backgroundColor="#171717"
         onRenderFramePre={paintGrid as any}
-        onRenderFramePost={paintLasso as any}
+        onRenderFramePost={handleRenderFramePost as any}
         nodeCanvasObject={paintNode as any}
         nodeCanvasObjectMode={() => 'replace'}
         linkCanvasObject={paintLink as any}

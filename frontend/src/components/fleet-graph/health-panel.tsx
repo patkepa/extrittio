@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { List } from 'react-window';
-import type { GraphNode } from './build-force-graph-data';
+import type { GraphNode, GraphLink } from './build-force-graph-data';
 import { getHealthTier, getStalenessColor, formatStaleness } from './health-utils';
 import { TIER_COLORS, type HealthTier } from './constants';
 import { FleetGraphMinimap, type ViewportInfo } from './fleet-graph-minimap';
@@ -13,6 +13,7 @@ interface DeviceEntry {
 
 interface HealthPanelProps {
   nodes: GraphNode[];
+  links: GraphLink[];
   onDeviceClick: (nodeId: string) => void;
   selectedNodeId?: string | null;
   height: number;
@@ -67,7 +68,7 @@ function HealthRow({
   );
 }
 
-export const HealthPanel = ({ nodes, onDeviceClick, selectedNodeId, height, viewportRef, minimapDrawRef, canvasWidth, canvasHeight, collapsed }: HealthPanelProps) => {
+export const HealthPanel = ({ nodes, links, onDeviceClick, selectedNodeId, height, viewportRef, minimapDrawRef, canvasWidth, canvasHeight, collapsed }: HealthPanelProps) => {
   // Tick every 5s so staleness labels and sort order stay reasonably fresh
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -160,6 +161,7 @@ export const HealthPanel = ({ nodes, onDeviceClick, selectedNodeId, height, view
       <div className="health-panel-minimap">
         <FleetGraphMinimap
           nodes={nodes}
+          links={links}
           viewportRef={viewportRef}
           canvasWidth={canvasWidth}
           canvasHeight={canvasHeight}
