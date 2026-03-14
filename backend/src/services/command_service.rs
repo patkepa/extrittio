@@ -110,12 +110,14 @@ pub fn handle_response(
 }
 
 /// List commands for a device with optional status filter.
+/// Returns 404 if the device does not exist.
 pub fn list_commands(
     conn: &mut SqliteConnection,
     device_id: &str,
     status: Option<&str>,
     limit: i64,
 ) -> Result<Vec<CommandRecord>, AppError> {
+    device_repo::find_device(conn, device_id)?;
     Ok(command_repo::list_commands(conn, device_id, status, limit)?)
 }
 

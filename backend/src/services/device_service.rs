@@ -159,12 +159,14 @@ pub fn bulk_delete(conn: &mut SqliteConnection, ids: &[String]) -> Result<usize,
 }
 
 /// List OTA deployments for a device with pagination.
+/// Returns 404 if the device does not exist.
 pub fn list_ota_deployments(
     conn: &mut SqliteConnection,
     device_id: &str,
     limit: i64,
     offset: i64,
 ) -> Result<(Vec<(crate::db::models::OtaDeployment, crate::db::models::FirmwareUpdate)>, i64), AppError> {
+    device_repo::find_device(conn, device_id)?;
     Ok(firmware_repo::list_ota_deployments(conn, device_id, limit, offset)?)
 }
 
