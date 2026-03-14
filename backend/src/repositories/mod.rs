@@ -1,3 +1,4 @@
+pub mod alert_repo;
 pub mod api_key_repo;
 pub mod cert_repo;
 pub mod command_repo;
@@ -8,6 +9,7 @@ pub mod device_type_repo;
 pub mod firmware_repo;
 pub mod fleet_repo;
 pub mod log_repo;
+pub mod rule_repo;
 pub mod server_metrics_repo;
 pub mod shadow_repo;
 pub mod telemetry_repo;

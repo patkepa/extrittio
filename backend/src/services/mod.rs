@@ -1,3 +1,4 @@
+pub mod alert_service;
 pub mod cert_service;
 pub mod command_service;
 pub mod config_service;
@@ -8,6 +9,7 @@ pub mod firmware_service;
 pub mod fleet_service;
 pub mod log_service;
 pub mod metrics_middleware;
+pub mod rule_service;
 pub mod server_metrics;
 pub mod shadow_service;
 pub mod telemetry_service;
