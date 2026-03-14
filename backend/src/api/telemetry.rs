@@ -9,7 +9,7 @@ use utoipa::{IntoParams, ToSchema};
 
 use crate::db::models::TelemetryRecord;
 use crate::error::AppError;
-use crate::repositories::{device_repo, telemetry_repo};
+use crate::services::telemetry_service;
 use crate::state::{AppState, run_db};
 use crate::util;
 
@@ -90,13 +90,9 @@ pub(crate) async fn get_device_telemetry(
     let since = util::parse_timestamp(params.since.as_deref())?;
 
     let response = run_db(&state.db_pool, move |conn| {
-        // Verify device exists (404 if not)
-        device_repo::find_device(conn, &id)?;
-
-        // Determine limit (default 50, max 1000)
         let limit = params.limit.unwrap_or(50).clamp(1, 1000);
 
-        let results = telemetry_repo::list_telemetry(conn, &id, since, limit)?;
+        let results = telemetry_service::list(conn, &id, since, limit)?;
 
         Ok(results.into_iter().map(TelemetryResponse::from).collect())
     })

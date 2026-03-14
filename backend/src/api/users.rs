@@ -8,11 +8,9 @@ use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
-use crate::auth::hash_password;
-use crate::db::models::NewUser;
 use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse, PaginationParams};
-use crate::repositories::user_repo;
+use crate::services::user_service;
 use crate::state::{AppState, run_db};
 
 use super::auth_routes::UserResponse;
@@ -56,7 +54,7 @@ pub(crate) async fn list_users(
     let (limit, offset) = pagination::clamp(params.limit, params.offset);
 
     let response = run_db(&state.db_pool, move |conn| {
-        let (results, total) = user_repo::list_users(conn, limit, offset)?;
+        let (results, total) = user_service::list(conn, limit, offset)?;
         let data = results
             .into_iter()
             .map(|u| UserResponse {
@@ -89,32 +87,8 @@ pub(crate) async fn create_user(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreateUserRequest>,
 ) -> Result<(StatusCode, Json<UserResponse>), AppError> {
-    if body.username.trim().is_empty() {
-        return Err(AppError::BadRequest("Username must not be empty".into()));
-    }
-    if body.password.len() < 4 {
-        return Err(AppError::BadRequest(
-            "Password must be at least 4 characters".into(),
-        ));
-    }
-
-    let password_hash = hash_password(&body.password).map_err(|e| AppError::Auth(e.to_string()))?;
-
-    let username = body.username;
-
     let user = run_db(&state.db_pool, move |conn| {
-        let new_user = NewUser {
-            username: username.clone(),
-            password_hash,
-        };
-
-        user_repo::insert_user(conn, &new_user).map_err(|e| match e {
-            diesel::result::Error::DatabaseError(
-                diesel::result::DatabaseErrorKind::UniqueViolation,
-                _,
-            ) => AppError::Conflict(format!("Username '{username}' already exists")),
-            other => AppError::Database(other),
-        })
+        user_service::create(conn, &body.username, &body.password)
     })
     .await?;
 
@@ -145,11 +119,7 @@ pub(crate) async fn delete_user(
     Path(id): Path<i32>,
 ) -> Result<StatusCode, AppError> {
     run_db(&state.db_pool, move |conn| {
-        let deleted = user_repo::delete_user(conn, id)?;
-        if !deleted {
-            return Err(AppError::NotFound(format!("User {id} not found")));
-        }
-        Ok(())
+        user_service::delete(conn, id)
     })
     .await?;
 
@@ -175,19 +145,8 @@ pub(crate) async fn change_password(
     Path(id): Path<i32>,
     Json(body): Json<ChangePasswordRequest>,
 ) -> Result<StatusCode, AppError> {
-    if body.password.len() < 4 {
-        return Err(AppError::BadRequest(
-            "Password must be at least 4 characters".into(),
-        ));
-    }
-
-    let password_hash = hash_password(&body.password).map_err(|e| AppError::Auth(e.to_string()))?;
-
     run_db(&state.db_pool, move |conn| {
-        // Verify user exists
-        user_repo::find_user_by_id(conn, id)?;
-        user_repo::update_password(conn, id, &password_hash)?;
-        Ok(())
+        user_service::change_password(conn, id, &body.password)
     })
     .await?;
 

@@ -10,7 +10,7 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 use crate::error::AppError;
-use crate::repositories::{config_repo, device_repo};
+use crate::services::config_service;
 use crate::state::{AppState, run_db};
 
 // ---------------------------------------------------------------------------
@@ -63,11 +63,7 @@ pub(crate) async fn get_config(
     Path(id): Path<String>,
 ) -> Result<Json<ConfigResponse>, AppError> {
     let response = run_db(&state.db_pool, move |conn| {
-        // Verify device exists
-        device_repo::device_exists(conn, &id)?;
-
-        // Get or create config
-        let config = config_repo::find_config(conn, &id)?;
+        let config = config_service::get_config(conn, &id)?;
 
         match config {
             Some(c) => {
@@ -113,35 +109,7 @@ pub(crate) async fn update_config(
     Json(body): Json<UpdateConfigRequest>,
 ) -> Result<Json<ConfigResponse>, AppError> {
     let response = run_db(&state.db_pool, move |conn| {
-        // Verify device exists
-        device_repo::device_exists(conn, &id)?;
-
-        // Read current config
-        let existing = config_repo::find_config(conn, &id)?;
-
-        let current: Value =
-            existing
-                .as_ref()
-                .map_or(Value::Object(serde_json::Map::default()), |c| {
-                    serde_json::from_str(&c.config)
-                        .unwrap_or(Value::Object(serde_json::Map::default()))
-                });
-
-        // Merge: null values remove keys, others upsert
-        let mut obj = current.as_object().cloned().unwrap_or_default();
-        for (key, val) in &body.entries {
-            if val.is_null() {
-                obj.remove(key);
-            } else {
-                obj.insert(key.clone(), val.clone());
-            }
-        }
-        let merged = Value::Object(obj);
-        let now = Utc::now().naive_utc();
-
-        let config_str = serde_json::to_string(&merged)?;
-
-        let updated = config_repo::upsert_config(conn, &id, &config_str, now)?;
+        let updated = config_service::merge_and_update(conn, &id, &body.entries)?;
 
         let config_val: Value = serde_json::from_str(&updated.config)
             .unwrap_or(Value::Object(serde_json::Map::default()));

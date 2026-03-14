@@ -14,7 +14,7 @@ use utoipa::{IntoParams, ToSchema};
 use crate::db::models::{NewFirmwareBlob, NewFirmwareUpdate};
 use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse};
-use crate::repositories::{device_type_repo, firmware_repo};
+use crate::repositories::device_type_repo;
 use crate::services::firmware_service;
 use crate::state::{AppState, run_db};
 
@@ -111,7 +111,7 @@ pub(crate) async fn list_firmware_updates(
 
     let response = run_db(&state.db_pool, move |conn| {
         let (results, total) =
-            firmware_repo::list_firmware_updates(conn, params.device_type_id, limit, offset)?;
+            firmware_service::list(conn, params.device_type_id, limit, offset)?;
 
         let data = results
             .into_iter()
@@ -175,7 +175,7 @@ pub(crate) async fn create_firmware_update(
         // Auto-generate version if not provided
         let version = match body.version {
             Some(v) if !v.trim().is_empty() => v.trim().to_string(),
-            _ => next_version_for_type(conn, body.device_type_id)?,
+            _ => firmware_service::next_version_for_type(conn, body.device_type_id)?,
         };
 
         let new_fw = NewFirmwareUpdate {
@@ -324,7 +324,7 @@ pub(crate) async fn upload_firmware_update(
         // Auto-generate version if not provided
         let version = match version {
             Some(v) => v,
-            None => next_version_for_type(conn, device_type_id)?,
+            None => firmware_service::next_version_for_type(conn, device_type_id)?,
         };
 
         // Insert firmware update (with placeholder URL) and blob via service
@@ -387,7 +387,7 @@ pub(crate) async fn download_firmware_blob(
     Path(id): Path<i32>,
 ) -> Result<Response, AppError> {
     let blob = run_db(&state.db_pool, move |conn| {
-        Ok(firmware_repo::find_firmware_blob(conn, id)?)
+        firmware_service::download_blob(conn, id)
     })
     .await?;
 
@@ -418,14 +418,7 @@ pub(crate) async fn delete_firmware_update(
     Path(id): Path<i32>,
 ) -> Result<StatusCode, AppError> {
     run_db(&state.db_pool, move |conn| {
-        let deleted = firmware_repo::delete_firmware_update(conn, id)?;
-        if deleted {
-            Ok(())
-        } else {
-            Err(AppError::NotFound(format!(
-                "Firmware update {id} not found"
-            )))
-        }
+        firmware_service::delete(conn, id)
     })
     .await?;
 
@@ -448,7 +441,7 @@ pub(crate) async fn get_next_version(
     Path(device_type_id): Path<i32>,
 ) -> Result<Json<NextVersionResponse>, AppError> {
     let version = run_db(&state.db_pool, move |conn| {
-        Ok(next_version_for_type(conn, device_type_id)?)
+        firmware_service::next_version_for_type(conn, device_type_id)
     })
     .await?;
 
@@ -460,29 +453,6 @@ pub(crate) async fn get_next_version(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-fn next_version_for_type(
-    conn: &mut diesel::SqliteConnection,
-    device_type_id: i32,
-) -> Result<String, diesel::result::Error> {
-    let latest = firmware_repo::find_next_version(conn, device_type_id)?;
-
-    Ok(match latest {
-        Some(v) => increment_version(&v),
-        None => "1.0.0".to_string(),
-    })
-}
-
-fn increment_version(version: &str) -> String {
-    let parts: Vec<&str> = version.split('.').collect();
-    if parts.len() == 3
-        && let Ok(patch) = parts[2].parse::<u32>()
-    {
-        return format!("{}.{}.{}", parts[0], parts[1], patch + 1);
-    }
-    // Fallback: append .1
-    format!("{version}.1")
-}
 
 /// Map a `UniqueViolation` database error to `AppError::Conflict` with the
 /// given message, passing through all other errors unchanged.

@@ -9,7 +9,6 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 use crate::error::AppError;
-use crate::repositories::{cert_repo, device_repo};
 use crate::services::cert_service;
 use crate::state::{AppState, run_db};
 
@@ -69,7 +68,7 @@ pub(crate) async fn get_ca_certificate(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<CaCertificateResponse>, AppError> {
     let response = run_db(&state.db_pool, move |conn| {
-        let ca = cert_repo::get_ca_certificate(conn)?
+        let ca = cert_service::get_ca_certificate(conn)?
             .ok_or_else(|| AppError::NotFound("CA certificate not initialized".into()))?;
 
         let fingerprint = cert_service::fingerprint_from_pem(&ca.certificate_pem)?;
@@ -108,31 +107,22 @@ pub(crate) async fn get_device_certificate(
     Path(id): Path<String>,
 ) -> Result<Json<DeviceCertificateResponse>, AppError> {
     let response = run_db(&state.db_pool, move |conn| {
-        device_repo::find_device(conn, &id)?;
+        let bundle = cert_service::get_device_certificate_bundle(conn, &id)?;
 
-        let cert = cert_repo::get_device_certificate(conn, &id)?
-            .ok_or_else(|| AppError::NotFound(format!("No certificate for device '{id}'")))?;
-
-        if cert.private_key_pem.is_empty() {
-            return Err(AppError::BadRequest(
+        let private_key_pem = bundle.private_key_pem.ok_or_else(|| {
+            AppError::BadRequest(
                 "Private key already downloaded. Use /regenerate to issue a new certificate."
                     .into(),
-            ));
-        }
-
-        let ca = cert_repo::get_ca_certificate(conn)?
-            .ok_or_else(|| AppError::Internal("CA certificate not initialized".into()))?;
-
-        // Clear the private key from the database after retrieval
-        cert_repo::clear_device_private_key(conn, cert.id)?;
+            )
+        })?;
 
         Ok(DeviceCertificateResponse {
-            certificate_pem: cert.certificate_pem,
-            private_key_pem: cert.private_key_pem,
-            ca_pem: ca.certificate_pem,
-            fingerprint: cert.fingerprint,
-            expires_at: cert.expires_at.to_string(),
-            created_at: cert.created_at.to_string(),
+            certificate_pem: bundle.device_cert.certificate_pem,
+            private_key_pem,
+            ca_pem: bundle.ca_cert_pem,
+            fingerprint: bundle.device_cert.fingerprint,
+            expires_at: bundle.device_cert.expires_at.to_string(),
+            created_at: bundle.device_cert.created_at.to_string(),
         })
     })
     .await?;
@@ -157,18 +147,10 @@ pub(crate) async fn regenerate_device_certificate(
     Path(id): Path<String>,
 ) -> Result<(StatusCode, Json<DeviceCertificateResponse>), AppError> {
     let response = run_db(&state.db_pool, move |conn| {
-        // Verify device exists
-        device_repo::find_device(conn, &id)?;
+        let cert = cert_service::regenerate_device_certificate(conn, &id)?;
 
-        let ca = cert_repo::get_ca_certificate(conn)?
+        let ca = cert_service::get_ca_certificate(conn)?
             .ok_or_else(|| AppError::Internal("CA certificate not initialized".into()))?;
-
-        // Delete existing certificates for this device
-        cert_repo::delete_device_certificates(conn, &id)?;
-
-        // Generate new certificate
-        let new_cert = cert_service::generate_device_certificate(&id, &ca)?;
-        let cert = cert_repo::insert_device_certificate(conn, &new_cert)?;
 
         Ok(DeviceCertificateResponse {
             certificate_pem: cert.certificate_pem,
@@ -201,9 +183,7 @@ pub(crate) async fn get_device_certificate_status(
     Path(id): Path<String>,
 ) -> Result<Json<Option<DeviceCertificateStatusResponse>>, AppError> {
     let response = run_db(&state.db_pool, move |conn| {
-        device_repo::find_device(conn, &id)?;
-
-        let cert = cert_repo::get_device_certificate(conn, &id)?;
+        let cert = cert_service::get_device_certificate_status(conn, &id)?;
 
         Ok(cert.map(|c| DeviceCertificateStatusResponse {
             fingerprint: c.fingerprint,

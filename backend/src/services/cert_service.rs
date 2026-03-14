@@ -191,6 +191,13 @@ pub fn get_device_certificate_status(
     Ok(cert_repo::get_device_certificate(conn, device_id)?)
 }
 
+/// Get the CA certificate, if one has been initialized.
+pub fn get_ca_certificate(
+    conn: &mut SqliteConnection,
+) -> Result<Option<CaCertificate>, AppError> {
+    Ok(cert_repo::get_ca_certificate(conn)?)
+}
+
 /// Delete old certificates and generate a new one.
 pub fn regenerate_device_certificate(
     conn: &mut SqliteConnection,

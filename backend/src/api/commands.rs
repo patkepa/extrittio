@@ -11,7 +11,6 @@ use utoipa::{IntoParams, ToSchema};
 
 use crate::db::models::CommandRecord;
 use crate::error::AppError;
-use crate::repositories::{command_repo, device_repo};
 use crate::services::command_service;
 use crate::state::{AppState, run_db};
 
@@ -137,12 +136,9 @@ pub(crate) async fn list_commands(
     Query(params): Query<CommandsQuery>,
 ) -> Result<Json<Vec<CommandResponse>>, AppError> {
     let response = run_db(&state.db_pool, move |conn| {
-        // Verify device exists
-        device_repo::device_exists(conn, &id)?;
-
         let limit = params.limit.unwrap_or(50).min(500);
 
-        let records = command_repo::list_commands(conn, &id, params.status.as_deref(), limit)?;
+        let records = command_service::list_commands(conn, &id, params.status.as_deref(), limit)?;
 
         Ok(records.into_iter().map(to_command_response).collect())
     })

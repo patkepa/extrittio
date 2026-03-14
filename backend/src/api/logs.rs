@@ -9,7 +9,7 @@ use utoipa::{IntoParams, ToSchema};
 
 use crate::db::models::DeviceLog;
 use crate::error::AppError;
-use crate::repositories::{device_repo, log_repo};
+use crate::services::log_service;
 use crate::state::{AppState, run_db};
 use crate::util;
 
@@ -88,15 +88,11 @@ pub(crate) async fn get_device_logs(
     let since = util::parse_timestamp(params.since.as_deref())?;
 
     let response = run_db(&state.db_pool, move |conn| {
-        // Verify device exists
-        device_repo::device_exists(conn, &id)?;
-
         let limit = params.limit.unwrap_or(100).clamp(1, 1000);
 
-        // Normalize level to uppercase for the query
         let level = params.level.as_deref().map(str::to_uppercase);
 
-        let results = log_repo::list_logs(conn, &id, level.as_deref(), since, limit)?;
+        let results = log_service::list(conn, &id, level.as_deref(), since, limit)?;
 
         Ok(results.into_iter().map(LogResponse::from).collect())
     })

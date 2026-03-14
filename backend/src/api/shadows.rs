@@ -4,15 +4,13 @@ use axum::{
     http::StatusCode,
     routing::get,
 };
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
-use crate::db::models::{DeviceShadow, UpdateShadow};
+use crate::db::models::DeviceShadow;
 use crate::error::AppError;
-use crate::repositories::{device_repo, shadow_repo};
 use crate::services::shadow_service;
 use crate::state::{AppState, run_db};
 
@@ -98,9 +96,7 @@ pub(crate) async fn get_shadow(
     Path(id): Path<String>,
 ) -> Result<Json<ShadowResponse>, AppError> {
     let response = run_db(&state.db_pool, move |conn| {
-        // Verify device exists
-        device_repo::find_device(conn, &id)?;
-        let shadow = shadow_repo::find_shadow(conn, &id)?;
+        let shadow = shadow_service::get_shadow(conn, &id)?;
         Ok(to_shadow_response(shadow))
     })
     .await?;
@@ -130,7 +126,7 @@ pub(crate) async fn update_desired(
 
     let id_clone = id;
     let response = run_db(&state.db_pool, move |conn| {
-        let updated = shadow_repo::find_shadow(conn, &id_clone)?;
+        let updated = shadow_service::get_shadow(conn, &id_clone)?;
         Ok(to_shadow_response(updated))
     })
     .await?;
@@ -158,7 +154,7 @@ pub(crate) async fn update_reported(
 ) -> Result<Json<ShadowResponse>, AppError> {
     let response = run_db(&state.db_pool, move |conn| {
         shadow_service::update_reported(conn, &id, &body.state)?;
-        let updated = shadow_repo::find_shadow(conn, &id)?;
+        let updated = shadow_service::get_shadow(conn, &id)?;
         Ok(to_shadow_response(updated))
     })
     .await?;
@@ -183,24 +179,7 @@ pub(crate) async fn delete_shadow(
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
     run_db(&state.db_pool, move |conn| {
-        let now = Utc::now().naive_utc();
-        let changeset = UpdateShadow {
-            desired: Some("{}".to_string()),
-            reported: Some("{}".to_string()),
-            delta: Some("{}".to_string()),
-            version: Some(1),
-            updated_at: Some(now),
-        };
-
-        let rows = shadow_repo::update_shadow(conn, &id, &changeset)?;
-
-        if rows == 0 {
-            return Err(AppError::NotFound(format!(
-                "Shadow for device '{id}' not found"
-            )));
-        }
-
-        Ok(())
+        shadow_service::delete_shadow(conn, &id)
     })
     .await?;
 
