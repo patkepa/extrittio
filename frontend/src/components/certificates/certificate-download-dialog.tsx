@@ -67,8 +67,18 @@ export function CertificateDownloadDialog({
             <Button intent="primary" icon="caret-down" />
           </Popover>
         </ButtonGroup>
-        <div style={{ marginTop: 16, fontSize: 12, color: "hsl(var(--muted))" }}>
-          Fingerprint: <code>{certBundle.fingerprint}</code>
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 11, color: "hsl(var(--muted))", marginBottom: 4 }}>Fingerprint</div>
+          <code style={{
+            display: "block",
+            fontSize: 11,
+            padding: "6px 8px",
+            background: "rgba(0,0,0,0.25)",
+            borderRadius: 3,
+            wordBreak: "break-all",
+            lineHeight: 1.6,
+            color: "hsl(var(--muted))",
+          }}>{certBundle.fingerprint}</code>
         </div>
       </DialogBody>
       <DialogFooter

@@ -89,6 +89,10 @@
   margin-bottom: 0;
 }
 
+.devices-table .bp6-control .bp6-control-indicator {
+  border-radius: 0;
+}
+
 .controls-row {
   display: flex;
   gap: 16px;
