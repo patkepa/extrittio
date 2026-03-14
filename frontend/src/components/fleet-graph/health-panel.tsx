@@ -153,11 +153,9 @@ export const HealthPanel = ({ nodes, onDeviceClick, selectedNodeId, height, view
       )}
 
       <div className="health-panel-footer">
-        <span style={{ color: TIER_COLORS.fresh }}>{tierCounts.fresh} fresh</span>
+        <span style={{ color: TIER_COLORS.fresh }}>{tierCounts.fresh + tierCounts.warm + tierCounts.stale} healthy</span>
         <span className="health-panel-dot">&middot;</span>
-        <span style={{ color: TIER_COLORS.warm }}>{tierCounts.warm + tierCounts.stale} stale</span>
-        <span className="health-panel-dot">&middot;</span>
-        <span style={{ color: TIER_COLORS.dead }}>{tierCounts.dead} dead</span>
+        <span style={{ color: TIER_COLORS.dead }}>{tierCounts.dead} disconnected</span>
       </div>
 
       <div className="health-panel-minimap">
