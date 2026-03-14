@@ -13,6 +13,9 @@ import {
   Icon,
 } from '@blueprintjs/core';
 import { useRule, useCreateRule, useUpdateRule } from '../../hooks/use-rules';
+import { useDeviceTypes } from '../../hooks/use-device-types';
+import { useFleets } from '../../hooks/use-fleets';
+import { useDevices } from '../../hooks/use-devices';
 import { useUIStore } from '../../stores/ui-store';
 import { showSuccessToast, showErrorToast } from '../../utils/toaster';
 
@@ -27,12 +30,35 @@ interface ActionRow {
   config: Record<string, unknown>;
 }
 
-const CONDITION_FIELDS = ['temperature', 'humidity', 'battery_level', 'status'];
-const CONDITION_OPERATORS = ['>', '<', '>=', '<=', '==', '!='];
+const TELEMETRY_FIELDS = [
+  { value: 'temperature', label: 'Temperature' },
+  { value: 'humidity', label: 'Humidity' },
+  { value: 'battery_level', label: 'Battery Level' },
+];
+const STATUS_FIELDS = [{ value: 'status', label: 'Status' }];
+
+const NUMERIC_OPERATORS = [
+  { value: 'gt', label: '>' },
+  { value: 'gte', label: '>=' },
+  { value: 'lt', label: '<' },
+  { value: 'lte', label: '<=' },
+  { value: 'eq', label: '=' },
+  { value: 'neq', label: '!=' },
+];
+const STATUS_OPERATORS = [
+  { value: 'eq', label: '=' },
+  { value: 'neq', label: '!=' },
+];
+const STATUS_VALUES = ['online', 'offline', 'warning'];
+
 const ACTION_TYPES = ['alert', 'webhook', 'command'];
 const SEVERITY_OPTIONS = ['info', 'warning', 'critical'];
 
-const emptyCondition = (): ConditionRow => ({ field: 'temperature', operator: '>', value: '' });
+const emptyCondition = (triggerType: string): ConditionRow => ({
+  field: triggerType === 'device_status' ? 'status' : 'temperature',
+  operator: triggerType === 'device_status' ? 'eq' : 'gt',
+  value: '',
+});
 const emptyAction = (): ActionRow => ({
   action_type: 'alert',
   config: { severity: 'warning' },
@@ -44,13 +70,19 @@ export function RuleDialog() {
   const createMutation = useCreateRule();
   const updateMutation = useUpdateRule();
 
+  // Data for target dropdowns
+  const { data: deviceTypes } = useDeviceTypes();
+  const { data: fleets } = useFleets();
+  const { data: devicesData } = useDevices();
+  const devices = devicesData?.data ?? [];
+
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [triggerType, setTriggerType] = useState('telemetry');
   const [targetType, setTargetType] = useState('global');
   const [targetId, setTargetId] = useState('');
   const [cooldownSeconds, setCooldownSeconds] = useState(300);
-  const [conditions, setConditions] = useState<ConditionRow[]>([emptyCondition()]);
+  const [conditions, setConditions] = useState<ConditionRow[]>([emptyCondition('telemetry')]);
   const [actions, setActions] = useState<ActionRow[]>([emptyAction()]);
 
   // Populate form when editing
@@ -69,7 +101,7 @@ export function RuleDialog() {
               operator: c.operator,
               value: c.value,
             }))
-          : [emptyCondition()],
+          : [emptyCondition(existingRule.trigger_type)],
       );
       setActions(
         existingRule.actions.length > 0
@@ -91,7 +123,7 @@ export function RuleDialog() {
     setTargetType('global');
     setTargetId('');
     setCooldownSeconds(300);
-    setConditions([emptyCondition()]);
+    setConditions([emptyCondition('telemetry')]);
     setActions([emptyAction()]);
   };
 
@@ -149,7 +181,7 @@ export function RuleDialog() {
     setConditions((prev) => prev.map((c, i) => (i === index ? { ...c, [field]: value } : c)));
   };
 
-  const addCondition = () => setConditions((prev) => [...prev, emptyCondition()]);
+  const addCondition = () => setConditions((prev) => [...prev, emptyCondition(triggerType)]);
 
   const removeCondition = (index: number) => {
     setConditions((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev));
@@ -210,7 +242,11 @@ export function RuleDialog() {
             <HTMLSelect
               fill
               value={triggerType}
-              onChange={(e) => setTriggerType(e.target.value)}
+              onChange={(e) => {
+                const newType = e.target.value;
+                setTriggerType(newType);
+                setConditions([emptyCondition(newType)]);
+              }}
             >
               <option value="telemetry">Telemetry</option>
               <option value="device_status">Device Status</option>
@@ -221,7 +257,10 @@ export function RuleDialog() {
             <HTMLSelect
               fill
               value={targetType}
-              onChange={(e) => setTargetType(e.target.value)}
+              onChange={(e) => {
+                setTargetType(e.target.value);
+                setTargetId('');
+              }}
             >
               <option value="global">Global</option>
               <option value="device_type">Device Type</option>
@@ -231,13 +270,52 @@ export function RuleDialog() {
           </FormGroup>
         </div>
 
-        {targetType !== 'global' && (
-          <FormGroup label="Target ID">
-            <InputGroup
-              placeholder={`Enter ${targetType} ID...`}
+        {targetType === 'device_type' && (
+          <FormGroup label="Device Type">
+            <HTMLSelect
+              fill
               value={targetId}
               onChange={(e) => setTargetId(e.target.value)}
-            />
+            >
+              <option value="">Select device type...</option>
+              {(deviceTypes ?? []).map((dt) => (
+                <option key={dt.id} value={String(dt.id)}>
+                  {dt.name}
+                </option>
+              ))}
+            </HTMLSelect>
+          </FormGroup>
+        )}
+        {targetType === 'fleet' && (
+          <FormGroup label="Fleet">
+            <HTMLSelect
+              fill
+              value={targetId}
+              onChange={(e) => setTargetId(e.target.value)}
+            >
+              <option value="">Select fleet...</option>
+              {(fleets ?? []).map((f) => (
+                <option key={f.id} value={String(f.id)}>
+                  {f.name}
+                </option>
+              ))}
+            </HTMLSelect>
+          </FormGroup>
+        )}
+        {targetType === 'device' && (
+          <FormGroup label="Device">
+            <HTMLSelect
+              fill
+              value={targetId}
+              onChange={(e) => setTargetId(e.target.value)}
+            >
+              <option value="">Select device...</option>
+              {devices.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name} ({d.device_type_name})
+                </option>
+              ))}
+            </HTMLSelect>
           </FormGroup>
         )}
 
@@ -258,45 +336,67 @@ export function RuleDialog() {
               Add
             </Button>
           </div>
-          {conditions.map((cond, i) => (
-            <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-              <HTMLSelect
-                value={cond.field}
-                onChange={(e) => updateCondition(i, 'field', e.target.value)}
-                style={{ flex: 1 }}
-              >
-                {CONDITION_FIELDS.map((f) => (
-                  <option key={f} value={f}>
-                    {f}
-                  </option>
-                ))}
-              </HTMLSelect>
-              <HTMLSelect
-                value={cond.operator}
-                onChange={(e) => updateCondition(i, 'operator', e.target.value)}
-                style={{ width: 70 }}
-              >
-                {CONDITION_OPERATORS.map((op) => (
-                  <option key={op} value={op}>
-                    {op}
-                  </option>
-                ))}
-              </HTMLSelect>
-              <InputGroup
-                placeholder="Value"
-                value={cond.value}
-                onChange={(e) => updateCondition(i, 'value', e.target.value)}
-                style={{ flex: 1 }}
-              />
-              <Button
-                icon="cross"
-                minimal
-                small
-                disabled={conditions.length <= 1}
-                onClick={() => removeCondition(i)}
-              />
-            </div>
-          ))}
+          {conditions.map((cond, i) => {
+            const fields = triggerType === 'device_status' ? STATUS_FIELDS : TELEMETRY_FIELDS;
+            const operators = triggerType === 'device_status' ? STATUS_OPERATORS : NUMERIC_OPERATORS;
+            const isStatusField = cond.field === 'status';
+
+            return (
+              <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                <HTMLSelect
+                  value={cond.field}
+                  onChange={(e) => updateCondition(i, 'field', e.target.value)}
+                  style={{ flex: 1 }}
+                >
+                  {fields.map((f) => (
+                    <option key={f.value} value={f.value}>
+                      {f.label}
+                    </option>
+                  ))}
+                </HTMLSelect>
+                <HTMLSelect
+                  value={cond.operator}
+                  onChange={(e) => updateCondition(i, 'operator', e.target.value)}
+                  style={{ width: 70 }}
+                >
+                  {operators.map((op) => (
+                    <option key={op.value} value={op.value}>
+                      {op.label}
+                    </option>
+                  ))}
+                </HTMLSelect>
+                {isStatusField ? (
+                  <HTMLSelect
+                    value={cond.value}
+                    onChange={(e) => updateCondition(i, 'value', e.target.value)}
+                    style={{ flex: 1 }}
+                  >
+                    <option value="">Select status...</option>
+                    {STATUS_VALUES.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </HTMLSelect>
+                ) : (
+                  <InputGroup
+                    placeholder="Threshold value"
+                    value={cond.value}
+                    onChange={(e) => updateCondition(i, 'value', e.target.value)}
+                    type="number"
+                    style={{ flex: 1 }}
+                  />
+                )}
+                <Button
+                  icon="cross"
+                  minimal
+                  small
+                  disabled={conditions.length <= 1}
+                  onClick={() => removeCondition(i)}
+                />
+              </div>
+            );
+          })}
         </div>
 
         {/* Actions */}
