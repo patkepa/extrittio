@@ -77,16 +77,18 @@ typedef struct {
 static void shadow_delta_handler(z_loaned_sample_t *sample, void *arg) {
     shadow_delta_ctx_t *ctx = (shadow_delta_ctx_t *)arg;
 
-    z_view_slice_t slice;
+    z_owned_slice_t slice;
     z_bytes_to_slice(z_sample_payload(sample), &slice);
 
     extrittio_ShadowDelta pb = extrittio_ShadowDelta_init_zero;
-    pb_istream_t stream = pb_istream_from_buffer(z_slice_data(&slice), z_slice_len(&slice));
+    pb_istream_t stream = pb_istream_from_buffer(z_slice_data(z_loan(slice)), z_slice_len(z_loan(slice)));
     if (!pb_decode(&stream, extrittio_ShadowDelta_fields, &pb)) {
+        z_slice_drop(z_slice_move(&slice));
         return;
     }
 
     ctx->cb(pb.device_id, pb.delta_json, pb.version, ctx->user_data);
+    z_slice_drop(z_slice_move(&slice));
 }
 
 int extrittio_shadow_delta_subscribe(z_loaned_session_t *session,

@@ -62,7 +62,7 @@ else()
     add_library(extrittio_sdk_c ${SDK_SOURCES})
     target_include_directories(extrittio_sdk_c
         PUBLIC include
-        PRIVATE generated ${nanopb_SOURCE_DIR}
+        PRIVATE generated ${nanopb_SOURCE_DIR} ${cjson_SOURCE_DIR}
     )
     target_link_libraries(extrittio_sdk_c
         PUBLIC zenohpico::lib
@@ -75,7 +75,7 @@ else()
     function(sdk_add_test TEST_NAME TEST_SOURCE)
         add_executable(${TEST_NAME} ${TEST_SOURCE})
         target_link_libraries(${TEST_NAME} PRIVATE extrittio_sdk_c protobuf-nanopb-static cjson)
-        target_include_directories(${TEST_NAME} PRIVATE generated ${nanopb_SOURCE_DIR})
+        target_include_directories(${TEST_NAME} PRIVATE generated ${nanopb_SOURCE_DIR} ${cjson_SOURCE_DIR})
         add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
     endfunction()
 
