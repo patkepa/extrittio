@@ -11,38 +11,41 @@ use crate::repositories::shadow_repo;
 use extrittio_common::shadow::{compute_delta as compute_shadow_delta, merge_json};
 use crate::state::{DbPool, ZenohMetrics, run_db};
 
-/// Transactional DB-only part of update_desired. Returns the new delta and
-/// version so the caller can publish via Zenoh after the transaction commits.
+/// DB-only part of update_desired. Returns the new delta and version so the
+/// caller can publish via Zenoh after the transaction commits.
+///
+/// This function does NOT open its own transaction — the caller is responsible
+/// for wrapping the call in a transaction when atomicity with other writes is
+/// needed (e.g. `trigger_ota`). When called via `update_desired` the outer
+/// `run_db` closure provides the transactional boundary.
 pub fn update_desired_db(
     conn: &mut SqliteConnection,
     device_id: &str,
     patch: &serde_json::Map<String, Value>,
 ) -> Result<(Value, i32), AppError> {
-    conn.transaction(|conn| {
-        let shadow = shadow_repo::find_shadow(conn, device_id)?;
+    let shadow = shadow_repo::find_shadow(conn, device_id)?;
 
-        let current_desired: Value = serde_json::from_str(&shadow.desired)
-            .unwrap_or(Value::Object(serde_json::Map::default()));
-        let current_reported: Value = serde_json::from_str(&shadow.reported)
-            .unwrap_or(Value::Object(serde_json::Map::default()));
+    let current_desired: Value = serde_json::from_str(&shadow.desired)
+        .unwrap_or(Value::Object(serde_json::Map::default()));
+    let current_reported: Value = serde_json::from_str(&shadow.reported)
+        .unwrap_or(Value::Object(serde_json::Map::default()));
 
-        let new_desired = merge_json(current_desired, patch);
-        let new_delta = compute_shadow_delta(&new_desired, &current_reported);
-        let new_version = shadow.version + 1;
-        let now = chrono::Utc::now().naive_utc();
+    let new_desired = merge_json(current_desired, patch);
+    let new_delta = compute_shadow_delta(&new_desired, &current_reported);
+    let new_version = shadow.version + 1;
+    let now = chrono::Utc::now().naive_utc();
 
-        let changeset = UpdateShadow {
-            desired: Some(serde_json::to_string(&new_desired)?),
-            delta: Some(serde_json::to_string(&new_delta)?),
-            version: Some(new_version),
-            updated_at: Some(now),
-            ..Default::default()
-        };
+    let changeset = UpdateShadow {
+        desired: Some(serde_json::to_string(&new_desired)?),
+        delta: Some(serde_json::to_string(&new_delta)?),
+        version: Some(new_version),
+        updated_at: Some(now),
+        ..Default::default()
+    };
 
-        shadow_repo::update_shadow(conn, device_id, &changeset)?;
+    shadow_repo::update_shadow(conn, device_id, &changeset)?;
 
-        Ok((new_delta, new_version))
-    })
+    Ok((new_delta, new_version))
 }
 
 /// Merge a JSON patch into the desired state, recompute delta, persist, and publish.
@@ -56,7 +59,9 @@ pub async fn update_desired(
     let d_id = device_id.to_string();
     let p = patch.clone();
 
-    let (delta, version) = run_db(pool, move |conn| update_desired_db(conn, &d_id, &p)).await?;
+    let (delta, version) = run_db(pool, move |conn| {
+        conn.transaction(|conn| update_desired_db(conn, &d_id, &p))
+    }).await?;
 
     publish_delta_if_nonempty(zenoh_session, device_id, &delta, version, zenoh_metrics).await;
     Ok(())

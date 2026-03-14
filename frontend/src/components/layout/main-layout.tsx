@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useDevice } from '../../hooks/use-devices';
 import { Button, Navbar, NavbarGroup } from '@blueprintjs/core';
@@ -23,10 +23,22 @@ const routeNames: Record<string, string> = {
 };
 
 export const MainLayout = ({ children }: MainLayoutProps) => {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const openCommandPalette = useUIStore((s) => s.openCommandPalette);
+  const sidebarCollapsed = useUIStore((s) => s.isSidebarCollapsed);
+  const toggleSidebar = useUIStore((s) => s.toggleSidebar);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
+        e.preventDefault();
+        toggleSidebar();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [toggleSidebar]);
 
   // Detect device detail page: /devices/:deviceId
   const deviceDetailMatch = location.pathname.match(/^\/devices\/([^/]+)$/);
@@ -51,8 +63,8 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
               className="desktop-collapse-button"
               icon={sidebarCollapsed ? "double-chevron-right" : "double-chevron-left"}
               minimal
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              title="Toggle Sidebar"
+              onClick={toggleSidebar}
+              title="Toggle Sidebar (⌘B)"
             />
             {deviceDetailMatch ? (
               <span className="navbar-breadcrumb">

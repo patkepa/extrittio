@@ -184,8 +184,9 @@ fn main() {
                     }
                 }
                 Err(e) => {
-                    log::warn!("Shadow subscriber recv error: {e}");
-                    break;
+                    log::warn!("Shadow subscriber recv error: {e}, retrying...");
+                    thread::sleep(Duration::from_secs(5));
+                    continue;
                 }
             }
         }
@@ -201,7 +202,7 @@ fn main() {
         let fw = hb_firmware.lock().unwrap().clone();
         let heartbeat = DeviceHeartbeat {
             device_id: DEVICE_ID.to_string(),
-            timestamp: extrittio_sdk::time::extrittio_sdk::time::now_millis(),
+            timestamp: extrittio_sdk::time::now_millis(),
             status: device_status::ONLINE.to_string(),
             firmware: fw,
             uptime_seconds: start.elapsed().as_secs() as i64,
@@ -320,7 +321,7 @@ fn handle_ota(
     // Check if we're already running the requested version
     {
         let current = firmware_version.lock().unwrap();
-        if current.contains(&fw_version) {
+        if *current == format!("v{fw_version}") {
             info!("OTA: already running v{}, skipping", fw_version);
             report_ota_status(
                 reported_state, session, report_topic, shadow_version,
@@ -502,6 +503,13 @@ fn handle_ota(
             &fw_version, fw_update_id, "failed", Some(&err),
         );
         return;
+    }
+
+    // Update in-memory firmware version so the version guard works if
+    // another delta arrives before the reboot completes.
+    {
+        let mut fw = firmware_version.lock().unwrap();
+        *fw = format!("v{fw_version}");
     }
 
     // Report "success" BEFORE rebooting

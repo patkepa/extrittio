@@ -38,8 +38,10 @@ pub fn insert_fleet(
         .values(fleet)
         .execute(conn)?;
 
+    // Query by the exact name just inserted to avoid returning the wrong row
+    // under concurrent inserts.
     fleets::table
-        .order(fleets::id.desc())
+        .filter(fleets::name.eq(&fleet.name))
         .select(Fleet::as_select())
         .first(conn)
 }

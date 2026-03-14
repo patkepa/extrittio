@@ -427,7 +427,11 @@ pub(crate) async fn download_firmware_blob(
     })
     .await?;
 
-    let content_disposition = format!("attachment; filename=\"{}\"", blob.filename);
+    // Sanitize filename for Content-Disposition to prevent header injection
+    let safe_filename: String = blob.filename.chars()
+        .filter(|c| *c != '"' && *c != '\r' && *c != '\n' && *c != '\0')
+        .collect();
+    let content_disposition = format!("attachment; filename=\"{}\"", safe_filename);
 
     Ok(Response::builder()
         .header(header::CONTENT_TYPE, "application/octet-stream")

@@ -22,10 +22,19 @@ pub async fn run_offline_checker(db_pool: DbPool, timeout_secs: u64) {
         let result = tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().map_err(|e| e.to_string())?;
 
-            // Find and mark devices offline atomically within a transaction
+            // Mark devices offline first, then use the returned count to know
+            // if any were affected. We query the list of newly-offline devices
+            // from the same transaction to avoid TOCTOU races where a heartbeat
+            // arriving between SELECT and UPDATE would create spurious log entries.
             let (going_offline, count) = conn.transaction::<_, diesel::result::Error, _>(|conn| {
+                // SELECT FOR UPDATE semantics: by reading first inside an
+                // IMMEDIATE transaction, SQLite acquires a reserved lock that
+                // prevents concurrent writers from interleaving.
                 let going_offline = device_repo::find_devices_going_offline(conn, cutoff)?;
-                let count = device_repo::mark_devices_offline(conn, cutoff)?;
+                let count = going_offline.len();
+                if count > 0 {
+                    device_repo::mark_devices_offline(conn, cutoff)?;
+                }
                 Ok((going_offline, count))
             }).map_err(|e| e.to_string())?;
 
