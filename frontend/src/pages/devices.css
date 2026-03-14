@@ -100,7 +100,7 @@
   gap: 6px;
   padding: 6px 14px;
   border: 1px solid var(--border-color);
-  border-radius: 2px;
+  border-radius: 1px;
   background: hsla(0, 0%, 100%, 0.04);
   color: hsl(var(--muted));
   font-size: 13px;

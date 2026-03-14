@@ -230,7 +230,7 @@ p {
   background-color: hsla(0, 0%, 100%, 0.06);
   color: hsl(var(--foreground));
   border-color: var(--border-color);
-  border-radius: 2px;
+  border-radius: 1px !important;
 }
 
 .bp6-button:hover {
