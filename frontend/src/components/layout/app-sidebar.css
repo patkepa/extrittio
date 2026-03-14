@@ -176,14 +176,13 @@
   letter-spacing: -0.01em;
   transition: all 0.12s ease;
   padding: 8px 12px;
-  border-radius: 6px;
-  border: 1px solid transparent;
+  border-radius: 0;
+  border: none;
 }
 
 .sidebar-menu .bp6-menu-item:hover {
   color: var(--sidebar-foreground);
   background-color: hsla(0, 0%, 100%, 0.04);
-  border-color: transparent;
 }
 
 .sidebar-menu .bp6-menu-item .bp6-menu-item-label,
@@ -195,9 +194,8 @@
 .sidebar-menu .bp6-menu-item.bp6-active,
 .sidebar-menu .bp6-menu-item.sidebar-item-active {
   background-color: hsla(0, 0%, 100%, 0.08);
-  border-color: transparent;
   border-left: 2px solid hsl(var(--accent));
-  padding-left: 11px; /* 12px base - 1px extra border width */
+  padding-left: 10px; /* 12px base - 2px border */
   color: var(--sidebar-foreground);
   font-weight: 600;
 }
@@ -401,7 +399,7 @@
 .app-sidebar.collapsed .sidebar-menu .bp6-menu-item {
   justify-content: center;
   padding: 8px;
-  border-radius: 8px;
+  border-radius: 0;
   overflow: hidden;
 }
 
