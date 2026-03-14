@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Card,
   Elevation,
@@ -6,7 +6,6 @@ import {
   HTMLTable,
   Tag,
   Button,
-  HTMLSelect,
   Icon,
   H4,
   Callout,
@@ -15,6 +14,9 @@ import {
   Alert,
 } from '@blueprintjs/core';
 import { useRules, useDeleteRule, useToggleRule } from '../hooks/use-rules';
+import { useDeviceTypes } from '../hooks/use-device-types';
+import { useFleets } from '../hooks/use-fleets';
+import { useDevices } from '../hooks/use-devices';
 import { useUIStore } from '../stores/ui-store';
 import { RuleDialog } from '../components/rules/rule-dialog';
 import { showSuccessToast, showErrorToast } from '../utils/toaster';
@@ -30,8 +32,44 @@ export const Rules = () => {
   const rulesQuery = useRules();
   const deleteMutation = useDeleteRule();
   const toggleMutation = useToggleRule();
+  const { data: deviceTypes } = useDeviceTypes();
+  const { data: fleets } = useFleets();
+  const { data: devicesData } = useDevices();
 
   const rules = rulesQuery.data ?? [];
+
+  const statusCounts = useMemo(() => ({
+    all: rules.length,
+    enabled: rules.filter((r) => r.enabled).length,
+    disabled: rules.filter((r) => !r.enabled).length,
+  }), [rules]);
+
+  const triggerCounts = useMemo(() => ({
+    all: rules.length,
+    telemetry: rules.filter((r) => r.trigger_type === 'telemetry').length,
+    device_status: rules.filter((r) => r.trigger_type === 'device_status').length,
+  }), [rules]);
+
+  const resolveTargetName = (rule: Rule): string => {
+    if (rule.target_type === 'global') return 'All devices';
+    if (!rule.target_id) return rule.target_type;
+    switch (rule.target_type) {
+      case 'device_type': {
+        const dt = (deviceTypes ?? []).find((d) => String(d.id) === rule.target_id);
+        return dt ? dt.name : rule.target_id;
+      }
+      case 'fleet': {
+        const f = (fleets ?? []).find((fl) => String(fl.id) === rule.target_id);
+        return f ? f.name : rule.target_id;
+      }
+      case 'device': {
+        const d = (devicesData?.data ?? []).find((dev) => dev.id === rule.target_id);
+        return d ? d.name : rule.target_id;
+      }
+      default:
+        return rule.target_id;
+    }
+  };
   const isLoading = rulesQuery.isLoading;
   const error = rulesQuery.error;
 
@@ -44,8 +82,7 @@ export const Rules = () => {
     return true;
   });
 
-  const handleToggle = (rule: Rule, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleToggle = (rule: Rule) => {
     toggleMutation.mutate({ id: rule.id, enabled: !rule.enabled });
   };
 
@@ -62,9 +99,15 @@ export const Rules = () => {
     });
   };
 
+  const operatorLabel: Record<string, string> = {
+    gt: '>', gte: '>=', lt: '<', lte: '<=', eq: '=', neq: '!=',
+  };
+
   const conditionsSummary = (rule: Rule) => {
-    if (rule.conditions.length === 0) return 'No conditions';
-    return rule.conditions.map((c) => `${c.field} ${c.operator} ${c.value}`).join(', ');
+    if (!rule.conditions || rule.conditions.length === 0) return 'No conditions';
+    return rule.conditions
+      .map((c) => `${c.field} ${operatorLabel[c.operator] ?? c.operator} ${c.value}`)
+      .join(', ');
   };
 
   const actionIcon = (type: string) => {
@@ -117,16 +160,42 @@ export const Rules = () => {
       <Card elevation={Elevation.ONE} className="rules-controls">
         <div className="controls-row">
           <div className="filter-section">
-            <HTMLSelect value={filterEnabled} onChange={(e) => setFilterEnabled(e.target.value)}>
-              <option value="all">All Status</option>
-              <option value="enabled">Enabled</option>
-              <option value="disabled">Disabled</option>
-            </HTMLSelect>
-            <HTMLSelect value={filterTrigger} onChange={(e) => setFilterTrigger(e.target.value)}>
-              <option value="all">All Triggers</option>
-              <option value="telemetry">Telemetry</option>
-              <option value="device_status">Device Status</option>
-            </HTMLSelect>
+            {(['all', 'enabled', 'disabled'] as const).map((status) => (
+              <button
+                key={status}
+                className={`filter-pill ${filterEnabled === status ? 'active' : ''}`}
+                onClick={() => setFilterEnabled(status)}
+              >
+                <span className="pill-label">
+                  {status.charAt(0).toUpperCase() + status.slice(1)}
+                </span>
+                <span className="pill-count mono-data">{statusCounts[status]}</span>
+              </button>
+            ))}
+          </div>
+          <div className="filter-section">
+            {(['all', 'telemetry', 'device_status'] as const).map((trigger) => (
+              <button
+                key={trigger}
+                className={`filter-pill ${filterTrigger === trigger ? 'active' : ''}`}
+                onClick={() => setFilterTrigger(trigger)}
+              >
+                {trigger !== 'all' && (
+                  <Icon
+                    icon={trigger === 'telemetry' ? 'pulse' : 'signal-search'}
+                    size={12}
+                  />
+                )}
+                <span className="pill-label">
+                  {trigger === 'all'
+                    ? 'All Triggers'
+                    : trigger === 'telemetry'
+                      ? 'Telemetry'
+                      : 'Device Status'}
+                </span>
+                <span className="pill-count mono-data">{triggerCounts[trigger]}</span>
+              </button>
+            ))}
           </div>
         </div>
       </Card>
@@ -174,14 +243,11 @@ export const Rules = () => {
                   </td>
                   <td>
                     <Tag minimal intent={rule.target_type === 'global' ? 'primary' : undefined}>
-                      {rule.target_type}
+                      {rule.target_type === 'device_type' ? 'type' : rule.target_type}
                     </Tag>
-                    {rule.target_id && (
-                      <span
-                        className="mono-data"
-                        style={{ fontSize: 10, marginLeft: 6, color: 'hsl(var(--muted))' }}
-                      >
-                        {rule.target_id}
+                    {rule.target_type !== 'global' && (
+                      <span style={{ marginLeft: 6 }}>
+                        {resolveTargetName(rule)}
                       </span>
                     )}
                   </td>
@@ -191,15 +257,13 @@ export const Rules = () => {
                   <td onClick={(e) => e.stopPropagation()}>
                     <Switch
                       checked={rule.enabled}
-                      onChange={(e) =>
-                        handleToggle(rule, e as unknown as React.MouseEvent)
-                      }
+                      onChange={() => handleToggle(rule)}
                       style={{ marginBottom: 0 }}
                     />
                   </td>
                   <td>
                     <div className="rule-actions-cell">
-                      {rule.actions.map((a) => (
+                      {(rule.actions ?? []).map((a) => (
                         <Icon
                           key={a.id}
                           icon={actionIcon(a.action_type)}

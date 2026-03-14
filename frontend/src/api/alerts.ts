@@ -18,19 +18,19 @@ export async function getAlert(id: string): Promise<Alert> {
 }
 
 export async function acknowledgeAlert(id: string): Promise<Alert> {
-  const { data } = await client.post<Alert>(`/alerts/${id}/acknowledge`);
+  const { data } = await client.put<Alert>(`/alerts/${id}/acknowledge`);
   return data;
 }
 
 export async function resolveAlert(id: string): Promise<Alert> {
-  const { data } = await client.post<Alert>(`/alerts/${id}/resolve`);
+  const { data } = await client.put<Alert>(`/alerts/${id}/resolve`);
   return data;
 }
 
 export async function bulkAcknowledge(ids: string[]): Promise<void> {
-  await client.post('/alerts/bulk/acknowledge', { alert_ids: ids });
+  await client.put('/alerts/bulk-acknowledge', { ids });
 }
 
 export async function bulkResolve(ids: string[]): Promise<void> {
-  await client.post('/alerts/bulk/resolve', { alert_ids: ids });
+  await client.put('/alerts/bulk-resolve', { ids });
 }

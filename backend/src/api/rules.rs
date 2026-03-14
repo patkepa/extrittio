@@ -186,29 +186,25 @@ pub(crate) async fn list_rules(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ListRulesQuery>,
 ) -> Result<Json<Vec<RuleResponse>>, AppError> {
-    let rules = run_db(&state.db_pool, move |conn| {
-        rule_service::list_rules(
+    let responses = run_db(&state.db_pool, move |conn| {
+        let rules = rule_service::list_rules(
             conn,
             params.enabled,
             params.trigger_type.as_deref(),
             params.target_type.as_deref(),
-        )
+        )?;
+
+        rules
+            .into_iter()
+            .map(|rule| {
+                let details = rule_service::get_rule(conn, &rule.id)?;
+                to_rule_response(details)
+            })
+            .collect::<Result<Vec<_>, _>>()
     })
     .await?;
 
-    let responses: Result<Vec<RuleResponse>, AppError> = rules
-        .into_iter()
-        .map(|rule| {
-            let details = rule_service::RuleWithDetails {
-                conditions: vec![],
-                actions: vec![],
-                rule,
-            };
-            to_rule_response(details)
-        })
-        .collect();
-
-    Ok(Json(responses?))
+    Ok(Json(responses))
 }
 
 pub(crate) async fn get_rule(

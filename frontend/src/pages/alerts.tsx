@@ -265,7 +265,7 @@ export const Alerts = () => {
                     style={{ marginBottom: 0 }}
                   />
                 </th>
-                <th style={{ width: 40 }}>Sev</th>
+                <th style={{ width: 40 }}>Severity</th>
                 <th>Message</th>
                 <th>Device</th>
                 <th>Status</th>
@@ -277,7 +277,7 @@ export const Alerts = () => {
               {alerts.map((alert) => (
                 <tr
                   key={alert.id}
-                  className={`alert-row ${selectedIds.has(alert.id) ? 'alert-row--selected' : ''}`}
+                  className={`alert-row alert-row--${alert.severity} ${selectedIds.has(alert.id) ? 'alert-row--selected' : ''}`}
                 >
                   <td onClick={(e) => e.stopPropagation()}>
                     <Checkbox
@@ -298,13 +298,16 @@ export const Alerts = () => {
                   </td>
                   <td>
                     <span
-                      className="alert-device-link"
+                      className="alert-device-link mono-data"
                       onClick={(e) => {
                         e.stopPropagation();
                         navigate(`/devices/${alert.device_id}`);
                       }}
+                      title={alert.device_id}
                     >
-                      {alert.device_id}
+                      {alert.device_id.length > 12
+                        ? `${alert.device_id.slice(0, 12)}...`
+                        : alert.device_id}
                     </span>
                   </td>
                   <td>
