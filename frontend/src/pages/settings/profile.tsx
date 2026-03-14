@@ -12,7 +12,7 @@ export const ProfileSettings = () => {
       </div>
 
       <div className="settings-content">
-        <Card elevation={Elevation.TWO} className="settings-card">
+        <Card elevation={Elevation.ONE} className="settings-card">
           <span className="section-label">Personal Information</span>
           <div className="settings-form">
             <FormGroup label="Name" labelFor="name-input">

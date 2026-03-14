@@ -40,7 +40,7 @@ export const Login = () => {
 
   return (
     <div className="login-page">
-      <Card elevation={Elevation.THREE} className="login-card">
+      <Card elevation={Elevation.ONE} className="login-card">
         <div className="login-header">
           <div className="login-logo">
             <Icon icon="cube" size={24} />

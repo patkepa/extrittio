@@ -72,7 +72,7 @@ export const UsersSettings = () => {
         </Button>
       </div>
 
-      <Card elevation={Elevation.TWO} className="settings-table-card">
+      <Card elevation={Elevation.ONE} className="settings-table-card">
         {users.length === 0 ? (
           <div className="settings-empty">
             <Icon icon="people" size={48} />

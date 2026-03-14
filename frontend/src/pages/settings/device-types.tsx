@@ -78,7 +78,7 @@ export const DeviceTypesSettings = () => {
         </Button>
       </div>
 
-      <Card elevation={Elevation.TWO} className="settings-table-card">
+      <Card elevation={Elevation.ONE} className="settings-table-card">
         {deviceTypes.length === 0 ? (
           <div className="settings-empty">
             <Icon icon="cube" size={48} />

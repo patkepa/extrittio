@@ -110,7 +110,7 @@ export const Dashboard = () => {
       {/* Stat Cards */}
       <div className="stats-grid">
         {stats.map((stat) => (
-          <Card key={stat.label} elevation={Elevation.TWO} className="stat-card stagger-item">
+          <Card key={stat.label} elevation={Elevation.ONE} className="stat-card stagger-item">
             <div className="stat-card-top">
               <div className="stat-icon" style={{ backgroundColor: stat.color }}>
                 <Icon icon={stat.icon} size={20} color="white" />
@@ -153,7 +153,7 @@ export const Dashboard = () => {
       <div className="dashboard-content">
         <div className="content-grid">
           {/* Activity Timeline */}
-          <Card elevation={Elevation.TWO} className="content-card stagger-item">
+          <Card elevation={Elevation.ONE} className="content-card stagger-item">
             <div className="card-header">
               <H5>Recent Activity</H5>
               <span className="section-label" style={{ margin: 0 }}>{activityEvents.length} events</span>
@@ -171,7 +171,7 @@ export const Dashboard = () => {
           </Card>
 
           {/* Device Status Donut */}
-          <Card elevation={Elevation.TWO} className="content-card stagger-item">
+          <Card elevation={Elevation.ONE} className="content-card stagger-item">
             <div className="card-header">
               <H5>Device Status</H5>
               <span className="section-label" style={{ margin: 0 }}>{totalDevices} total</span>

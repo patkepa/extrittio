@@ -293,7 +293,7 @@ export const Devices = () => {
       )}
 
       {/* Devices Table */}
-      <Card elevation={Elevation.TWO} className="devices-card">
+      <Card elevation={Elevation.ONE} className="devices-card">
         {filteredDevices.length === 0 ? (
           <div className="empty-state">
             <Icon icon="search" size={48} />
@@ -335,14 +335,13 @@ export const Devices = () => {
               </tr>
             </thead>
             <tbody>
-              {filteredDevices.map((device, idx) => (
+              {filteredDevices.map((device) => (
                   <tr
                     key={device.id}
                     className={`device-row ${isSelected(device.id) ? 'device-row--selected' : ''}`}
                     onClick={() => handleViewDevice(device)}
                     onMouseEnter={(e) => onMouseEnter(device, e)}
                     onMouseLeave={onMouseLeave}
-                    style={{ animationDelay: `${idx * 30}ms` }}
                   >
                     <td onClick={(e) => e.stopPropagation()}>
                       <Checkbox

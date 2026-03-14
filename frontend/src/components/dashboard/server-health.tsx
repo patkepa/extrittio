@@ -107,7 +107,7 @@ export const ServerHealth = () => {
       <H5>Server Health</H5>
       <div className="server-health-grid">
         {/* ---- System Resources ---- */}
-        <Card elevation={Elevation.TWO} className="content-card">
+        <Card elevation={Elevation.ONE} className="content-card">
           <div className="card-header">
             <H5>System Resources</H5>
           </div>
@@ -194,7 +194,7 @@ export const ServerHealth = () => {
         </Card>
 
         {/* ---- Application Performance ---- */}
-        <Card elevation={Elevation.TWO} className="content-card">
+        <Card elevation={Elevation.ONE} className="content-card">
           <div className="card-header">
             <H5>Application Performance</H5>
           </div>

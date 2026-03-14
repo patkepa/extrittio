@@ -82,7 +82,7 @@ export const FirmwareSettings = () => {
         </HTMLSelect>
       </div>
 
-      <Card elevation={Elevation.TWO} className="settings-table-card">
+      <Card elevation={Elevation.ONE} className="settings-table-card">
         {firmwareUpdates.length === 0 ? (
           <div className="settings-empty">
             <Icon icon="updated" size={48} />

@@ -128,7 +128,7 @@ export function CertificatesSettings() {
           <p>No devices registered</p>
         </div>
       ) : (
-        <Card elevation={Elevation.TWO} className="settings-table-card">
+        <Card elevation={Elevation.ONE} className="settings-table-card">
           <HTMLTable className="settings-table" interactive>
             <thead>
               <tr>
