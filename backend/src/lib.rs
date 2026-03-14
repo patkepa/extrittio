@@ -20,6 +20,7 @@ pub mod repositories;
 pub mod services;
 pub mod shadow_utils;
 pub mod state;
+pub mod util;
 pub mod zenoh_handler;
 
 use diesel_migrations::{EmbeddedMigrations, embed_migrations};

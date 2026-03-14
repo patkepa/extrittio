@@ -3,7 +3,6 @@ use axum::{
     extract::{Path, Query, State},
     routing::get,
 };
-use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
@@ -12,6 +11,7 @@ use crate::db::models::DeviceLog;
 use crate::error::AppError;
 use crate::repositories::{device_repo, log_repo};
 use crate::state::{AppState, run_db};
+use crate::util;
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -85,7 +85,7 @@ pub(crate) async fn get_device_logs(
     Query(params): Query<LogsQuery>,
 ) -> Result<Json<Vec<LogResponse>>, AppError> {
     // Parse timestamp filter before entering the blocking closure
-    let since = parse_since(params.since.as_deref())?;
+    let since = util::parse_timestamp(params.since.as_deref())?;
 
     let response = run_db(&state.db_pool, move |conn| {
         // Verify device exists
@@ -103,19 +103,4 @@ pub(crate) async fn get_device_logs(
     .await?;
 
     Ok(Json(response))
-}
-
-/// Parse an optional `since` timestamp string, accepting both NaiveDateTime
-/// and RFC 3339 formats.
-fn parse_since(since_str: Option<&str>) -> Result<Option<NaiveDateTime>, AppError> {
-    let Some(s) = since_str else {
-        return Ok(None);
-    };
-    let dt = s
-        .parse::<NaiveDateTime>()
-        .or_else(|_| chrono::DateTime::parse_from_rfc3339(s).map(|dt| dt.naive_utc()))
-        .map_err(|_| {
-            AppError::BadRequest("Invalid date format, expected YYYY-MM-DDTHH:MM:SS".into())
-        })?;
-    Ok(Some(dt))
 }
