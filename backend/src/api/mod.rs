@@ -1,3 +1,4 @@
+pub mod alerts;
 pub mod api_keys;
 pub mod auth_routes;
 pub mod certificates;
@@ -12,6 +13,7 @@ pub mod fleets;
 pub mod health;
 pub mod logs;
 pub mod openapi;
+pub mod rules;
 pub mod server_metrics;
 pub mod shadows;
 pub mod telemetry;
@@ -41,6 +43,8 @@ pub fn router(max_firmware_size: usize) -> Router<Arc<AppState>> {
         .merge(configs::router())
         .merge(commands::router())
         .merge(certificates::router())
+        .merge(rules::router())
+        .merge(alerts::router())
         .merge(health::router())
         .merge(server_metrics::router())
         .merge(
