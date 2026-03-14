@@ -434,8 +434,6 @@ export const FleetGraphCanvas = memo(({
           );
         }
       } else {
-        // Reset shadow before drawing device node — shadow glow is applied
-        // via the selection ring below, not the main circle.
         ctx.shadowBlur = 0;
         // --- Device node: staleness-based color + pulse + uptime ring ---
         const now = Date.now();
@@ -446,6 +444,9 @@ export const FleetGraphCanvas = memo(({
 
         // Dead nodes shrink slightly
         const effectiveRadius = tier === 'dead' ? radius * 0.85 : radius;
+        const side = effectiveRadius * 2;
+        const rx = node.x! - side / 2;
+        const ry = node.y! - side / 2;
 
         // Pulse glow (radial gradient behind node) — only for fresh/warm
         if (pulseHz > 0) {
@@ -469,35 +470,30 @@ export const FleetGraphCanvas = memo(({
           ctx.fill();
         }
 
-        // Main circle
-        ctx.beginPath();
-        ctx.arc(node.x!, node.y!, effectiveRadius, 0, 2 * Math.PI);
+        // Main rect
         ctx.fillStyle = stalenessColor;
-        ctx.fill();
+        ctx.fillRect(rx, ry, side, side);
 
-        // Uptime ring
+        // Uptime ring — rect stroke outside the main rect
         if (node.uptimeArcAngle && node.uptimeArcAngle > 0) {
-          ctx.beginPath();
-          const startAngle = -Math.PI / 2; // 12 o'clock
-          ctx.arc(node.x!, node.y!, effectiveRadius + 3, startAngle, startAngle + node.uptimeArcAngle);
+          const ringOffset = 3;
           ctx.strokeStyle = stalenessColor;
           ctx.lineWidth = 2;
-          ctx.stroke();
+          ctx.strokeRect(rx - ringOffset, ry - ringOffset, side + ringOffset * 2, side + ringOffset * 2);
         }
 
-        // Selection ring (drawn after main circle and uptime ring so glow is visible)
+        // Selection ring
         if (selectedDeviceIds.has(node.id)) {
-          ctx.beginPath();
-          ctx.arc(node.x!, node.y!, effectiveRadius + 7, 0, 2 * Math.PI);
+          const selOffset = 7;
           ctx.strokeStyle = SELECTION_COLOR;
           ctx.lineWidth = 2;
           ctx.shadowColor = SELECTION_COLOR;
           ctx.shadowBlur = 8;
-          ctx.stroke();
+          ctx.strokeRect(rx - selOffset, ry - selOffset, side + selOffset * 2, side + selOffset * 2);
           ctx.shadowBlur = 0;
         }
 
-        // Device type icon inside circle
+        // Device type icon inside rect
         const iconPaths = getIconPaths(node.deviceTypeName);
         const iconSize = effectiveRadius * 1.2;
         ctx.fillStyle = '#ffffff';
