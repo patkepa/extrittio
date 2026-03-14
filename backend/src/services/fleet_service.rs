@@ -48,6 +48,15 @@ pub fn create(conn: &mut SqliteConnection, name: &str) -> Result<Fleet, AppError
     )?)
 }
 
+pub fn rename(conn: &mut SqliteConnection, id: i32, new_name: &str) -> Result<Fleet, AppError> {
+    let trimmed = new_name.trim();
+    if trimmed.is_empty() {
+        return Err(AppError::BadRequest("Fleet name must not be empty".into()));
+    }
+    fleet_repo::update_fleet_name(conn, id, trimmed)?
+        .ok_or_else(|| AppError::NotFound(format!("Fleet {id} not found")))
+}
+
 pub fn delete(conn: &mut SqliteConnection, id: i32) -> Result<(), AppError> {
     let deleted = fleet_repo::delete_fleet(conn, id)?;
     if !deleted {

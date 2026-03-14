@@ -11,6 +11,11 @@ export async function createFleet(body: CreateFleetRequest): Promise<Fleet> {
   return data;
 }
 
+export async function updateFleet(id: number, body: { name: string }): Promise<Fleet> {
+  const { data } = await client.patch<Fleet>(`/fleets/${id}`, body);
+  return data;
+}
+
 export async function deleteFleet(id: number): Promise<void> {
   await client.delete(`/fleets/${id}`);
 }

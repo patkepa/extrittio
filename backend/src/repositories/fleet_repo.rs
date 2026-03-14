@@ -46,6 +46,24 @@ pub fn insert_fleet(
         .first(conn)
 }
 
+pub fn update_fleet_name(
+    conn: &mut SqliteConnection,
+    id: i32,
+    new_name: &str,
+) -> Result<Option<Fleet>, diesel::result::Error> {
+    let rows = diesel::update(fleets::table.find(id))
+        .set(fleets::name.eq(new_name))
+        .execute(conn)?;
+    if rows == 0 {
+        return Ok(None);
+    }
+    fleets::table
+        .find(id)
+        .select(Fleet::as_select())
+        .first(conn)
+        .optional()
+}
+
 pub fn delete_fleet(conn: &mut SqliteConnection, id: i32) -> Result<bool, diesel::result::Error> {
     let rows = diesel::delete(fleets::table.find(id)).execute(conn)?;
     Ok(rows > 0)

@@ -20,7 +20,6 @@ interface HealthPanelProps {
   minimapDrawRef: React.MutableRefObject<(() => void) | null>;
   canvasWidth: number;
   canvasHeight: number;
-  onMinimapNavigate: (worldX: number, worldY: number) => void;
   collapsed?: boolean;
 }
 
@@ -68,7 +67,7 @@ function HealthRow({
   );
 }
 
-export const HealthPanel = ({ nodes, onDeviceClick, selectedNodeId, height, viewportRef, minimapDrawRef, canvasWidth, canvasHeight, onMinimapNavigate, collapsed }: HealthPanelProps) => {
+export const HealthPanel = ({ nodes, onDeviceClick, selectedNodeId, height, viewportRef, minimapDrawRef, canvasWidth, canvasHeight, collapsed }: HealthPanelProps) => {
   // Tick every 5s so staleness labels and sort order stay reasonably fresh
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -164,7 +163,6 @@ export const HealthPanel = ({ nodes, onDeviceClick, selectedNodeId, height, view
           viewportRef={viewportRef}
           canvasWidth={canvasWidth}
           canvasHeight={canvasHeight}
-          onNavigate={onMinimapNavigate}
           drawRef={minimapDrawRef}
         />
       </div>

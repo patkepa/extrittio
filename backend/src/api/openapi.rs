@@ -38,6 +38,7 @@ use utoipa::{Modify, OpenApi};
         // Fleets
         super::fleets::list_fleets,
         super::fleets::create_fleet,
+        super::fleets::update_fleet,
         super::fleets::delete_fleet,
         // Shadows
         super::shadows::get_shadow,
@@ -93,6 +94,7 @@ use utoipa::{Modify, OpenApi};
         // Fleets
         super::fleets::FleetResponse,
         super::fleets::NewFleetRequest,
+        super::fleets::UpdateFleetRequest,
         // Shadows
         super::shadows::ShadowResponse,
         // Telemetry

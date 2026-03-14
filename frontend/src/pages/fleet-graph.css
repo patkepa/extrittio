@@ -297,6 +297,27 @@
   gap: 6px;
 }
 
+/* Zoom controls — bottom-left corner */
+.fleet-graph-zoom-controls {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 2px;
+  padding: 2px;
+  opacity: 0.6;
+  transition: opacity 0.15s ease;
+}
+
+.fleet-graph-zoom-controls:hover {
+  opacity: 1;
+}
+
 /* Context menu overlay */
 .fleet-graph-context-menu-backdrop {
   position: fixed;

@@ -25,10 +25,18 @@ pub struct NewFleetRequest {
     pub name: String,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UpdateFleetRequest {
+    pub name: String,
+}
+
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/api/v1/fleets", get(list_fleets).post(create_fleet))
-        .route("/api/v1/fleets/{id}", axum::routing::delete(delete_fleet))
+        .route(
+            "/api/v1/fleets/{id}",
+            axum::routing::patch(update_fleet).delete(delete_fleet),
+        )
 }
 
 /// List all fleets.
@@ -94,6 +102,38 @@ pub(crate) async fn create_fleet(
     .await?;
 
     Ok((StatusCode::CREATED, Json(response)))
+}
+
+/// Update a fleet (rename).
+#[utoipa::path(
+    patch,
+    path = "/api/v1/fleets/{id}",
+    tag = "fleets",
+    security(("bearer_auth" = [])),
+    params(("id" = i32, Path, description = "Fleet ID")),
+    request_body = UpdateFleetRequest,
+    responses(
+        (status = 200, description = "Fleet updated", body = FleetResponse),
+        (status = 400, description = "Invalid input"),
+        (status = 404, description = "Fleet not found"),
+    ),
+)]
+pub(crate) async fn update_fleet(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i32>,
+    Json(body): Json<UpdateFleetRequest>,
+) -> Result<Json<FleetResponse>, AppError> {
+    let response = run_db(&state.db_pool, move |conn| {
+        let updated = fleet_service::rename(conn, id, &body.name)?;
+        Ok(FleetResponse {
+            id: updated.id,
+            name: updated.name,
+            device_count: 0, // caller can refetch the full list for counts
+        })
+    })
+    .await?;
+
+    Ok(Json(response))
 }
 
 /// Delete a fleet by ID.

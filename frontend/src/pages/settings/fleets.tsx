@@ -21,6 +21,7 @@ import {
 import {
   useFleets,
   useCreateFleet,
+  useUpdateFleet,
   useDeleteFleet,
 } from '../../hooks/use-fleets';
 import './settings.css';
@@ -29,9 +30,12 @@ export const FleetsSettings = () => {
   const navigate = useNavigate();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [newName, setNewName] = useState('');
+  const [editingFleet, setEditingFleet] = useState<{ id: number; name: string } | null>(null);
+  const [editName, setEditName] = useState('');
 
   const { data: fleets = [], isLoading, error } = useFleets();
   const createMutation = useCreateFleet();
+  const updateMutation = useUpdateFleet();
   const deleteMutation = useDeleteFleet();
 
   const handleAdd = () => {
@@ -44,6 +48,21 @@ export const FleetsSettings = () => {
           void showSuccessToast('Fleet created');
         },
         onError: () => { void showErrorToast('Failed to create fleet'); },
+      }
+    );
+  };
+
+  const handleRename = () => {
+    if (!editingFleet) return;
+    updateMutation.mutate(
+      { id: editingFleet.id, name: editName.trim() },
+      {
+        onSuccess: () => {
+          setEditingFleet(null);
+          setEditName('');
+          void showSuccessToast('Fleet renamed');
+        },
+        onError: () => { void showErrorToast('Failed to rename fleet'); },
       }
     );
   };
@@ -114,11 +133,14 @@ export const FleetsSettings = () => {
                   </td>
                   <td className="actions-column" onClick={(e) => e.stopPropagation()}>
                     <Button
-                      icon="eye-open"
+                      icon="edit"
                       minimal
                       small
-                      title="View Devices"
-                      onClick={() => navigate(`/devices?fleet_id=${fleet.id}`)}
+                      title="Rename Fleet"
+                      onClick={() => {
+                        setEditingFleet({ id: fleet.id, name: fleet.name });
+                        setEditName(fleet.name);
+                      }}
                     />
                     <Button
                       icon="trash"
@@ -175,6 +197,44 @@ export const FleetsSettings = () => {
                 disabled={!newName.trim()}
               >
                 Add
+              </Button>
+            </>
+          }
+        />
+      </Dialog>
+
+      <Dialog
+        icon="edit"
+        title="Rename Fleet"
+        isOpen={editingFleet !== null}
+        onClose={() => setEditingFleet(null)}
+      >
+        <DialogBody>
+          <FormGroup label="Name" labelInfo="(required)">
+            <InputGroup
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              autoFocus
+            />
+          </FormGroup>
+          {updateMutation.isError && (
+            <Callout intent="danger" icon="error">
+              Failed to rename fleet. The name may already exist.
+            </Callout>
+          )}
+        </DialogBody>
+        <DialogFooter
+          actions={
+            <>
+              <Button onClick={() => setEditingFleet(null)}>Cancel</Button>
+              <Button
+                intent="primary"
+                icon="tick"
+                onClick={handleRename}
+                loading={updateMutation.isPending}
+                disabled={!editName.trim() || editName.trim() === editingFleet?.name}
+              >
+                Rename
               </Button>
             </>
           }

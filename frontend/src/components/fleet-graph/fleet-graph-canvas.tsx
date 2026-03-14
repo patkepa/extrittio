@@ -12,6 +12,8 @@ import type { ViewportInfo } from './fleet-graph-minimap';
 export interface GraphActions {
   navigateTo: (x: number, y: number) => void;
   fitView: () => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
 }
 
 // --- Constants ---
@@ -215,7 +217,7 @@ export const FleetGraphCanvas = memo(({
   useEffect(() => {
     if (!graphRef.current) return;
     const fg = graphRef.current;
-    fg.d3Force('charge').strength(-200);
+    fg.d3Force('charge').strength(-30);
     fg.d3Force('link').distance(80);
     fg.d3Force(
       'collide',
@@ -229,41 +231,53 @@ export const FleetGraphCanvas = memo(({
     graphActionsRef.current = {
       navigateTo: (x, y) => graphRef.current?.centerAt(x, y, 500),
       fitView: () => graphRef.current?.zoomToFit(400, 60),
+      zoomIn: () => {
+        const fg = graphRef.current;
+        if (!fg) return;
+        const cur = fg.zoom();
+        fg.zoom(Math.min(cur * 1.4, 8), 300);
+      },
+      zoomOut: () => {
+        const fg = graphRef.current;
+        if (!fg) return;
+        const cur = fg.zoom();
+        fg.zoom(Math.max(cur / 1.4, 0.5), 300);
+      },
     };
   }, [graphActionsRef]);
 
-  // Forward viewport changes to parent (for minimap)
+  // Continuously clamp viewport so the user can never scroll too far from nodes.
+  // Instead of calling centerAt() (which fires another onZoom and causes jitter),
+  // we silently overwrite the d3-zoom transform stored on the canvas DOM element.
+  // The next render frame reads from __zoom, so it picks up the clamped value,
+  // and the next drag delta is computed from the clamped position — no feedback loop.
   const handleZoom = useCallback(
     (transform: { k: number; x: number; y: number }) => {
-      onViewportChange?.(transform);
-    },
-    [onViewportChange],
-  );
-
-  // Clamp viewport when pan/zoom ends to prevent drifting too far
-  const handleZoomEnd = useCallback(
-    (transform: { k: number; x: number; y: number }) => {
-      if (!hasInitialFit.current) return;
-      const fg = graphRef.current;
-      if (!fg) return;
-
-      const positioned = graphData.nodes.filter((n) => n.x != null && n.y != null);
-      if (positioned.length === 0) return;
-
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (const n of positioned) {
-        if (n.x! < minX) minX = n.x!;
-        if (n.y! < minY) minY = n.y!;
-        if (n.x! > maxX) maxX = n.x!;
-        if (n.y! > maxY) maxY = n.y!;
+      if (!hasInitialFit.current) {
+        onViewportChange?.(transform);
+        return;
       }
 
-      const rangeX = maxX - minX || 200;
-      const rangeY = maxY - minY || 200;
-      const padX = Math.max(rangeX * 1.5, 500);
-      const padY = Math.max(rangeY * 1.5, 500);
-      const boundsCenterX = (minX + maxX) / 2;
-      const boundsCenterY = (minY + maxY) / 2;
+      const positioned = graphData.nodes.filter((n) => n.x != null && n.y != null);
+      if (positioned.length === 0) {
+        onViewportChange?.(transform);
+        return;
+      }
+
+      let nMinX = Infinity, nMinY = Infinity, nMaxX = -Infinity, nMaxY = -Infinity;
+      for (const n of positioned) {
+        if (n.x! < nMinX) nMinX = n.x!;
+        if (n.y! < nMinY) nMinY = n.y!;
+        if (n.x! > nMaxX) nMaxX = n.x!;
+        if (n.y! > nMaxY) nMaxY = n.y!;
+      }
+
+      const rangeX = nMaxX - nMinX || 200;
+      const rangeY = nMaxY - nMinY || 200;
+      const padX = Math.max(rangeX * 0.8, 300);
+      const padY = Math.max(rangeY * 0.8, 300);
+      const boundsCenterX = (nMinX + nMaxX) / 2;
+      const boundsCenterY = (nMinY + nMaxY) / 2;
 
       const centerWorldX = (width / 2 - transform.x) / transform.k;
       const centerWorldY = (height / 2 - transform.y) / transform.k;
@@ -272,10 +286,23 @@ export const FleetGraphCanvas = memo(({
       const clampedY = Math.max(boundsCenterY - padY, Math.min(boundsCenterY + padY, centerWorldY));
 
       if (clampedX !== centerWorldX || clampedY !== centerWorldY) {
-        fg.centerAt(clampedX, clampedY, 300);
+        const newTx = width / 2 - clampedX * transform.k;
+        const newTy = height / 2 - clampedY * transform.k;
+
+        // Silently overwrite the d3-zoom transform on the DOM element.
+        // __zoom is a d3 ZoomTransform instance — construct a new one from its class.
+        const canvas = canvasWrapperRef.current?.querySelector('canvas');
+        const zoomState = (canvas as any)?.__zoom;
+        if (zoomState) {
+          (canvas as any).__zoom = new zoomState.constructor(transform.k, newTx, newTy);
+        }
+
+        onViewportChange?.({ k: transform.k, x: newTx, y: newTy });
+      } else {
+        onViewportChange?.(transform);
       }
     },
-    [graphData.nodes, width, height],
+    [onViewportChange, graphData.nodes, width, height],
   );
 
   // Center on selected node
@@ -664,7 +691,6 @@ export const FleetGraphCanvas = memo(({
         autoPauseRedraw={false}
         nodeLabel=""
         onZoom={handleZoom as any}
-        onZoomEnd={handleZoomEnd as any}
         minZoom={0.5}
         maxZoom={8}
       />

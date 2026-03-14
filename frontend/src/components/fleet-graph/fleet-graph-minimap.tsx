@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import type { GraphNode } from './build-force-graph-data';
 import { getStalenessColor } from './health-utils';
 
@@ -13,7 +13,6 @@ interface FleetGraphMinimapProps {
   viewportRef: React.RefObject<ViewportInfo | null>;
   canvasWidth: number;
   canvasHeight: number;
-  onNavigate: (worldX: number, worldY: number) => void;
   /** Parent writes a redraw callback here so it can trigger imperative redraws */
   drawRef: React.MutableRefObject<(() => void) | null>;
 }
@@ -47,7 +46,6 @@ export const FleetGraphMinimap = ({
   viewportRef,
   canvasWidth,
   canvasHeight,
-  onNavigate,
   drawRef,
 }: FleetGraphMinimapProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -71,8 +69,8 @@ export const FleetGraphMinimap = ({
     if (!ctx) return;
     ctx.scale(dpr, dpr);
 
-    // Background
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    // Background — match the main graph canvas (#171717)
+    ctx.fillStyle = '#171717';
     ctx.beginPath();
     ctx.roundRect(0, 0, w, h, 4);
     ctx.fill();
@@ -142,44 +140,11 @@ export const FleetGraphMinimap = ({
     draw();
   }, [draw]);
 
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
-      e.stopPropagation();
-      e.preventDefault();
-
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const rect = canvas.getBoundingClientRect();
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
-
-      const bounds = computeWorldBounds(nodes);
-      if (!bounds) return;
-
-      const { minX, minY, maxX, maxY } = bounds;
-      const worldW = maxX - minX;
-      const worldH = maxY - minY;
-      const w = rect.width;
-      const h = rect.height;
-
-      const scale = Math.min((w - PAD * 2) / worldW, (h - PAD * 2) / worldH);
-      const offsetX = (w - worldW * scale) / 2;
-      const offsetY = (h - worldH * scale) / 2;
-
-      const worldX = (mx - offsetX) / scale + minX;
-      const worldY = (my - offsetY) / scale + minY;
-
-      onNavigate(worldX, worldY);
-    },
-    [nodes, onNavigate],
-  );
-
   return (
     <canvas
       ref={canvasRef}
       className="fleet-graph-minimap"
-      style={{ width: '100%', height: MINIMAP_HEIGHT, cursor: 'crosshair' }}
-      onMouseDown={handleMouseDown}
+      style={{ width: '100%', height: MINIMAP_HEIGHT }}
     />
   );
 };

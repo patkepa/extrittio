@@ -135,10 +135,6 @@ export const FleetGraph = () => {
     minimapDrawRef.current?.();
   }, []);
 
-  const handleMinimapNavigate = useCallback((worldX: number, worldY: number) => {
-    graphActionsRef.current?.navigateTo(worldX, worldY);
-  }, []);
-
   const handlePanelDeviceClick = useCallback(
     (nodeId: string) => {
       setSelectedNodeId(nodeId);
@@ -244,6 +240,25 @@ export const FleetGraph = () => {
         <FleetGraphBulkBar />
 
         {graphData && (
+          <div className="fleet-graph-zoom-controls">
+            <Button
+              icon="plus"
+              minimal
+              small
+              title="Zoom in"
+              onClick={() => graphActionsRef.current?.zoomIn()}
+            />
+            <Button
+              icon="minus"
+              minimal
+              small
+              title="Zoom out"
+              onClick={() => graphActionsRef.current?.zoomOut()}
+            />
+          </div>
+        )}
+
+        {graphData && (
           <Button
             className="health-panel-toggle"
             icon={healthPanelOpen ? 'chevron-right' : 'chevron-left'}
@@ -265,7 +280,7 @@ export const FleetGraph = () => {
           minimapDrawRef={minimapDrawRef}
           canvasWidth={dimensions.width}
           canvasHeight={dimensions.height}
-          onMinimapNavigate={handleMinimapNavigate}
+
           collapsed={!healthPanelOpen}
         />
       )}
