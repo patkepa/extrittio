@@ -19,16 +19,21 @@ export const navGroups: NavGroup[] = [
         icon: 'graph',
         href: '/fleet-graph',
       },
-      {
-        label: 'Firmware',
-        icon: 'upload',
-        href: '/settings/firmware',
-      },
     ],
   },
   {
     label: 'Management',
     items: [
+      {
+        label: 'Firmware',
+        icon: 'upload',
+        href: '/settings/firmware',
+      },
+      {
+        label: 'Fleets',
+        icon: 'layers',
+        href: '/settings/fleets',
+      },
       {
         label: 'Settings',
         icon: 'cog',
@@ -45,11 +50,6 @@ export const navGroups: NavGroup[] = [
             href: '/settings/device-types',
           },
           {
-            label: 'Fleets',
-            icon: 'layers',
-            href: '/settings/fleets',
-          },
-          {
             label: 'Users',
             icon: 'people',
             href: '/settings/users',
@@ -57,6 +57,11 @@ export const navGroups: NavGroup[] = [
           { label: 'Certificates', icon: 'lock', href: '/settings/certificates' },
           { label: 'API Keys', icon: 'key', href: '/settings/api-keys' },
         ],
+      },
+      {
+        label: 'Help',
+        icon: 'help',
+        href: '/help',
       },
     ],
   },

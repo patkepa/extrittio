@@ -246,63 +246,96 @@ export const FleetGraphCanvas = memo(({
     };
   }, [graphActionsRef]);
 
-  // Continuously clamp viewport so the user can never scroll too far from nodes.
-  // Instead of calling centerAt() (which fires another onZoom and causes jitter),
-  // we silently overwrite the d3-zoom transform stored on the canvas DOM element.
-  // The next render frame reads from __zoom, so it picks up the clamped value,
-  // and the next drag delta is computed from the clamped position — no feedback loop.
-  const handleZoom = useCallback(
-    (transform: { k: number; x: number; y: number }) => {
-      if (!hasInitialFit.current) {
-        onViewportChange?.(transform);
-        return;
-      }
+  // --- Viewport clamping via __zoom property interceptor ---
+  // d3-zoom stores its transform on canvas.__zoom. During drag panning, it
+  // recomputes the transform from scratch each mousemove and writes it to
+  // __zoom. By intercepting that write with Object.defineProperty, we can
+  // clamp the transform BEFORE d3-zoom emits the zoom event or renders.
+  // This avoids the jitter caused by centerAt() feedback loops.
+  const nodeBoundsRef = useRef<{
+    centerX: number; centerY: number; padX: number; padY: number;
+  } | null>(null);
+  const dimensionsRef = useRef({ width, height });
+  dimensionsRef.current = { width, height };
 
-      const positioned = graphData.nodes.filter((n) => n.x != null && n.y != null);
-      if (positioned.length === 0) {
-        onViewportChange?.(transform);
-        return;
-      }
+  // Recompute bounds when node positions settle
+  const updateNodeBounds = useCallback(() => {
+    const positioned = graphData.nodes.filter((n) => n.x != null && n.y != null);
+    if (positioned.length === 0) { nodeBoundsRef.current = null; return; }
 
-      let nMinX = Infinity, nMinY = Infinity, nMaxX = -Infinity, nMaxY = -Infinity;
-      for (const n of positioned) {
-        if (n.x! < nMinX) nMinX = n.x!;
-        if (n.y! < nMinY) nMinY = n.y!;
-        if (n.x! > nMaxX) nMaxX = n.x!;
-        if (n.y! > nMaxY) nMaxY = n.y!;
-      }
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const n of positioned) {
+      if (n.x! < minX) minX = n.x!;
+      if (n.y! < minY) minY = n.y!;
+      if (n.x! > maxX) maxX = n.x!;
+      if (n.y! > maxY) maxY = n.y!;
+    }
+    const rangeX = maxX - minX || 200;
+    const rangeY = maxY - minY || 200;
+    nodeBoundsRef.current = {
+      centerX: (minX + maxX) / 2,
+      centerY: (minY + maxY) / 2,
+      padX: Math.max(rangeX * 0.8, 300),
+      padY: Math.max(rangeY * 0.8, 300),
+    };
+  }, [graphData.nodes]);
 
-      const rangeX = nMaxX - nMinX || 200;
-      const rangeY = nMaxY - nMinY || 200;
-      const padX = Math.max(rangeX * 0.8, 300);
-      const padY = Math.max(rangeY * 0.8, 300);
-      const boundsCenterX = (nMinX + nMaxX) / 2;
-      const boundsCenterY = (nMinY + nMaxY) / 2;
+  useEffect(updateNodeBounds, [updateNodeBounds]);
 
-      const centerWorldX = (width / 2 - transform.x) / transform.k;
-      const centerWorldY = (height / 2 - transform.y) / transform.k;
+  // Install the __zoom interceptor on the canvas element
+  useEffect(() => {
+    const canvas = canvasWrapperRef.current?.querySelector('canvas');
+    if (!canvas) return;
 
-      const clampedX = Math.max(boundsCenterX - padX, Math.min(boundsCenterX + padX, centerWorldX));
-      const clampedY = Math.max(boundsCenterY - padY, Math.min(boundsCenterY + padY, centerWorldY));
+    // Grab the existing transform value that d3-zoom already set
+    let currentZoom = (canvas as any).__zoom;
 
-      if (clampedX !== centerWorldX || clampedY !== centerWorldY) {
-        const newTx = width / 2 - clampedX * transform.k;
-        const newTy = height / 2 - clampedY * transform.k;
-
-        // Silently overwrite the d3-zoom transform on the DOM element.
-        // __zoom is a d3 ZoomTransform instance — construct a new one from its class.
-        const canvas = canvasWrapperRef.current?.querySelector('canvas');
-        const zoomState = (canvas as any)?.__zoom;
-        if (zoomState) {
-          (canvas as any).__zoom = new zoomState.constructor(transform.k, newTx, newTy);
+    Object.defineProperty(canvas, '__zoom', {
+      configurable: true,
+      enumerable: true,
+      get() { return currentZoom; },
+      set(val) {
+        const bounds = nodeBoundsRef.current;
+        const { width: w, height: h } = dimensionsRef.current;
+        if (!hasInitialFit.current || !bounds || !val) {
+          currentZoom = val;
+          return;
         }
 
-        onViewportChange?.({ k: transform.k, x: newTx, y: newTy });
-      } else {
-        onViewportChange?.(transform);
-      }
+        const k = val.k;
+        const viewCenterX = (w / 2 - val.x) / k;
+        const viewCenterY = (h / 2 - val.y) / k;
+
+        const clampedX = Math.max(bounds.centerX - bounds.padX, Math.min(bounds.centerX + bounds.padX, viewCenterX));
+        const clampedY = Math.max(bounds.centerY - bounds.padY, Math.min(bounds.centerY + bounds.padY, viewCenterY));
+
+        if (clampedX !== viewCenterX || clampedY !== viewCenterY) {
+          const newTx = w / 2 - clampedX * k;
+          const newTy = h / 2 - clampedY * k;
+          currentZoom = new val.constructor(k, newTx, newTy);
+        } else {
+          currentZoom = val;
+        }
+      },
+    });
+
+    return () => {
+      // Restore a normal data property on cleanup
+      Object.defineProperty(canvas, '__zoom', {
+        configurable: true,
+        writable: true,
+        enumerable: true,
+        value: currentZoom,
+      });
+    };
+  }, []); // Canvas element is stable — refs provide latest values
+
+  // Forward viewport changes to parent (for minimap)
+  const handleZoom = useCallback(
+    (transform: { k: number; x: number; y: number }) => {
+      onViewportChange?.(transform);
     },
-    [onViewportChange, graphData.nodes, width, height],
+    [onViewportChange],
   );
 
   // Center on selected node
@@ -321,7 +354,8 @@ export const FleetGraphCanvas = memo(({
       hasInitialFit.current = true;
       graphRef.current?.zoomToFit(400, 60);
     }
-  }, []);
+    updateNodeBounds();
+  }, [updateNodeBounds]);
 
   // Hover handler — debounced to avoid flickering when quickly brushing over nodes
   const handleNodeHover = useCallback((node: GraphNode | null) => {
