@@ -4,7 +4,7 @@ use diesel::prelude::*;
 use crate::db::models::{Device, DeviceType, Fleet, NewDevice, UpdateDevice};
 use crate::db::schema::{device_types, devices, fleets};
 
-type DeviceWithJoins = (Device, DeviceType, Option<Fleet>);
+pub type DeviceWithJoins = (Device, DeviceType, Option<Fleet>);
 
 type BoxedDeviceQuery<'a> = diesel::dsl::IntoBoxed<
     'a,
@@ -203,3 +203,4 @@ pub fn mark_devices_offline(
     .set(devices::status.eq("offline"))
     .execute(conn)
 }
+

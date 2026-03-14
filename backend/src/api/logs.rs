@@ -3,15 +3,15 @@ use axum::{
     extract::{Path, Query, State},
     routing::get,
 };
-use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::db::models::DeviceLog;
 use crate::error::AppError;
-use crate::repositories::{device_repo, log_repo};
+use crate::services::log_service;
 use crate::state::{AppState, run_db};
+use crate::util;
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -85,39 +85,18 @@ pub(crate) async fn get_device_logs(
     Query(params): Query<LogsQuery>,
 ) -> Result<Json<Vec<LogResponse>>, AppError> {
     // Parse timestamp filter before entering the blocking closure
-    let since = parse_since(params.since.as_deref())?;
+    let since = util::parse_timestamp(params.since.as_deref())?;
 
     let response = run_db(&state.db_pool, move |conn| {
-        // Verify device exists
-        if !device_repo::device_exists(conn, &id)? {
-            return Err(AppError::NotFound(format!("Device '{id}' not found")));
-        }
-
         let limit = params.limit.unwrap_or(100).clamp(1, 1000);
 
-        // Normalize level to uppercase for the query
         let level = params.level.as_deref().map(str::to_uppercase);
 
-        let results = log_repo::list_logs(conn, &id, level.as_deref(), since, limit)?;
+        let results = log_service::list(conn, &id, level.as_deref(), since, limit)?;
 
         Ok(results.into_iter().map(LogResponse::from).collect())
     })
     .await?;
 
     Ok(Json(response))
-}
-
-/// Parse an optional `since` timestamp string, accepting both NaiveDateTime
-/// and RFC 3339 formats.
-fn parse_since(since_str: Option<&str>) -> Result<Option<NaiveDateTime>, AppError> {
-    let Some(s) = since_str else {
-        return Ok(None);
-    };
-    let dt = s
-        .parse::<NaiveDateTime>()
-        .or_else(|_| chrono::DateTime::parse_from_rfc3339(s).map(|dt| dt.naive_utc()))
-        .map_err(|_| {
-            AppError::BadRequest("Invalid date format, expected YYYY-MM-DDTHH:MM:SS".into())
-        })?;
-    Ok(Some(dt))
 }

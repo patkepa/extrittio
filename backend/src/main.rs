@@ -24,8 +24,8 @@ use extrittio_backend::config::AppConfig;
 use extrittio_backend::init;
 use extrittio_backend::middleware::auth_middleware;
 use extrittio_backend::rate_limit::{self, ApiKeyRateLimiter, RateLimiter};
-use extrittio_backend::state::{AppState, MetricsAccumulator, ZenohMetrics};
 use extrittio_backend::services;
+use extrittio_backend::state::{AppState, MetricsAccumulator, ZenohMetrics};
 use extrittio_backend::{api, background, zenoh_handler};
 
 #[tokio::main]

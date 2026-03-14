@@ -5,9 +5,9 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use tracing::warn;
 
-use crate::db::models::UpdateShadow;
+use crate::db::models::{DeviceShadow, UpdateShadow};
 use crate::error::AppError;
-use crate::repositories::shadow_repo;
+use crate::repositories::{firmware_repo, shadow_repo};
 use extrittio_common::shadow::{compute_delta as compute_shadow_delta, merge_json};
 use crate::state::{DbPool, ZenohMetrics, run_db};
 
@@ -128,4 +128,76 @@ pub async fn publish_delta_if_nonempty(
             zenoh_metrics.messages_out.fetch_add(1, Ordering::Relaxed);
         }
     }
+}
+
+/// Get the full shadow state for a device.
+pub fn get_shadow(
+    conn: &mut SqliteConnection,
+    device_id: &str,
+) -> Result<DeviceShadow, AppError> {
+    Ok(shadow_repo::find_shadow(conn, device_id)?)
+}
+
+/// Reset a device's shadow to empty state.
+pub fn delete_shadow(
+    conn: &mut SqliteConnection,
+    device_id: &str,
+) -> Result<(), AppError> {
+    let shadow = shadow_repo::find_shadow(conn, device_id)?;
+    let now = chrono::Utc::now().naive_utc();
+    let changeset = UpdateShadow {
+        desired: Some("{}".to_string()),
+        reported: Some("{}".to_string()),
+        delta: Some("{}".to_string()),
+        version: Some(shadow.version + 1),
+        updated_at: Some(now),
+    };
+    shadow_repo::update_shadow(conn, device_id, &changeset)?;
+    Ok(())
+}
+
+/// Process OTA status from a shadow report's reported state.
+pub fn process_ota_from_report(
+    conn: &mut SqliteConnection,
+    device_id: &str,
+    reported: &serde_json::Value,
+) -> Result<(), AppError> {
+    use extrittio_common::ota::{fields as ota_fields, status as ota_status_consts};
+
+    let ota_obj = match reported.get(ota_fields::SHADOW_KEY) {
+        Some(serde_json::Value::Object(o)) => o,
+        _ => return Ok(()),
+    };
+
+    let status_raw = match ota_obj.get(ota_fields::STATUS) {
+        Some(serde_json::Value::String(s)) => s.as_str(),
+        _ => return Ok(()),
+    };
+    let status = status_raw.to_lowercase();
+
+    let fw_id = ota_obj
+        .get(ota_fields::FIRMWARE_UPDATE_ID)
+        .and_then(|v| v.as_i64())
+        .and_then(|id| i32::try_from(id).ok());
+
+    let deployment_id = firmware_repo::find_active_ota_deployment(conn, device_id, fw_id)?;
+
+    if let Some(dep_id) = deployment_id {
+        let error_msg = ota_obj
+            .get(ota_fields::ERROR)
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        let completed_at = if ota_status_consts::is_terminal(&status) {
+            Some(chrono::Utc::now().naive_utc())
+        } else {
+            None
+        };
+
+        firmware_repo::update_ota_deployment_status(
+            conn, dep_id, &status, error_msg.as_deref(), completed_at,
+        )?;
+    }
+
+    Ok(())
 }

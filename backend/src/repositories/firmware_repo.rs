@@ -9,7 +9,7 @@ use crate::db::models::{
 };
 use crate::db::schema::{device_types, firmware_blobs, firmware_updates, ota_deployments};
 
-type FirmwareUpdateRow = (FirmwareUpdate, DeviceType, Option<i32>, Option<String>);
+pub type FirmwareUpdateRow = (FirmwareUpdate, DeviceType, Option<i32>, Option<String>);
 
 pub fn list_firmware_updates(
     conn: &mut SqliteConnection,

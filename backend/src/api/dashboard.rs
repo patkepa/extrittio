@@ -4,7 +4,7 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 use crate::error::AppError;
-use crate::repositories::dashboard_repo;
+use crate::services::dashboard_service;
 use crate::state::{AppState, run_db};
 
 #[derive(Serialize, ToSchema)]
@@ -33,16 +33,13 @@ pub(crate) async fn get_stats(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<DashboardStats>, AppError> {
     let stats = run_db(&state.db_pool, move |conn| {
-        let total_devices = dashboard_repo::get_total_devices(conn)?;
-        let active_devices = dashboard_repo::get_online_devices(conn)?;
-        let offline_devices = dashboard_repo::get_offline_devices(conn)?;
-        let total_messages = dashboard_repo::get_total_messages(conn)?;
+        let svc_stats = dashboard_service::get_stats(conn)?;
 
         Ok(DashboardStats {
-            total_devices,
-            active_devices,
-            offline_devices,
-            total_messages,
+            total_devices: svc_stats.total_devices,
+            active_devices: svc_stats.active_devices,
+            offline_devices: svc_stats.offline_devices,
+            total_messages: svc_stats.total_messages,
         })
     })
     .await?;

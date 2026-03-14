@@ -4,16 +4,16 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
-use crate::db::models::{Device, DeviceType, Fleet, NewDevice, UpdateDevice};
+use crate::db::models::{NewDevice, UpdateDevice};
 use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse, PaginationParams};
-use crate::repositories::{device_repo, firmware_repo};
+use crate::repositories::device_repo;
 use crate::services::{command_service, device_service};
 use crate::state::{AppState, run_db};
 
@@ -138,63 +138,8 @@ pub struct BulkResultResponse {
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn format_uptime(seconds: i32) -> String {
-    if seconds <= 0 {
-        return "0m".to_string();
-    }
-    let days = seconds / 86400;
-    let hours = (seconds % 86400) / 3600;
-    let minutes = (seconds % 3600) / 60;
-
-    if days > 0 {
-        format!("{days}d {hours}h")
-    } else if hours > 0 {
-        format!("{hours}h")
-    } else {
-        format!("{minutes}m")
-    }
-}
-
-fn format_last_seen(last_seen: Option<NaiveDateTime>) -> String {
-    match last_seen {
-        None => "never".to_string(),
-        Some(dt) => {
-            let now = Utc::now().naive_utc();
-            let duration = now.signed_duration_since(dt);
-            let secs = duration.num_seconds();
-
-            if secs < 60 {
-                "just now".to_string()
-            } else if secs < 3600 {
-                let mins = secs / 60;
-                if mins == 1 {
-                    "1 minute ago".to_string()
-                } else {
-                    format!("{mins} minutes ago")
-                }
-            } else if secs < 86400 {
-                let hours = secs / 3600;
-                if hours == 1 {
-                    "1 hour ago".to_string()
-                } else {
-                    format!("{hours} hours ago")
-                }
-            } else {
-                let days = secs / 86400;
-                if days == 1 {
-                    "1 day ago".to_string()
-                } else {
-                    format!("{days} days ago")
-                }
-            }
-        }
-    }
-}
-
 fn to_device_response(
-    device: Device,
-    device_type: DeviceType,
-    fleet: Option<Fleet>,
+    (device, device_type, fleet): crate::repositories::device_repo::DeviceWithJoins,
 ) -> DeviceResponse {
     let last_seen_at = device.last_seen.map(|dt| {
         DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc)
@@ -208,10 +153,12 @@ fn to_device_response(
         fleet_id: fleet.as_ref().map(|f| f.id),
         fleet_name: fleet.map(|f| f.name),
         status: device.status,
-        last_seen: format_last_seen(device.last_seen),
+        last_seen: device_service::format_last_seen(device.last_seen)
+            .unwrap_or_else(|| "never".to_string()),
         last_seen_at,
         firmware: device.firmware,
-        uptime: format_uptime(device.uptime_seconds),
+        uptime: device_service::format_uptime(Some(device.uptime_seconds))
+            .unwrap_or_else(|| "0m".to_string()),
         uptime_seconds: device.uptime_seconds,
     }
 }
@@ -299,7 +246,7 @@ pub(crate) async fn list_devices(
     let (limit, offset) = pagination::clamp(params.limit, params.offset);
 
     let response = run_db(&state.db_pool, move |conn| {
-        let (results, total) = device_repo::list_devices(
+        let (results, total) = device_service::list_devices(
             conn,
             params.status.as_deref(),
             params.search.as_deref(),
@@ -310,7 +257,7 @@ pub(crate) async fn list_devices(
 
         let data = results
             .into_iter()
-            .map(|(d, dt, f)| to_device_response(d, dt, f))
+            .map(to_device_response)
             .collect();
 
         Ok(PaginatedResponse::new(data, total, limit, offset))
@@ -337,8 +284,8 @@ pub(crate) async fn get_device(
     Path(id): Path<String>,
 ) -> Result<Json<DeviceResponse>, AppError> {
     let response = run_db(&state.db_pool, move |conn| {
-        let (device, device_type, fleet) = device_repo::find_device_with_joins(conn, &id)?;
-        Ok(to_device_response(device, device_type, fleet))
+        let joined = device_service::get_device(conn, &id)?;
+        Ok(to_device_response(joined))
     })
     .await?;
 
@@ -379,9 +326,9 @@ pub(crate) async fn create_device(
 
         device_service::create_device(conn, &new_device)?;
 
-        let (device, device_type, fleet) = device_repo::find_device_with_joins(conn, &id_for_read)?;
+        let joined = device_service::get_device(conn, &id_for_read)?;
 
-        Ok(to_device_response(device, device_type, fleet))
+        Ok(to_device_response(joined))
     })
     .await?;
 
@@ -414,9 +361,6 @@ pub(crate) async fn update_device(
     }
 
     let response = run_db(&state.db_pool, move |conn| {
-        // Verify device exists
-        device_repo::find_device(conn, &id)?;
-
         let changeset = UpdateDevice {
             name: body.name,
             device_type_id: body.device_type_id,
@@ -426,11 +370,9 @@ pub(crate) async fn update_device(
             ..Default::default()
         };
 
-        device_repo::update_device(conn, &id, &changeset)?;
+        let joined = device_service::update_device(conn, &id, &changeset)?;
 
-        let (device, device_type, fleet) = device_repo::find_device_with_joins(conn, &id)?;
-
-        Ok(to_device_response(device, device_type, fleet))
+        Ok(to_device_response(joined))
     })
     .await?;
 
@@ -454,11 +396,7 @@ pub(crate) async fn delete_device(
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
     run_db(&state.db_pool, move |conn| {
-        let deleted = device_repo::delete_device(conn, &id)?;
-        if !deleted {
-            return Err(AppError::NotFound(format!("Device '{id}' not found")));
-        }
-        Ok(())
+        device_service::delete_device(conn, &id)
     })
     .await?;
 
@@ -674,10 +612,7 @@ pub(crate) async fn list_ota_deployments(
     let (limit, offset) = pagination::clamp(params.limit, params.offset);
 
     let response = run_db(&state.db_pool, move |conn| {
-        // Verify device exists
-        device_repo::find_device(conn, &id)?;
-
-        let (results, total) = firmware_repo::list_ota_deployments(conn, &id, limit, offset)?;
+        let (results, total) = device_service::list_ota_deployments(conn, &id, limit, offset)?;
 
         let data = results
             .into_iter()

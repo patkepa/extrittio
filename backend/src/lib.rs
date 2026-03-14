@@ -21,6 +21,7 @@ pub mod rate_limit;
 pub mod repositories;
 pub mod services;
 pub mod state;
+pub mod util;
 pub mod zenoh_handler;
 
 use diesel_migrations::{EmbeddedMigrations, embed_migrations};

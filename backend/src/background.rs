@@ -1,11 +1,7 @@
-use chrono::Utc;
 use std::time::Duration;
 use tracing::{info, warn};
 
-use crate::db::models::NewDeviceLog;
-use diesel::Connection;
-
-use crate::repositories::{command_repo, device_repo, log_repo};
+use crate::services::{command_service, device_service};
 use crate::state::DbPool;
 
 pub async fn run_offline_checker(db_pool: DbPool, timeout_secs: u64) {
@@ -15,48 +11,11 @@ pub async fn run_offline_checker(db_pool: DbPool, timeout_secs: u64) {
     loop {
         tokio::time::sleep(interval).await;
 
-        #[allow(clippy::cast_possible_wrap)]
-        let cutoff = Utc::now().naive_utc() - chrono::TimeDelta::seconds(timeout_secs as i64);
-
         let pool = db_pool.clone();
         let result = tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().map_err(|e| e.to_string())?;
-
-            // Mark devices offline first, then use the returned count to know
-            // if any were affected. We query the list of newly-offline devices
-            // from the same transaction to avoid TOCTOU races where a heartbeat
-            // arriving between SELECT and UPDATE would create spurious log entries.
-            let (going_offline, count) = conn.transaction::<_, diesel::result::Error, _>(|conn| {
-                // SELECT FOR UPDATE semantics: by reading first inside an
-                // IMMEDIATE transaction, SQLite acquires a reserved lock that
-                // prevents concurrent writers from interleaving.
-                let going_offline = device_repo::find_devices_going_offline(conn, cutoff)?;
-                let count = going_offline.len();
-                if count > 0 {
-                    device_repo::mark_devices_offline(conn, cutoff)?;
-                }
-                Ok((going_offline, count))
-            }).map_err(|e| e.to_string())?;
-
-            // Log an entry for each device that went offline
-            for device_id in &going_offline {
-                let message = format!(
-                    "Device went offline (no heartbeat for {}s)",
-                    timeout_secs
-                );
-                if let Err(e) = log_repo::insert_log(
-                    &mut conn,
-                    &NewDeviceLog {
-                        device_id: device_id.clone(),
-                        level: "WARN".to_string(),
-                        message,
-                    },
-                ) {
-                    warn!("Failed to insert offline log for {}: {}", device_id, e);
-                }
-            }
-
-            Ok::<usize, String>(count)
+            device_service::check_offline_devices(&mut conn, timeout_secs)
+                .map_err(|e| e.to_string())
         })
         .await;
 
@@ -86,14 +45,11 @@ pub async fn run_command_timeout_checker(db_pool: DbPool, timeout_secs: u64) {
     loop {
         tokio::time::sleep(interval).await;
 
-        #[allow(clippy::cast_possible_wrap)]
-        let cutoff = Utc::now().naive_utc() - chrono::TimeDelta::seconds(timeout_secs as i64);
-        let now = Utc::now().naive_utc();
-
         let pool = db_pool.clone();
         let result = tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().map_err(|e| e.to_string())?;
-            command_repo::timeout_stale_commands(&mut conn, cutoff, now).map_err(|e| e.to_string())
+            command_service::timeout_stale(&mut conn, timeout_secs)
+                .map_err(|e| e.to_string())
         })
         .await;
 

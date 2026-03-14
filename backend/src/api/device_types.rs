@@ -8,10 +8,10 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
 
-use crate::db::models::{DeviceType, NewDeviceType};
+use crate::db::models::DeviceType;
 use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse, PaginationParams};
-use crate::repositories::device_type_repo;
+use crate::services::device_type_service;
 use crate::state::{AppState, run_db};
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -64,7 +64,7 @@ pub(crate) async fn list_device_types(
     let (limit, offset) = pagination::clamp(params.limit, params.offset);
 
     let response = run_db(&state.db_pool, move |conn| {
-        let (results, total) = device_type_repo::list_device_types(conn, limit, offset)?;
+        let (results, total) = device_type_service::list(conn, limit, offset)?;
         let data = results.into_iter().map(DeviceTypeResponse::from).collect();
         Ok(PaginatedResponse::new(data, total, limit, offset))
     })
@@ -89,15 +89,8 @@ pub(crate) async fn create_device_type(
     State(state): State<Arc<AppState>>,
     Json(body): Json<NewDeviceTypeRequest>,
 ) -> Result<(StatusCode, Json<DeviceTypeResponse>), AppError> {
-    if body.name.trim().is_empty() {
-        return Err(AppError::BadRequest(
-            "Device type name must not be empty".into(),
-        ));
-    }
-
     let response = run_db(&state.db_pool, move |conn| {
-        let created =
-            device_type_repo::insert_device_type(conn, &NewDeviceType { name: body.name })?;
+        let created = device_type_service::create(conn, &body.name)?;
         Ok(DeviceTypeResponse::from(created))
     })
     .await?;
@@ -124,29 +117,7 @@ pub(crate) async fn delete_device_type(
     Path(id): Path<i32>,
 ) -> Result<StatusCode, AppError> {
     run_db(&state.db_pool, move |conn| {
-        // Prevent deleting the "default" device type (id=1)
-        if id == 1 {
-            return Err(AppError::UnprocessableEntity(
-                "Cannot delete the default device type".into(),
-            ));
-        }
-
-        // Reject if any devices still reference this type
-        let count = device_type_repo::count_devices_for_type(conn, id)?;
-
-        if count > 0 {
-            return Err(AppError::Conflict(format!(
-                "Cannot delete device type: {count} device(s) still reference it"
-            )));
-        }
-
-        let deleted = device_type_repo::delete_device_type(conn, id)?;
-
-        if deleted {
-            Ok(())
-        } else {
-            Err(AppError::NotFound(format!("Device type {id} not found")))
-        }
+        device_type_service::delete(conn, id)
     })
     .await?;
 

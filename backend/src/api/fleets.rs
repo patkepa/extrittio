@@ -8,10 +8,9 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
 
-use crate::db::models::NewFleet;
 use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse, PaginationParams};
-use crate::repositories::fleet_repo;
+use crate::services::fleet_service;
 use crate::state::{AppState, run_db};
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -50,19 +49,14 @@ pub(crate) async fn list_fleets(
     let (limit, offset) = pagination::clamp(params.limit, params.offset);
 
     let response = run_db(&state.db_pool, move |conn| {
-        let (all_fleets, counts, total) = fleet_repo::list_fleets(conn, limit, offset)?;
+        let (enriched, total) = fleet_service::list(conn, limit, offset)?;
 
-        let count_map: std::collections::HashMap<i32, i64> = counts
+        let data = enriched
             .into_iter()
-            .filter_map(|(fleet_id, count)| fleet_id.map(|fid| (fid, count)))
-            .collect();
-
-        let data = all_fleets
-            .into_iter()
-            .map(|f| FleetResponse {
-                id: f.id,
-                name: f.name,
-                device_count: count_map.get(&f.id).copied().unwrap_or(0),
+            .map(|fwc| FleetResponse {
+                id: fwc.fleet.id,
+                name: fwc.fleet.name,
+                device_count: fwc.device_count,
             })
             .collect();
 
@@ -89,12 +83,8 @@ pub(crate) async fn create_fleet(
     State(state): State<Arc<AppState>>,
     Json(body): Json<NewFleetRequest>,
 ) -> Result<(StatusCode, Json<FleetResponse>), AppError> {
-    if body.name.trim().is_empty() {
-        return Err(AppError::BadRequest("Fleet name must not be empty".into()));
-    }
-
     let response = run_db(&state.db_pool, move |conn| {
-        let created = fleet_repo::insert_fleet(conn, &NewFleet { name: body.name })?;
+        let created = fleet_service::create(conn, &body.name)?;
         Ok(FleetResponse {
             id: created.id,
             name: created.name,
@@ -123,13 +113,7 @@ pub(crate) async fn delete_fleet(
     Path(id): Path<i32>,
 ) -> Result<StatusCode, AppError> {
     run_db(&state.db_pool, move |conn| {
-        // ON DELETE SET NULL in the schema handles device unassignment
-        let deleted = fleet_repo::delete_fleet(conn, id)?;
-        if deleted {
-            Ok(())
-        } else {
-            Err(AppError::NotFound(format!("Fleet {id} not found")))
-        }
+        fleet_service::delete(conn, id)
     })
     .await?;
 

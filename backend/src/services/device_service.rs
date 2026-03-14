@@ -5,7 +5,7 @@ use diesel::SqliteConnection;
 use std::sync::Arc;
 use tracing::{info, warn};
 
-use crate::db::models::{NewDevice, NewDeviceLog, NewDeviceShadow, NewOtaDeployment};
+use crate::db::models::{NewDevice, NewDeviceLog, NewDeviceShadow, NewOtaDeployment, UpdateDevice};
 use crate::error::AppError;
 use crate::repositories::{cert_repo, device_repo, device_type_repo, firmware_repo, log_repo, shadow_repo};
 use crate::services::{cert_service, shadow_service};
@@ -173,4 +173,211 @@ pub async fn trigger_ota(
         .await;
 
     Ok(())
+}
+
+/// List devices with filtering and pagination.
+pub fn list_devices(
+    conn: &mut SqliteConnection,
+    status_filter: Option<&str>,
+    search_filter: Option<&str>,
+    fleet_id_filter: Option<i32>,
+    limit: i64,
+    offset: i64,
+) -> Result<(Vec<device_repo::DeviceWithJoins>, i64), AppError> {
+    Ok(device_repo::list_devices(conn, status_filter, search_filter, fleet_id_filter, limit, offset)?)
+}
+
+/// Get a single device with joined type and fleet info.
+pub fn get_device(
+    conn: &mut SqliteConnection,
+    device_id: &str,
+) -> Result<device_repo::DeviceWithJoins, AppError> {
+    Ok(device_repo::find_device_with_joins(conn, device_id)?)
+}
+
+/// Update a device. Returns the updated device with joins.
+pub fn update_device(
+    conn: &mut SqliteConnection,
+    device_id: &str,
+    changeset: &UpdateDevice,
+) -> Result<device_repo::DeviceWithJoins, AppError> {
+    device_repo::find_device(conn, device_id)?;
+    device_repo::update_device(conn, device_id, changeset)?;
+    Ok(device_repo::find_device_with_joins(conn, device_id)?)
+}
+
+/// Delete a device by ID.
+pub fn delete_device(conn: &mut SqliteConnection, device_id: &str) -> Result<(), AppError> {
+    let deleted = device_repo::delete_device(conn, device_id)?;
+    if !deleted {
+        return Err(AppError::NotFound(format!("Device '{device_id}' not found")));
+    }
+    Ok(())
+}
+
+/// Resolve device IDs from filters (for bulk operations).
+pub fn resolve_target_ids(
+    conn: &mut SqliteConnection,
+    device_ids: Option<&[String]>,
+    status_filter: Option<&str>,
+    search_filter: Option<&str>,
+    fleet_id_filter: Option<i32>,
+) -> Result<Vec<String>, AppError> {
+    if let Some(ids) = device_ids {
+        return Ok(ids.to_vec());
+    }
+    Ok(device_repo::resolve_device_ids(conn, status_filter, search_filter, fleet_id_filter)?)
+}
+
+/// Bulk-change fleet assignment.
+pub fn bulk_change_fleet(
+    conn: &mut SqliteConnection,
+    ids: &[String],
+    fleet_id: Option<i32>,
+) -> Result<usize, AppError> {
+    let now = chrono::Utc::now().naive_utc();
+    Ok(device_repo::bulk_update_fleet(conn, ids, fleet_id, now)?)
+}
+
+/// Bulk-delete devices.
+pub fn bulk_delete(conn: &mut SqliteConnection, ids: &[String]) -> Result<usize, AppError> {
+    Ok(device_repo::bulk_delete_devices(conn, ids)?)
+}
+
+/// List OTA deployments for a device with pagination.
+/// Returns 404 if the device does not exist.
+pub fn list_ota_deployments(
+    conn: &mut SqliteConnection,
+    device_id: &str,
+    limit: i64,
+    offset: i64,
+) -> Result<(Vec<(crate::db::models::OtaDeployment, crate::db::models::FirmwareUpdate)>, i64), AppError> {
+    device_repo::find_device(conn, device_id)?;
+    Ok(firmware_repo::list_ota_deployments(conn, device_id, limit, offset)?)
+}
+
+/// Mark devices as offline if they haven't been seen since timeout_secs.
+pub fn check_offline_devices(
+    conn: &mut SqliteConnection,
+    timeout_secs: u64,
+) -> Result<usize, AppError> {
+    #[allow(clippy::cast_possible_wrap)]
+    let cutoff = chrono::Utc::now().naive_utc() - chrono::TimeDelta::seconds(timeout_secs as i64);
+
+    let (going_offline, count) = conn
+        .transaction::<_, diesel::result::Error, _>(|conn| {
+            let going_offline = device_repo::find_devices_going_offline(conn, cutoff)?;
+            let count = going_offline.len();
+            if count > 0 {
+                device_repo::mark_devices_offline(conn, cutoff)?;
+            }
+            Ok((going_offline, count))
+        })?;
+
+    for device_id in &going_offline {
+        let message = format!("Device went offline (no heartbeat for {timeout_secs}s)");
+        if let Err(e) = log_repo::insert_log(
+            conn,
+            &NewDeviceLog {
+                device_id: device_id.clone(),
+                level: "WARN".to_string(),
+                message,
+            },
+        ) {
+            tracing::warn!("Failed to insert offline log for {device_id}: {e}");
+        }
+    }
+
+    Ok(count)
+}
+
+/// Update a device from a heartbeat message.
+pub fn update_from_heartbeat(
+    conn: &mut SqliteConnection,
+    device_id: &str,
+    reported_status: &str,
+    firmware: &str,
+    uptime_seconds: u64,
+) -> Result<(), AppError> {
+    use extrittio_common::device_status;
+
+    let status = if device_status::is_valid(reported_status) {
+        reported_status.to_string()
+    } else {
+        tracing::warn!(
+            "Invalid status '{}' from device {}, defaulting to '{}'",
+            reported_status, device_id, device_status::ONLINE
+        );
+        device_status::ONLINE.to_string()
+    };
+
+    let previous_status = device_repo::find_device(conn, device_id)
+        .ok()
+        .map(|d| d.status);
+
+    let now = chrono::Utc::now().naive_utc();
+    #[allow(clippy::cast_possible_truncation)]
+    let changeset = UpdateDevice {
+        status: Some(status.clone()),
+        firmware: Some(firmware.to_string()),
+        uptime_seconds: Some(uptime_seconds as i32),
+        last_seen: Some(now),
+        updated_at: Some(now),
+        ..Default::default()
+    };
+
+    device_repo::update_device(conn, device_id, &changeset)?;
+
+    if let Some(prev) = &previous_status {
+        if prev != &status {
+            let message = format!("Device status changed from {prev} to {status}");
+            let _ = log_repo::insert_log(
+                conn,
+                &NewDeviceLog {
+                    device_id: device_id.to_string(),
+                    level: "INFO".to_string(),
+                    message,
+                },
+            );
+        }
+    }
+
+    Ok(())
+}
+
+/// Format uptime seconds into a human-readable string.
+pub fn format_uptime(seconds: Option<i32>) -> Option<String> {
+    let secs = seconds? as i64;
+    if secs <= 0 {
+        return Some("0s".to_string());
+    }
+    let days = secs / 86400;
+    let hours = (secs % 86400) / 3600;
+    let minutes = (secs % 3600) / 60;
+    let mut parts = Vec::new();
+    if days > 0 { parts.push(format!("{days}d")); }
+    if hours > 0 { parts.push(format!("{hours}h")); }
+    if minutes > 0 || parts.is_empty() { parts.push(format!("{minutes}m")); }
+    Some(parts.join(" "))
+}
+
+/// Format a last-seen timestamp into a relative string.
+pub fn format_last_seen(last_seen: Option<chrono::NaiveDateTime>) -> Option<String> {
+    let ts = last_seen?;
+    let now = chrono::Utc::now().naive_utc();
+    let secs = now.signed_duration_since(ts).num_seconds();
+    if secs < 0 { return Some("just now".to_string()); }
+    let result = if secs < 60 {
+        format!("{secs} seconds ago")
+    } else if secs < 3600 {
+        let m = secs / 60;
+        format!("{m} minute{} ago", if m == 1 { "" } else { "s" })
+    } else if secs < 86400 {
+        let h = secs / 3600;
+        format!("{h} hour{} ago", if h == 1 { "" } else { "s" })
+    } else {
+        let d = secs / 86400;
+        format!("{d} day{} ago", if d == 1 { "" } else { "s" })
+    };
+    Some(result)
 }

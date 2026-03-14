@@ -2,8 +2,6 @@ use prost::Message;
 use std::sync::Arc;
 use tracing::{info, warn};
 
-use crate::db::models::DeviceShadow;
-use crate::repositories::{device_repo, firmware_repo, shadow_repo};
 use crate::services::shadow_service;
 use crate::state::{DbPool, ZenohMetrics};
 
@@ -27,22 +25,6 @@ pub fn handle_shadow_report(db_pool: &DbPool, payload: &[u8]) {
             return;
         }
     };
-
-    // Verify device exists
-    match device_repo::device_exists(&mut conn, &report.device_id) {
-        Ok(true) => {}
-        Ok(false) => {
-            warn!(
-                "Dropping shadow report from unregistered device: {}",
-                report.device_id
-            );
-            return;
-        }
-        Err(e) => {
-            warn!("DB error checking device: {}", e);
-            return;
-        }
-    }
 
     // Parse incoming reported state as a JSON patch
     let new_reported: serde_json::Value = match serde_json::from_str(&report.state_json) {
@@ -68,7 +50,7 @@ pub fn handle_shadow_report(db_pool: &DbPool, payload: &[u8]) {
     }
 
     // Re-read the shadow to get the merged reported state and new version for logging & OTA
-    let shadow = match shadow_repo::find_shadow(&mut conn, &report.device_id) {
+    let shadow = match shadow_service::get_shadow(&mut conn, &report.device_id) {
         Ok(s) => s,
         Err(e) => {
             warn!(
@@ -96,47 +78,8 @@ pub fn handle_shadow_report(db_pool: &DbPool, payload: &[u8]) {
     let merged_reported: serde_json::Value =
         serde_json::from_str(&shadow.reported).unwrap_or_default();
 
-    use extrittio_common::ota::{fields as ota_fields, status as ota_status_consts};
-
-    if let Some(ota_obj) = merged_reported.get(ota_fields::SHADOW_KEY).and_then(|v| v.as_object())
-        && let Some(ota_status_raw) = ota_obj.get(ota_fields::STATUS).and_then(|v| v.as_str())
-    {
-        let ota_status = ota_status_raw.to_lowercase();
-        let is_terminal = ota_status_consts::is_terminal(&ota_status);
-        let now = chrono::Utc::now().naive_utc();
-        let completed_at = if is_terminal { Some(now) } else { None };
-        let error_message = ota_obj
-            .get(ota_fields::ERROR)
-            .and_then(|v| v.as_str())
-            .map(std::string::ToString::to_string);
-
-        let fw_update_id = ota_obj
-            .get(ota_fields::FIRMWARE_UPDATE_ID)
-            .and_then(serde_json::Value::as_i64)
-            .and_then(|id| i32::try_from(id).ok());
-
-        let deployment =
-            firmware_repo::find_active_ota_deployment(&mut conn, &report.device_id, fw_update_id);
-
-        if let Ok(Some(dep_id)) = deployment {
-            match firmware_repo::update_ota_deployment_status(
-                &mut conn,
-                dep_id,
-                &ota_status,
-                error_message.as_deref(),
-                completed_at,
-            ) {
-                Ok(_) => {
-                    info!(
-                        "OTA deployment {} for device {} -> {}",
-                        dep_id, report.device_id, ota_status
-                    );
-                }
-                Err(e) => {
-                    warn!("Failed to update OTA deployment status: {}", e);
-                }
-            }
-        }
+    if let Err(e) = shadow_service::process_ota_from_report(&mut conn, &report.device_id, &merged_reported) {
+        warn!("Failed to process OTA from shadow report: {}", e);
     }
 }
 
@@ -154,12 +97,12 @@ pub async fn handle_shadow_get(db_pool: &DbPool, session: &Arc<zenoh::Session>, 
     let device_id = get_msg.device_id.clone();
     let pool = db_pool.clone();
 
-    let shadow: DeviceShadow = match tokio::task::spawn_blocking(move || {
+    let shadow = match tokio::task::spawn_blocking(move || {
         let mut conn = match pool.get() {
             Ok(c) => c,
             Err(e) => return Err(format!("Failed to get DB connection: {e}")),
         };
-        shadow_repo::find_shadow(&mut conn, &device_id)
+        shadow_service::get_shadow(&mut conn, &device_id)
             .map_err(|e| format!("Shadow not found for device {device_id}: {e}"))
     })
     .await
