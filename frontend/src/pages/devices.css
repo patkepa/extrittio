@@ -20,7 +20,7 @@
 }
 
 .devices-page .page-description {
-  color: hsl(var(--muted));
+  color: hsl(var(--muted) / 0.7);
   font-size: 13px;
   margin: 0;
   font-weight: 500;
@@ -62,11 +62,12 @@
 
 /* Selected row highlight */
 .device-row--selected {
-  background-color: hsl(var(--accent) / 0.08) !important;
+  background-color: hsl(var(--accent) / 0.06) !important;
+  border-left: 2px solid hsl(var(--accent));
 }
 
 .device-row--selected:hover {
-  background-color: hsl(var(--accent) / 0.12) !important;
+  background-color: hsl(var(--accent) / 0.10) !important;
 }
 
 /* Checkbox alignment in table */
@@ -100,7 +101,7 @@
   padding: 6px 14px;
   border: 1px solid var(--border-color);
   border-radius: 20px;
-  background: transparent;
+  background: hsla(0, 0%, 100%, 0.04);
   color: hsl(var(--muted));
   font-size: 13px;
   font-weight: 600;
@@ -110,14 +111,16 @@
 }
 
 .filter-pill:hover {
-  border-color: hsl(var(--accent) / 0.4);
+  border-color: var(--border-color);
+  background: hsla(0, 0%, 100%, 0.06);
   color: hsl(var(--foreground));
 }
 
 .filter-pill.active {
-  background-color: hsl(var(--accent));
-  border-color: hsl(var(--accent));
-  color: white;
+  background-color: hsla(0, 0%, 100%, 0.10);
+  border-color: var(--border-color);
+  border-bottom: 2px solid hsl(var(--accent));
+  color: hsl(var(--foreground));
 }
 
 .filter-pill.active .status-led {
@@ -145,7 +148,7 @@
 
 .devices-table thead th,
 .sortable-th {
-  background-color: var(--sidebar-accent);
+  background-color: hsla(0, 0%, 100%, 0.03);
   padding: 10px 16px;
   font-weight: 700;
   font-size: 10px;
@@ -175,18 +178,17 @@
 .devices-table tbody td {
   padding: 10px 16px;
   vertical-align: middle;
-  border-bottom: 1px solid hsl(0 0% 15% / 0.5);
+  border-bottom: 1px solid hsla(0, 0%, 100%, 0.05);
   font-size: 13px;
 }
 
 .device-row {
   cursor: pointer;
   transition: background-color 0.1s ease;
-  animation: staggerFadeIn 0.3s ease-out both;
 }
 
 .device-row:hover {
-  background-color: var(--sidebar-accent-hover);
+  background-color: hsla(0, 0%, 100%, 0.03);
 }
 
 .device-row:nth-child(even) {
@@ -194,7 +196,7 @@
 }
 
 .device-row:nth-child(even):hover {
-  background-color: var(--sidebar-accent-hover);
+  background-color: hsla(0, 0%, 100%, 0.03);
 }
 
 /* Device Name Cell */
@@ -211,7 +213,7 @@
 }
 
 .device-id {
-  font-size: 10px;
+  font-size: 9px;
   color: hsl(var(--muted));
 }
 
@@ -223,15 +225,15 @@
 
 /* Firmware Badge */
 .firmware-badge {
-  background-color: hsl(var(--accent) / 0.1);
+  background-color: hsla(0, 0%, 100%, 0.06);
   padding: 3px 8px;
   border-radius: 4px;
   font-size: 11px;
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
   font-weight: 600;
   letter-spacing: 0.02em;
-  border: 1px solid hsl(var(--accent) / 0.3);
-  color: hsl(var(--accent));
+  border: none;
+  color: hsl(var(--foreground));
 }
 
 /* Empty State */
@@ -365,7 +367,7 @@
   align-items: baseline;
   gap: 10px;
   padding: 6px 0;
-  border-bottom: 1px solid hsl(0 0% 15% / 0.5);
+  border-bottom: 1px solid var(--border-color);
   font-size: 12px;
 }
 
@@ -417,7 +419,7 @@
   display: flex;
   justify-content: space-between;
   padding: 10px 0;
-  border-bottom: 1px solid hsl(0 0% 15% / 0.5);
+  border-bottom: 1px solid var(--border-color);
   font-size: 13px;
 }
 
