@@ -50,8 +50,8 @@
 }
 
 .shadow-panes-horizontal .shadow-pane {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: hsla(0, 0%, 100%, 0.03);
+  border: 1px solid hsla(0, 0%, 100%, 0.06);
   border-radius: 6px;
   padding: 16px;
 }
@@ -68,8 +68,8 @@
 
 /* Delta diff pane */
 .shadow-delta-pane {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: hsla(0, 0%, 100%, 0.03);
+  border: 1px solid hsla(0, 0%, 100%, 0.06);
   border-radius: 6px;
   padding: 16px;
 }
@@ -107,7 +107,7 @@
 /* Current values table */
 .telemetry-current-table {
   margin-top: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid hsla(0, 0%, 100%, 0.06);
   border-radius: 6px;
   overflow: hidden;
 }
@@ -117,7 +117,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid hsla(0, 0%, 100%, 0.04);
 }
 
 .telemetry-current-row:last-child {
@@ -126,7 +126,7 @@
 
 .telemetry-current-key {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.5);
+  color: hsl(var(--muted));
 }
 
 .telemetry-current-val {
@@ -137,13 +137,13 @@
 .telemetry-current-timestamp {
   margin-top: 8px;
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.35);
+  color: hsl(var(--muted) / 0.5);
 }
 
 /* Historical values table */
 .telemetry-table-wrap {
   margin-top: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid hsla(0, 0%, 100%, 0.06);
   border-radius: 6px;
   overflow-x: auto;
   max-height: 400px;
@@ -163,20 +163,20 @@
 }
 
 .telemetry-table th {
-  background: rgba(255, 255, 255, 0.05);
+  background: hsla(0, 0%, 100%, 0.03);
   text-align: left;
   padding: 8px 12px;
   font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: rgba(255, 255, 255, 0.5);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  color: hsl(var(--muted));
+  border-bottom: 1px solid var(--border-color);
 }
 
 .telemetry-table td {
   padding: 6px 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid hsla(0, 0%, 100%, 0.04);
 }
 
 .telemetry-table tr:last-child td {
@@ -184,7 +184,7 @@
 }
 
 .telemetry-table tr:hover td {
-  background: rgba(255, 255, 255, 0.03);
+  background: hsla(0, 0%, 100%, 0.03);
 }
 
 /* Wider telemetry charts on full page */
@@ -195,7 +195,7 @@
 /* Telemetry chart tooltip */
 .telemetry-tooltip {
   background: rgba(20, 20, 22, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid hsla(0, 0%, 100%, 0.12);
   border-radius: 6px;
   padding: 8px 12px;
   font-size: 13px;
@@ -204,7 +204,7 @@
 }
 
 .telemetry-tooltip-time {
-  color: rgba(255, 255, 255, 0.5);
+  color: hsl(var(--muted));
   font-size: 11px;
   margin-bottom: 2px;
 }
@@ -224,7 +224,7 @@
 }
 
 .telemetry-range-bar .bp6-segmented-control {
-  background: rgba(255, 255, 255, 0.04);
+  background: hsla(0, 0%, 100%, 0.04);
 }
 
 /* Logs tab */
@@ -251,7 +251,7 @@
 }
 
 .log-entry:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: hsla(0, 0%, 100%, 0.03);
 }
 
 .log-time {
@@ -275,7 +275,7 @@
 
 /* Config tab */
 .config-table {
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid hsla(0, 0%, 100%, 0.06);
   border-radius: 6px;
   overflow: hidden;
 }
@@ -285,7 +285,7 @@
   grid-template-columns: 1fr 2fr 40px;
   align-items: center;
   padding: 10px 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid hsla(0, 0%, 100%, 0.04);
 }
 
 .config-row:last-child {
@@ -293,7 +293,7 @@
 }
 
 .config-row.config-header {
-  background: rgba(255, 255, 255, 0.03);
+  background: hsla(0, 0%, 100%, 0.03);
   font-size: 12px;
 }
 
