@@ -10,7 +10,7 @@ use utoipa::{IntoParams, ToSchema};
 
 use crate::db::models::{AppMetric, ServerMetric};
 use crate::error::AppError;
-use crate::repositories::server_metrics_repo;
+use crate::services::server_metrics;
 use crate::state::{AppState, run_db};
 
 // ---------------------------------------------------------------------------
@@ -131,12 +131,12 @@ pub(crate) async fn get_current_metrics(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<CurrentMetricsResponse>, AppError> {
     let response = run_db(&state.db_pool, move |conn| {
-        let system = server_metrics_repo::get_latest_server_metric(conn)?
-            .map(SystemMetricsSnapshot::from);
-        let app = server_metrics_repo::get_latest_app_metric(conn)?
-            .map(AppMetricsSnapshot::from);
+        let (system, app) = server_metrics::get_current_metrics(conn)?;
 
-        Ok(CurrentMetricsResponse { system, app })
+        Ok(CurrentMetricsResponse {
+            system: system.map(SystemMetricsSnapshot::from),
+            app: app.map(AppMetricsSnapshot::from),
+        })
     })
     .await?;
 
@@ -167,15 +167,12 @@ pub(crate) async fn get_metrics_history(
     }
 
     let response = run_db(&state.db_pool, move |conn| {
-        if resolution > 10 {
-            // Downsampled aggregation
-            let ds_system =
-                server_metrics_repo::list_server_metrics_downsampled(conn, since, resolution)?;
-            let ds_app =
-                server_metrics_repo::list_app_metrics_downsampled(conn, since, resolution)?;
+        let data = server_metrics::get_metrics_history(conn, since, resolution)?;
 
-            let system = ds_system
-                .into_iter()
+        let system = if let Some(raw) = data.system_raw {
+            raw.into_iter().map(SystemMetricsSnapshot::from).collect()
+        } else if let Some(ds) = data.system_downsampled {
+            ds.into_iter()
                 .map(|d| SystemMetricsSnapshot {
                     cpu_usage_percent: d.cpu_usage_percent,
                     memory_used_bytes: d.memory_used_bytes,
@@ -191,10 +188,15 @@ pub(crate) async fn get_metrics_history(
                         .unwrap_or_default()
                         .to_rfc3339(),
                 })
-                .collect();
+                .collect()
+        } else {
+            vec![]
+        };
 
-            let app = ds_app
-                .into_iter()
+        let app = if let Some(raw) = data.app_raw {
+            raw.into_iter().map(AppMetricsSnapshot::from).collect()
+        } else if let Some(ds) = data.app_downsampled {
+            ds.into_iter()
                 .map(|d| AppMetricsSnapshot {
                     request_count: d.request_count,
                     error_count: d.error_count,
@@ -208,26 +210,12 @@ pub(crate) async fn get_metrics_history(
                         .unwrap_or_default()
                         .to_rfc3339(),
                 })
-                .collect();
-
-            Ok(MetricsHistoryResponse { system, app })
+                .collect()
         } else {
-            // Raw data
-            let limit = 10_000;
-            let system_rows = server_metrics_repo::list_server_metrics(conn, since, limit)?;
-            let app_rows = server_metrics_repo::list_app_metrics(conn, since, limit)?;
+            vec![]
+        };
 
-            let system = system_rows
-                .into_iter()
-                .map(SystemMetricsSnapshot::from)
-                .collect();
-            let app = app_rows
-                .into_iter()
-                .map(AppMetricsSnapshot::from)
-                .collect();
-
-            Ok(MetricsHistoryResponse { system, app })
-        }
+        Ok(MetricsHistoryResponse { system, app })
     })
     .await?;
 
