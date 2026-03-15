@@ -13,7 +13,6 @@ use utoipa::{IntoParams, ToSchema};
 use crate::db::models::{NewDevice, UpdateDevice};
 use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse, PaginationParams};
-use crate::repositories::device_repo;
 use crate::services::{command_service, device_service};
 use crate::state::{AppState, run_db};
 
@@ -139,7 +138,7 @@ pub struct BulkResultResponse {
 // ---------------------------------------------------------------------------
 
 fn to_device_response(
-    (device, device_type, fleet): crate::repositories::device_repo::DeviceWithJoins,
+    (device, device_type, fleet): device_service::DeviceWithJoins,
 ) -> DeviceResponse {
     let last_seen_at = device.last_seen.map(|dt| {
         DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc)
@@ -164,42 +163,6 @@ fn to_device_response(
 }
 
 const MAX_BULK_SIZE: usize = 500;
-
-/// Resolve the target device IDs from a bulk request body.
-fn resolve_target_ids(
-    conn: &mut diesel::SqliteConnection,
-    device_ids: Option<Vec<String>>,
-    filters: Option<&BulkDeviceFilters>,
-    select_all: Option<bool>,
-) -> Result<Vec<String>, AppError> {
-    let ids = if select_all.unwrap_or(false) {
-        let f = filters.unwrap_or(&BulkDeviceFilters {
-            status: None,
-            search: None,
-            fleet_id: None,
-        });
-        device_repo::resolve_device_ids(
-            conn,
-            f.status.as_deref(),
-            f.search.as_deref(),
-            f.fleet_id,
-        )?
-    } else {
-        device_ids.ok_or_else(|| {
-            AppError::BadRequest("Either device_ids or select_all with filters is required".into())
-        })?
-    };
-
-    // Empty results are not an error — handlers return success with 0 counts.
-    if ids.len() > MAX_BULK_SIZE {
-        return Err(AppError::BadRequest(format!(
-            "Too many devices ({}). Maximum is {MAX_BULK_SIZE}. Narrow your filters.",
-            ids.len()
-        )));
-    }
-
-    Ok(ids)
-}
 
 // ---------------------------------------------------------------------------
 // Router
@@ -470,8 +433,16 @@ pub(crate) async fn bulk_change_fleet(
     })?;
 
     let response = run_db(&state.db_pool, move |conn| {
-        let ids = resolve_target_ids(conn, body.device_ids, body.filters.as_ref(), body.select_all)?;
-        let affected = device_repo::bulk_update_fleet(conn, &ids, target_fleet_id, Utc::now().naive_utc())?;
+        let ids = device_service::resolve_target_ids(
+            conn,
+            body.device_ids.as_deref(),
+            body.select_all.unwrap_or(false),
+            body.filters.as_ref().and_then(|f| f.status.as_deref()),
+            body.filters.as_ref().and_then(|f| f.search.as_deref()),
+            body.filters.as_ref().and_then(|f| f.fleet_id),
+            MAX_BULK_SIZE,
+        )?;
+        let affected = device_service::bulk_change_fleet(conn, &ids, target_fleet_id)?;
         Ok(BulkAffectedResponse { affected: affected as i64 })
     })
     .await?;
@@ -485,8 +456,16 @@ pub(crate) async fn bulk_delete_devices(
     Json(body): Json<BulkDeviceRequest>,
 ) -> Result<Json<BulkAffectedResponse>, AppError> {
     let response = run_db(&state.db_pool, move |conn| {
-        let ids = resolve_target_ids(conn, body.device_ids, body.filters.as_ref(), body.select_all)?;
-        let deleted = device_repo::bulk_delete_devices(conn, &ids)?;
+        let ids = device_service::resolve_target_ids(
+            conn,
+            body.device_ids.as_deref(),
+            body.select_all.unwrap_or(false),
+            body.filters.as_ref().and_then(|f| f.status.as_deref()),
+            body.filters.as_ref().and_then(|f| f.search.as_deref()),
+            body.filters.as_ref().and_then(|f| f.fleet_id),
+            MAX_BULK_SIZE,
+        )?;
+        let deleted = device_service::bulk_delete(conn, &ids)?;
         Ok(BulkAffectedResponse { affected: deleted as i64 })
     })
     .await?;
@@ -500,7 +479,15 @@ pub(crate) async fn bulk_restart_devices(
     Json(body): Json<BulkDeviceRequest>,
 ) -> Result<Json<BulkResultResponse>, AppError> {
     let ids = run_db(&state.db_pool, move |conn| {
-        resolve_target_ids(conn, body.device_ids, body.filters.as_ref(), body.select_all)
+        device_service::resolve_target_ids(
+            conn,
+            body.device_ids.as_deref(),
+            body.select_all.unwrap_or(false),
+            body.filters.as_ref().and_then(|f| f.status.as_deref()),
+            body.filters.as_ref().and_then(|f| f.search.as_deref()),
+            body.filters.as_ref().and_then(|f| f.fleet_id),
+            MAX_BULK_SIZE,
+        )
     })
     .await?;
 
@@ -541,7 +528,15 @@ pub(crate) async fn bulk_trigger_ota(
     let firmware_update_id = body.firmware_update_id;
 
     let ids = run_db(&state.db_pool, move |conn| {
-        resolve_target_ids(conn, body.device_ids, body.filters.as_ref(), body.select_all)
+        device_service::resolve_target_ids(
+            conn,
+            body.device_ids.as_deref(),
+            body.select_all.unwrap_or(false),
+            body.filters.as_ref().and_then(|f| f.status.as_deref()),
+            body.filters.as_ref().and_then(|f| f.search.as_deref()),
+            body.filters.as_ref().and_then(|f| f.fleet_id),
+            MAX_BULK_SIZE,
+        )
     })
     .await?;
 
