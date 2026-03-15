@@ -7,6 +7,8 @@ use uuid::Uuid;
 use crate::db::models::{Alert, NewAlert, UpdateAlert};
 use crate::error::AppError;
 use crate::repositories::alert_repo;
+use crate::db::models::RuleCooldown;
+use crate::repositories::rule_repo;
 
 // ---------------------------------------------------------------------------
 // CRUD
@@ -160,4 +162,22 @@ pub fn delete_resolved_older_than(
     cutoff: NaiveDateTime,
 ) -> Result<usize, AppError> {
     Ok(alert_repo::delete_resolved_older_than(conn, cutoff)?)
+}
+
+/// Persist a cooldown entry to the database (fire-and-forget safe).
+pub fn persist_cooldown(
+    conn: &mut SqliteConnection,
+    rule_id: &str,
+    device_id: &str,
+    last_fired_at: NaiveDateTime,
+) -> Result<(), AppError> {
+    rule_repo::upsert_cooldown(
+        conn,
+        &RuleCooldown {
+            rule_id: rule_id.to_string(),
+            device_id: device_id.to_string(),
+            last_fired_at,
+        },
+    )?;
+    Ok(())
 }
