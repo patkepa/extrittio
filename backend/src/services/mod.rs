@@ -1,6 +1,7 @@
 pub mod alert_service;
 pub mod api_key_service;
 pub mod cert_service;
+pub mod ci_pipeline_service;
 pub mod command_service;
 pub mod config_service;
 pub mod dashboard_service;
