@@ -8,7 +8,19 @@ use tracing::{info, warn};
 
 use crate::db::models::{NewAppMetric, NewServerMetric};
 use crate::repositories::server_metrics_repo;
+use crate::db::models::{AppMetric, ServerMetric};
+use crate::error::AppError;
+use crate::repositories::server_metrics_repo::{DownsampledAppMetric, DownsampledServerMetric};
 use crate::state::{AppState, DbPool};
+
+/// Data returned by `get_metrics_history`. Either raw or downsampled fields
+/// are populated, depending on the requested resolution.
+pub struct MetricsHistoryData {
+    pub system_raw: Option<Vec<ServerMetric>>,
+    pub app_raw: Option<Vec<AppMetric>>,
+    pub system_downsampled: Option<Vec<DownsampledServerMetric>>,
+    pub app_downsampled: Option<Vec<DownsampledAppMetric>>,
+}
 
 /// Sample system-level metrics every 10 seconds and persist to the database.
 pub async fn run_system_metrics_collector(db_pool: DbPool) {
@@ -163,6 +175,47 @@ pub async fn run_metrics_retention(db_pool: DbPool) {
             }
         })
         .await;
+    }
+}
+
+/// Get the latest system and application metrics snapshot.
+pub fn get_current_metrics(
+    conn: &mut diesel::SqliteConnection,
+) -> Result<(Option<ServerMetric>, Option<AppMetric>), AppError> {
+    let system = server_metrics_repo::get_latest_server_metric(conn)?;
+    let app = server_metrics_repo::get_latest_app_metric(conn)?;
+    Ok((system, app))
+}
+
+/// Get metrics history for the given time range.
+/// When `resolution_secs > 10`, returns downsampled data.
+/// Otherwise returns raw data (limited to 10,000 rows per table).
+pub fn get_metrics_history(
+    conn: &mut diesel::SqliteConnection,
+    since: chrono::NaiveDateTime,
+    resolution_secs: i64,
+) -> Result<MetricsHistoryData, AppError> {
+    if resolution_secs > 10 {
+        let system_downsampled =
+            server_metrics_repo::list_server_metrics_downsampled(conn, since, resolution_secs)?;
+        let app_downsampled =
+            server_metrics_repo::list_app_metrics_downsampled(conn, since, resolution_secs)?;
+        Ok(MetricsHistoryData {
+            system_raw: None,
+            app_raw: None,
+            system_downsampled: Some(system_downsampled),
+            app_downsampled: Some(app_downsampled),
+        })
+    } else {
+        let limit = 10_000;
+        let system_raw = server_metrics_repo::list_server_metrics(conn, since, limit)?;
+        let app_raw = server_metrics_repo::list_app_metrics(conn, since, limit)?;
+        Ok(MetricsHistoryData {
+            system_raw: Some(system_raw),
+            app_raw: Some(app_raw),
+            system_downsampled: None,
+            app_downsampled: None,
+        })
     }
 }
 
