@@ -212,15 +212,8 @@ pub(crate) async fn resolve_alert_handler(
         tokio::spawn(async move {
             let _ = tokio::task::spawn_blocking(move || {
                 let mut conn = pool.get().map_err(|e| e.to_string())?;
-                crate::repositories::rule_repo::upsert_cooldown(
-                    &mut conn,
-                    &crate::db::models::RuleCooldown {
-                        rule_id: rid,
-                        device_id: did,
-                        last_fired_at: now,
-                    },
-                )
-                .map_err(|e| e.to_string())
+                alert_service::persist_cooldown(&mut conn, &rid, &did, now)
+                    .map_err(|e| e.to_string())
             })
             .await;
         });
@@ -287,14 +280,7 @@ pub(crate) async fn bulk_resolve(
             let _ = tokio::task::spawn_blocking(move || {
                 let mut conn = pool.get().map_err(|e| e.to_string())?;
                 for (rid, did) in cooldown_entries {
-                    if let Err(e) = crate::repositories::rule_repo::upsert_cooldown(
-                        &mut conn,
-                        &crate::db::models::RuleCooldown {
-                            rule_id: rid,
-                            device_id: did,
-                            last_fired_at: now,
-                        },
-                    ) {
+                    if let Err(e) = alert_service::persist_cooldown(&mut conn, &rid, &did, now) {
                         tracing::warn!("Failed to persist cooldown on bulk resolve: {}", e);
                     }
                 }
