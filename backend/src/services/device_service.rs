@@ -11,6 +11,8 @@ use crate::repositories::{cert_repo, device_repo, device_type_repo, firmware_rep
 use crate::services::{cert_service, shadow_service};
 use crate::state::{DbPool, ZenohMetrics, run_db};
 
+pub use crate::repositories::device_repo::DeviceWithJoins;
+
 /// Create a device and its associated shadow record atomically.
 pub fn create_device(conn: &mut SqliteConnection, new_device: &NewDevice) -> Result<(), AppError> {
     conn.transaction(|conn| {
@@ -215,18 +217,41 @@ pub fn delete_device(conn: &mut SqliteConnection, device_id: &str) -> Result<(),
     Ok(())
 }
 
-/// Resolve device IDs from filters (for bulk operations).
+/// Resolve device IDs from explicit list or filters (for bulk operations).
+///
+/// When `select_all` is true, resolves IDs using the provided filters.
+/// When `select_all` is false, uses the explicit `device_ids` (returns
+/// `BadRequest` if `None`).
+/// Returns `BadRequest` if the result exceeds `max_size`.
 pub fn resolve_target_ids(
     conn: &mut SqliteConnection,
     device_ids: Option<&[String]>,
+    select_all: bool,
     status_filter: Option<&str>,
     search_filter: Option<&str>,
     fleet_id_filter: Option<i32>,
+    max_size: usize,
 ) -> Result<Vec<String>, AppError> {
-    if let Some(ids) = device_ids {
-        return Ok(ids.to_vec());
+    let ids = if select_all {
+        device_repo::resolve_device_ids(conn, status_filter, search_filter, fleet_id_filter)?
+    } else {
+        device_ids
+            .ok_or_else(|| {
+                AppError::BadRequest(
+                    "Either device_ids or select_all with filters is required".into(),
+                )
+            })?
+            .to_vec()
+    };
+
+    if ids.len() > max_size {
+        return Err(AppError::BadRequest(format!(
+            "Too many devices ({}). Maximum is {max_size}. Narrow your filters.",
+            ids.len()
+        )));
     }
-    Ok(device_repo::resolve_device_ids(conn, status_filter, search_filter, fleet_id_filter)?)
+
+    Ok(ids)
 }
 
 /// Bulk-change fleet assignment.
