@@ -1,6 +1,6 @@
 use diesel::SqliteConnection;
 
-use crate::auth::hash_password;
+use crate::auth::{hash_password, verify_password};
 use crate::db::models::{NewUser, User};
 use crate::error::AppError;
 use crate::repositories::user_repo;
@@ -67,4 +67,23 @@ pub fn delete(conn: &mut SqliteConnection, id: i32) -> Result<(), AppError> {
         return Err(AppError::NotFound(format!("User {id} not found")));
     }
     Ok(())
+}
+
+/// Authenticate a user by username and password.
+/// Returns (user_id, username, role) on success.
+pub fn authenticate(
+    conn: &mut SqliteConnection,
+    username: &str,
+    password: &str,
+) -> Result<(i32, String, String), AppError> {
+    let user = user_repo::find_user_by_username(conn, username).map_err(|e| match e {
+        diesel::result::Error::NotFound => AppError::Unauthorized,
+        other => AppError::Database(other),
+    })?;
+
+    if !verify_password(password, &user.password_hash) {
+        return Err(AppError::Unauthorized);
+    }
+
+    Ok((user.id, user.username, user.role))
 }
