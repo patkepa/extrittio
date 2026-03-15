@@ -118,14 +118,19 @@ fn to_rule_response(details: rule_service::RuleWithDetails) -> Result<RuleRespon
         .into_iter()
         .map(|a| {
             let config: serde_json::Value = serde_json::from_str(&a.config)
-                .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
-            ActionResponse {
+                .map_err(|e| {
+                    AppError::Internal(format!(
+                        "Corrupt action config for action {}: {e}",
+                        a.id
+                    ))
+                })?;
+            Ok(ActionResponse {
                 id: a.id,
                 action_type: a.action_type,
                 config,
-            }
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>, AppError>>()?;
 
     Ok(RuleResponse {
         id: rule.id,

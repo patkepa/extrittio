@@ -58,9 +58,12 @@ impl MetricsAccumulator {
 
     /// Drain all accumulated metrics. Mutex first, then atomics for consistency.
     pub fn drain(&self) -> (u64, u64, u64, Vec<u64>) {
-        let samples = {
-            let mut guard = self.latency_samples.lock().unwrap();
-            std::mem::take(&mut *guard)
+        let samples = match self.latency_samples.lock() {
+            Ok(mut guard) => std::mem::take(&mut *guard),
+            Err(poisoned) => {
+                tracing::warn!("Metrics latency mutex poisoned; recovering samples");
+                std::mem::take(&mut *poisoned.into_inner())
+            }
         };
         let req = self.request_count.swap(0, Ordering::Relaxed);
         let err = self.error_count.swap(0, Ordering::Relaxed);

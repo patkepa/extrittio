@@ -10,6 +10,14 @@ use crate::rule_engine::types::{PendingAction, StatusChange};
 use crate::services::{command_service, device_service};
 use crate::state::DbPool;
 
+/// Compute a backoff sleep duration based on consecutive failures.
+/// Doubles each failure from `base` up to `max`.
+fn backoff_duration(base: Duration, consecutive_failures: u32, max: Duration) -> Duration {
+    let multiplier = 2u64.saturating_pow(consecutive_failures.min(10));
+    let backoff = Duration::from_secs(base.as_secs().saturating_mul(multiplier));
+    backoff.min(max)
+}
+
 pub async fn run_offline_checker(
     db_pool: DbPool,
     timeout_secs: u64,
@@ -18,11 +26,18 @@ pub async fn run_offline_checker(
     zenoh_session: Arc<zenoh::Session>,
     zenoh_metrics: Arc<crate::state::ZenohMetrics>,
 ) {
-    let interval = Duration::from_secs(60); // check every minute
+    let base_interval = Duration::from_secs(60);
+    let max_backoff = Duration::from_secs(600); // 10 minutes
+    let mut consecutive_failures: u32 = 0;
     info!("Offline checker started (timeout: {}s)", timeout_secs);
 
     loop {
-        tokio::time::sleep(interval).await;
+        let sleep_dur = if consecutive_failures == 0 {
+            base_interval
+        } else {
+            backoff_duration(base_interval, consecutive_failures, max_backoff)
+        };
+        tokio::time::sleep(sleep_dur).await;
 
         let pool = db_pool.clone();
         let cache = rule_cache.clone();
@@ -73,6 +88,7 @@ pub async fn run_offline_checker(
 
         match result {
             Ok(Ok((count, actions))) => {
+                consecutive_failures = 0;
                 if count > 0 {
                     info!("Marked {} devices as offline", count);
                 }
@@ -92,24 +108,51 @@ pub async fn run_offline_checker(
                 }
             }
             Ok(Err(msg)) => {
-                warn!("Offline checker error: {}", msg);
+                consecutive_failures = consecutive_failures.saturating_add(1);
+                if consecutive_failures >= 5 {
+                    tracing::error!(
+                        "Offline checker: {} consecutive failures (next retry in {}s): {}",
+                        consecutive_failures,
+                        backoff_duration(base_interval, consecutive_failures, max_backoff).as_secs(),
+                        msg,
+                    );
+                } else {
+                    warn!("Offline checker error: {}", msg);
+                }
             }
             Err(e) => {
-                warn!("Offline checker task panicked: {}", e);
+                consecutive_failures = consecutive_failures.saturating_add(1);
+                if consecutive_failures >= 5 {
+                    tracing::error!(
+                        "Offline checker: {} consecutive failures (next retry in {}s): task panicked: {}",
+                        consecutive_failures,
+                        backoff_duration(base_interval, consecutive_failures, max_backoff).as_secs(),
+                        e,
+                    );
+                } else {
+                    warn!("Offline checker task panicked: {}", e);
+                }
             }
         }
     }
 }
 
 pub async fn run_command_timeout_checker(db_pool: DbPool, timeout_secs: u64) {
-    let interval = Duration::from_secs(30);
+    let base_interval = Duration::from_secs(30);
+    let max_backoff = Duration::from_secs(300); // 5 minutes
+    let mut consecutive_failures: u32 = 0;
     info!(
         "Command timeout checker started (timeout: {}s)",
         timeout_secs
     );
 
     loop {
-        tokio::time::sleep(interval).await;
+        let sleep_dur = if consecutive_failures == 0 {
+            base_interval
+        } else {
+            backoff_duration(base_interval, consecutive_failures, max_backoff)
+        };
+        tokio::time::sleep(sleep_dur).await;
 
         let pool = db_pool.clone();
         let result = tokio::task::spawn_blocking(move || {
@@ -121,26 +164,54 @@ pub async fn run_command_timeout_checker(db_pool: DbPool, timeout_secs: u64) {
 
         match result {
             Ok(Ok(count)) => {
+                consecutive_failures = 0;
                 if count > 0 {
                     info!("Marked {} commands as timed_out", count);
                 }
             }
             Ok(Err(msg)) => {
-                warn!("Command timeout checker error: {}", msg);
+                consecutive_failures = consecutive_failures.saturating_add(1);
+                if consecutive_failures >= 5 {
+                    tracing::error!(
+                        "Command timeout checker: {} consecutive failures (next retry in {}s): {}",
+                        consecutive_failures,
+                        backoff_duration(base_interval, consecutive_failures, max_backoff).as_secs(),
+                        msg,
+                    );
+                } else {
+                    warn!("Command timeout checker error: {}", msg);
+                }
             }
             Err(e) => {
-                warn!("Command timeout checker task panicked: {}", e);
+                consecutive_failures = consecutive_failures.saturating_add(1);
+                if consecutive_failures >= 5 {
+                    tracing::error!(
+                        "Command timeout checker: {} consecutive failures (next retry in {}s): task panicked: {}",
+                        consecutive_failures,
+                        backoff_duration(base_interval, consecutive_failures, max_backoff).as_secs(),
+                        e,
+                    );
+                } else {
+                    warn!("Command timeout checker task panicked: {}", e);
+                }
             }
         }
     }
 }
 
 pub async fn run_alert_retention(db_pool: DbPool, retention_days: u64) {
-    let interval = Duration::from_secs(3600); // check every hour
+    let base_interval = Duration::from_secs(3600);
+    let max_backoff = Duration::from_secs(7200); // 2 hours
+    let mut consecutive_failures: u32 = 0;
     info!("Alert retention started ({}d retention)", retention_days);
 
     loop {
-        tokio::time::sleep(interval).await;
+        let sleep_dur = if consecutive_failures == 0 {
+            base_interval
+        } else {
+            backoff_duration(base_interval, consecutive_failures, max_backoff)
+        };
+        tokio::time::sleep(sleep_dur).await;
 
         let pool = db_pool.clone();
         let result = tokio::task::spawn_blocking(move || {
@@ -165,6 +236,7 @@ pub async fn run_alert_retention(db_pool: DbPool, retention_days: u64) {
 
         match result {
             Ok(Ok((alert_count, cooldown_count))) => {
+                consecutive_failures = 0;
                 if alert_count > 0 {
                     info!("Alert retention: deleted {} resolved alerts", alert_count);
                 }
@@ -172,8 +244,32 @@ pub async fn run_alert_retention(db_pool: DbPool, retention_days: u64) {
                     info!("Cooldown pruning: deleted {} stale cooldowns", cooldown_count);
                 }
             }
-            Ok(Err(msg)) => warn!("Alert retention error: {}", msg),
-            Err(e) => warn!("Alert retention task panicked: {}", e),
+            Ok(Err(msg)) => {
+                consecutive_failures = consecutive_failures.saturating_add(1);
+                if consecutive_failures >= 5 {
+                    tracing::error!(
+                        "Alert retention: {} consecutive failures (next retry in {}s): {}",
+                        consecutive_failures,
+                        backoff_duration(base_interval, consecutive_failures, max_backoff).as_secs(),
+                        msg,
+                    );
+                } else {
+                    warn!("Alert retention error: {}", msg);
+                }
+            }
+            Err(e) => {
+                consecutive_failures = consecutive_failures.saturating_add(1);
+                if consecutive_failures >= 5 {
+                    tracing::error!(
+                        "Alert retention: {} consecutive failures (next retry in {}s): task panicked: {}",
+                        consecutive_failures,
+                        backoff_duration(base_interval, consecutive_failures, max_backoff).as_secs(),
+                        e,
+                    );
+                } else {
+                    warn!("Alert retention task panicked: {}", e);
+                }
+            }
         }
     }
 }

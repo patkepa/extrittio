@@ -14,6 +14,7 @@ static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 use std::sync::Arc;
 use std::sync::RwLock;
 
+use anyhow::Context;
 use axum::middleware as axum_middleware;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
@@ -30,7 +31,7 @@ use extrittio_backend::state::{AppState, MetricsAccumulator, ZenohMetrics};
 use extrittio_backend::{api, background, zenoh_handler};
 
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env()
@@ -42,25 +43,25 @@ async fn main() {
     info!("Starting extrittio-backend on port {}", config.port);
 
     // Database
-    let db_pool = init::create_db_pool(&config.database_url, config.db_pool_size);
+    let db_pool = init::create_db_pool(&config.database_url, config.db_pool_size)?;
     info!("DB connection pool: max_size={}", config.db_pool_size);
 
     let jwt_secret = {
         let mut conn = db_pool
             .get()
-            .expect("Failed to get DB connection for initialization");
-        init::run_migrations(&mut conn);
-        let secret = init::init_jwt_secret(&mut conn);
-        init::seed_admin_user(&mut conn);
-        init::init_ca_certificate(&mut conn);
-        init::write_tls_certs(&mut conn, &config.certs_dir);
+            .context("Failed to get DB connection for initialization")?;
+        init::run_migrations(&mut conn)?;
+        let secret = init::init_jwt_secret(&mut conn)?;
+        init::seed_admin_user(&mut conn)?;
+        init::init_ca_certificate(&mut conn)?;
+        init::write_tls_certs(&mut conn, &config.certs_dir)?;
         secret
     };
 
     // Rule cache — built from the current DB state
     let rule_cache = {
-        let mut conn = db_pool.get().expect("Failed to get DB connection for rule cache");
-        services::rule_service::build_cache(&mut conn).expect("Failed to build initial rule cache")
+        let mut conn = db_pool.get().context("Failed to get DB connection for rule cache")?;
+        services::rule_service::build_cache(&mut conn).context("Failed to build initial rule cache")?
     };
     let rule_cache = Arc::new(RwLock::new(rule_cache));
 
@@ -68,7 +69,7 @@ async fn main() {
     let http_client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(5))
         .build()
-        .expect("Failed to create HTTP client");
+        .context("Failed to create HTTP client")?;
 
     // Zenoh
     let zenoh_session = Arc::new(
@@ -77,7 +78,7 @@ async fn main() {
             config.zenoh_tls_port,
             &config.certs_dir,
         )
-        .await,
+        .await?,
     );
     info!("Zenoh session opened");
 
@@ -147,7 +148,7 @@ async fn main() {
         .allow_origin(
             origin
                 .parse::<axum::http::HeaderValue>()
-                .expect("Invalid CORS origin"),
+                .context(format!("Invalid CORS origin: {origin}"))?,
         )
         .allow_methods(Any)
         .allow_headers(Any);
@@ -175,32 +176,33 @@ async fn main() {
 
     let addr: std::net::SocketAddr = format!("0.0.0.0:{}", config.port)
         .parse()
-        .expect("Invalid listen address");
+        .context("Invalid listen address")?;
     let socket = socket2::Socket::new(
         socket2::Domain::for_address(addr),
         socket2::Type::STREAM,
         Some(socket2::Protocol::TCP),
     )
-    .expect("Failed to create socket");
+    .context("Failed to create socket")?;
     socket
         .set_reuse_address(true)
-        .expect("Failed to set SO_REUSEADDR");
-    socket.set_nodelay(true).expect("Failed to set TCP_NODELAY");
-    socket.bind(&addr.into()).expect("Failed to bind socket");
-    socket.listen(1024).expect("Failed to listen");
+        .context("Failed to set SO_REUSEADDR")?;
+    socket.set_nodelay(true).context("Failed to set TCP_NODELAY")?;
+    socket.bind(&addr.into()).context("Failed to bind socket")?;
+    socket.listen(1024).context("Failed to listen")?;
     socket
         .set_nonblocking(true)
-        .expect("Failed to set non-blocking");
+        .context("Failed to set non-blocking")?;
     let listener = tokio::net::TcpListener::from_std(socket.into())
-        .expect("Failed to create tokio TcpListener");
+        .context("Failed to create tokio TcpListener")?;
     info!("Listening on {}", addr);
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await
-        .expect("Server error");
+        .context("Server error")?;
 
     info!("Server shut down gracefully");
+    Ok(())
 }
 
 async fn shutdown_signal() {
