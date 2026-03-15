@@ -46,3 +46,12 @@ pub fn delete(conn: &mut SqliteConnection, id: i32) -> Result<(), AppError> {
     }
     Ok(())
 }
+
+pub fn find_by_id(conn: &mut SqliteConnection, id: i32) -> Result<DeviceType, AppError> {
+    device_type_repo::find_device_type_by_id(conn, id).map_err(|e| match e {
+        diesel::result::Error::NotFound => {
+            AppError::NotFound(format!("Device type {id} not found"))
+        }
+        other => AppError::Database(other),
+    })
+}
