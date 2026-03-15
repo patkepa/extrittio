@@ -10,9 +10,8 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 use crate::api_key_util;
-use crate::db::models::NewFirmwareUpdate;
 use crate::error::AppError;
-use crate::repositories::{api_key_repo, device_type_repo, firmware_repo};
+use crate::services::ci_pipeline_service::{self, CiIngestParams};
 use crate::state::{run_db, AppState};
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -99,64 +98,23 @@ async fn ci_ingest(
         })
         .transpose()?;
 
-    let device_type_name = body.device_type.clone();
-    let version = body.version.clone();
-
     let result = run_db(&state.db_pool, move |conn| {
-        // 4. Look up API key
-        let api_key = api_key_repo::find_api_key_by_hash(conn, &key_hash)?
-            .ok_or(AppError::Unauthorized)?;
-
-        // 5. Update last_used_at
-        let _ = api_key_repo::update_last_used(conn, api_key.id);
-
-        // 6. Resolve device type by name
-        let device_type = device_type_repo::find_device_type_by_name(conn, &device_type_name)?
-            .ok_or_else(|| {
-                AppError::NotFound(format!("Device type '{}' not found", device_type_name))
-            })?;
-
-        // 7. Check scope
-        if let Some(scoped_id) = api_key.device_type_id {
-            if scoped_id != device_type.id {
-                return Err(AppError::Forbidden(format!(
-                    "API key is scoped to device type ID {}, not '{}'",
-                    scoped_id, device_type_name
-                )));
-            }
-        }
-
-        // 8. Insert firmware update
-        let new_fw = NewFirmwareUpdate {
-            device_type_id: device_type.id,
-            version: version.clone(),
-            url: body.artifact_url.clone(),
-            description: body.description.clone(),
-            sha256: body.sha256.clone(),
-            commit_sha: body.commit_sha.clone(),
-            branch: body.branch.clone(),
-            ci_run_url: body.ci_run_url.clone(),
-            build_timestamp: build_ts,
-            changelog: body.changelog.clone(),
-            source: Some("ci".to_string()),
-        };
-
-        let fw = firmware_repo::insert_firmware_update(conn, &new_fw).map_err(|e| {
-            if let diesel::result::Error::DatabaseError(
-                diesel::result::DatabaseErrorKind::UniqueViolation,
-                _,
-            ) = &e
-            {
-                AppError::Conflict(format!(
-                    "Version '{}' already exists for device type '{}'",
-                    version, device_type_name
-                ))
-            } else {
-                AppError::Internal(e.to_string())
-            }
-        })?;
-
-        Ok((fw.id, fw.version, device_type_name))
+        ci_pipeline_service::ingest(
+            conn,
+            &key_hash,
+            CiIngestParams {
+                device_type_name: body.device_type.clone(),
+                version: body.version.clone(),
+                artifact_url: body.artifact_url.clone(),
+                sha256: body.sha256.clone(),
+                commit_sha: body.commit_sha.clone(),
+                branch: body.branch.clone(),
+                ci_run_url: body.ci_run_url.clone(),
+                build_timestamp: build_ts,
+                description: body.description.clone(),
+                changelog: body.changelog.clone(),
+            },
+        )
     })
     .await?;
 
