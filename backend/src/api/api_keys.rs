@@ -11,7 +11,7 @@ use utoipa::ToSchema;
 use crate::api_key_util;
 use crate::auth::Claims;
 use crate::error::AppError;
-use crate::repositories::{api_key_repo, device_type_repo};
+use crate::services::api_key_service;
 use crate::state::{run_db, AppState};
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -79,7 +79,7 @@ async fn create_api_key(
     };
 
     let api_key = run_db(&state.db_pool, move |conn| {
-        Ok(api_key_repo::insert_api_key(conn, &new_key)?)
+        api_key_service::create(conn, &new_key)
     })
     .await?;
 
@@ -102,28 +102,20 @@ async fn list_api_keys(
     require_admin(&claims)?;
 
     let keys = run_db(&state.db_pool, move |conn| {
-        let keys = api_key_repo::list_api_keys(conn)?;
-        let all_device_types = device_type_repo::list_all_device_types(conn)?;
-        let dt_map: std::collections::HashMap<i32, String> = all_device_types
-            .into_iter()
-            .map(|dt| (dt.id, dt.name))
-            .collect();
+        let keys_with_names = api_key_service::list_with_type_names(conn)?;
 
-        let responses: Vec<ApiKeyResponse> = keys
+        let responses: Vec<ApiKeyResponse> = keys_with_names
             .into_iter()
-            .map(|k| {
-                let dt_name = k.device_type_id.and_then(|id| dt_map.get(&id).cloned());
-                ApiKeyResponse {
-                    id: k.id,
-                    name: k.name,
-                    key_prefix: k.key_prefix,
-                    device_type_id: k.device_type_id,
-                    device_type_name: dt_name,
-                    created_at: k.created_at.format("%Y-%m-%dT%H:%M:%S").to_string(),
-                    last_used_at: k
-                        .last_used_at
-                        .map(|t| t.format("%Y-%m-%dT%H:%M:%S").to_string()),
-                }
+            .map(|(k, dt_name)| ApiKeyResponse {
+                id: k.id,
+                name: k.name,
+                key_prefix: k.key_prefix,
+                device_type_id: k.device_type_id,
+                device_type_name: dt_name,
+                created_at: k.created_at.format("%Y-%m-%dT%H:%M:%S").to_string(),
+                last_used_at: k
+                    .last_used_at
+                    .map(|t| t.format("%Y-%m-%dT%H:%M:%S").to_string()),
             })
             .collect();
         Ok(responses)
@@ -140,14 +132,10 @@ async fn delete_api_key(
 ) -> Result<StatusCode, AppError> {
     require_admin(&claims)?;
 
-    let deleted = run_db(&state.db_pool, move |conn| {
-        Ok(api_key_repo::delete_api_key(conn, id)?)
+    run_db(&state.db_pool, move |conn| {
+        api_key_service::delete(conn, id)
     })
     .await?;
-
-    if deleted == 0 {
-        return Err(AppError::NotFound("API key not found".into()));
-    }
 
     Ok(StatusCode::NO_CONTENT)
 }
