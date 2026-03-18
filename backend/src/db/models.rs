@@ -1,11 +1,13 @@
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 
+use serde::{Deserialize, Serialize};
+
 use super::schema::{
     alerts, api_keys, app_metrics, ca_certificates, command_history, device_certificates,
     device_configs, device_logs, device_shadows, device_types, devices, firmware_blobs,
     firmware_updates, fleets, ota_deployments, rule_actions, rule_conditions, rule_cooldowns,
-    rules, server_config, server_metrics, telemetry, users,
+    rules, server_config, server_metrics, telemetry, users, zones,
 };
 
 // ---------------------------------------------------------------------------
@@ -198,6 +200,8 @@ pub struct Device {
     pub uptime_seconds: i32,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
+    pub latest_latitude: Option<f64>,
+    pub latest_longitude: Option<f64>,
 }
 
 #[derive(Insertable, Debug)]
@@ -239,6 +243,11 @@ pub struct TelemetryRecord {
     pub battery_level: Option<f32>,
     pub custom_json: Option<String>,
     pub received_at: NaiveDateTime,
+    pub latitude: Option<f64>,
+    pub longitude: Option<f64>,
+    pub speed: Option<f32>,
+    pub altitude: Option<f32>,
+    pub heading: Option<f32>,
 }
 
 #[derive(Insertable, Debug)]
@@ -250,6 +259,11 @@ pub struct NewTelemetryRecord {
     pub humidity: Option<f32>,
     pub battery_level: Option<f32>,
     pub custom_json: Option<String>,
+    pub latitude: Option<f64>,
+    pub longitude: Option<f64>,
+    pub speed: Option<f32>,
+    pub altitude: Option<f32>,
+    pub heading: Option<f32>,
 }
 
 // ---------------------------------------------------------------------------
@@ -547,6 +561,7 @@ pub struct RuleCondition {
     pub operator: String,
     pub value: String,
     pub condition_group: i32,
+    pub zone_id: Option<String>,
 }
 
 #[derive(Insertable, Debug)]
@@ -558,6 +573,7 @@ pub struct NewRuleCondition {
     pub operator: String,
     pub value: String,
     pub condition_group: i32,
+    pub zone_id: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -641,4 +657,33 @@ pub struct NewRuleCooldown {
     pub rule_id: String,
     pub device_id: String,
     pub last_fired_at: NaiveDateTime,
+}
+
+// ---------------------------------------------------------------------------
+// Zones
+// ---------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug, Serialize, Deserialize)]
+#[diesel(table_name = zones)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct Zone {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub geometry_type: String,
+    pub geometry_json: String,
+    pub color: String,
+    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = zones)]
+pub struct NewZone {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub geometry_type: String,
+    pub geometry_json: String,
+    pub color: String,
 }

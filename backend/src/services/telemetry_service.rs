@@ -43,6 +43,11 @@ pub fn record(
         humidity,
         battery_level,
         custom_json,
+        latitude: None,
+        longitude: None,
+        speed: None,
+        altitude: None,
+        heading: None,
     };
     telemetry_repo::insert_telemetry(conn, &record)?;
 

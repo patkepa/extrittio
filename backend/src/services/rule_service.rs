@@ -297,6 +297,7 @@ pub fn create_rule(
             operator,
             value,
             condition_group: 0,
+            zone_id: None,
         })
         .collect();
 
@@ -412,6 +413,7 @@ pub fn update_rule(
                     operator,
                     value,
                     condition_group: 0,
+                    zone_id: None,
                 })
                 .collect();
             if !new_conditions.is_empty() {
