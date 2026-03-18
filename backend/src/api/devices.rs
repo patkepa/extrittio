@@ -34,6 +34,8 @@ pub struct DeviceResponse {
     pub firmware: String,
     pub uptime: String,
     pub uptime_seconds: i32,
+    pub latest_latitude: Option<f64>,
+    pub latest_longitude: Option<f64>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -159,6 +161,8 @@ fn to_device_response(
         uptime: device_service::format_uptime(Some(device.uptime_seconds))
             .unwrap_or_else(|| "0m".to_string()),
         uptime_seconds: device.uptime_seconds,
+        latest_latitude: device.latest_latitude,
+        latest_longitude: device.latest_longitude,
     }
 }
 

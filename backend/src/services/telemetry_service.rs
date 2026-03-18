@@ -20,14 +20,9 @@ pub fn list(
 
 pub fn record(
     conn: &mut SqliteConnection,
-    device_id: &str,
-    temperature: Option<f32>,
-    humidity: Option<f32>,
-    battery_level: Option<f32>,
-    custom_json: Option<String>,
-    payload: Vec<u8>,
+    record: NewTelemetryRecord,
 ) -> Result<Option<Device>, AppError> {
-    let device: Option<Device> = device_repo::find_device(conn, device_id)
+    let device: Option<Device> = device_repo::find_device(conn, &record.device_id)
         .optional()
         .map_err(AppError::Database)?;
 
@@ -36,19 +31,7 @@ pub fn record(
         None => return Ok(None),
     };
 
-    let record = NewTelemetryRecord {
-        device_id: device_id.to_string(),
-        payload,
-        temperature,
-        humidity,
-        battery_level,
-        custom_json,
-        latitude: None,
-        longitude: None,
-        speed: None,
-        altitude: None,
-        heading: None,
-    };
+    let device_id = record.device_id.clone();
     telemetry_repo::insert_telemetry(conn, &record)?;
 
     let now = Utc::now().naive_utc();
@@ -57,7 +40,7 @@ pub fn record(
         updated_at: Some(now),
         ..Default::default()
     };
-    device_repo::update_device(conn, device_id, &changeset)?;
+    device_repo::update_device(conn, &device_id, &changeset)?;
 
     Ok(Some(device))
 }

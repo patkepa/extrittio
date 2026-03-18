@@ -1,6 +1,8 @@
+use diesel::prelude::*;
 use prost::Message;
 use tracing::{info, warn};
 
+use crate::db::models::NewTelemetryRecord;
 use crate::rule_engine::cache::RuleCache;
 use crate::rule_engine::evaluate::evaluate_telemetry;
 use crate::rule_engine::types::{PendingAction, TelemetryData};
@@ -51,15 +53,23 @@ pub fn handle_telemetry(
         }
     };
 
-    match telemetry_service::record(
-        &mut conn,
-        &telemetry_msg.device_id,
-        Some(telemetry_msg.temperature),
-        Some(telemetry_msg.humidity),
-        Some(telemetry_msg.battery_level),
+    let has_location = telemetry_msg.latitude != 0.0 || telemetry_msg.longitude != 0.0;
+
+    let record = NewTelemetryRecord {
+        device_id: telemetry_msg.device_id.clone(),
+        payload: payload.to_vec(),
+        temperature: Some(telemetry_msg.temperature),
+        humidity: Some(telemetry_msg.humidity),
+        battery_level: Some(telemetry_msg.battery_level),
         custom_json,
-        payload.to_vec(),
-    ) {
+        latitude: if has_location { Some(telemetry_msg.latitude) } else { None },
+        longitude: if has_location { Some(telemetry_msg.longitude) } else { None },
+        speed: if has_location { Some(telemetry_msg.speed) } else { None },
+        altitude: if has_location { Some(telemetry_msg.altitude) } else { None },
+        heading: if has_location { Some(telemetry_msg.heading) } else { None },
+    };
+
+    match telemetry_service::record(&mut conn, record) {
         Ok(None) => {
             warn!(
                 "Dropping telemetry from unregistered device: {}",
@@ -75,6 +85,17 @@ pub fn handle_telemetry(
                 telemetry_msg.humidity,
                 telemetry_msg.battery_level
             );
+
+            // Update device latest location (sync, using same connection)
+            if has_location {
+                use crate::db::schema::devices::dsl;
+                let _ = diesel::update(dsl::devices.filter(dsl::id.eq(&telemetry_msg.device_id)))
+                    .set((
+                        dsl::latest_latitude.eq(Some(telemetry_msg.latitude)),
+                        dsl::latest_longitude.eq(Some(telemetry_msg.longitude)),
+                    ))
+                    .execute(&mut conn);
+            }
 
             // Evaluate rules against this telemetry data
             let data = TelemetryData {

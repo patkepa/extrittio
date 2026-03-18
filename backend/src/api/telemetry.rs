@@ -25,6 +25,11 @@ pub struct TelemetryResponse {
     pub humidity: Option<f32>,
     pub battery_level: Option<f32>,
     pub custom_json: Option<String>,
+    pub latitude: Option<f64>,
+    pub longitude: Option<f64>,
+    pub speed: Option<f32>,
+    pub altitude: Option<f32>,
+    pub heading: Option<f32>,
     pub received_at: String,
 }
 
@@ -51,6 +56,11 @@ impl From<TelemetryRecord> for TelemetryResponse {
             humidity: r.humidity,
             battery_level: r.battery_level,
             custom_json: r.custom_json,
+            latitude: r.latitude,
+            longitude: r.longitude,
+            speed: r.speed,
+            altitude: r.altitude,
+            heading: r.heading,
             received_at: r.received_at.and_utc().to_rfc3339(),
         }
     }
