@@ -1,0 +1,44 @@
+.qr-code-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 20px;
+  background: hsla(0, 0%, 100%, 0.03);
+  border: 1px solid hsla(0, 0%, 100%, 0.06);
+  border-radius: 2px;
+}
+
+.qr-code-card .section-label {
+  align-self: flex-start;
+  margin-bottom: 0;
+}
+
+.qr-code-wrapper {
+  background: #ffffff;
+  padding: 12px;
+  border-radius: 2px;
+  line-height: 0;
+}
+
+.qr-code-url {
+  font-size: 11px;
+  color: hsl(var(--muted));
+  word-break: break-all;
+  text-align: center;
+  max-width: 280px;
+}
+
+.qr-code-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.qr-canvas-hidden {
+  position: absolute;
+  left: -9999px;
+  top: -9999px;
+  visibility: hidden;
+}
