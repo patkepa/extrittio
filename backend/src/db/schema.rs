@@ -125,6 +125,8 @@ diesel::table! {
         uptime_seconds -> Integer,
         created_at -> Timestamp,
         updated_at -> Timestamp,
+        latest_latitude -> Nullable<Double>,
+        latest_longitude -> Nullable<Double>,
     }
 }
 
@@ -192,6 +194,7 @@ diesel::table! {
         operator -> Text,
         value -> Text,
         condition_group -> Integer,
+        zone_id -> Nullable<Text>,
     }
 }
 
@@ -252,6 +255,11 @@ diesel::table! {
         battery_level -> Nullable<Float>,
         custom_json -> Nullable<Text>,
         received_at -> Timestamp,
+        latitude -> Nullable<Double>,
+        longitude -> Nullable<Double>,
+        speed -> Nullable<Float>,
+        altitude -> Nullable<Float>,
+        heading -> Nullable<Float>,
     }
 }
 
@@ -262,6 +270,19 @@ diesel::table! {
         password_hash -> Text,
         role -> Text,
         created_at -> Timestamp,
+    }
+}
+
+diesel::table! {
+    zones (id) {
+        id -> Text,
+        name -> Text,
+        description -> Text,
+        geometry_type -> Text,
+        geometry_json -> Text,
+        color -> Text,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
     }
 }
 
@@ -281,6 +302,7 @@ diesel::joinable!(ota_deployments -> devices (device_id));
 diesel::joinable!(ota_deployments -> firmware_updates (firmware_update_id));
 diesel::joinable!(rule_actions -> rules (rule_id));
 diesel::joinable!(rule_conditions -> rules (rule_id));
+diesel::joinable!(rule_conditions -> zones (zone_id));
 diesel::joinable!(rule_cooldowns -> devices (device_id));
 diesel::joinable!(rule_cooldowns -> rules (rule_id));
 diesel::joinable!(telemetry -> devices (device_id));
@@ -309,4 +331,5 @@ diesel::allow_tables_to_appear_in_same_query!(
     server_metrics,
     telemetry,
     users,
+    zones,
 );
