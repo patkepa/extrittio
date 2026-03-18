@@ -2,6 +2,7 @@ import { Button, Callout, Divider } from '@blueprintjs/core';
 import { useSearchParams } from 'react-router-dom';
 import { useRestartDevice } from '../../hooks/use-devices';
 import { showSuccessToast, showErrorToast } from '../../utils/toaster';
+import { QrCodeCard } from './qr-code-card';
 import type { Device } from '../../types/api';
 
 interface OverviewTabProps {
@@ -48,6 +49,10 @@ export const OverviewTab = ({ device }: OverviewTabProps) => {
           <span className="detail-value mono-data">{device.uptime}</span>
         </div>
       </div>
+
+      <Divider className="tab-divider" />
+
+      <QrCodeCard deviceId={device.id} />
 
       <Divider className="tab-divider" />
 
