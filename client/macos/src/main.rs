@@ -365,6 +365,11 @@ async fn run_async(cfg: config::Config, device_id: String) {
                     humidity: 0.0,
                     battery_level,
                     metadata,
+                    latitude: 0.0,
+                    longitude: 0.0,
+                    speed: 0.0,
+                    altitude: 0.0,
+                    heading: 0.0,
                 };
 
                 let payload = telemetry.encode_to_vec();

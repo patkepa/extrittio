@@ -377,6 +377,11 @@ async fn main() {
             humidity: 0.0,
             battery_level: 0.0,
             metadata,
+            latitude: 0.0,
+            longitude: 0.0,
+            speed: 0.0,
+            altitude: 0.0,
+            heading: 0.0,
         };
 
         let payload = telemetry.encode_to_vec();

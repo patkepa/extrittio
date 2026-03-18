@@ -8,6 +8,11 @@ message DeviceTelemetry {
     float humidity = 4;
     float battery_level = 5;
     map<string, string> metadata = 6;
+    double latitude = 7;
+    double longitude = 8;
+    float speed = 9;
+    float altitude = 10;
+    float heading = 11;
 }
 
 message DeviceHeartbeat {

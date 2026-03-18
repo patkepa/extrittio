@@ -388,6 +388,11 @@ async fn main() {
             humidity: sensor.humidity,
             battery_level: sensor.battery,
             metadata: HashMap::default(),
+            latitude: 0.0,
+            longitude: 0.0,
+            speed: 0.0,
+            altitude: 0.0,
+            heading: 0.0,
         };
 
         let payload = telemetry.encode_to_vec();
