@@ -1,5 +1,6 @@
 mod config;
 mod install;
+mod location;
 mod metrics;
 mod ota;
 
