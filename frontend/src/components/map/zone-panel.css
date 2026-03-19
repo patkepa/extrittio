@@ -1,58 +1,217 @@
+/* Zone Panel — floats over the map */
 .zone-panel {
-  width: 300px;
-  background: var(--card-bg, #242424);
-  border-left: 1px solid #333;
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 260px;
+  height: 100%;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
-  padding: 16px;
+  background-color: var(--sidebar-bg);
+  border-left: 1px solid var(--border-color);
+  z-index: 6;
+  transition:
+    transform 0.25s ease,
+    opacity 0.25s ease;
+  overflow: hidden;
+}
+
+.zone-panel--collapsed {
+  transform: translateX(100%);
+  opacity: 0;
+  pointer-events: none;
 }
 
 .zone-panel-header {
+  height: 48px;
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
+  padding: 0 12px 0 16px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
 }
 
+.zone-panel-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--sidebar-muted-foreground);
+  opacity: 0.5;
+}
+
+/* Zone list */
 .zone-panel-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  flex: 1;
+  overflow-y: auto;
 }
 
-.zone-panel-item {
-  padding: 8px 12px !important;
+.zone-panel-list::-webkit-scrollbar {
+  width: 4px;
 }
 
-.zone-panel-item-header {
+.zone-panel-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.zone-panel-list::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 0;
+}
+
+/* Zone rows — styled like health-panel-row */
+.zone-panel-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  padding: 8px 8px 8px 10px;
+  cursor: pointer;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
+  color: var(--sidebar-muted-foreground);
+  border-left: 2px solid transparent;
 }
 
-.zone-color-dot {
-  width: 10px;
-  height: 10px;
+.zone-panel-row:hover {
+  background-color: hsla(0, 0%, 100%, 0.04);
+  color: var(--sidebar-foreground);
+}
+
+.zone-panel-row:active {
+  background-color: hsla(0, 0%, 100%, 0.08);
+}
+
+.zone-panel-row--hidden {
+  opacity: 0.4;
+}
+
+.zone-panel-row--hidden:hover {
+  opacity: 0.7;
+}
+
+.zone-panel-visibility {
+  opacity: 0.4;
+  flex-shrink: 0;
+}
+
+.zone-panel-row:hover .zone-panel-visibility {
+  opacity: 0.8;
+}
+
+.zone-panel-dot {
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
-.zone-panel-item-name {
+.zone-panel-dot--clickable {
+  cursor: pointer;
+  width: 10px;
+  height: 10px;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.zone-panel-dot--clickable:hover {
+  transform: scale(1.4);
+  box-shadow: 0 0 6px currentColor;
+}
+
+.zone-panel-name {
   flex: 1;
-  font-weight: 500;
   font-size: 13px;
+  font-weight: 500;
+  color: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: -0.01em;
 }
 
-.zone-panel-item-desc {
-  font-size: 11px;
-  color: #999;
-  margin: 4px 0 0 18px;
+.zone-panel-tag {
+  flex-shrink: 0;
+  font-size: 10px !important;
 }
 
+.zone-panel-delete {
+  opacity: 0;
+  flex-shrink: 0;
+  transition: opacity 0.12s ease;
+}
+
+.zone-panel-row:hover .zone-panel-delete {
+  opacity: 0.6;
+}
+
+.zone-panel-delete:hover {
+  opacity: 1 !important;
+}
+
+/* Empty & draw hint */
 .zone-panel-empty {
-  color: #666;
-  font-size: 12px;
+  padding: 24px 16px;
   text-align: center;
-  padding: 20px;
+  color: var(--sidebar-muted-foreground);
+  opacity: 0.5;
+  font-size: 12px;
+}
+
+.zone-panel-empty p {
+  margin: 0 0 4px;
+}
+
+.zone-panel-draw-hint {
+  padding: 16px;
+  text-align: center;
+  color: hsl(var(--accent));
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Footer — styled like health-panel-footer */
+.zone-panel-footer {
+  padding: 8px 16px;
+  border-top: 1px solid var(--border-color);
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--sidebar-muted-foreground);
+  background-color: var(--sidebar-bg);
+  flex-shrink: 0;
+}
+
+.zone-panel-footer-hidden {
+  opacity: 0.5;
+}
+
+/* Color picker swatches — used in create dialog and inline popover */
+.zone-color-picker {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 4px 0;
+}
+
+.zone-color-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.1s ease, border-color 0.1s ease;
+  outline: none;
+}
+
+.zone-color-swatch:hover {
+  transform: scale(1.15);
+}
+
+.zone-color-swatch--active {
+  border-color: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3);
 }

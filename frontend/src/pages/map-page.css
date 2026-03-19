@@ -1,15 +1,33 @@
 .map-page {
-  display: flex;
+  position: relative;
   height: calc(100vh - 48px);
-  gap: 0;
 }
 
 .map-page-content {
-  flex: 1;
-  position: relative;
+  width: 100%;
+  height: 100%;
 }
 
 .map-page-content .device-map {
   height: 100%;
   border-radius: 0;
+}
+
+/* Zone panel toggle — floats above the panel */
+.zone-panel-toggle {
+  position: absolute;
+  top: 8px;
+  right: 268px;
+  z-index: 7;
+  opacity: 0.6;
+  transition: opacity 0.15s ease, right 0.25s ease;
+}
+
+.zone-panel--collapsed ~ .zone-panel-toggle,
+.map-page:has(.zone-panel--collapsed) > .zone-panel-toggle {
+  right: 8px;
+}
+
+.zone-panel-toggle:hover {
+  opacity: 1;
 }
