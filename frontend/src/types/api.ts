@@ -237,3 +237,12 @@ export interface MetricsHistoryResponse {
   system: SystemMetricsSnapshot[];
   app: AppMetricsSnapshot[];
 }
+
+export interface LocationPoint {
+  latitude: number;
+  longitude: number;
+  speed: number | null;
+  altitude: number | null;
+  heading: number | null;
+  timestamp: string;
+}

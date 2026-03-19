@@ -63,4 +63,12 @@ export const queryKeys = {
     current: ['server-metrics-current'] as const,
     history: (params?: unknown) => ['server-metrics-history', params] as const,
   },
+  zones: {
+    all: ["zones"] as const,
+    list: () => ["zones"] as const,
+    detail: (id: string) => ["zone", id] as const,
+  },
+  locations: {
+    latest: (deviceId: string) => ["device-location", deviceId, "latest"] as const,
+  },
 } as const;

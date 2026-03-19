@@ -9,6 +9,7 @@ export default defineConfig({
           blueprint: ["@blueprintjs/core", "@blueprintjs/icons"],
           charts: ["uplot"],
           query: ["@tanstack/react-query", "axios"],
+          maps: ["leaflet", "react-leaflet"],
         },
       },
     },
