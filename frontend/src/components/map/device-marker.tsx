@@ -1,7 +1,8 @@
-import { useEffect, useRef, useCallback } from "react";
-import { CircleMarker, Popup, useMap } from "react-leaflet";
+import { useMemo } from "react";
+import { Marker, Popup } from "react-leaflet";
 import { Link } from "react-router-dom";
-import type L from "leaflet";
+import L from "leaflet";
+import "./device-marker.css";
 
 interface DeviceMarkerProps {
   deviceId: string;
@@ -19,35 +20,20 @@ const STATUS_COLORS: Record<string, string> = {
   warning: "#d4a017",
 };
 
-function radiusForZoom(zoom: number): number {
-  // Scale: zoom 3 → 3px, zoom 10 → 6px, zoom 14+ → 8px
-  return Math.max(3, Math.min(8, Math.round(zoom * 0.55)));
-}
-
 export function DeviceMarker({
   deviceId, deviceName, status, latitude, longitude, speed, lastSeen,
 }: DeviceMarkerProps) {
   const color = STATUS_COLORS[status] || STATUS_COLORS.offline;
-  const map = useMap();
-  const markerRef = useRef<L.CircleMarker>(null);
 
-  const updateRadius = useCallback(() => {
-    markerRef.current?.setRadius(radiusForZoom(map.getZoom()));
-  }, [map]);
-
-  useEffect(() => {
-    updateRadius();
-    map.on("zoom", updateRadius);
-    return () => { map.off("zoom", updateRadius); };
-  }, [map, updateRadius]);
+  const icon = useMemo(() => L.divIcon({
+    className: "device-marker-icon",
+    html: `<span style="background:${color};box-shadow:0 0 6px ${color}"></span>`,
+    iconSize: [12, 12],
+    iconAnchor: [6, 6],
+  }), [color]);
 
   return (
-    <CircleMarker
-      ref={markerRef}
-      center={[latitude, longitude]}
-      radius={radiusForZoom(map.getZoom())}
-      pathOptions={{ color, fillColor: color, fillOpacity: 0.8, weight: 2 }}
-    >
+    <Marker position={[latitude, longitude]} icon={icon}>
       <Popup>
         <div style={{ color: "#e0e0e0", background: "#242424", padding: "4px 8px", borderRadius: 4, fontSize: 12 }}>
           <strong>{deviceName}</strong><br />
@@ -58,6 +44,6 @@ export function DeviceMarker({
           <Link to={`/devices/${deviceId}?tab=location`}>View details</Link>
         </div>
       </Popup>
-    </CircleMarker>
+    </Marker>
   );
 }
