@@ -1,0 +1,37 @@
+.location-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.location-tab-controls {
+  display: flex;
+  justify-content: flex-end;
+}
+.location-tab-map {
+  height: 400px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.location-tab-info {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+.location-tab-values {
+  max-width: 400px;
+}
+.location-tab-zones {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.location-tab-zone-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.location-tab-empty {
+  color: #999;
+  text-align: center;
+  padding: 40px;
+}

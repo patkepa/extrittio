@@ -4,6 +4,7 @@ import { useDevice } from '../hooks/use-devices';
 import { DeviceHeader } from '../components/devices/device-header';
 import { OverviewTab } from '../components/devices/overview-tab';
 import { TelemetryTab } from '../components/devices/telemetry-tab';
+import { LocationTab } from '../components/devices/location-tab';
 import { LogsTab } from '../components/devices/logs-tab';
 import { ConfigTab } from '../components/devices/config-tab';
 import { ShadowTab } from '../components/devices/shadow-tab';
@@ -13,7 +14,7 @@ import { AlertsTab } from '../components/devices/alerts-tab';
 import { ErrorBoundary } from '../components/error-boundary';
 import './device-detail.css';
 
-const VALID_TABS = ['overview', 'shadow', 'commands', 'telemetry', 'ota', 'config', 'logs', 'alerts'];
+const VALID_TABS = ['overview', 'shadow', 'commands', 'telemetry', 'location', 'ota', 'config', 'logs', 'alerts'];
 
 export const DeviceDetail = () => {
   const { deviceId } = useParams<{ deviceId: string }>();
@@ -73,6 +74,7 @@ export const DeviceDetail = () => {
           <Tab id="shadow" title="Shadow" />
           <Tab id="commands" title="Commands" />
           <Tab id="telemetry" title="Telemetry" />
+          <Tab id="location" title="Location" />
           <Tab id="ota" title="OTA" />
           <Tab id="config" title="Config" />
           <Tab id="logs" title="Logs" />
@@ -89,6 +91,11 @@ export const DeviceDetail = () => {
         {currentTab === 'telemetry' && (
           <ErrorBoundary>
             <TelemetryTab deviceId={device.id} deviceTypeName={device.device_type_name} />
+          </ErrorBoundary>
+        )}
+        {currentTab === 'location' && (
+          <ErrorBoundary>
+            <LocationTab deviceId={device.id} deviceName={device.name} deviceStatus={device.status} />
           </ErrorBoundary>
         )}
         {currentTab === 'logs' && (
