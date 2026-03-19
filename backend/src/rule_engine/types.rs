@@ -22,6 +22,7 @@ pub struct CachedCondition {
     pub field: String,
     pub operator: String,
     pub value: String,
+    pub zone_id: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -65,6 +66,11 @@ pub enum PendingAction {
         device_id: String,
         fired_at: NaiveDateTime,
     },
+    UpdateZoneEntry {
+        rule_id: String,
+        device_id: String,
+        entered_at: Option<chrono::NaiveDateTime>,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -76,10 +82,32 @@ pub struct TelemetryData {
     pub temperature: f32,
     pub humidity: f32,
     pub battery_level: f32,
+    pub latitude: f64,
+    pub longitude: f64,
+    pub speed: f32,
+    pub altitude: f32,
+    pub heading: f32,
 }
 
 #[derive(Debug, Clone)]
 pub struct StatusChange {
     pub old_status: String,
     pub new_status: String,
+}
+
+// ---------------------------------------------------------------------------
+// Zone geometry types
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+pub struct CachedZone {
+    pub id: String,
+    pub name: String,
+    pub geometry: ZoneGeometry,
+}
+
+#[derive(Debug, Clone)]
+pub enum ZoneGeometry {
+    Circle { center_lat: f64, center_lon: f64, radius_meters: f64 },
+    Polygon { points: Vec<(f64, f64)> },
 }

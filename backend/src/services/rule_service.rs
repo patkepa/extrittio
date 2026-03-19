@@ -9,9 +9,9 @@ use crate::db::models::{
     NewRule, NewRuleAction, NewRuleCondition, Rule, RuleAction, RuleCondition, UpdateRule,
 };
 use crate::error::AppError;
-use crate::repositories::{alert_repo, rule_repo};
+use crate::repositories::{alert_repo, rule_repo, zone_repo};
 use crate::rule_engine::cache::RuleCache;
-use crate::rule_engine::types::{CachedAction, CachedCondition, CachedRule};
+use crate::rule_engine::types::{CachedAction, CachedCondition, CachedRule, CachedZone, ZoneGeometry};
 
 // ---------------------------------------------------------------------------
 // Public composite type
@@ -507,6 +507,7 @@ pub fn build_cache(conn: &mut SqliteConnection) -> Result<RuleCache, AppError> {
                     field: c.field,
                     operator: c.operator,
                     value: c.value,
+                    zone_id: c.zone_id.clone(),
                 })
                 .collect(),
             actions: actions
@@ -535,5 +536,41 @@ pub fn build_cache(conn: &mut SqliteConnection) -> Result<RuleCache, AppError> {
         }
     }
 
+    let zones = zone_repo::list_zones(conn)?;
+    for zone in zones {
+        if let Ok(geometry) = parse_zone_geometry(&zone.geometry_type, &zone.geometry_json) {
+            cache.zones.insert(zone.id.clone(), CachedZone {
+                id: zone.id,
+                name: zone.name,
+                geometry,
+            });
+        }
+    }
+
     Ok(cache)
+}
+
+fn parse_zone_geometry(geometry_type: &str, geometry_json: &str) -> Result<ZoneGeometry, String> {
+    let json: serde_json::Value = serde_json::from_str(geometry_json)
+        .map_err(|e| format!("Invalid zone geometry JSON: {}", e))?;
+    match geometry_type {
+        "circle" => {
+            let center = json["center"].as_array().ok_or("Missing center")?;
+            Ok(ZoneGeometry::Circle {
+                center_lat: center[0].as_f64().unwrap_or(0.0),
+                center_lon: center[1].as_f64().unwrap_or(0.0),
+                radius_meters: json["radius_meters"].as_f64().unwrap_or(0.0),
+            })
+        }
+        "polygon" => {
+            let points = json["points"].as_array().ok_or("Missing points")?;
+            Ok(ZoneGeometry::Polygon {
+                points: points.iter().map(|p| {
+                    let a = p.as_array().unwrap();
+                    (a[0].as_f64().unwrap_or(0.0), a[1].as_f64().unwrap_or(0.0))
+                }).collect(),
+            })
+        }
+        _ => Err(format!("Unknown geometry type: {}", geometry_type)),
+    }
 }

@@ -493,5 +493,25 @@ pub async fn execute_action(
                 Err(e) => warn!("UpdateCooldown task panicked: {}", e),
             }
         }
+        PendingAction::UpdateZoneEntry {
+            rule_id,
+            device_id,
+            entered_at,
+        } => {
+            let cache = rule_cache.clone();
+            let key = (rule_id, device_id);
+            if let Ok(mut c) = cache.write() {
+                match entered_at {
+                    Some(ts) => {
+                        c.zone_entry_times.insert(key, ts);
+                    }
+                    None => {
+                        c.zone_entry_times.remove(&key);
+                    }
+                }
+            } else {
+                warn!("Rule cache lock poisoned; skipping UpdateZoneEntry");
+            }
+        }
     }
 }

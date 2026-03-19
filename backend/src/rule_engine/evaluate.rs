@@ -2,7 +2,8 @@ use chrono::Utc;
 use serde_json::{Value, json};
 
 use super::cache::RuleCache;
-use super::types::{CachedCondition, PendingAction, StatusChange, TelemetryData};
+use super::geo::{point_in_circle, point_in_polygon};
+use super::types::{CachedCondition, PendingAction, StatusChange, TelemetryData, ZoneGeometry};
 
 // ---------------------------------------------------------------------------
 // Field extraction
@@ -10,11 +11,16 @@ use super::types::{CachedCondition, PendingAction, StatusChange, TelemetryData};
 
 /// Maps a field name string to the corresponding value in `TelemetryData`.
 /// Returns `None` for unknown field names.
-pub fn get_field_value(field: &str, data: &TelemetryData) -> Option<f32> {
+pub fn get_field_value(field: &str, data: &TelemetryData) -> Option<f64> {
     match field {
-        "temperature" => Some(data.temperature),
-        "humidity" => Some(data.humidity),
-        "battery_level" => Some(data.battery_level),
+        "temperature" => Some(data.temperature as f64),
+        "humidity" => Some(data.humidity as f64),
+        "battery_level" => Some(data.battery_level as f64),
+        "latitude" => Some(data.latitude),
+        "longitude" => Some(data.longitude),
+        "speed" => Some(data.speed as f64),
+        "altitude" => Some(data.altitude as f64),
+        "heading" => Some(data.heading as f64),
         _ => None,
     }
 }
@@ -25,14 +31,14 @@ pub fn get_field_value(field: &str, data: &TelemetryData) -> Option<f32> {
 
 /// Evaluates a single condition against telemetry data.
 /// Returns `false` if the field is unknown or the threshold value cannot be
-/// parsed as f32.
+/// parsed as f64.
 pub fn evaluate_condition(condition: &CachedCondition, data: &TelemetryData) -> bool {
     let field_val = match get_field_value(&condition.field, data) {
         Some(v) => v,
         None => return false,
     };
 
-    let threshold: f32 = match condition.value.parse() {
+    let threshold: f64 = match condition.value.parse() {
         Ok(v) => v,
         Err(_) => return false,
     };
@@ -42,8 +48,8 @@ pub fn evaluate_condition(condition: &CachedCondition, data: &TelemetryData) -> 
         "gte" => field_val >= threshold,
         "lt" => field_val < threshold,
         "lte" => field_val <= threshold,
-        "eq" => (field_val - threshold).abs() < f32::EPSILON,
-        "neq" => (field_val - threshold).abs() >= f32::EPSILON,
+        "eq" => (field_val - threshold).abs() < f64::EPSILON,
+        "neq" => (field_val - threshold).abs() >= f64::EPSILON,
         _ => false,
     }
 }
@@ -89,13 +95,20 @@ pub fn is_in_cooldown(
 // Message formatting helpers
 // ---------------------------------------------------------------------------
 
-/// Formats an f32 value as a string, stripping unnecessary trailing zeros.
+/// Formats an f64 value as a string, stripping unnecessary trailing zeros.
+/// Uses 4 decimal places of precision to avoid f32-to-f64 cast noise.
 /// e.g. 85.2 → "85.2",  95.0 → "95"
-pub fn format_value(val: f32) -> String {
+pub fn format_value(val: f64) -> String {
     if val.fract() == 0.0 {
         format!("{:.0}", val)
     } else {
-        format!("{}", val)
+        // Format with 4 decimal places to handle f32-to-f64 precision noise
+        // (e.g. 85.2_f32 as f64 = 85.19999... rounds to "85.2000" → "85.2")
+        let s = format!("{:.4}", val);
+        // Strip trailing zeros after decimal point
+        let s = s.trim_end_matches('0');
+        let s = s.trim_end_matches('.');
+        s.to_string()
     }
 }
 
@@ -440,6 +453,199 @@ pub fn evaluate_status_change(
 }
 
 // ---------------------------------------------------------------------------
+// evaluate_geofence
+// ---------------------------------------------------------------------------
+
+/// Checks whether `(lat, lon)` is inside a cached zone.
+fn point_in_zone(lat: f64, lon: f64, geometry: &ZoneGeometry) -> bool {
+    match geometry {
+        ZoneGeometry::Circle { center_lat, center_lon, radius_meters } => {
+            point_in_circle(lat, lon, *center_lat, *center_lon, *radius_meters)
+        }
+        ZoneGeometry::Polygon { points } => {
+            point_in_polygon(lat, lon, points)
+        }
+    }
+}
+
+/// Evaluates geofence rules against the current device location.
+///
+/// For each rule with `trigger_type == "geofence"`, checks each condition's
+/// `zone_id` against the cached zone geometries.  Produces `PendingAction`s
+/// for zone entry/exit events.  Zone dwell mutations are returned as
+/// `UpdateZoneEntry` (deferred to the caller).
+pub fn evaluate_geofence(
+    device_id: &str,
+    device_type_id: i32,
+    fleet_id: Option<i32>,
+    data: &TelemetryData,
+    cache: &RuleCache,
+) -> Vec<PendingAction> {
+    // Skip evaluation if no location data provided.
+    if data.latitude == 0.0 && data.longitude == 0.0 {
+        return Vec::new();
+    }
+
+    let device_type_str = device_type_id.to_string();
+    let fleet_str = fleet_id.map(|f| f.to_string());
+    let fleet_ref = fleet_str.as_deref();
+
+    let rules = cache.rules_for_device(device_id, &device_type_str, fleet_ref);
+
+    let mut actions: Vec<PendingAction> = Vec::new();
+
+    for rule in rules {
+        if rule.trigger_type != "geofence" {
+            continue;
+        }
+
+        // Determine if the device is currently inside ALL required zones
+        // (conditions are AND-ed; each condition refers to a zone via zone_id).
+        let conditions_met = rule.conditions.iter().all(|c| {
+            if let Some(ref zid) = c.zone_id {
+                if let Some(zone) = cache.zones.get(zid) {
+                    return point_in_zone(data.latitude, data.longitude, &zone.geometry);
+                }
+            }
+            false
+        });
+
+        let alert_key = (rule.id.clone(), device_id.to_string());
+        let existing_alert_id = cache.active_alerts.get(&alert_key).cloned();
+        let zone_key = (rule.id.clone(), device_id.to_string());
+        let was_inside = cache.zone_entry_times.contains_key(&zone_key);
+
+        if conditions_met {
+            // Device is inside the zone(s).
+            if !was_inside {
+                // Just entered — record entry time.
+                actions.push(PendingAction::UpdateZoneEntry {
+                    rule_id: rule.id.clone(),
+                    device_id: device_id.to_string(),
+                    entered_at: Some(Utc::now().naive_utc()),
+                });
+            }
+
+            if let Some(ref alert_id) = existing_alert_id {
+                // Skip empty-string sentinel (reservation in-flight).
+                if !alert_id.is_empty() {
+                    actions.push(PendingAction::UpdateAlertValue {
+                        alert_id: alert_id.clone(),
+                        triggered_value: format!("{},{}", data.latitude, data.longitude),
+                    });
+                }
+            } else {
+                if is_in_cooldown(cache, &rule.id, device_id, rule.cooldown_seconds) {
+                    continue;
+                }
+
+                for rule_action in &rule.actions {
+                    match rule_action.action_type.as_str() {
+                        "alert" => {
+                            let config: Value =
+                                serde_json::from_str(&rule_action.config).unwrap_or_default();
+                            let severity = config
+                                .get("severity")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("warning")
+                                .to_string();
+                            let zone_name = rule.conditions.first()
+                                .and_then(|c| c.zone_id.as_ref())
+                                .and_then(|zid| cache.zones.get(zid))
+                                .map(|z| z.name.as_str())
+                                .unwrap_or("unknown zone");
+                            let message = format!(
+                                "device entered zone '{}' at {:.6},{:.6}",
+                                zone_name, data.latitude, data.longitude
+                            );
+                            actions.push(PendingAction::CreateAlert {
+                                rule_id: rule.id.clone(),
+                                device_id: device_id.to_string(),
+                                severity,
+                                message,
+                                triggered_value: Some(format!("{},{}", data.latitude, data.longitude)),
+                            });
+                        }
+                        "webhook" => {
+                            let config: Value =
+                                serde_json::from_str(&rule_action.config).unwrap_or_default();
+                            let url = config
+                                .get("url")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let payload = json!({
+                                "event": "geofence_entered",
+                                "timestamp": chrono::Utc::now().to_rfc3339(),
+                                "rule": {
+                                    "id": rule.id,
+                                    "name": rule.name,
+                                },
+                                "device": {
+                                    "id": device_id,
+                                },
+                                "location": {
+                                    "latitude": data.latitude,
+                                    "longitude": data.longitude,
+                                },
+                            });
+                            let mut headers = std::collections::HashMap::new();
+                            headers.insert("X-Extrittio-Event".to_string(), "geofence_entered".to_string());
+                            actions.push(PendingAction::SendWebhook { url, headers, payload });
+                        }
+                        "command" => {
+                            let config: Value =
+                                serde_json::from_str(&rule_action.config).unwrap_or_default();
+                            let command = config
+                                .get("command")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let params = config
+                                .get("params")
+                                .cloned()
+                                .unwrap_or(Value::Null);
+                            actions.push(PendingAction::SendCommand {
+                                device_id: device_id.to_string(),
+                                command,
+                                params,
+                            });
+                        }
+                        _ => {}
+                    }
+                }
+
+                actions.push(PendingAction::UpdateCooldown {
+                    rule_id: rule.id.clone(),
+                    device_id: device_id.to_string(),
+                    fired_at: Utc::now().naive_utc(),
+                });
+            }
+        } else {
+            // Device is outside the zone(s).
+            if was_inside {
+                // Just exited — clear entry time.
+                actions.push(PendingAction::UpdateZoneEntry {
+                    rule_id: rule.id.clone(),
+                    device_id: device_id.to_string(),
+                    entered_at: None,
+                });
+            }
+
+            // Auto-resolve any active alert.
+            // Skip empty-string sentinels (reservation in-flight).
+            if let Some(alert_id) = existing_alert_id {
+                if !alert_id.is_empty() {
+                    actions.push(PendingAction::ResolveAlert { alert_id });
+                }
+            }
+        }
+    }
+
+    actions
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -462,6 +668,11 @@ mod tests {
             temperature,
             humidity,
             battery_level,
+            latitude: 0.0,
+            longitude: 0.0,
+            speed: 0.0,
+            altitude: 0.0,
+            heading: 0.0,
         }
     }
 
@@ -470,6 +681,7 @@ mod tests {
             field: field.to_string(),
             operator: operator.to_string(),
             value: value.to_string(),
+            zone_id: None,
         }
     }
 

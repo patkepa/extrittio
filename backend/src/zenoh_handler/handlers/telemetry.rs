@@ -4,7 +4,7 @@ use tracing::{info, warn};
 
 use crate::db::models::NewTelemetryRecord;
 use crate::rule_engine::cache::RuleCache;
-use crate::rule_engine::evaluate::evaluate_telemetry;
+use crate::rule_engine::evaluate::{evaluate_geofence, evaluate_telemetry};
 use crate::rule_engine::types::{PendingAction, TelemetryData};
 use crate::services::telemetry_service;
 use crate::state::DbPool;
@@ -102,6 +102,11 @@ pub fn handle_telemetry(
                 temperature: telemetry_msg.temperature,
                 humidity: telemetry_msg.humidity,
                 battery_level: telemetry_msg.battery_level,
+                latitude: telemetry_msg.latitude,
+                longitude: telemetry_msg.longitude,
+                speed: telemetry_msg.speed,
+                altitude: telemetry_msg.altitude,
+                heading: telemetry_msg.heading,
             };
 
             let cache = match rule_cache.read() {
@@ -112,13 +117,23 @@ pub fn handle_telemetry(
                 }
             };
 
-            evaluate_telemetry(
+            let mut actions = evaluate_telemetry(
                 &telemetry_msg.device_id,
                 device.device_type_id,
                 device.fleet_id,
                 &data,
                 &cache,
-            )
+            );
+
+            let geofence_actions = evaluate_geofence(
+                &telemetry_msg.device_id,
+                device.device_type_id,
+                device.fleet_id,
+                &data,
+                &cache,
+            );
+            actions.extend(geofence_actions);
+            actions
         }
         Err(e) => {
             warn!("Failed to record telemetry: {}", e);

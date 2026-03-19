@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use chrono::NaiveDateTime;
 
-use super::types::CachedRule;
+use super::types::{CachedRule, CachedZone};
 
 // ---------------------------------------------------------------------------
 // RuleCache — in-memory rule index for fast evaluation
@@ -22,6 +22,10 @@ pub struct RuleCache {
     pub active_alerts: HashMap<(String, String), String>,
     /// Cooldown timestamps keyed by (rule_id, device_id) → last_fired_at
     pub cooldowns: HashMap<(String, String), NaiveDateTime>,
+    /// Zone definitions keyed by zone_id
+    pub zones: HashMap<String, CachedZone>,
+    /// Zone entry timestamps keyed by (rule_id, device_id) → entered_at
+    pub zone_entry_times: HashMap<(String, String), chrono::NaiveDateTime>,
     /// Monotonically increasing version bumped on every cache mutation
     pub version: u64,
 }
