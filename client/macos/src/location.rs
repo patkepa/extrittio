@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
@@ -8,7 +9,7 @@ use objc2::{define_class, msg_send, AnyThread, DefinedClass};
 use objc2_core_location::{
     CLAuthorizationStatus, CLLocation, CLLocationManager, CLLocationManagerDelegate,
 };
-use objc2_foundation::{NSArray, NSError, NSObject, NSObjectProtocol, NSRunLoop};
+use objc2_foundation::{NSArray, NSDate, NSError, NSObject, NSObjectProtocol, NSRunLoop};
 
 /// Real-time location data from CoreLocation.
 #[derive(Debug, Clone, Copy)]
@@ -20,12 +21,13 @@ pub struct LocationData {
     pub heading: f32,
 }
 
-/// Provides real device location via macOS CoreLocation.
+/// Provides real device location via macOS CoreLocation, with simulated
+/// fallback when CoreLocation permission is unavailable (e.g., CLI tools
+/// on macOS Tahoe+).
 ///
-/// Spawns a background thread running an NSRunLoop for delegate callbacks.
-/// The telemetry loop reads the latest location via `latest()`.
-/// Falls back gracefully: `latest()` returns `None` if location is
-/// unavailable, permission is denied, or no fix has been obtained yet.
+/// Spawns a background thread that attempts CoreLocation first. If no
+/// real location is received within a timeout, falls back to the SDK's
+/// simulated LocationState for demonstration purposes.
 pub struct LocationProvider {
     state: Arc<Mutex<Option<LocationData>>>,
 }
@@ -177,44 +179,153 @@ impl LocationDelegate {
 // ---------------------------------------------------------------------------
 
 fn run_location_loop(state: Arc<Mutex<Option<LocationData>>>) {
-    let delegate = LocationDelegate::new(state);
+    let delegate = LocationDelegate::new(state.clone());
 
-    // Create CLLocationManager in the outer scope so it stays alive
-    // alongside the NSRunLoop. If it were inside an inner unsafe block,
-    // the Retained<CLLocationManager> would be dropped when that block
-    // ends, deallocating the manager before the run loop starts.
     let manager = unsafe { CLLocationManager::new() };
 
     unsafe {
-        // desiredAccuracy = kCLLocationAccuracyBest (0.0)
         manager.setDesiredAccuracy(0.0);
-
-        // distanceFilter = 10.0 meters
         manager.setDistanceFilter(10.0);
-
-        // Set delegate
         manager.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
 
-        // Check authorization and start updates.
-        // On macOS, calling startUpdatingLocation() triggers the permission
-        // prompt if status is NotDetermined. The delegate's
-        // locationManagerDidChangeAuthorization: callback handles the rest.
-        let status = manager.authorizationStatus();
-        if status == CLAuthorizationStatus::Denied
-            || status == CLAuthorizationStatus::Restricted
+        let auth = manager.authorizationStatus();
+        if auth == CLAuthorizationStatus::Denied
+            || auth == CLAuthorizationStatus::Restricted
         {
             tracing::warn!(
-                "Location permission denied/restricted — skipping location updates"
+                "Location permission denied/restricted — falling back to simulated location"
             );
-            return; // Thread exits; latest() will always return None.
+            drop(delegate);
+            run_simulated_location(state);
+            return;
+        }
+
+        if auth == CLAuthorizationStatus(0) {
+            // NotDetermined — request authorization
+            manager.requestAlwaysAuthorization();
         }
 
         tracing::info!("Starting CoreLocation updates...");
         manager.startUpdatingLocation();
     }
 
-    // Run the NSRunLoop forever to receive delegate callbacks.
-    // Both `manager` and `delegate` are alive on the stack here.
-    // This thread is intentionally never stopped — it dies on process exit.
-    NSRunLoop::currentRunLoop().run();
+    // Give CoreLocation a chance to deliver a fix via the run loop.
+    let start = Instant::now();
+    let timeout = Duration::from_secs(10);
+    let run_loop = NSRunLoop::currentRunLoop();
+
+    while start.elapsed() < timeout {
+        let future = NSDate::dateWithTimeIntervalSinceNow(0.5);
+        run_loop.runUntilDate(&future);
+
+        // Check if we got a real location
+        if state.lock().ok().is_some_and(|g| g.is_some()) {
+            tracing::info!("CoreLocation delivering real location data");
+            // Keep running the run loop forever for continued updates
+            loop {
+                let future = NSDate::dateWithTimeIntervalSinceNow(1.0);
+                run_loop.runUntilDate(&future);
+            }
+        }
+    }
+
+    // CoreLocation didn't deliver within the timeout — fall back to simulation
+    tracing::warn!(
+        "CoreLocation unavailable (no permission or no fix after {}s) — using simulated location",
+        timeout.as_secs()
+    );
+
+    // Clean up CoreLocation resources
+    unsafe {
+        manager.stopUpdatingLocation();
+        manager.setDelegate(None);
+    }
+    drop(delegate);
+    drop(manager);
+
+    run_simulated_location(state);
+}
+
+// ---------------------------------------------------------------------------
+// Simulated location fallback
+// ---------------------------------------------------------------------------
+
+fn run_simulated_location(state: Arc<Mutex<Option<LocationData>>>) {
+    use extrittio_sdk::location::LocationState;
+
+    // Start near the user's likely location (Warsaw, Poland — SDK default)
+    let mut sim = LocationState::default();
+    let mut rng = SmallRng::from_os_rng();
+
+    tracing::info!(
+        "Simulated location started at {:.6}, {:.6}",
+        sim.latitude,
+        sim.longitude
+    );
+
+    // Write initial position immediately
+    if let Ok(mut guard) = state.lock() {
+        *guard = Some(LocationData {
+            latitude: sim.latitude,
+            longitude: sim.longitude,
+            altitude: sim.altitude,
+            speed: sim.speed,
+            heading: sim.heading,
+        });
+    }
+
+    loop {
+        std::thread::sleep(Duration::from_secs(5));
+
+        sim.step(
+            rng_range(&mut rng, -0.0003, 0.0003),
+            rng_range(&mut rng, -0.0003, 0.0003),
+            rng_range_f32(&mut rng, -2.0, 2.0),
+        );
+
+        if let Ok(mut guard) = state.lock() {
+            *guard = Some(LocationData {
+                latitude: sim.latitude,
+                longitude: sim.longitude,
+                altitude: sim.altitude,
+                speed: sim.speed,
+                heading: sim.heading,
+            });
+        }
+    }
+}
+
+// Simple RNG helpers to avoid pulling in the full `rand` crate
+use std::hash::{Hash, Hasher};
+
+struct SmallRng(u64);
+
+impl SmallRng {
+    fn from_os_rng() -> Self {
+        // Seed from current time + thread id
+        let mut hasher = std::hash::DefaultHasher::new();
+        std::time::SystemTime::now().hash(&mut hasher);
+        std::thread::current().id().hash(&mut hasher);
+        Self(hasher.finish())
+    }
+
+    fn next_u64(&mut self) -> u64 {
+        // xorshift64
+        self.0 ^= self.0 << 13;
+        self.0 ^= self.0 >> 7;
+        self.0 ^= self.0 << 17;
+        self.0
+    }
+
+    fn next_f64(&mut self) -> f64 {
+        (self.next_u64() >> 11) as f64 / (1u64 << 53) as f64
+    }
+}
+
+fn rng_range(rng: &mut SmallRng, min: f64, max: f64) -> f64 {
+    min + rng.next_f64() * (max - min)
+}
+
+fn rng_range_f32(rng: &mut SmallRng, min: f32, max: f32) -> f32 {
+    min + rng.next_f64() as f32 * (max - min)
 }
