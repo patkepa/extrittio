@@ -16,3 +16,4 @@ pub mod server_metrics;
 pub mod shadow_service;
 pub mod telemetry_service;
 pub mod user_service;
+pub mod zone_service;

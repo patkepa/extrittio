@@ -1,0 +1,183 @@
+use axum::{
+    Json, Router,
+    extract::{Path, State},
+    http::StatusCode,
+    routing::{get, post},
+};
+use chrono::DateTime;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+
+use crate::db::models::Zone;
+use crate::error::AppError;
+use crate::services::zone_service;
+use crate::state::{AppState, run_db};
+
+// ---------------------------------------------------------------------------
+// Request / Response DTOs
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+pub struct CreateZoneRequest {
+    pub name: String,
+    pub description: Option<String>,
+    pub geometry_type: String,
+    pub geometry_json: serde_json::Value,
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateZoneRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub geometry_type: Option<String>,
+    pub geometry_json: Option<serde_json::Value>,
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ZoneResponse {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub geometry_type: String,
+    pub geometry_json: serde_json::Value,
+    pub color: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+// ---------------------------------------------------------------------------
+// Conversions
+// ---------------------------------------------------------------------------
+
+impl TryFrom<Zone> for ZoneResponse {
+    type Error = AppError;
+
+    fn try_from(zone: Zone) -> Result<Self, Self::Error> {
+        let geometry_json: serde_json::Value =
+            serde_json::from_str(&zone.geometry_json).map_err(|e| {
+                AppError::Internal(format!(
+                    "Corrupt geometry_json for zone {}: {e}",
+                    zone.id
+                ))
+            })?;
+
+        Ok(ZoneResponse {
+            id: zone.id,
+            name: zone.name,
+            description: zone.description,
+            geometry_type: zone.geometry_type,
+            geometry_json,
+            color: zone.color,
+            created_at: DateTime::<chrono::Utc>::from_naive_utc_and_offset(
+                zone.created_at,
+                chrono::Utc,
+            )
+            .to_rfc3339(),
+            updated_at: DateTime::<chrono::Utc>::from_naive_utc_and_offset(
+                zone.updated_at,
+                chrono::Utc,
+            )
+            .to_rfc3339(),
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Router
+// ---------------------------------------------------------------------------
+
+pub fn router() -> Router<Arc<AppState>> {
+    Router::new()
+        .route("/api/v1/zones", get(list_zones).post(create_zone))
+        .route(
+            "/api/v1/zones/{zone_id}",
+            get(get_zone).put(update_zone).delete(delete_zone),
+        )
+}
+
+// ---------------------------------------------------------------------------
+// Handlers
+// ---------------------------------------------------------------------------
+
+pub(crate) async fn list_zones(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Vec<ZoneResponse>>, AppError> {
+    let zones = run_db(&state.db_pool, move |conn| zone_service::list_zones(conn)).await?;
+
+    let responses = zones
+        .into_iter()
+        .map(ZoneResponse::try_from)
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(Json(responses))
+}
+
+pub(crate) async fn get_zone(
+    State(state): State<Arc<AppState>>,
+    Path(zone_id): Path<String>,
+) -> Result<Json<ZoneResponse>, AppError> {
+    let zone =
+        run_db(&state.db_pool, move |conn| zone_service::get_zone(conn, &zone_id)).await?;
+
+    Ok(Json(ZoneResponse::try_from(zone)?))
+}
+
+pub(crate) async fn create_zone(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<CreateZoneRequest>,
+) -> Result<(StatusCode, Json<ZoneResponse>), AppError> {
+    let geometry_json_str = body.geometry_json.to_string();
+    let description = body.description.unwrap_or_default();
+    let color = body.color.unwrap_or_else(|| "#4A90D9".to_string());
+
+    let zone = run_db(&state.db_pool, move |conn| {
+        zone_service::create_zone(
+            conn,
+            body.name,
+            description,
+            body.geometry_type,
+            geometry_json_str,
+            color,
+        )
+    })
+    .await?;
+
+    Ok((StatusCode::CREATED, Json(ZoneResponse::try_from(zone)?)))
+}
+
+pub(crate) async fn update_zone(
+    State(state): State<Arc<AppState>>,
+    Path(zone_id): Path<String>,
+    Json(body): Json<UpdateZoneRequest>,
+) -> Result<Json<ZoneResponse>, AppError> {
+    let geometry_json_str = body.geometry_json.map(|v| v.to_string());
+
+    let zone = run_db(&state.db_pool, move |conn| {
+        zone_service::update_zone(
+            conn,
+            &zone_id,
+            body.name,
+            body.description,
+            body.geometry_type,
+            geometry_json_str,
+            body.color,
+        )
+    })
+    .await?;
+
+    Ok(Json(ZoneResponse::try_from(zone)?))
+}
+
+pub(crate) async fn delete_zone(
+    State(state): State<Arc<AppState>>,
+    Path(zone_id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    run_db(&state.db_pool, move |conn| {
+        zone_service::delete_zone(conn, &zone_id)
+    })
+    .await?;
+
+    Ok(StatusCode::NO_CONTENT)
+}

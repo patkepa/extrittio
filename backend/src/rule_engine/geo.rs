@@ -40,10 +40,10 @@ pub fn point_in_polygon(lat: f64, lon: f64, polygon: &[(f64, f64)]) -> bool {
     let mut inside = false;
     let mut j = n - 1;
     for i in 0..n {
-        let (yi, xi) = polygon[i];
-        let (yj, xj) = polygon[j];
-        if ((yi > lon) != (yj > lon))
-            && (lat < (xj - xi) * (lon - yi) / (yj - yi) + xi)
+        let (lati, loni) = polygon[i];
+        let (latj, lonj) = polygon[j];
+        if ((lati > lat) != (latj > lat))
+            && (lon < (lonj - loni) * (lat - lati) / (latj - lati) + loni)
         {
             inside = !inside;
         }

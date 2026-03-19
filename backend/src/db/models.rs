@@ -687,3 +687,14 @@ pub struct NewZone {
     pub geometry_json: String,
     pub color: String,
 }
+
+#[derive(AsChangeset, Debug, Default)]
+#[diesel(table_name = zones)]
+pub struct UpdateZone {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub geometry_type: Option<String>,
+    pub geometry_json: Option<String>,
+    pub color: Option<String>,
+    pub updated_at: Option<NaiveDateTime>,
+}

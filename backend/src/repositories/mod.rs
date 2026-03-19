@@ -14,3 +14,4 @@ pub mod server_metrics_repo;
 pub mod shadow_repo;
 pub mod telemetry_repo;
 pub mod user_repo;
+pub mod zone_repo;
