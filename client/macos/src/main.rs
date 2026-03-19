@@ -334,6 +334,7 @@ async fn run_async(cfg: config::Config, device_id: String) {
 
     // -- Telemetry loop (main task) — real system metrics --
     let mut collector = metrics::MetricsCollector::new();
+    let location_provider = location::LocationProvider::new();
     let telemetry_interval = cfg.telemetry_interval_secs;
     let mut interval = tokio::time::interval(Duration::from_secs(telemetry_interval));
 
@@ -359,6 +360,7 @@ async fn run_async(cfg: config::Config, device_id: String) {
                 let battery_level = collector.battery_level();
                 let metadata = collector.extended_metrics();
 
+                let loc = location_provider.latest();
                 let telemetry = DeviceTelemetry {
                     device_id: device_id.clone(),
                     timestamp: extrittio_sdk::time::now_millis(),
@@ -366,24 +368,36 @@ async fn run_async(cfg: config::Config, device_id: String) {
                     humidity: 0.0,
                     battery_level,
                     metadata,
-                    latitude: 0.0,
-                    longitude: 0.0,
-                    speed: 0.0,
-                    altitude: 0.0,
-                    heading: 0.0,
+                    latitude: loc.map_or(0.0, |l| l.latitude),
+                    longitude: loc.map_or(0.0, |l| l.longitude),
+                    speed: loc.map_or(0.0, |l| l.speed),
+                    altitude: loc.map_or(0.0, |l| l.altitude),
+                    heading: loc.map_or(0.0, |l| l.heading),
                 };
 
                 let payload = telemetry.encode_to_vec();
                 if let Err(e) = session.put(&telemetry_topic, payload).await {
                     tracing::warn!("Failed to send telemetry: {}", e);
                 } else {
-                    tracing::info!(
-                        "Telemetry: battery={:.1}% cpu={}% mem={}% load={}",
-                        battery_level,
-                        telemetry.metadata.get("cpu_usage_percent").map_or("-", String::as_str),
-                        telemetry.metadata.get("memory_usage_percent").map_or("-", String::as_str),
-                        telemetry.metadata.get("load_1m").map_or("-", String::as_str),
-                    );
+                    if let Some(ref l) = loc {
+                        tracing::info!(
+                            "Telemetry: battery={:.1}% cpu={}% mem={}% load={} loc=({:.6},{:.6})",
+                            battery_level,
+                            telemetry.metadata.get("cpu_usage_percent").map_or("-", String::as_str),
+                            telemetry.metadata.get("memory_usage_percent").map_or("-", String::as_str),
+                            telemetry.metadata.get("load_1m").map_or("-", String::as_str),
+                            l.latitude,
+                            l.longitude,
+                        );
+                    } else {
+                        tracing::info!(
+                            "Telemetry: battery={:.1}% cpu={}% mem={}% load={} loc=none",
+                            battery_level,
+                            telemetry.metadata.get("cpu_usage_percent").map_or("-", String::as_str),
+                            telemetry.metadata.get("memory_usage_percent").map_or("-", String::as_str),
+                            telemetry.metadata.get("load_1m").map_or("-", String::as_str),
+                        );
+                    }
                 }
             }
             _ = &mut shutdown => {
