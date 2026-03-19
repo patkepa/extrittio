@@ -13,6 +13,7 @@ use utoipa::{IntoParams, ToSchema};
 use crate::db::models::{NewDevice, UpdateDevice};
 use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse, PaginationParams};
+use crate::repositories::telemetry_repo;
 use crate::services::{command_service, device_service};
 use crate::state::{AppState, run_db};
 
@@ -123,6 +124,16 @@ pub struct BulkAffectedResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+pub struct LocationResponse {
+    pub latitude: f64,
+    pub longitude: f64,
+    pub speed: Option<f32>,
+    pub altitude: Option<f32>,
+    pub heading: Option<f32>,
+    pub timestamp: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct BulkOperationError {
     pub device_id: String,
     pub error: String,
@@ -189,6 +200,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/api/v1/devices/bulk/delete", post(bulk_delete_devices))
         .route("/api/v1/devices/bulk/restart", post(bulk_restart_devices))
         .route("/api/v1/devices/bulk/ota", post(bulk_trigger_ota))
+        .route("/api/v1/devices/{id}/location/latest", get(get_device_latest_location))
 }
 
 // ---------------------------------------------------------------------------
@@ -632,4 +644,34 @@ pub(crate) async fn list_ota_deployments(
     .await?;
 
     Ok(Json(response))
+}
+
+/// Get the latest location recorded for a device.
+#[utoipa::path(
+    get,
+    path = "/api/v1/devices/{id}/location/latest",
+    tag = "devices",
+    security(("bearer_auth" = [])),
+    params(("id" = String, Path, description = "Device ID")),
+    responses(
+        (status = 200, description = "Latest location or null", body = Option<LocationResponse>),
+    ),
+)]
+pub(crate) async fn get_device_latest_location(
+    State(state): State<Arc<AppState>>,
+    Path(device_id): Path<String>,
+) -> Result<Json<Option<LocationResponse>>, AppError> {
+    let result = run_db(&state.db_pool, move |conn| {
+        let record = telemetry_repo::get_latest_location(conn, &device_id)?;
+        Ok(record.map(|r| LocationResponse {
+            latitude: r.latitude.unwrap_or(0.0),
+            longitude: r.longitude.unwrap_or(0.0),
+            speed: r.speed,
+            altitude: r.altitude,
+            heading: r.heading,
+            timestamp: r.received_at.and_utc().to_rfc3339(),
+        }))
+    })
+    .await?;
+    Ok(Json(result))
 }

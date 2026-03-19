@@ -1,6 +1,7 @@
 // Repository functions for telemetry
 
 use chrono::NaiveDateTime;
+use diesel::OptionalExtension;
 use diesel::SqliteConnection;
 use diesel::prelude::*;
 
@@ -31,6 +32,20 @@ pub fn list_telemetry(
         .limit(limit)
         .select(TelemetryRecord::as_select())
         .load(conn)
+}
+
+pub fn get_latest_location(
+    conn: &mut SqliteConnection,
+    dev_id: &str,
+) -> QueryResult<Option<TelemetryRecord>> {
+    use crate::db::schema::telemetry::dsl::*;
+    telemetry
+        .filter(device_id.eq(dev_id))
+        .filter(latitude.is_not_null())
+        .filter(longitude.is_not_null())
+        .order(received_at.desc())
+        .first::<TelemetryRecord>(conn)
+        .optional()
 }
 
 pub fn insert_telemetry(
