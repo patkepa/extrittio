@@ -1,5 +1,7 @@
-import { CircleMarker, Popup } from "react-leaflet";
+import { useEffect, useRef, useCallback } from "react";
+import { CircleMarker, Popup, useMap } from "react-leaflet";
 import { Link } from "react-router-dom";
+import type L from "leaflet";
 
 interface DeviceMarkerProps {
   deviceId: string;
@@ -17,14 +19,33 @@ const STATUS_COLORS: Record<string, string> = {
   warning: "#d4a017",
 };
 
+function radiusForZoom(zoom: number): number {
+  // Scale: zoom 3 → 3px, zoom 10 → 6px, zoom 14+ → 8px
+  return Math.max(3, Math.min(8, Math.round(zoom * 0.55)));
+}
+
 export function DeviceMarker({
   deviceId, deviceName, status, latitude, longitude, speed, lastSeen,
 }: DeviceMarkerProps) {
   const color = STATUS_COLORS[status] || STATUS_COLORS.offline;
+  const map = useMap();
+  const markerRef = useRef<L.CircleMarker>(null);
+
+  const updateRadius = useCallback(() => {
+    markerRef.current?.setRadius(radiusForZoom(map.getZoom()));
+  }, [map]);
+
+  useEffect(() => {
+    updateRadius();
+    map.on("zoom", updateRadius);
+    return () => { map.off("zoom", updateRadius); };
+  }, [map, updateRadius]);
+
   return (
     <CircleMarker
+      ref={markerRef}
       center={[latitude, longitude]}
-      radius={8}
+      radius={radiusForZoom(map.getZoom())}
       pathOptions={{ color, fillColor: color, fillOpacity: 0.8, weight: 2 }}
     >
       <Popup>

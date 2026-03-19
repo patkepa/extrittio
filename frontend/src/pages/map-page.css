@@ -13,8 +13,8 @@
   border-radius: 0;
 }
 
-/* Zone panel toggle — floats above the panel */
-.zone-panel-toggle {
+/* Panel toggle — floats above the panel */
+.map-panel-toggle {
   position: absolute;
   top: 8px;
   right: 268px;
@@ -27,11 +27,10 @@
   transition: opacity 0.15s ease, right 0.25s ease;
 }
 
-.zone-panel--collapsed ~ .zone-panel-toggle,
-.map-page:has(.zone-panel--collapsed) > .zone-panel-toggle {
+.map-page:has(.map-panel--collapsed) > .map-panel-toggle {
   right: 8px;
 }
 
-.zone-panel-toggle:hover {
+.map-panel-toggle:hover {
   opacity: 1;
 }

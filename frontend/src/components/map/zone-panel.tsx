@@ -27,17 +27,36 @@ const ZONE_COLORS = [
   "#5C7080",
 ];
 
+const STATUS_COLORS: Record<string, string> = {
+  online: "#43bf4d",
+  offline: "#868686",
+  warning: "#d4a017",
+};
+
 interface PendingZoneGeometry {
   geometry_type: "circle" | "polygon";
   geometry_json: CircleGeometry | PolygonGeometry;
 }
 
-interface ZonePanelProps {
+export interface MapDevice {
+  id: string;
+  name: string;
+  status: string;
+  latest_latitude: number;
+  latest_longitude: number;
+  last_seen_at?: string | null;
+}
+
+type PanelTab = "devices" | "zones";
+
+interface MapPanelProps {
   drawMode: boolean;
   onToggleDrawMode: () => void;
   onZoneClick: (zone: Zone) => void;
+  onDeviceClick: (device: MapDevice) => void;
   hiddenZoneIds: Set<string>;
   onToggleZoneVisibility: (id: string) => void;
+  devices: MapDevice[];
   collapsed?: boolean;
 }
 
@@ -45,15 +64,18 @@ export function ZonePanel({
   drawMode,
   onToggleDrawMode,
   onZoneClick,
+  onDeviceClick,
   hiddenZoneIds,
   onToggleZoneVisibility,
+  devices,
   collapsed,
-}: ZonePanelProps) {
+}: MapPanelProps) {
   const { data: zones = [] } = useZones();
   const createZone = useCreateZone();
   const updateZone = useUpdateZone();
   const deleteZoneMutation = useDeleteZone();
 
+  const [activeTab, setActiveTab] = useState<PanelTab>("devices");
   const [nameDialogOpen, setNameDialogOpen] = useState(false);
   const [pendingGeometry, setPendingGeometry] = useState<PendingZoneGeometry | null>(null);
   const [zoneName, setZoneName] = useState("");
@@ -131,99 +153,156 @@ export function ZonePanel({
   ZonePanel.acceptDrawnLayer = acceptDrawnLayer;
 
   return (
-    <div className={`zone-panel${collapsed ? " zone-panel--collapsed" : ""}`}>
-      <div className="zone-panel-header">
-        <span className="zone-panel-title">Zones</span>
-        <Button
-          small
-          minimal
-          intent={drawMode ? "danger" : "primary"}
-          icon={drawMode ? "cross" : "plus"}
-          onClick={onToggleDrawMode}
+    <div className={`map-panel${collapsed ? " map-panel--collapsed" : ""}`}>
+      {/* Tab bar */}
+      <div className="map-panel-tabs">
+        <button
+          className={`map-panel-tab${activeTab === "devices" ? " map-panel-tab--active" : ""}`}
+          onClick={() => setActiveTab("devices")}
         >
-          {drawMode ? "Cancel" : "Create"}
-        </Button>
+          Devices
+          <span className="map-panel-tab-count">{devices.length}</span>
+        </button>
+        <button
+          className={`map-panel-tab${activeTab === "zones" ? " map-panel-tab--active" : ""}`}
+          onClick={() => setActiveTab("zones")}
+        >
+          Zones
+          <span className="map-panel-tab-count">{zones.length}</span>
+        </button>
+        {activeTab === "zones" && (
+          <Button
+            small
+            minimal
+            intent={drawMode ? "danger" : "primary"}
+            icon={drawMode ? "cross" : "plus"}
+            className="map-panel-tab-action"
+            onClick={onToggleDrawMode}
+          />
+        )}
       </div>
 
-      <div className="zone-panel-list">
-        {zones.map((zone) => {
-          const hidden = hiddenZoneIds.has(zone.id);
-          return (
-            <div
-              key={zone.id}
-              className={`zone-panel-row${hidden ? " zone-panel-row--hidden" : ""}`}
-              onClick={() => onZoneClick(zone)}
-            >
-              <Button
-                minimal
-                small
-                icon={hidden ? "eye-off" : "eye-open"}
-                className="zone-panel-visibility"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleZoneVisibility(zone.id);
-                }}
-              />
-              <Popover
-                content={
-                  <div className="zone-color-picker" onClick={(e) => e.stopPropagation()}>
-                    {ZONE_COLORS.map((c) => (
-                      <button
-                        key={c}
-                        className={`zone-color-swatch${c === zone.color ? " zone-color-swatch--active" : ""}`}
-                        style={{ backgroundColor: c }}
-                        onClick={() => handleChangeZoneColor(zone, c)}
-                      />
-                    ))}
-                  </div>
-                }
-                placement="bottom-start"
-                minimal
+      {/* Devices tab */}
+      {activeTab === "devices" && (
+        <div className="map-panel-list">
+          {devices.map((device) => {
+            const color = STATUS_COLORS[device.status] || STATUS_COLORS.offline;
+            return (
+              <div
+                key={device.id}
+                className="map-panel-row"
+                onClick={() => onDeviceClick(device)}
               >
                 <span
-                  className="zone-panel-dot zone-panel-dot--clickable"
-                  style={{ backgroundColor: zone.color }}
-                  onClick={(e) => e.stopPropagation()}
+                  className="map-panel-led"
+                  style={{ backgroundColor: color, boxShadow: `0 0 4px ${color}80` }}
                 />
-              </Popover>
-              <span className="zone-panel-name">{zone.name}</span>
-              <Tag minimal className="zone-panel-tag">{zone.geometry_type}</Tag>
-              <Button
-                minimal
-                small
-                icon="trash"
-                intent="danger"
-                className="zone-panel-delete"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setDeleteAlertZone(zone);
-                }}
-              />
+                <span className="map-panel-name">{device.name}</span>
+                <span className="map-panel-status" style={{ color }}>
+                  {device.status}
+                </span>
+              </div>
+            );
+          })}
+          {devices.length === 0 && (
+            <div className="map-panel-empty">
+              <p>No devices with location data.</p>
             </div>
-          );
-        })}
-        {zones.length === 0 && !drawMode && (
-          <div className="zone-panel-empty">
-            <p>No zones defined yet.</p>
-            <p>Click <strong>Create</strong> to draw one on the map.</p>
-          </div>
+          )}
+        </div>
+      )}
+
+      {/* Zones tab */}
+      {activeTab === "zones" && (
+        <div className="map-panel-list">
+          {zones.map((zone) => {
+            const hidden = hiddenZoneIds.has(zone.id);
+            return (
+              <div
+                key={zone.id}
+                className={`map-panel-row${hidden ? " map-panel-row--hidden" : ""}`}
+                onClick={() => onZoneClick(zone)}
+              >
+                <Button
+                  minimal
+                  small
+                  icon={hidden ? "eye-off" : "eye-open"}
+                  className="map-panel-visibility"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleZoneVisibility(zone.id);
+                  }}
+                />
+                <Popover
+                  content={
+                    <div className="zone-color-picker" onClick={(e) => e.stopPropagation()}>
+                      {ZONE_COLORS.map((c) => (
+                        <button
+                          key={c}
+                          className={`zone-color-swatch${c === zone.color ? " zone-color-swatch--active" : ""}`}
+                          style={{ backgroundColor: c }}
+                          onClick={() => handleChangeZoneColor(zone, c)}
+                        />
+                      ))}
+                    </div>
+                  }
+                  placement="bottom-start"
+                  minimal
+                >
+                  <span
+                    className="map-panel-dot map-panel-dot--clickable"
+                    style={{ backgroundColor: zone.color }}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </Popover>
+                <span className="map-panel-name">{zone.name}</span>
+                <Tag minimal className="map-panel-tag">{zone.geometry_type}</Tag>
+                <Button
+                  minimal
+                  small
+                  icon="trash"
+                  intent="danger"
+                  className="map-panel-delete"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDeleteAlertZone(zone);
+                  }}
+                />
+              </div>
+            );
+          })}
+          {zones.length === 0 && !drawMode && (
+            <div className="map-panel-empty">
+              <p>No zones defined yet.</p>
+              <p>Click <strong>+</strong> to draw one on the map.</p>
+            </div>
+          )}
+          {drawMode && (
+            <div className="map-panel-draw-hint">
+              Draw a shape on the map using the toolbar, then name it.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Footer */}
+      <div className="map-panel-footer">
+        {activeTab === "devices" && (
+          <span>{devices.length} device{devices.length !== 1 ? "s" : ""} on map</span>
         )}
-        {drawMode && (
-          <div className="zone-panel-draw-hint">
-            Draw a shape on the map using the toolbar, then name it.
-          </div>
+        {activeTab === "zones" && (
+          <>
+            <span>{zones.length} zone{zones.length !== 1 ? "s" : ""}</span>
+            {hiddenZoneIds.size > 0 && (
+              <span className="map-panel-footer-muted">
+                {hiddenZoneIds.size} hidden
+              </span>
+            )}
+          </>
         )}
       </div>
 
-      <div className="zone-panel-footer">
-        <span>{zones.length} zone{zones.length !== 1 ? "s" : ""}</span>
-        {hiddenZoneIds.size > 0 && (
-          <span className="zone-panel-footer-hidden">
-            {hiddenZoneIds.size} hidden
-          </span>
-        )}
-      </div>
-
+      {/* Zone create dialog */}
       <Dialog
         isOpen={nameDialogOpen}
         onClose={() => setNameDialogOpen(false)}
@@ -276,6 +355,7 @@ export function ZonePanel({
         />
       </Dialog>
 
+      {/* Zone delete confirmation */}
       <Alert
         isOpen={!!deleteAlertZone}
         onClose={() => setDeleteAlertZone(null)}

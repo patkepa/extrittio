@@ -4,6 +4,7 @@ import { Button } from "@blueprintjs/core";
 import { DeviceMap } from "../components/map/device-map";
 import { ZoneLayer } from "../components/map/zone-layer";
 import { ZonePanel } from "../components/map/zone-panel";
+import type { MapDevice } from "../components/map/zone-panel";
 import { ZoneDrawControls } from "../components/map/zone-draw-controls";
 import { DeviceMarker } from "../components/map/device-marker";
 import { useDevices } from "../hooks/use-devices";
@@ -53,6 +54,12 @@ export default function MapPage() {
     }
   }, []);
 
+  const handleDeviceClick = useCallback((device: MapDevice) => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.flyTo([device.latest_latitude, device.latest_longitude], 16);
+  }, []);
+
   const handleToggleZoneVisibility = useCallback((id: string) => {
     setHiddenZoneIds((prev) => {
       const next = new Set(prev);
@@ -62,7 +69,7 @@ export default function MapPage() {
     });
   }, []);
 
-  const devicesWithLocation = (devices as any[]).filter(
+  const devicesWithLocation: MapDevice[] = (devices as any[]).filter(
     (d: any) => d.latest_latitude != null && d.latest_longitude != null
   );
 
@@ -78,7 +85,7 @@ export default function MapPage() {
             enabled={drawMode}
             onCreated={handleDrawCreated}
           />
-          {devicesWithLocation.map((device: any) => (
+          {devicesWithLocation.map((device) => (
             <DeviceMarker
               key={device.id}
               deviceId={device.id}
@@ -92,19 +99,21 @@ export default function MapPage() {
         </DeviceMap>
       </div>
       <Button
-        className="zone-panel-toggle"
+        className="map-panel-toggle"
         icon={panelOpen ? "chevron-right" : "chevron-left"}
         minimal
         small
-        title={panelOpen ? "Hide zone panel" : "Show zone panel"}
+        title={panelOpen ? "Hide panel" : "Show panel"}
         onClick={() => setPanelOpen((v) => !v)}
       />
       <ZonePanel
         drawMode={drawMode}
         onToggleDrawMode={handleToggleDrawMode}
         onZoneClick={handleZoneClick}
+        onDeviceClick={handleDeviceClick}
         hiddenZoneIds={hiddenZoneIds}
         onToggleZoneVisibility={handleToggleZoneVisibility}
+        devices={devicesWithLocation}
         collapsed={!panelOpen}
       />
     </div>
