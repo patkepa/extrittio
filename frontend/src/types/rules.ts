@@ -3,7 +3,7 @@ export interface Rule {
   name: string;
   description: string | null;
   enabled: boolean;
-  trigger_type: 'telemetry' | 'device_status';
+  trigger_type: 'telemetry' | 'device_status' | 'geofence';
   target_type: 'global' | 'device_type' | 'fleet' | 'device';
   target_id: string | null;
   cooldown_seconds: number;
@@ -18,6 +18,7 @@ export interface RuleCondition {
   field: string;
   operator: string;
   value: string;
+  zone_id?: string;
 }
 
 export interface RuleAction {
@@ -33,7 +34,7 @@ export interface CreateRuleRequest {
   target_type: string;
   target_id?: string;
   cooldown_seconds?: number;
-  conditions: { field: string; operator: string; value: string }[];
+  conditions: { field: string; operator: string; value: string; zone_id?: string }[];
   actions: { action_type: string; config: Record<string, unknown> }[];
 }
 

@@ -16,6 +16,7 @@ import { useRule, useCreateRule, useUpdateRule } from '../../hooks/use-rules';
 import { useDeviceTypes } from '../../hooks/use-device-types';
 import { useFleets } from '../../hooks/use-fleets';
 import { useDevices } from '../../hooks/use-devices';
+import { useZones } from '../../hooks/use-zones';
 import { useUIStore } from '../../stores/ui-store';
 import { showSuccessToast, showErrorToast } from '../../utils/toaster';
 
@@ -23,6 +24,7 @@ interface ConditionRow {
   field: string;
   operator: string;
   value: string;
+  zone_id?: string;
 }
 
 interface ActionRow {
@@ -34,8 +36,23 @@ const TELEMETRY_FIELDS = [
   { value: 'temperature', label: 'Temperature' },
   { value: 'humidity', label: 'Humidity' },
   { value: 'battery_level', label: 'Battery Level' },
+  { value: 'latitude', label: 'Latitude' },
+  { value: 'longitude', label: 'Longitude' },
+  { value: 'speed', label: 'Speed' },
+  { value: 'altitude', label: 'Altitude' },
+  { value: 'heading', label: 'Heading' },
 ];
 const STATUS_FIELDS = [{ value: 'status', label: 'Status' }];
+
+const GEOFENCE_FIELDS = [
+  { label: 'Zone State', value: 'zone_state' },
+  { label: 'Dwell Time (seconds)', value: 'dwell_seconds' },
+];
+
+const ZONE_STATE_VALUES = [
+  { label: 'Inside', value: 'inside' },
+  { label: 'Outside', value: 'outside' },
+];
 
 const NUMERIC_OPERATORS = [
   { value: 'gt', label: '>' },
@@ -49,15 +66,26 @@ const STATUS_OPERATORS = [
   { value: 'eq', label: '=' },
   { value: 'neq', label: '!=' },
 ];
+const ZONE_STATE_OPERATORS = [
+  { value: 'eq', label: '=' },
+  { value: 'neq', label: '!=' },
+];
 const STATUS_VALUES = ['online', 'offline', 'warning'];
 
 const ACTION_TYPES = ['alert', 'webhook', 'command'];
 const SEVERITY_OPTIONS = ['info', 'warning', 'critical'];
 
 const emptyCondition = (triggerType: string): ConditionRow => ({
-  field: triggerType === 'device_status' ? 'status' : 'temperature',
-  operator: triggerType === 'device_status' ? 'eq' : 'gt',
+  field:
+    triggerType === 'device_status'
+      ? 'status'
+      : triggerType === 'geofence'
+        ? 'zone_state'
+        : 'temperature',
+  operator:
+    triggerType === 'device_status' || triggerType === 'geofence' ? 'eq' : 'gt',
   value: '',
+  zone_id: undefined,
 });
 const emptyAction = (): ActionRow => ({
   action_type: 'alert',
@@ -75,6 +103,7 @@ export function RuleDialog() {
   const { data: fleets } = useFleets();
   const { data: devicesData } = useDevices();
   const devices = devicesData?.data ?? [];
+  const { data: zones = [] } = useZones();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -100,6 +129,7 @@ export function RuleDialog() {
               field: c.field,
               operator: c.operator,
               value: c.value,
+              zone_id: c.zone_id,
             }))
           : [emptyCondition(existingRule.trigger_type)],
       );
@@ -137,7 +167,10 @@ export function RuleDialog() {
     }
   }, [isRuleDialogOpen, resetCreate, resetUpdate]);
 
-  const hasEmptyConditions = conditions.some((c) => c.value.trim() === '');
+  const hasEmptyConditions = conditions.some((c) => {
+    if (triggerType === 'geofence' && !c.zone_id) return true;
+    return c.value.trim() === '';
+  });
   const hasInvalidActions = actions.some((a) => {
     if (a.action_type === 'webhook') {
       const url = (a.config.url as string) ?? '';
@@ -166,7 +199,12 @@ export function RuleDialog() {
       target_type: targetType,
       target_id: targetType !== 'global' ? targetId || undefined : undefined,
       cooldown_seconds: cooldownSeconds,
-      conditions,
+      conditions: conditions.map((c) => ({
+        field: c.field,
+        operator: c.operator,
+        value: c.value,
+        ...(c.zone_id && { zone_id: c.zone_id }),
+      })),
       actions: actions.map((a) => ({ action_type: a.action_type, config: a.config })),
     };
 
@@ -271,6 +309,7 @@ export function RuleDialog() {
             >
               <option value="telemetry">Telemetry</option>
               <option value="device_status">Device Status</option>
+              <option value="geofence">Geofence</option>
             </HTMLSelect>
           </FormGroup>
 
@@ -358,6 +397,102 @@ export function RuleDialog() {
             </Button>
           </div>
           {conditions.map((cond, i) => {
+            if (triggerType === 'geofence') {
+              const isZoneState = cond.field === 'zone_state';
+              const operators = isZoneState ? ZONE_STATE_OPERATORS : NUMERIC_OPERATORS;
+
+              return (
+                <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12, padding: 8, border: '1px solid var(--border-color)', background: 'hsla(0,0%,100%,0.02)' }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    {/* Field selector */}
+                    <HTMLSelect
+                      value={cond.field}
+                      onChange={(e) => {
+                        const newField = e.target.value;
+                        updateCondition(i, 'field', newField);
+                        // Reset operator and value when field changes
+                        setConditions((prev) =>
+                          prev.map((c, idx) =>
+                            idx === i
+                              ? {
+                                  ...c,
+                                  field: newField,
+                                  operator: newField === 'zone_state' ? 'eq' : 'gt',
+                                  value: '',
+                                }
+                              : c,
+                          ),
+                        );
+                      }}
+                      style={{ flex: 1 }}
+                    >
+                      {GEOFENCE_FIELDS.map((f) => (
+                        <option key={f.value} value={f.value}>
+                          {f.label}
+                        </option>
+                      ))}
+                    </HTMLSelect>
+                    <Button
+                      icon="cross"
+                      minimal
+                      small
+                      disabled={conditions.length <= 1}
+                      onClick={() => removeCondition(i)}
+                    />
+                  </div>
+                  {/* Zone picker */}
+                  <HTMLSelect
+                    value={cond.zone_id ?? ''}
+                    onChange={(e) => updateCondition(i, 'zone_id', e.target.value)}
+                  >
+                    <option value="">Select zone...</option>
+                    {zones.map((z) => (
+                      <option key={z.id} value={z.id}>
+                        {z.name}
+                      </option>
+                    ))}
+                  </HTMLSelect>
+                  {/* Operator + value row */}
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <HTMLSelect
+                      value={cond.operator}
+                      onChange={(e) => updateCondition(i, 'operator', e.target.value)}
+                      style={{ width: 70 }}
+                    >
+                      {operators.map((op) => (
+                        <option key={op.value} value={op.value}>
+                          {op.label}
+                        </option>
+                      ))}
+                    </HTMLSelect>
+                    {isZoneState ? (
+                      <HTMLSelect
+                        value={cond.value}
+                        onChange={(e) => updateCondition(i, 'value', e.target.value)}
+                        style={{ flex: 1 }}
+                      >
+                        <option value="">Select state...</option>
+                        {ZONE_STATE_VALUES.map((sv) => (
+                          <option key={sv.value} value={sv.value}>
+                            {sv.label}
+                          </option>
+                        ))}
+                      </HTMLSelect>
+                    ) : (
+                      <InputGroup
+                        placeholder="Threshold seconds"
+                        value={cond.value}
+                        onChange={(e) => updateCondition(i, 'value', e.target.value)}
+                        type="number"
+                        style={{ flex: 1 }}
+                      />
+                    )}
+                  </div>
+                </div>
+              );
+            }
+
+            // Telemetry / device_status conditions (original layout)
             const fields = triggerType === 'device_status' ? STATUS_FIELDS : TELEMETRY_FIELDS;
             const operators = triggerType === 'device_status' ? STATUS_OPERATORS : NUMERIC_OPERATORS;
             const isStatusField = cond.field === 'status';
