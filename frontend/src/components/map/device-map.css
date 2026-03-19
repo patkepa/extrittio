@@ -25,3 +25,28 @@
   color: #e0e0e0 !important;
   border-color: #333 !important;
 }
+
+/* Leaflet-draw toolbar — dark theme */
+.device-map .leaflet-draw-toolbar a {
+  background-color: #242424 !important;
+  border-color: #333 !important;
+}
+
+.device-map .leaflet-draw-toolbar a:hover {
+  background-color: #333 !important;
+}
+
+.device-map .leaflet-draw-actions {
+  background: #242424 !important;
+  border-color: #333 !important;
+}
+
+.device-map .leaflet-draw-actions a {
+  background: #242424 !important;
+  color: #e0e0e0 !important;
+  border-color: #333 !important;
+}
+
+.device-map .leaflet-draw-actions a:hover {
+  background: #333 !important;
+}

@@ -92,12 +92,12 @@
 }
 
 .zone-panel-visibility {
-  opacity: 0.4;
+  opacity: 0.5;
   flex-shrink: 0;
 }
 
 .zone-panel-row:hover .zone-panel-visibility {
-  opacity: 0.8;
+  opacity: 1;
 }
 
 .zone-panel-dot {
@@ -142,7 +142,7 @@
 }
 
 .zone-panel-row:hover .zone-panel-delete {
-  opacity: 0.6;
+  opacity: 1;
 }
 
 .zone-panel-delete:hover {
