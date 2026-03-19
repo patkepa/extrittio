@@ -15,6 +15,11 @@ typedef struct {
     float temperature;
     float humidity;
     float battery_level;
+    double latitude;
+    double longitude;
+    float speed;
+    float altitude;
+    float heading;
 } extrittio_telemetry_t;
 
 int extrittio_telemetry_encode(const extrittio_telemetry_t *t,

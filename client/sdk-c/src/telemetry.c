@@ -12,6 +12,11 @@ int extrittio_telemetry_encode(const extrittio_telemetry_t *t,
     pb.temperature = t->temperature;
     pb.humidity = t->humidity;
     pb.battery_level = t->battery_level;
+    pb.latitude = t->latitude;
+    pb.longitude = t->longitude;
+    pb.speed = t->speed;
+    pb.altitude = t->altitude;
+    pb.heading = t->heading;
 
     pb_ostream_t stream = pb_ostream_from_buffer(buf, len);
     if (!pb_encode(&stream, extrittio_DeviceTelemetry_fields, &pb)) {
