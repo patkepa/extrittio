@@ -19,6 +19,11 @@ export const navGroups: NavGroup[] = [
         icon: 'graph',
         href: '/fleet-graph',
       },
+      {
+        label: 'Map',
+        icon: 'map',
+        href: '/map',
+      },
     ],
   },
   {

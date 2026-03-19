@@ -21,6 +21,7 @@ const Settings = lazy(() =>
 const Help = lazy(() => import('./pages/help').then((m) => ({ default: m.Help })));
 const Rules = lazy(() => import('./pages/rules').then((m) => ({ default: m.Rules })));
 const AlertsPage = lazy(() => import('./pages/alerts').then((m) => ({ default: m.Alerts })));
+const MapPage = lazy(() => import('./pages/map-page'));
 
 // Import Blueprint.js styles
 import '@blueprintjs/core/lib/css/blueprint.css';
@@ -52,6 +53,7 @@ function App() {
                       <Route path="/fleet-graph" element={<FleetGraph />} />
                       <Route path="/rules" element={<Rules />} />
                       <Route path="/alerts" element={<AlertsPage />} />
+                      <Route path="/map" element={<MapPage />} />
                       <Route path="/help" element={<Help />} />
                       <Route path="/settings/*" element={<Settings />} />
                       <Route path="*" element={<Navigate to="/" replace />} />

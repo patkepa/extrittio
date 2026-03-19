@@ -1,0 +1,15 @@
+.map-page {
+  display: flex;
+  height: calc(100vh - 48px);
+  gap: 0;
+}
+
+.map-page-content {
+  flex: 1;
+  position: relative;
+}
+
+.map-page-content .device-map {
+  height: 100%;
+  border-radius: 0;
+}
