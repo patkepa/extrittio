@@ -1,0 +1,26 @@
+.device-map {
+  width: 100%;
+  height: 100%;
+  min-height: 400px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.device-map .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.8) contrast(1.2);
+}
+
+.device-map .leaflet-control-attribution {
+  background: rgba(0, 0, 0, 0.6) !important;
+  color: #aaa !important;
+}
+
+.device-map .leaflet-control-attribution a {
+  color: #aaa !important;
+}
+
+.device-map .leaflet-control-zoom a {
+  background: #242424 !important;
+  color: #e0e0e0 !important;
+  border-color: #333 !important;
+}
