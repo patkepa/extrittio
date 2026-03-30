@@ -237,18 +237,21 @@ pub fn delete_cooldowns_older_than(
         .execute(conn)
 }
 
-/// Insert or replace a cooldown record. Uses SQLite's `REPLACE INTO` semantics
-/// (the composite PK is `(rule_id, device_id)`).
+/// Insert or update a cooldown record. Uses PostgreSQL's `ON CONFLICT DO UPDATE`
+/// semantics on the composite PK `(rule_id, device_id)`.
 pub fn upsert_cooldown(
     conn: &mut PgConnection,
     cooldown: &RuleCooldown,
 ) -> Result<(), diesel::result::Error> {
-    diesel::replace_into(rule_cooldowns::table)
+    diesel::insert_into(rule_cooldowns::table)
         .values((
             rule_cooldowns::rule_id.eq(&cooldown.rule_id),
             rule_cooldowns::device_id.eq(&cooldown.device_id),
             rule_cooldowns::last_fired_at.eq(cooldown.last_fired_at),
         ))
+        .on_conflict((rule_cooldowns::rule_id, rule_cooldowns::device_id))
+        .do_update()
+        .set(rule_cooldowns::last_fired_at.eq(cooldown.last_fired_at))
         .execute(conn)?;
     Ok(())
 }
