@@ -34,7 +34,11 @@ pub fn merge_and_update(
     let current: Value = existing
         .as_ref()
         .map_or(Value::Object(Map::default()), |c| {
-            serde_json::from_str(&c.config).unwrap_or(Value::Object(Map::default()))
+            if c.config.is_object() {
+                c.config.clone()
+            } else {
+                Value::Object(Map::default())
+            }
         });
 
     let mut obj = current.as_object().cloned().unwrap_or_default();
@@ -48,7 +52,6 @@ pub fn merge_and_update(
 
     let merged = Value::Object(obj);
     let now = Utc::now().naive_utc();
-    let config_str = serde_json::to_string(&merged)?;
 
-    Ok(config_repo::upsert_config(conn, device_id, &config_str, now)?)
+    Ok(config_repo::upsert_config(conn, device_id, &merged, now)?)
 }

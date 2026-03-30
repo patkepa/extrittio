@@ -1,7 +1,7 @@
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
-
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 
 use super::schema::{
     alerts, api_keys, app_metrics, ca_certificates, command_history, device_certificates,
@@ -241,7 +241,7 @@ pub struct TelemetryRecord {
     pub temperature: Option<f32>,
     pub humidity: Option<f32>,
     pub battery_level: Option<f32>,
-    pub custom_json: Option<String>,
+    pub custom_json: Option<JsonValue>,
     pub received_at: NaiveDateTime,
     pub latitude: Option<f64>,
     pub longitude: Option<f64>,
@@ -258,7 +258,7 @@ pub struct NewTelemetryRecord {
     pub temperature: Option<f32>,
     pub humidity: Option<f32>,
     pub battery_level: Option<f32>,
-    pub custom_json: Option<String>,
+    pub custom_json: Option<JsonValue>,
     pub latitude: Option<f64>,
     pub longitude: Option<f64>,
     pub speed: Option<f32>,
@@ -275,9 +275,9 @@ pub struct NewTelemetryRecord {
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct DeviceShadow {
     pub device_id: String,
-    pub desired: String,
-    pub reported: String,
-    pub delta: String,
+    pub desired: JsonValue,
+    pub reported: JsonValue,
+    pub delta: JsonValue,
     pub version: i32,
     pub updated_at: NaiveDateTime,
 }
@@ -291,9 +291,9 @@ pub struct NewDeviceShadow {
 #[derive(AsChangeset, Debug, Default)]
 #[diesel(table_name = device_shadows)]
 pub struct UpdateShadow {
-    pub desired: Option<String>,
-    pub reported: Option<String>,
-    pub delta: Option<String>,
+    pub desired: Option<JsonValue>,
+    pub reported: Option<JsonValue>,
+    pub delta: Option<JsonValue>,
     pub version: Option<i32>,
     pub updated_at: Option<NaiveDateTime>,
 }
@@ -371,7 +371,7 @@ pub struct NewDeviceLog {
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct DeviceConfig {
     pub device_id: String,
-    pub config: String,
+    pub config: JsonValue,
     pub updated_at: NaiveDateTime,
 }
 
@@ -379,7 +379,7 @@ pub struct DeviceConfig {
 #[diesel(table_name = device_configs)]
 pub struct NewDeviceConfig {
     pub device_id: String,
-    pub config: String,
+    pub config: JsonValue,
 }
 
 // ---------------------------------------------------------------------------
@@ -587,7 +587,7 @@ pub struct RuleAction {
     pub id: String,
     pub rule_id: String,
     pub action_type: String,
-    pub config: String,
+    pub config: JsonValue,
 }
 
 #[derive(Insertable, Debug)]
@@ -596,7 +596,7 @@ pub struct NewRuleAction {
     pub id: String,
     pub rule_id: String,
     pub action_type: String,
-    pub config: String,
+    pub config: JsonValue,
 }
 
 // ---------------------------------------------------------------------------
@@ -671,7 +671,7 @@ pub struct Zone {
     pub name: String,
     pub description: String,
     pub geometry_type: String,
-    pub geometry_json: String,
+    pub geometry_json: JsonValue,
     pub color: String,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
@@ -684,7 +684,7 @@ pub struct NewZone {
     pub name: String,
     pub description: String,
     pub geometry_type: String,
-    pub geometry_json: String,
+    pub geometry_json: JsonValue,
     pub color: String,
 }
 
@@ -694,7 +694,7 @@ pub struct UpdateZone {
     pub name: Option<String>,
     pub description: Option<String>,
     pub geometry_type: Option<String>,
-    pub geometry_json: Option<String>,
+    pub geometry_json: Option<JsonValue>,
     pub color: Option<String>,
     pub updated_at: Option<NaiveDateTime>,
 }

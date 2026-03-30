@@ -225,8 +225,7 @@ pub fn evaluate_telemetry(
                 for rule_action in &rule.actions {
                     match rule_action.action_type.as_str() {
                         "alert" => {
-                            let config: Value =
-                                serde_json::from_str(&rule_action.config).unwrap_or_default();
+                            let config = &rule_action.config;
                             let severity = config
                                 .get("severity")
                                 .and_then(|v| v.as_str())
@@ -243,8 +242,7 @@ pub fn evaluate_telemetry(
                             });
                         }
                         "webhook" => {
-                            let config: Value =
-                                serde_json::from_str(&rule_action.config).unwrap_or_default();
+                            let config = &rule_action.config;
                             let url = config
                                 .get("url")
                                 .and_then(|v| v.as_str())
@@ -272,8 +270,7 @@ pub fn evaluate_telemetry(
                             actions.push(PendingAction::SendWebhook { url, headers, payload });
                         }
                         "command" => {
-                            let config: Value =
-                                serde_json::from_str(&rule_action.config).unwrap_or_default();
+                            let config = &rule_action.config;
                             let command = config
                                 .get("command")
                                 .and_then(|v| v.as_str())
@@ -367,8 +364,7 @@ pub fn evaluate_status_change(
                 for rule_action in &rule.actions {
                     match rule_action.action_type.as_str() {
                         "alert" => {
-                            let config: Value =
-                                serde_json::from_str(&rule_action.config).unwrap_or_default();
+                            let config = &rule_action.config;
                             let severity = config
                                 .get("severity")
                                 .and_then(|v| v.as_str())
@@ -384,8 +380,7 @@ pub fn evaluate_status_change(
                             });
                         }
                         "webhook" => {
-                            let config: Value =
-                                serde_json::from_str(&rule_action.config).unwrap_or_default();
+                            let config = &rule_action.config;
                             let url = config
                                 .get("url")
                                 .and_then(|v| v.as_str())
@@ -411,8 +406,7 @@ pub fn evaluate_status_change(
                             actions.push(PendingAction::SendWebhook { url, headers, payload });
                         }
                         "command" => {
-                            let config: Value =
-                                serde_json::from_str(&rule_action.config).unwrap_or_default();
+                            let config = &rule_action.config;
                             let command = config
                                 .get("command")
                                 .and_then(|v| v.as_str())
@@ -542,8 +536,7 @@ pub fn evaluate_geofence(
                 for rule_action in &rule.actions {
                     match rule_action.action_type.as_str() {
                         "alert" => {
-                            let config: Value =
-                                serde_json::from_str(&rule_action.config).unwrap_or_default();
+                            let config = &rule_action.config;
                             let severity = config
                                 .get("severity")
                                 .and_then(|v| v.as_str())
@@ -567,8 +560,7 @@ pub fn evaluate_geofence(
                             });
                         }
                         "webhook" => {
-                            let config: Value =
-                                serde_json::from_str(&rule_action.config).unwrap_or_default();
+                            let config = &rule_action.config;
                             let url = config
                                 .get("url")
                                 .and_then(|v| v.as_str())
@@ -594,8 +586,7 @@ pub fn evaluate_geofence(
                             actions.push(PendingAction::SendWebhook { url, headers, payload });
                         }
                         "command" => {
-                            let config: Value =
-                                serde_json::from_str(&rule_action.config).unwrap_or_default();
+                            let config = &rule_action.config;
                             let command = config
                                 .get("command")
                                 .and_then(|v| v.as_str())
@@ -688,21 +679,21 @@ mod tests {
     fn make_alert_action(severity: &str) -> CachedAction {
         CachedAction {
             action_type: "alert".to_string(),
-            config: format!(r#"{{"severity":"{}"}}"#, severity),
+            config: json!({"severity": severity}),
         }
     }
 
     fn make_webhook_action(url: &str) -> CachedAction {
         CachedAction {
             action_type: "webhook".to_string(),
-            config: format!(r#"{{"url":"{}"}}"#, url),
+            config: json!({"url": url}),
         }
     }
 
     fn make_command_action(command: &str) -> CachedAction {
         CachedAction {
             action_type: "command".to_string(),
-            config: format!(r#"{{"command":"{}","params":{{"key":"val"}}}}"#, command),
+            config: json!({"command": command, "params": {"key": "val"}}),
         }
     }
 

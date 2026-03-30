@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use anyhow::Context;
 use diesel::RunQueryDsl;
 use diesel::prelude::*;
@@ -18,6 +20,8 @@ pub fn create_db_pool(database_url: &str, pool_size: u32) -> anyhow::Result<DbPo
     let manager = ConnectionManager::<PgConnection>::new(database_url);
     Pool::builder()
         .max_size(pool_size)
+        .connection_timeout(Duration::from_secs(5))
+        .idle_timeout(Some(Duration::from_secs(300)))
         .build(manager)
         .context("Failed to create database connection pool")
 }

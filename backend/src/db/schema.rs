@@ -79,7 +79,7 @@ diesel::table! {
 diesel::table! {
     device_configs (device_id) {
         device_id -> Text,
-        config -> Text,
+        config -> Jsonb,
         updated_at -> Timestamptz,
     }
 }
@@ -97,9 +97,9 @@ diesel::table! {
 diesel::table! {
     device_shadows (device_id) {
         device_id -> Text,
-        desired -> Text,
-        reported -> Text,
-        delta -> Text,
+        desired -> Jsonb,
+        reported -> Jsonb,
+        delta -> Jsonb,
         version -> Int4,
         updated_at -> Timestamptz,
     }
@@ -182,7 +182,7 @@ diesel::table! {
         id -> Text,
         rule_id -> Text,
         action_type -> Text,
-        config -> Text,
+        config -> Jsonb,
     }
 }
 
@@ -253,7 +253,7 @@ diesel::table! {
         temperature -> Nullable<Float4>,
         humidity -> Nullable<Float4>,
         battery_level -> Nullable<Float4>,
-        custom_json -> Nullable<Text>,
+        custom_json -> Nullable<Jsonb>,
         latitude -> Nullable<Float8>,
         longitude -> Nullable<Float8>,
         speed -> Nullable<Float4>,
@@ -279,7 +279,7 @@ diesel::table! {
         name -> Text,
         description -> Text,
         geometry_type -> Text,
-        geometry_json -> Text,
+        geometry_json -> Jsonb,
         color -> Text,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,

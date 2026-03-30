@@ -1,4 +1,5 @@
 use diesel::PgConnection;
+use diesel::PgTextExpressionMethods;
 use diesel::prelude::*;
 
 use crate::db::models::{Device, DeviceType, Fleet, NewDevice, UpdateDevice};
@@ -30,8 +31,8 @@ fn filtered_device_query<'a>(
         let pattern = format!("%{search}%");
         query = query.filter(
             devices::name
-                .like(pattern.clone())
-                .or(device_types::name.like(pattern)),
+                .ilike(pattern.clone())
+                .or(device_types::name.ilike(pattern)),
         );
     }
     if let Some(fleet_id) = fleet_id_filter {
@@ -85,8 +86,8 @@ pub fn resolve_device_ids(
         let pattern = format!("%{search}%");
         query = query.filter(
             devices::name
-                .like(pattern.clone())
-                .or(device_types::name.like(pattern)),
+                .ilike(pattern.clone())
+                .or(device_types::name.ilike(pattern)),
         );
     }
     if let Some(fleet_id) = fleet_id_filter {

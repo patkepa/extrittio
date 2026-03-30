@@ -3,6 +3,7 @@
 use chrono::Utc;
 use diesel::PgConnection;
 use diesel::prelude::*;
+use serde_json::Value as JsonValue;
 
 use crate::db::models::{NewZone, UpdateZone, Zone};
 use crate::db::schema::zones;
@@ -37,7 +38,7 @@ pub fn update_zone(
     name: Option<String>,
     description: Option<String>,
     geometry_type: Option<String>,
-    geometry_json: Option<String>,
+    geometry_json: Option<JsonValue>,
     color: Option<String>,
 ) -> QueryResult<Zone> {
     let now = Utc::now().naive_utc();

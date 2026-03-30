@@ -152,7 +152,7 @@ pub fn list_server_metrics_downsampled(
 ) -> Result<Vec<DownsampledServerMetric>, diesel::result::Error> {
     let sql = "\
         SELECT \
-            (EXTRACT(EPOCH FROM recorded_at)::BIGINT / $1) * $2 AS bucket, \
+            EXTRACT(EPOCH FROM date_bin(make_interval(secs => $1), recorded_at, TIMESTAMPTZ '1970-01-01'))::BIGINT AS bucket, \
             AVG(cpu_usage_percent) AS cpu_usage_percent, \
             AVG(memory_used_bytes) AS memory_used_bytes, \
             AVG(memory_total_bytes) AS memory_total_bytes, \
@@ -164,12 +164,11 @@ pub fn list_server_metrics_downsampled(
             AVG(load_avg_5m) AS load_avg_5m, \
             AVG(load_avg_15m) AS load_avg_15m \
          FROM server_metrics \
-         WHERE recorded_at > $3 \
+         WHERE recorded_at > $2 \
          GROUP BY bucket \
          ORDER BY bucket ASC";
 
     diesel::sql_query(sql)
-        .bind::<BigInt, _>(resolution_secs)
         .bind::<BigInt, _>(resolution_secs)
         .bind::<Timestamptz, _>(since)
         .load(conn)
@@ -182,7 +181,7 @@ pub fn list_app_metrics_downsampled(
 ) -> Result<Vec<DownsampledAppMetric>, diesel::result::Error> {
     let sql = "\
         SELECT \
-            (EXTRACT(EPOCH FROM recorded_at)::BIGINT / $1) * $2 AS bucket, \
+            EXTRACT(EPOCH FROM date_bin(make_interval(secs => $1), recorded_at, TIMESTAMPTZ '1970-01-01'))::BIGINT AS bucket, \
             SUM(request_count) AS request_count, \
             SUM(error_count) AS error_count, \
             AVG(avg_latency_ms) AS avg_latency_ms, \
@@ -192,12 +191,11 @@ pub fn list_app_metrics_downsampled(
             SUM(zenoh_messages_in) AS zenoh_messages_in, \
             SUM(zenoh_messages_out) AS zenoh_messages_out \
          FROM app_metrics \
-         WHERE recorded_at > $3 \
+         WHERE recorded_at > $2 \
          GROUP BY bucket \
          ORDER BY bucket ASC";
 
     diesel::sql_query(sql)
-        .bind::<BigInt, _>(resolution_secs)
         .bind::<BigInt, _>(resolution_secs)
         .bind::<Timestamptz, _>(since)
         .load(conn)

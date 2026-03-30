@@ -24,7 +24,8 @@ pub struct TelemetryResponse {
     pub temperature: Option<f32>,
     pub humidity: Option<f32>,
     pub battery_level: Option<f32>,
-    pub custom_json: Option<String>,
+    #[schema(value_type = Option<Object>)]
+    pub custom_json: Option<serde_json::Value>,
     pub latitude: Option<f64>,
     pub longitude: Option<f64>,
     pub speed: Option<f32>,

@@ -2,6 +2,7 @@
 
 use diesel::prelude::*;
 use diesel::PgConnection;
+use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
 use crate::db::models::{NewZone, Zone};
@@ -26,7 +27,7 @@ pub fn create_zone(
     name: String,
     description: String,
     geometry_type: String,
-    geometry_json: String,
+    geometry_json: JsonValue,
     color: String,
 ) -> Result<Zone, AppError> {
     let zone_id = Uuid::new_v4().to_string();
@@ -49,7 +50,7 @@ pub fn update_zone(
     name: Option<String>,
     description: Option<String>,
     geometry_type: Option<String>,
-    geometry_json: Option<String>,
+    geometry_json: Option<JsonValue>,
     color: Option<String>,
 ) -> Result<Zone, AppError> {
     // Verify zone exists first

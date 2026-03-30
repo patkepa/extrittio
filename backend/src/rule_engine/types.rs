@@ -28,7 +28,7 @@ pub struct CachedCondition {
 #[derive(Debug, Clone)]
 pub struct CachedAction {
     pub action_type: String,
-    pub config: String,
+    pub config: serde_json::Value,
 }
 
 // ---------------------------------------------------------------------------

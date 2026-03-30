@@ -25,10 +25,16 @@ pub fn update_desired_db(
 ) -> Result<(Value, i32), AppError> {
     let shadow = shadow_repo::find_shadow(conn, device_id)?;
 
-    let current_desired: Value = serde_json::from_str(&shadow.desired)
-        .unwrap_or(Value::Object(serde_json::Map::default()));
-    let current_reported: Value = serde_json::from_str(&shadow.reported)
-        .unwrap_or(Value::Object(serde_json::Map::default()));
+    let current_desired = if shadow.desired.is_object() {
+        shadow.desired
+    } else {
+        Value::Object(serde_json::Map::default())
+    };
+    let current_reported = if shadow.reported.is_object() {
+        shadow.reported
+    } else {
+        Value::Object(serde_json::Map::default())
+    };
 
     let new_desired = merge_json(current_desired, patch);
     let new_delta = compute_shadow_delta(&new_desired, &current_reported);
@@ -36,8 +42,8 @@ pub fn update_desired_db(
     let now = chrono::Utc::now().naive_utc();
 
     let changeset = UpdateShadow {
-        desired: Some(serde_json::to_string(&new_desired)?),
-        delta: Some(serde_json::to_string(&new_delta)?),
+        desired: Some(new_desired),
+        delta: Some(new_delta.clone()),
         version: Some(new_version),
         updated_at: Some(now),
         ..Default::default()
@@ -76,18 +82,24 @@ pub fn update_reported(
     conn.transaction(|conn| {
         let shadow = shadow_repo::find_shadow(conn, device_id)?;
 
-        let current_desired: Value = serde_json::from_str(&shadow.desired)
-            .unwrap_or(Value::Object(serde_json::Map::default()));
-        let current_reported: Value = serde_json::from_str(&shadow.reported)
-            .unwrap_or(Value::Object(serde_json::Map::default()));
+        let current_desired = if shadow.desired.is_object() {
+            shadow.desired
+        } else {
+            Value::Object(serde_json::Map::default())
+        };
+        let current_reported = if shadow.reported.is_object() {
+            shadow.reported
+        } else {
+            Value::Object(serde_json::Map::default())
+        };
 
         let new_reported = merge_json(current_reported, patch);
         let new_delta = compute_shadow_delta(&current_desired, &new_reported);
         let now = chrono::Utc::now().naive_utc();
 
         let changeset = UpdateShadow {
-            reported: Some(serde_json::to_string(&new_reported)?),
-            delta: Some(serde_json::to_string(&new_delta)?),
+            reported: Some(new_reported),
+            delta: Some(new_delta),
             version: Some(shadow.version + 1),
             updated_at: Some(now),
             ..Default::default()
@@ -145,10 +157,11 @@ pub fn delete_shadow(
 ) -> Result<(), AppError> {
     let shadow = shadow_repo::find_shadow(conn, device_id)?;
     let now = chrono::Utc::now().naive_utc();
+    let empty = Value::Object(serde_json::Map::default());
     let changeset = UpdateShadow {
-        desired: Some("{}".to_string()),
-        reported: Some("{}".to_string()),
-        delta: Some("{}".to_string()),
+        desired: Some(empty.clone()),
+        reported: Some(empty.clone()),
+        delta: Some(empty),
         version: Some(shadow.version + 1),
         updated_at: Some(now),
     };

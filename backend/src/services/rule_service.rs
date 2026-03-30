@@ -43,7 +43,7 @@ fn validate_rule(
     target_id: &Option<String>,
     cooldown_seconds: i32,
     conditions: &[(String, String, String)],
-    actions: &[(String, String)],
+    actions: &[(String, Value)],
 ) -> Result<(), AppError> {
     // --- name ---
     let name = name.trim();
@@ -162,12 +162,10 @@ fn validate_rule(
         ));
     }
 
-    for (action_type, config_str) in actions {
+    for (action_type, config_val) in actions {
         match action_type.as_str() {
             "webhook" => {
-                let cfg: Value = serde_json::from_str(config_str)
-                    .map_err(|_| AppError::BadRequest("webhook action config must be valid JSON".into()))?;
-                let url = cfg.get("url").and_then(|v| v.as_str()).unwrap_or("");
+                let url = config_val.get("url").and_then(|v| v.as_str()).unwrap_or("");
                 if url.is_empty() {
                     return Err(AppError::BadRequest(
                         "webhook action config must have a non-empty 'url'".into(),
@@ -180,9 +178,7 @@ fn validate_rule(
                 }
             }
             "command" => {
-                let cfg: Value = serde_json::from_str(config_str)
-                    .map_err(|_| AppError::BadRequest("command action config must be valid JSON".into()))?;
-                let cmd = cfg.get("command").and_then(|v| v.as_str()).unwrap_or("");
+                let cmd = config_val.get("command").and_then(|v| v.as_str()).unwrap_or("");
                 if cmd.is_empty() {
                     return Err(AppError::BadRequest(
                         "command action config must have a non-empty 'command'".into(),
@@ -263,7 +259,7 @@ pub fn create_rule(
     target_id: Option<String>,
     cooldown_seconds: i32,
     conditions: Vec<(String, String, String)>,
-    actions: Vec<(String, String)>,
+    actions: Vec<(String, Value)>,
 ) -> Result<RuleWithDetails, AppError> {
     validate_rule(
         name,
@@ -333,7 +329,7 @@ pub fn update_rule(
     target_id: Option<Option<String>>,
     cooldown_seconds: Option<i32>,
     conditions: Option<Vec<(String, String, String)>>,
-    actions: Option<Vec<(String, String)>>,
+    actions: Option<Vec<(String, Value)>>,
 ) -> Result<RuleWithDetails, AppError> {
     // Fetch current rule to fill in defaults for validation
     let current = rule_repo::find_rule(conn, id).map_err(|e| match e {
@@ -368,7 +364,7 @@ pub fn update_rule(
             .map(|c| (c.field.clone(), c.operator.clone(), c.value.clone()))
             .collect(),
     };
-    let validated_actions: Vec<(String, String)> = match &actions {
+    let validated_actions: Vec<(String, Value)> = match &actions {
         Some(a) => a.clone(),
         None => current_actions
             .iter()
@@ -550,20 +546,18 @@ pub fn build_cache(conn: &mut PgConnection) -> Result<RuleCache, AppError> {
     Ok(cache)
 }
 
-fn parse_zone_geometry(geometry_type: &str, geometry_json: &str) -> Result<ZoneGeometry, String> {
-    let json: serde_json::Value = serde_json::from_str(geometry_json)
-        .map_err(|e| format!("Invalid zone geometry JSON: {}", e))?;
+fn parse_zone_geometry(geometry_type: &str, geometry_json: &Value) -> Result<ZoneGeometry, String> {
     match geometry_type {
         "circle" => {
-            let center = json["center"].as_array().ok_or("Missing center")?;
+            let center = geometry_json["center"].as_array().ok_or("Missing center")?;
             Ok(ZoneGeometry::Circle {
                 center_lat: center[0].as_f64().unwrap_or(0.0),
                 center_lon: center[1].as_f64().unwrap_or(0.0),
-                radius_meters: json["radius_meters"].as_f64().unwrap_or(0.0),
+                radius_meters: geometry_json["radius_meters"].as_f64().unwrap_or(0.0),
             })
         }
         "polygon" => {
-            let points = json["points"].as_array().ok_or("Missing points")?;
+            let points = geometry_json["points"].as_array().ok_or("Missing points")?;
             Ok(ZoneGeometry::Polygon {
                 points: points.iter().map(|p| {
                     let a = p.as_array().unwrap();
