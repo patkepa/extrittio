@@ -235,7 +235,7 @@ pub struct UpdateDevice {
 #[diesel(table_name = telemetry)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct TelemetryRecord {
-    pub id: i32,
+    pub id: i64,
     pub device_id: String,
     pub payload: Vec<u8>,
     pub temperature: Option<f32>,
@@ -347,7 +347,7 @@ pub struct NewServerConfigEntry {
 #[diesel(table_name = device_logs)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct DeviceLog {
-    pub id: i32,
+    pub id: i64,
     pub device_id: String,
     pub level: String,
     pub message: String,
@@ -443,7 +443,7 @@ pub struct NewApiKey {
 #[diesel(table_name = server_metrics)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct ServerMetric {
-    pub id: i32,
+    pub id: i64,
     pub cpu_usage_percent: f32,
     pub memory_used_bytes: i64,
     pub memory_total_bytes: i64,
@@ -476,7 +476,7 @@ pub struct NewServerMetric {
 #[diesel(table_name = app_metrics)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct AppMetric {
-    pub id: i32,
+    pub id: i64,
     pub request_count: i32,
     pub error_count: i32,
     pub avg_latency_ms: f32,
