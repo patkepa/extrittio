@@ -1,13 +1,27 @@
 services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: extrittio
+      POSTGRES_USER: extrittio
+      POSTGRES_PASSWORD: extrittio
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - app
+
   backend:
     build:
       context: .
       dockerfile: backend/Dockerfile
     restart: unless-stopped
-    volumes:
-      - db-data:/app/data
+    depends_on:
+      - postgres
     environment:
-      - DATABASE_URL=/app/data/extrittio.db
+      - DATABASE_URL=postgres://extrittio:extrittio@postgres/extrittio
       - PORT=8080
       - CORS_ORIGIN=*
       - RUST_LOG=extrittio_backend=info
@@ -29,7 +43,7 @@ services:
       - app
 
 volumes:
-  db-data:
+  pgdata:
 
 networks:
   app:
