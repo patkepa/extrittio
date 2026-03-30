@@ -16,7 +16,7 @@ use super::schema::{
 
 #[derive(Queryable, Selectable, Debug, Clone)]
 #[diesel(table_name = ca_certificates)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct CaCertificate {
     pub id: i32,
     pub private_key_pem: String,
@@ -37,7 +37,7 @@ pub struct NewCaCertificate {
 
 #[derive(Queryable, Selectable, Debug, Clone)]
 #[diesel(table_name = device_certificates)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct DeviceCertificate {
     pub id: i32,
     pub device_id: String,
@@ -64,7 +64,7 @@ pub struct NewDeviceCertificate {
 
 #[derive(Queryable, Selectable, Debug, Clone)]
 #[diesel(table_name = device_types)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct DeviceType {
     pub id: i32,
     pub name: String,
@@ -83,7 +83,7 @@ pub struct NewDeviceType {
 
 #[derive(Queryable, Selectable, Debug, Clone)]
 #[diesel(table_name = firmware_updates)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct FirmwareUpdate {
     pub id: i32,
     pub device_type_id: i32,
@@ -122,7 +122,7 @@ pub struct NewFirmwareUpdate {
 
 #[derive(Queryable, Selectable, Debug)]
 #[diesel(table_name = firmware_blobs)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct FirmwareBlob {
     pub firmware_update_id: i32,
     pub data: Vec<u8>,
@@ -145,7 +145,7 @@ pub struct NewFirmwareBlob {
 
 #[derive(Queryable, Selectable, Debug, Clone)]
 #[diesel(table_name = ota_deployments)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct OtaDeployment {
     pub id: i32,
     pub device_id: String,
@@ -169,7 +169,7 @@ pub struct NewOtaDeployment {
 
 #[derive(Queryable, Selectable, Debug, Clone)]
 #[diesel(table_name = fleets)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Fleet {
     pub id: i32,
     pub name: String,
@@ -188,7 +188,7 @@ pub struct NewFleet {
 
 #[derive(Queryable, Selectable, Debug)]
 #[diesel(table_name = devices)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Device {
     pub id: String,
     pub name: String,
@@ -233,7 +233,7 @@ pub struct UpdateDevice {
 
 #[derive(Queryable, Selectable, Debug)]
 #[diesel(table_name = telemetry)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct TelemetryRecord {
     pub id: i32,
     pub device_id: String,
@@ -272,7 +272,7 @@ pub struct NewTelemetryRecord {
 
 #[derive(Queryable, Selectable, Debug)]
 #[diesel(table_name = device_shadows)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct DeviceShadow {
     pub device_id: String,
     pub desired: String,
@@ -304,7 +304,7 @@ pub struct UpdateShadow {
 
 #[derive(Queryable, Selectable, Debug, Clone)]
 #[diesel(table_name = users)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct User {
     pub id: i32,
     pub username: String,
@@ -326,7 +326,7 @@ pub struct NewUser {
 
 #[derive(Queryable, Selectable, Debug, Clone)]
 #[diesel(table_name = server_config)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct ServerConfigEntry {
     pub key: String,
     pub value: String,
@@ -345,7 +345,7 @@ pub struct NewServerConfigEntry {
 
 #[derive(Queryable, Selectable, Debug)]
 #[diesel(table_name = device_logs)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct DeviceLog {
     pub id: i32,
     pub device_id: String,
@@ -368,7 +368,7 @@ pub struct NewDeviceLog {
 
 #[derive(Queryable, Selectable, Debug)]
 #[diesel(table_name = device_configs)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct DeviceConfig {
     pub device_id: String,
     pub config: String,
@@ -388,7 +388,7 @@ pub struct NewDeviceConfig {
 
 #[derive(Queryable, Selectable, Debug)]
 #[diesel(table_name = command_history)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct CommandRecord {
     pub id: String,
     pub device_id: String,
@@ -415,7 +415,7 @@ pub struct NewCommandRecord {
 
 #[derive(Queryable, Selectable, Debug, Clone)]
 #[diesel(table_name = api_keys)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct ApiKey {
     pub id: i32,
     pub name: String,
@@ -441,7 +441,7 @@ pub struct NewApiKey {
 
 #[derive(Queryable, Selectable, Debug)]
 #[diesel(table_name = server_metrics)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct ServerMetric {
     pub id: i32,
     pub cpu_usage_percent: f32,
@@ -474,7 +474,7 @@ pub struct NewServerMetric {
 
 #[derive(Queryable, Selectable, Debug)]
 #[diesel(table_name = app_metrics)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct AppMetric {
     pub id: i32,
     pub request_count: i32,
@@ -507,7 +507,7 @@ pub struct NewAppMetric {
 
 #[derive(Queryable, Selectable, Debug, Clone)]
 #[diesel(table_name = rules)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Rule {
     pub id: String,
     pub name: String,
@@ -553,7 +553,7 @@ pub struct UpdateRule {
 
 #[derive(Queryable, Selectable, Debug, Clone)]
 #[diesel(table_name = rule_conditions)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct RuleCondition {
     pub id: String,
     pub rule_id: String,
@@ -582,7 +582,7 @@ pub struct NewRuleCondition {
 
 #[derive(Queryable, Selectable, Debug, Clone)]
 #[diesel(table_name = rule_actions)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct RuleAction {
     pub id: String,
     pub rule_id: String,
@@ -605,7 +605,7 @@ pub struct NewRuleAction {
 
 #[derive(Queryable, Selectable, Debug, Clone)]
 #[diesel(table_name = alerts)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Alert {
     pub id: String,
     pub rule_id: Option<String>,
@@ -644,7 +644,7 @@ pub struct UpdateAlert {
 
 #[derive(Queryable, Selectable, Debug, Clone)]
 #[diesel(table_name = rule_cooldowns)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct RuleCooldown {
     pub rule_id: String,
     pub device_id: String,
@@ -665,7 +665,7 @@ pub struct NewRuleCooldown {
 
 #[derive(Queryable, Selectable, Debug, Serialize, Deserialize)]
 #[diesel(table_name = zones)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Zone {
     pub id: String,
     pub name: String,

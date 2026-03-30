@@ -9,7 +9,7 @@ pub type DeviceWithJoins = (Device, DeviceType, Option<Fleet>);
 type BoxedDeviceQuery<'a> = diesel::dsl::IntoBoxed<
     'a,
     diesel::dsl::LeftJoin<diesel::dsl::InnerJoin<devices::table, device_types::table>, fleets::table>,
-    diesel::sqlite::Sqlite,
+    diesel::pg::Pg,
 >;
 
 /// Build a filtered query for devices with joins. Shared by count and data queries.
