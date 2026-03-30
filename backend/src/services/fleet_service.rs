@@ -1,4 +1,4 @@
-use diesel::SqliteConnection;
+use diesel::PgConnection;
 use std::collections::HashMap;
 
 use crate::db::models::{Fleet, NewFleet};
@@ -11,7 +11,7 @@ pub struct FleetWithCount {
 }
 
 pub fn list(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     limit: i64,
     offset: i64,
 ) -> Result<(Vec<FleetWithCount>, i64), AppError> {
@@ -36,7 +36,7 @@ pub fn list(
     Ok((enriched, total))
 }
 
-pub fn create(conn: &mut SqliteConnection, name: &str) -> Result<Fleet, AppError> {
+pub fn create(conn: &mut PgConnection, name: &str) -> Result<Fleet, AppError> {
     if name.trim().is_empty() {
         return Err(AppError::BadRequest("Fleet name must not be empty".into()));
     }
@@ -48,7 +48,7 @@ pub fn create(conn: &mut SqliteConnection, name: &str) -> Result<Fleet, AppError
     )?)
 }
 
-pub fn rename(conn: &mut SqliteConnection, id: i32, new_name: &str) -> Result<Fleet, AppError> {
+pub fn rename(conn: &mut PgConnection, id: i32, new_name: &str) -> Result<Fleet, AppError> {
     let trimmed = new_name.trim();
     if trimmed.is_empty() {
         return Err(AppError::BadRequest("Fleet name must not be empty".into()));
@@ -57,7 +57,7 @@ pub fn rename(conn: &mut SqliteConnection, id: i32, new_name: &str) -> Result<Fl
         .ok_or_else(|| AppError::NotFound(format!("Fleet {id} not found")))
 }
 
-pub fn delete(conn: &mut SqliteConnection, id: i32) -> Result<(), AppError> {
+pub fn delete(conn: &mut PgConnection, id: i32) -> Result<(), AppError> {
     let deleted = fleet_repo::delete_fleet(conn, id)?;
     if !deleted {
         return Err(AppError::NotFound(format!("Fleet {id} not found")));

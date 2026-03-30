@@ -4,7 +4,7 @@ use rcgen::{
 };
 use sha2::{Digest, Sha256};
 
-use diesel::SqliteConnection;
+use diesel::PgConnection;
 
 use crate::db::models::{CaCertificate, DeviceCertificate, NewCaCertificate, NewDeviceCertificate};
 use crate::error::AppError;
@@ -157,7 +157,7 @@ pub struct CertBundle {
 
 /// Get the device certificate bundle. One-time private key download.
 pub fn get_device_certificate_bundle(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
 ) -> Result<CertBundle, AppError> {
     device_repo::find_device(conn, device_id)?;
@@ -184,7 +184,7 @@ pub fn get_device_certificate_bundle(
 
 /// Get certificate status (metadata only, no private key).
 pub fn get_device_certificate_status(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
 ) -> Result<Option<DeviceCertificate>, AppError> {
     device_repo::find_device(conn, device_id)?;
@@ -193,14 +193,14 @@ pub fn get_device_certificate_status(
 
 /// Get the CA certificate, if one has been initialized.
 pub fn get_ca_certificate(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
 ) -> Result<Option<CaCertificate>, AppError> {
     Ok(cert_repo::get_ca_certificate(conn)?)
 }
 
 /// Delete old certificates and generate a new one.
 pub fn regenerate_device_certificate(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
 ) -> Result<DeviceCertificate, AppError> {
     device_repo::find_device(conn, device_id)?;

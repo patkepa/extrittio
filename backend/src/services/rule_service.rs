@@ -1,7 +1,7 @@
 // Rule service — business logic for rule management and cache building
 
 use chrono::Utc;
-use diesel::SqliteConnection;
+use diesel::PgConnection;
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -209,7 +209,7 @@ fn validate_rule(
 // ---------------------------------------------------------------------------
 
 pub fn list_rules(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     enabled: Option<bool>,
     trigger_type: Option<&str>,
     target_type: Option<&str>,
@@ -221,7 +221,7 @@ pub fn list_rules(
 /// (3 queries total, regardless of rule count). This avoids the N+1 query
 /// problem that occurs when fetching details for each rule individually.
 pub fn list_rules_with_details(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     enabled: Option<bool>,
     trigger_type: Option<&str>,
     target_type: Option<&str>,
@@ -237,7 +237,7 @@ pub fn list_rules_with_details(
         .collect())
 }
 
-pub fn get_rule(conn: &mut SqliteConnection, id: &str) -> Result<RuleWithDetails, AppError> {
+pub fn get_rule(conn: &mut PgConnection, id: &str) -> Result<RuleWithDetails, AppError> {
     let rule = rule_repo::find_rule(conn, id).map_err(|e| match e {
         diesel::result::Error::NotFound => {
             AppError::NotFound(format!("Rule '{id}' not found"))
@@ -255,7 +255,7 @@ pub fn get_rule(conn: &mut SqliteConnection, id: &str) -> Result<RuleWithDetails
 
 #[allow(clippy::too_many_arguments)]
 pub fn create_rule(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     name: &str,
     description: Option<String>,
     trigger_type: &str,
@@ -324,7 +324,7 @@ pub fn create_rule(
 
 #[allow(clippy::too_many_arguments)]
 pub fn update_rule(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     id: &str,
     name: Option<String>,
     description: Option<Option<String>>,
@@ -443,7 +443,7 @@ pub fn update_rule(
     get_rule(conn, id)
 }
 
-pub fn delete_rule(conn: &mut SqliteConnection, id: &str) -> Result<(), AppError> {
+pub fn delete_rule(conn: &mut PgConnection, id: &str) -> Result<(), AppError> {
     let rows = rule_repo::delete_rule(conn, id)?;
     if rows == 0 {
         return Err(AppError::NotFound(format!("Rule '{id}' not found")));
@@ -452,7 +452,7 @@ pub fn delete_rule(conn: &mut SqliteConnection, id: &str) -> Result<(), AppError
 }
 
 pub fn toggle_rule(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     id: &str,
     enabled: bool,
 ) -> Result<(), AppError> {
@@ -475,7 +475,7 @@ pub fn toggle_rule(
 
 /// Delete stale cooldown records older than `cutoff`.
 pub fn delete_stale_cooldowns(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     cutoff: chrono::NaiveDateTime,
 ) -> Result<usize, AppError> {
     Ok(rule_repo::delete_cooldowns_older_than(conn, cutoff)?)
@@ -486,7 +486,7 @@ pub fn delete_stale_cooldowns(
 // ---------------------------------------------------------------------------
 
 /// Build the in-memory RuleCache from the current database state.
-pub fn build_cache(conn: &mut SqliteConnection) -> Result<RuleCache, AppError> {
+pub fn build_cache(conn: &mut PgConnection) -> Result<RuleCache, AppError> {
     let enabled_rules = rule_repo::load_all_enabled_rules(conn)?;
     let cooldowns = rule_repo::load_all_cooldowns(conn)?;
     let active_alerts = alert_repo::load_active_alerts(conn)?;

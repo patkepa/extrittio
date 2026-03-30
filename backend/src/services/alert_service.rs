@@ -1,7 +1,7 @@
 // Alert service — business logic for alert management
 
 use chrono::{NaiveDateTime, Utc};
-use diesel::SqliteConnection;
+use diesel::PgConnection;
 use uuid::Uuid;
 
 use crate::db::models::{Alert, NewAlert, UpdateAlert};
@@ -16,7 +16,7 @@ use crate::repositories::rule_repo;
 
 #[allow(clippy::too_many_arguments)]
 pub fn list_alerts(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     status: Option<&str>,
     severity: Option<&str>,
     device_id: Option<&str>,
@@ -31,7 +31,7 @@ pub fn list_alerts(
     )?)
 }
 
-pub fn get_alert(conn: &mut SqliteConnection, id: &str) -> Result<Alert, AppError> {
+pub fn get_alert(conn: &mut PgConnection, id: &str) -> Result<Alert, AppError> {
     alert_repo::find_alert(conn, id).map_err(|e| match e {
         diesel::result::Error::NotFound => {
             AppError::NotFound(format!("Alert '{id}' not found"))
@@ -41,7 +41,7 @@ pub fn get_alert(conn: &mut SqliteConnection, id: &str) -> Result<Alert, AppErro
 }
 
 pub fn create_alert(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     rule_id: Option<String>,
     device_id: String,
     severity: String,
@@ -67,7 +67,7 @@ pub fn create_alert(
 
 /// Transition an alert from `active` → `acknowledged`.
 /// Returns `BadRequest` if the alert is not currently active.
-pub fn acknowledge_alert(conn: &mut SqliteConnection, id: &str) -> Result<Alert, AppError> {
+pub fn acknowledge_alert(conn: &mut PgConnection, id: &str) -> Result<Alert, AppError> {
     let alert = get_alert(conn, id)?;
     if alert.status != "active" {
         return Err(AppError::BadRequest(format!(
@@ -87,7 +87,7 @@ pub fn acknowledge_alert(conn: &mut SqliteConnection, id: &str) -> Result<Alert,
 
 /// Transition an alert from `active` or `acknowledged` → `resolved`.
 /// Returns `BadRequest` if the alert is already resolved.
-pub fn resolve_alert(conn: &mut SqliteConnection, id: &str) -> Result<Alert, AppError> {
+pub fn resolve_alert(conn: &mut PgConnection, id: &str) -> Result<Alert, AppError> {
     let alert = get_alert(conn, id)?;
     if alert.status == "resolved" {
         return Err(AppError::BadRequest(format!(
@@ -106,7 +106,7 @@ pub fn resolve_alert(conn: &mut SqliteConnection, id: &str) -> Result<Alert, App
 
 /// Transition an alert from `acknowledged` or `resolved` → `active`.
 /// Returns `BadRequest` if the alert is already active.
-pub fn reactivate_alert(conn: &mut SqliteConnection, id: &str) -> Result<Alert, AppError> {
+pub fn reactivate_alert(conn: &mut PgConnection, id: &str) -> Result<Alert, AppError> {
     let alert = get_alert(conn, id)?;
     if alert.status == "active" {
         return Err(AppError::BadRequest(format!(
@@ -125,7 +125,7 @@ pub fn reactivate_alert(conn: &mut SqliteConnection, id: &str) -> Result<Alert, 
 /// Update the `triggered_value` field of an existing alert (used by the rule
 /// engine when the same condition fires again with a new sensor reading).
 pub fn update_triggered_value(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     id: &str,
     value: String,
 ) -> Result<(), AppError> {
@@ -148,7 +148,7 @@ pub fn update_triggered_value(
 // ---------------------------------------------------------------------------
 
 pub fn summary(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
 ) -> Result<Vec<(String, String, i64)>, AppError> {
     Ok(alert_repo::count_by_status_and_severity(conn)?)
 }
@@ -158,7 +158,7 @@ pub fn summary(
 // ---------------------------------------------------------------------------
 
 pub fn delete_resolved_older_than(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     cutoff: NaiveDateTime,
 ) -> Result<usize, AppError> {
     Ok(alert_repo::delete_resolved_older_than(conn, cutoff)?)
@@ -166,7 +166,7 @@ pub fn delete_resolved_older_than(
 
 /// Persist a cooldown entry to the database (fire-and-forget safe).
 pub fn persist_cooldown(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     rule_id: &str,
     device_id: &str,
     last_fired_at: NaiveDateTime,

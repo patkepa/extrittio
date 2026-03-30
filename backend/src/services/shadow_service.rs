@@ -1,5 +1,5 @@
 use diesel::Connection;
-use diesel::SqliteConnection;
+use diesel::PgConnection;
 use serde_json::Value;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -19,7 +19,7 @@ use crate::state::{DbPool, ZenohMetrics, run_db};
 /// needed (e.g. `trigger_ota`). When called via `update_desired` the outer
 /// `run_db` closure provides the transactional boundary.
 pub fn update_desired_db(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
     patch: &serde_json::Map<String, Value>,
 ) -> Result<(Value, i32), AppError> {
@@ -69,7 +69,7 @@ pub async fn update_desired(
 
 /// Merge a JSON patch into the reported state, recompute delta, persist.
 pub fn update_reported(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
     patch: &serde_json::Map<String, Value>,
 ) -> Result<(), AppError> {
@@ -132,7 +132,7 @@ pub async fn publish_delta_if_nonempty(
 
 /// Get the full shadow state for a device.
 pub fn get_shadow(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
 ) -> Result<DeviceShadow, AppError> {
     Ok(shadow_repo::find_shadow(conn, device_id)?)
@@ -140,7 +140,7 @@ pub fn get_shadow(
 
 /// Reset a device's shadow to empty state.
 pub fn delete_shadow(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
 ) -> Result<(), AppError> {
     let shadow = shadow_repo::find_shadow(conn, device_id)?;
@@ -158,7 +158,7 @@ pub fn delete_shadow(
 
 /// Process OTA status from a shadow report's reported state.
 pub fn process_ota_from_report(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
     reported: &serde_json::Value,
 ) -> Result<(), AppError> {

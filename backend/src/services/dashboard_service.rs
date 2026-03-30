@@ -1,4 +1,4 @@
-use diesel::SqliteConnection;
+use diesel::PgConnection;
 
 use crate::error::AppError;
 use crate::repositories::dashboard_repo;
@@ -10,7 +10,7 @@ pub struct DashboardStats {
     pub total_messages: i64,
 }
 
-pub fn get_stats(conn: &mut SqliteConnection) -> Result<DashboardStats, AppError> {
+pub fn get_stats(conn: &mut PgConnection) -> Result<DashboardStats, AppError> {
     Ok(DashboardStats {
         total_devices: dashboard_repo::get_total_devices(conn)?,
         active_devices: dashboard_repo::get_online_devices(conn)?,

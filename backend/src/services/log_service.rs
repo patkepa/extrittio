@@ -1,5 +1,5 @@
 use chrono::NaiveDateTime;
-use diesel::SqliteConnection;
+use diesel::PgConnection;
 
 use crate::db::models::{DeviceLog, NewDeviceLog};
 use crate::error::AppError;
@@ -8,7 +8,7 @@ use crate::repositories::{device_repo, log_repo};
 const VALID_LEVELS: &[&str] = &["DEBUG", "INFO", "WARN", "ERROR"];
 
 pub fn list(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
     level: Option<&str>,
     since: Option<NaiveDateTime>,
@@ -21,7 +21,7 @@ pub fn list(
 }
 
 pub fn record(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
     level: &str,
     message: &str,

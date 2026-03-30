@@ -1,4 +1,4 @@
-use diesel::SqliteConnection;
+use diesel::PgConnection;
 
 use crate::auth::{hash_password, verify_password};
 use crate::db::models::{NewUser, User};
@@ -6,7 +6,7 @@ use crate::error::AppError;
 use crate::repositories::user_repo;
 
 pub fn list(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     limit: i64,
     offset: i64,
 ) -> Result<(Vec<User>, i64), AppError> {
@@ -14,7 +14,7 @@ pub fn list(
 }
 
 pub fn create(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     username: &str,
     password: &str,
 ) -> Result<User, AppError> {
@@ -43,7 +43,7 @@ pub fn create(
 }
 
 pub fn change_password(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     user_id: i32,
     new_password: &str,
 ) -> Result<(), AppError> {
@@ -61,7 +61,7 @@ pub fn change_password(
     Ok(())
 }
 
-pub fn delete(conn: &mut SqliteConnection, id: i32) -> Result<(), AppError> {
+pub fn delete(conn: &mut PgConnection, id: i32) -> Result<(), AppError> {
     let deleted = user_repo::delete_user(conn, id)?;
     if !deleted {
         return Err(AppError::NotFound(format!("User {id} not found")));
@@ -72,7 +72,7 @@ pub fn delete(conn: &mut SqliteConnection, id: i32) -> Result<(), AppError> {
 /// Authenticate a user by username and password.
 /// Returns (user_id, username, role) on success.
 pub fn authenticate(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     username: &str,
     password: &str,
 ) -> Result<(i32, String, String), AppError> {

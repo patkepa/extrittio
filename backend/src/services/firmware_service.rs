@@ -1,7 +1,7 @@
 // Firmware service — business logic for firmware updates
 
 use diesel::Connection;
-use diesel::SqliteConnection;
+use diesel::PgConnection;
 
 use crate::db::models::{FirmwareBlob, FirmwareUpdate, NewFirmwareBlob, NewFirmwareUpdate};
 use crate::error::AppError;
@@ -9,7 +9,7 @@ use crate::repositories::firmware_repo;
 
 /// Register a firmware update with a URL (no file upload).
 pub fn register_firmware(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     new_fw: &NewFirmwareUpdate,
 ) -> Result<FirmwareUpdate, AppError> {
     let fw = firmware_repo::insert_firmware_update(conn, new_fw)?;
@@ -19,7 +19,7 @@ pub fn register_firmware(
 /// Upload a firmware file: create metadata, store the blob, and update the URL
 /// to point to the download endpoint. All writes are atomic.
 pub fn upload_firmware(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     new_fw: &NewFirmwareUpdate,
     blob: NewFirmwareBlob,
 ) -> Result<FirmwareUpdate, AppError> {
@@ -44,7 +44,7 @@ pub fn upload_firmware(
 
 /// Generate the next semantic version for a device type.
 pub fn next_version_for_type(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_type_id: i32,
 ) -> Result<String, AppError> {
     let latest = firmware_repo::find_next_version(conn, device_type_id)?;
@@ -67,7 +67,7 @@ pub fn increment_version(version: &str) -> String {
 
 /// List firmware updates with pagination and optional type filter.
 pub fn list(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_type_id: Option<i32>,
     limit: i64,
     offset: i64,
@@ -76,7 +76,7 @@ pub fn list(
 }
 
 /// Delete a firmware update by ID.
-pub fn delete(conn: &mut SqliteConnection, id: i32) -> Result<(), AppError> {
+pub fn delete(conn: &mut PgConnection, id: i32) -> Result<(), AppError> {
     let deleted = firmware_repo::delete_firmware_update(conn, id)?;
     if !deleted {
         return Err(AppError::NotFound(format!("Firmware update {id} not found")));
@@ -86,7 +86,7 @@ pub fn delete(conn: &mut SqliteConnection, id: i32) -> Result<(), AppError> {
 
 /// Download a firmware blob by firmware update ID.
 pub fn download_blob(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     firmware_update_id: i32,
 ) -> Result<FirmwareBlob, AppError> {
     Ok(firmware_repo::find_firmware_blob(conn, firmware_update_id)?)

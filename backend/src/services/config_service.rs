@@ -1,5 +1,5 @@
 use chrono::Utc;
-use diesel::SqliteConnection;
+use diesel::PgConnection;
 use serde_json::{Map, Value};
 
 use crate::db::models::DeviceConfig;
@@ -9,7 +9,7 @@ use crate::repositories::{config_repo, device_repo};
 /// Get the current configuration for a device, or None if not set.
 /// Returns 404 if the device does not exist.
 pub fn get_config(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
 ) -> Result<Option<DeviceConfig>, AppError> {
     if !device_repo::device_exists(conn, device_id)? {
@@ -22,7 +22,7 @@ pub fn get_config(
 /// Merge semantics: null values remove keys, all other values upsert.
 /// Returns 404 if the device does not exist.
 pub fn merge_and_update(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
     patch: &Map<String, Value>,
 ) -> Result<DeviceConfig, AppError> {

@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use diesel::SqliteConnection;
+use diesel::PgConnection;
 
 use crate::db::models::{CommandRecord, NewCommandRecord};
 use crate::error::AppError;
@@ -82,7 +82,7 @@ const TERMINAL_STATUSES: &[&str] = &["succeeded", "failed", "timed_out"];
 
 /// Handle a command response from a device (used by Zenoh handler).
 pub fn handle_response(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     correlation_id: &str,
     device_id: &str,
     device_status: &str,
@@ -116,7 +116,7 @@ pub fn handle_response(
 /// List commands for a device with optional status filter.
 /// Returns 404 if the device does not exist.
 pub fn list_commands(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
     status: Option<&str>,
     limit: i64,
@@ -127,7 +127,7 @@ pub fn list_commands(
 
 /// Mark stale commands as timed out.
 pub fn timeout_stale(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     timeout_secs: u64,
 ) -> Result<usize, AppError> {
     #[allow(clippy::cast_possible_wrap)]

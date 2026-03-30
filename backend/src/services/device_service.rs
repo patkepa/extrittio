@@ -1,7 +1,7 @@
 // Device service — business logic for device management
 
 use diesel::Connection;
-use diesel::SqliteConnection;
+use diesel::PgConnection;
 use std::sync::Arc;
 use tracing::{info, warn};
 
@@ -14,7 +14,7 @@ use crate::state::{DbPool, ZenohMetrics, run_db};
 pub use crate::repositories::device_repo::DeviceWithJoins;
 
 /// Create a device and its associated shadow record atomically.
-pub fn create_device(conn: &mut SqliteConnection, new_device: &NewDevice) -> Result<(), AppError> {
+pub fn create_device(conn: &mut PgConnection, new_device: &NewDevice) -> Result<(), AppError> {
     conn.transaction(|conn| {
         device_repo::insert_device(conn, new_device)?;
         let new_shadow = NewDeviceShadow {
@@ -47,7 +47,7 @@ fn infer_device_type(firmware: &str) -> &'static str {
 /// Returns `true` if the device was newly registered, `false` if it already
 /// existed, or `None` if registration failed.
 pub fn auto_register_device(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
     firmware: &str,
 ) -> Option<bool> {
@@ -179,7 +179,7 @@ pub async fn trigger_ota(
 
 /// List devices with filtering and pagination.
 pub fn list_devices(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     status_filter: Option<&str>,
     search_filter: Option<&str>,
     fleet_id_filter: Option<i32>,
@@ -191,7 +191,7 @@ pub fn list_devices(
 
 /// Get a single device with joined type and fleet info.
 pub fn get_device(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
 ) -> Result<device_repo::DeviceWithJoins, AppError> {
     Ok(device_repo::find_device_with_joins(conn, device_id)?)
@@ -199,7 +199,7 @@ pub fn get_device(
 
 /// Update a device. Returns the updated device with joins.
 pub fn update_device(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
     changeset: &UpdateDevice,
 ) -> Result<device_repo::DeviceWithJoins, AppError> {
@@ -209,7 +209,7 @@ pub fn update_device(
 }
 
 /// Delete a device by ID.
-pub fn delete_device(conn: &mut SqliteConnection, device_id: &str) -> Result<(), AppError> {
+pub fn delete_device(conn: &mut PgConnection, device_id: &str) -> Result<(), AppError> {
     let deleted = device_repo::delete_device(conn, device_id)?;
     if !deleted {
         return Err(AppError::NotFound(format!("Device '{device_id}' not found")));
@@ -224,7 +224,7 @@ pub fn delete_device(conn: &mut SqliteConnection, device_id: &str) -> Result<(),
 /// `BadRequest` if `None`).
 /// Returns `BadRequest` if the result exceeds `max_size`.
 pub fn resolve_target_ids(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_ids: Option<&[String]>,
     select_all: bool,
     status_filter: Option<&str>,
@@ -256,7 +256,7 @@ pub fn resolve_target_ids(
 
 /// Bulk-change fleet assignment.
 pub fn bulk_change_fleet(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     ids: &[String],
     fleet_id: Option<i32>,
 ) -> Result<usize, AppError> {
@@ -265,14 +265,14 @@ pub fn bulk_change_fleet(
 }
 
 /// Bulk-delete devices.
-pub fn bulk_delete(conn: &mut SqliteConnection, ids: &[String]) -> Result<usize, AppError> {
+pub fn bulk_delete(conn: &mut PgConnection, ids: &[String]) -> Result<usize, AppError> {
     Ok(device_repo::bulk_delete_devices(conn, ids)?)
 }
 
 /// List OTA deployments for a device with pagination.
 /// Returns 404 if the device does not exist.
 pub fn list_ota_deployments(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
     limit: i64,
     offset: i64,
@@ -285,7 +285,7 @@ pub fn list_ota_deployments(
 /// Use this when the caller has already identified which devices should go
 /// offline (e.g. using a shared cutoff) to avoid TOCTOU races.
 pub fn mark_devices_offline(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_ids: &[String],
 ) -> Result<usize, AppError> {
     if device_ids.is_empty() {
@@ -324,7 +324,7 @@ pub fn mark_devices_offline(
 
 /// Mark devices as offline if they haven't been seen since timeout_secs.
 pub fn check_offline_devices(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     timeout_secs: u64,
 ) -> Result<usize, AppError> {
     #[allow(clippy::cast_possible_wrap)]
@@ -361,7 +361,7 @@ pub fn check_offline_devices(
 /// Returns `Some(StatusChange)` when the device's status actually changed,
 /// or `None` when the status remained the same.
 pub fn update_from_heartbeat(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
     reported_status: &str,
     firmware: &str,
