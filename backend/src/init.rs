@@ -1,8 +1,8 @@
 use anyhow::Context;
 use diesel::RunQueryDsl;
 use diesel::prelude::*;
-use diesel::r2d2::{ConnectionManager, CustomizeConnection, Pool};
-use diesel::sqlite::SqliteConnection;
+use diesel::r2d2::{ConnectionManager, Pool};
+use diesel::PgConnection;
 use diesel_migrations::MigrationHarness;
 use tracing::info;
 
@@ -13,50 +13,17 @@ use crate::services::cert_service;
 use crate::state::DbPool;
 use crate::{MIGRATIONS, auth};
 
-#[derive(Debug)]
-struct SqlitePragmas;
-
-impl CustomizeConnection<SqliteConnection, diesel::r2d2::Error> for SqlitePragmas {
-    fn on_acquire(&self, conn: &mut SqliteConnection) -> Result<(), diesel::r2d2::Error> {
-        diesel::sql_query("PRAGMA foreign_keys = ON")
-            .execute(conn)
-            .map_err(diesel::r2d2::Error::QueryError)?;
-        diesel::sql_query("PRAGMA busy_timeout = 5000")
-            .execute(conn)
-            .map_err(diesel::r2d2::Error::QueryError)?;
-        diesel::sql_query("PRAGMA temp_store = MEMORY")
-            .execute(conn)
-            .map_err(diesel::r2d2::Error::QueryError)?;
-        diesel::sql_query("PRAGMA cache_size = -32000")
-            .execute(conn)
-            .map_err(diesel::r2d2::Error::QueryError)?;
-        diesel::sql_query("PRAGMA mmap_size = 268435456")
-            .execute(conn)
-            .map_err(diesel::r2d2::Error::QueryError)?;
-        Ok(())
-    }
-}
-
-/// Create the SQLite connection pool with tuned pragmas.
+/// Create the PostgreSQL connection pool.
 pub fn create_db_pool(database_url: &str, pool_size: u32) -> anyhow::Result<DbPool> {
-    let manager = ConnectionManager::<SqliteConnection>::new(database_url);
+    let manager = ConnectionManager::<PgConnection>::new(database_url);
     Pool::builder()
         .max_size(pool_size)
-        .connection_customizer(Box::new(SqlitePragmas))
         .build(manager)
         .context("Failed to create database connection pool")
 }
 
-/// Run pending migrations and set WAL journal mode.
-pub fn run_migrations(conn: &mut SqliteConnection) -> anyhow::Result<()> {
-    diesel::sql_query("PRAGMA journal_mode = WAL")
-        .execute(conn)
-        .context("Failed to set WAL journal mode")?;
-
-    diesel::sql_query("PRAGMA synchronous = NORMAL")
-        .execute(conn)
-        .context("Failed to set synchronous mode")?;
-
+/// Run pending migrations.
+pub fn run_migrations(conn: &mut PgConnection) -> anyhow::Result<()> {
     conn.run_pending_migrations(MIGRATIONS)
         .map_err(|e| anyhow::anyhow!("Failed to run database migrations: {e}"))?;
 
@@ -66,7 +33,7 @@ pub fn run_migrations(conn: &mut SqliteConnection) -> anyhow::Result<()> {
 
 /// Initialize JWT secret from the database, or generate one if not present.
 /// Falls back to the `JWT_SECRET` environment variable if set.
-pub fn init_jwt_secret(conn: &mut SqliteConnection) -> anyhow::Result<String> {
+pub fn init_jwt_secret(conn: &mut PgConnection) -> anyhow::Result<String> {
     let jwt_secret = {
         let existing: Option<ServerConfigEntry> = server_config::table
             .find("jwt_secret")
@@ -103,7 +70,7 @@ pub fn init_jwt_secret(conn: &mut SqliteConnection) -> anyhow::Result<String> {
 }
 
 /// Seed the default admin user if no users exist.
-pub fn seed_admin_user(conn: &mut SqliteConnection) -> anyhow::Result<()> {
+pub fn seed_admin_user(conn: &mut PgConnection) -> anyhow::Result<()> {
     let user_count: i64 = users::table
         .count()
         .get_result(conn)
@@ -128,7 +95,7 @@ pub fn seed_admin_user(conn: &mut SqliteConnection) -> anyhow::Result<()> {
 }
 
 /// Ensure the root CA certificate exists in the database.
-pub fn init_ca_certificate(conn: &mut SqliteConnection) -> anyhow::Result<()> {
+pub fn init_ca_certificate(conn: &mut PgConnection) -> anyhow::Result<()> {
     let ca_exists: i64 = ca_certificates::table
         .count()
         .get_result(conn)
@@ -145,7 +112,7 @@ pub fn init_ca_certificate(conn: &mut SqliteConnection) -> anyhow::Result<()> {
 }
 
 /// Write CA and server TLS certificates to disk for Zenoh.
-pub fn write_tls_certs(conn: &mut SqliteConnection, certs_dir: &str) -> anyhow::Result<()> {
+pub fn write_tls_certs(conn: &mut PgConnection, certs_dir: &str) -> anyhow::Result<()> {
     let certs_path = std::path::PathBuf::from(certs_dir);
     std::fs::create_dir_all(&certs_path).context("Failed to create certs directory")?;
 
