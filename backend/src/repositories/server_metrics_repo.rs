@@ -1,7 +1,7 @@
 // Repository functions for server diagnostics metrics
 
 use chrono::NaiveDateTime;
-use diesel::sql_types::{BigInt, Float, Integer, Timestamp};
+use diesel::sql_types::{BigInt, Float, Integer, Timestamptz};
 use diesel::PgConnection;
 use diesel::prelude::*;
 use serde::Serialize;
@@ -152,7 +152,7 @@ pub fn list_server_metrics_downsampled(
 ) -> Result<Vec<DownsampledServerMetric>, diesel::result::Error> {
     let sql = "\
         SELECT \
-            (CAST(strftime('%s', recorded_at) AS INTEGER) / ?) * ? AS bucket, \
+            (EXTRACT(EPOCH FROM recorded_at)::BIGINT / $1) * $2 AS bucket, \
             AVG(cpu_usage_percent) AS cpu_usage_percent, \
             AVG(memory_used_bytes) AS memory_used_bytes, \
             AVG(memory_total_bytes) AS memory_total_bytes, \
@@ -164,14 +164,14 @@ pub fn list_server_metrics_downsampled(
             AVG(load_avg_5m) AS load_avg_5m, \
             AVG(load_avg_15m) AS load_avg_15m \
          FROM server_metrics \
-         WHERE recorded_at > ? \
+         WHERE recorded_at > $3 \
          GROUP BY bucket \
          ORDER BY bucket ASC";
 
     diesel::sql_query(sql)
         .bind::<BigInt, _>(resolution_secs)
         .bind::<BigInt, _>(resolution_secs)
-        .bind::<Timestamp, _>(since)
+        .bind::<Timestamptz, _>(since)
         .load(conn)
 }
 
@@ -182,7 +182,7 @@ pub fn list_app_metrics_downsampled(
 ) -> Result<Vec<DownsampledAppMetric>, diesel::result::Error> {
     let sql = "\
         SELECT \
-            (CAST(strftime('%s', recorded_at) AS INTEGER) / ?) * ? AS bucket, \
+            (EXTRACT(EPOCH FROM recorded_at)::BIGINT / $1) * $2 AS bucket, \
             SUM(request_count) AS request_count, \
             SUM(error_count) AS error_count, \
             AVG(avg_latency_ms) AS avg_latency_ms, \
@@ -192,14 +192,14 @@ pub fn list_app_metrics_downsampled(
             SUM(zenoh_messages_in) AS zenoh_messages_in, \
             SUM(zenoh_messages_out) AS zenoh_messages_out \
          FROM app_metrics \
-         WHERE recorded_at > ? \
+         WHERE recorded_at > $3 \
          GROUP BY bucket \
          ORDER BY bucket ASC";
 
     diesel::sql_query(sql)
         .bind::<BigInt, _>(resolution_secs)
         .bind::<BigInt, _>(resolution_secs)
-        .bind::<Timestamp, _>(since)
+        .bind::<Timestamptz, _>(since)
         .load(conn)
 }
 
