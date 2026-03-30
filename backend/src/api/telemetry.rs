@@ -19,7 +19,7 @@ use crate::util;
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct TelemetryResponse {
-    pub id: i32,
+    pub id: i64,
     pub device_id: String,
     pub temperature: Option<f32>,
     pub humidity: Option<f32>,

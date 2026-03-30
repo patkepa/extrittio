@@ -44,7 +44,8 @@ pub fn get_latest_location(
         .filter(latitude.is_not_null())
         .filter(longitude.is_not_null())
         .order(received_at.desc())
-        .first::<TelemetryRecord>(conn)
+        .select(TelemetryRecord::as_select())
+        .first(conn)
         .optional()
 }
 

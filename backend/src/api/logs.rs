@@ -19,7 +19,7 @@ use crate::util;
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct LogResponse {
-    pub id: i32,
+    pub id: i64,
     pub device_id: String,
     pub level: String,
     pub message: String,
