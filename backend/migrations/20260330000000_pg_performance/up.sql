@@ -28,16 +28,24 @@ CREATE INDEX idx_devices_name_trgm ON devices USING GIN(name gin_trgm_ops);
 
 -- ==========================================================================
 -- TEXT -> JSONB column migrations
+-- Drop existing text defaults first so ALTER TYPE can succeed,
+-- then set jsonb-typed defaults.
 -- ==========================================================================
+ALTER TABLE device_shadows ALTER COLUMN desired DROP DEFAULT;
+ALTER TABLE device_shadows ALTER COLUMN reported DROP DEFAULT;
+ALTER TABLE device_shadows ALTER COLUMN delta DROP DEFAULT;
+
 ALTER TABLE device_shadows ALTER COLUMN desired TYPE JSONB USING desired::jsonb;
 ALTER TABLE device_shadows ALTER COLUMN reported TYPE JSONB USING reported::jsonb;
 ALTER TABLE device_shadows ALTER COLUMN delta TYPE JSONB USING delta::jsonb;
-ALTER TABLE device_shadows ALTER COLUMN desired SET DEFAULT '{}';
-ALTER TABLE device_shadows ALTER COLUMN reported SET DEFAULT '{}';
-ALTER TABLE device_shadows ALTER COLUMN delta SET DEFAULT '{}';
 
+ALTER TABLE device_shadows ALTER COLUMN desired SET DEFAULT '{}'::jsonb;
+ALTER TABLE device_shadows ALTER COLUMN reported SET DEFAULT '{}'::jsonb;
+ALTER TABLE device_shadows ALTER COLUMN delta SET DEFAULT '{}'::jsonb;
+
+ALTER TABLE device_configs ALTER COLUMN config DROP DEFAULT;
 ALTER TABLE device_configs ALTER COLUMN config TYPE JSONB USING config::jsonb;
-ALTER TABLE device_configs ALTER COLUMN config SET DEFAULT '{}';
+ALTER TABLE device_configs ALTER COLUMN config SET DEFAULT '{}'::jsonb;
 
 ALTER TABLE telemetry ALTER COLUMN custom_json TYPE JSONB USING custom_json::jsonb;
 

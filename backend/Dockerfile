@@ -74,6 +74,8 @@ WORKDIR /app
 
 COPY --from=builder /app/target/release/extrittio-backend .
 
+RUN mkdir -p /app/certs && chown -R extrittio:extrittio /app
+
 USER extrittio
 
 ENV PORT=8080
