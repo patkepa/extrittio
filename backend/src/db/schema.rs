@@ -9,45 +9,45 @@ diesel::table! {
         status -> Text,
         message -> Text,
         triggered_value -> Nullable<Text>,
-        resolved_at -> Nullable<Timestamp>,
-        acknowledged_at -> Nullable<Timestamp>,
-        created_at -> Timestamp,
+        resolved_at -> Nullable<Timestamptz>,
+        acknowledged_at -> Nullable<Timestamptz>,
+        created_at -> Timestamptz,
     }
 }
 
 diesel::table! {
     api_keys (id) {
-        id -> Integer,
+        id -> Int4,
         name -> Text,
         key_hash -> Text,
         key_prefix -> Text,
-        device_type_id -> Nullable<Integer>,
-        created_at -> Timestamp,
-        last_used_at -> Nullable<Timestamp>,
+        device_type_id -> Nullable<Int4>,
+        created_at -> Timestamptz,
+        last_used_at -> Nullable<Timestamptz>,
     }
 }
 
 diesel::table! {
     app_metrics (id) {
-        id -> Integer,
-        request_count -> Integer,
-        error_count -> Integer,
-        avg_latency_ms -> Float,
-        p95_latency_ms -> Float,
-        db_pool_active -> Integer,
-        db_pool_idle -> Integer,
-        zenoh_messages_in -> Integer,
-        zenoh_messages_out -> Integer,
-        recorded_at -> Timestamp,
+        id -> Int8,
+        request_count -> Int4,
+        error_count -> Int4,
+        avg_latency_ms -> Float4,
+        p95_latency_ms -> Float4,
+        db_pool_active -> Int4,
+        db_pool_idle -> Int4,
+        zenoh_messages_in -> Int4,
+        zenoh_messages_out -> Int4,
+        recorded_at -> Timestamptz,
     }
 }
 
 diesel::table! {
     ca_certificates (id) {
-        id -> Integer,
+        id -> Int4,
         private_key_pem -> Text,
         certificate_pem -> Text,
-        created_at -> Timestamp,
+        created_at -> Timestamptz,
     }
 }
 
@@ -59,20 +59,20 @@ diesel::table! {
         params -> Text,
         status -> Text,
         response_payload -> Nullable<Text>,
-        created_at -> Timestamp,
-        updated_at -> Timestamp,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
     }
 }
 
 diesel::table! {
     device_certificates (id) {
-        id -> Integer,
+        id -> Int4,
         device_id -> Text,
         private_key_pem -> Text,
         certificate_pem -> Text,
         fingerprint -> Text,
-        expires_at -> Timestamp,
-        created_at -> Timestamp,
+        expires_at -> Timestamptz,
+        created_at -> Timestamptz,
     }
 }
 
@@ -80,17 +80,17 @@ diesel::table! {
     device_configs (device_id) {
         device_id -> Text,
         config -> Text,
-        updated_at -> Timestamp,
+        updated_at -> Timestamptz,
     }
 }
 
 diesel::table! {
     device_logs (id) {
-        id -> Integer,
+        id -> Int8,
         device_id -> Text,
         level -> Text,
         message -> Text,
-        created_at -> Timestamp,
+        created_at -> Timestamptz,
     }
 }
 
@@ -100,16 +100,16 @@ diesel::table! {
         desired -> Text,
         reported -> Text,
         delta -> Text,
-        version -> Integer,
-        updated_at -> Timestamp,
+        version -> Int4,
+        updated_at -> Timestamptz,
     }
 }
 
 diesel::table! {
     device_types (id) {
-        id -> Integer,
+        id -> Int4,
         name -> Text,
-        created_at -> Timestamp,
+        created_at -> Timestamptz,
     }
 }
 
@@ -117,63 +117,63 @@ diesel::table! {
     devices (id) {
         id -> Text,
         name -> Text,
-        device_type_id -> Integer,
-        fleet_id -> Nullable<Integer>,
+        device_type_id -> Int4,
+        fleet_id -> Nullable<Int4>,
         status -> Text,
         firmware -> Text,
-        last_seen -> Nullable<Timestamp>,
-        uptime_seconds -> Integer,
-        created_at -> Timestamp,
-        updated_at -> Timestamp,
-        latest_latitude -> Nullable<Double>,
-        latest_longitude -> Nullable<Double>,
+        last_seen -> Nullable<Timestamptz>,
+        uptime_seconds -> Int4,
+        latest_latitude -> Nullable<Float8>,
+        latest_longitude -> Nullable<Float8>,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
     }
 }
 
 diesel::table! {
     firmware_blobs (firmware_update_id) {
-        firmware_update_id -> Integer,
-        data -> Binary,
-        size -> Integer,
+        firmware_update_id -> Int4,
+        data -> Bytea,
+        size -> Int4,
         filename -> Text,
     }
 }
 
 diesel::table! {
     firmware_updates (id) {
-        id -> Integer,
-        device_type_id -> Integer,
+        id -> Int4,
+        device_type_id -> Int4,
         version -> Text,
         url -> Text,
         description -> Nullable<Text>,
-        created_at -> Timestamp,
         sha256 -> Nullable<Text>,
         commit_sha -> Nullable<Text>,
         branch -> Nullable<Text>,
         ci_run_url -> Nullable<Text>,
-        build_timestamp -> Nullable<Timestamp>,
+        build_timestamp -> Nullable<Timestamptz>,
         changelog -> Nullable<Text>,
         source -> Text,
+        created_at -> Timestamptz,
     }
 }
 
 diesel::table! {
     fleets (id) {
-        id -> Integer,
+        id -> Int4,
         name -> Text,
-        created_at -> Timestamp,
+        created_at -> Timestamptz,
     }
 }
 
 diesel::table! {
     ota_deployments (id) {
-        id -> Integer,
+        id -> Int4,
         device_id -> Text,
-        firmware_update_id -> Integer,
+        firmware_update_id -> Int4,
         status -> Text,
         error_message -> Nullable<Text>,
-        initiated_at -> Timestamp,
-        completed_at -> Nullable<Timestamp>,
+        initiated_at -> Timestamptz,
+        completed_at -> Nullable<Timestamptz>,
     }
 }
 
@@ -193,7 +193,7 @@ diesel::table! {
         field -> Text,
         operator -> Text,
         value -> Text,
-        condition_group -> Integer,
+        condition_group -> Int4,
         zone_id -> Nullable<Text>,
     }
 }
@@ -202,7 +202,7 @@ diesel::table! {
     rule_cooldowns (rule_id, device_id) {
         rule_id -> Text,
         device_id -> Text,
-        last_fired_at -> Timestamp,
+        last_fired_at -> Timestamptz,
     }
 }
 
@@ -215,9 +215,9 @@ diesel::table! {
         trigger_type -> Text,
         target_type -> Text,
         target_id -> Nullable<Text>,
-        cooldown_seconds -> Integer,
-        created_at -> Timestamp,
-        updated_at -> Timestamp,
+        cooldown_seconds -> Int4,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
     }
 }
 
@@ -230,46 +230,46 @@ diesel::table! {
 
 diesel::table! {
     server_metrics (id) {
-        id -> Integer,
-        cpu_usage_percent -> Float,
-        memory_used_bytes -> BigInt,
-        memory_total_bytes -> BigInt,
-        disk_used_bytes -> BigInt,
-        disk_total_bytes -> BigInt,
-        network_rx_bytes_delta -> BigInt,
-        network_tx_bytes_delta -> BigInt,
-        load_avg_1m -> Float,
-        load_avg_5m -> Float,
-        load_avg_15m -> Float,
-        recorded_at -> Timestamp,
+        id -> Int8,
+        cpu_usage_percent -> Float4,
+        memory_used_bytes -> Int8,
+        memory_total_bytes -> Int8,
+        disk_used_bytes -> Int8,
+        disk_total_bytes -> Int8,
+        network_rx_bytes_delta -> Int8,
+        network_tx_bytes_delta -> Int8,
+        load_avg_1m -> Float4,
+        load_avg_5m -> Float4,
+        load_avg_15m -> Float4,
+        recorded_at -> Timestamptz,
     }
 }
 
 diesel::table! {
     telemetry (id) {
-        id -> Integer,
+        id -> Int8,
         device_id -> Text,
-        payload -> Binary,
-        temperature -> Nullable<Float>,
-        humidity -> Nullable<Float>,
-        battery_level -> Nullable<Float>,
+        payload -> Bytea,
+        temperature -> Nullable<Float4>,
+        humidity -> Nullable<Float4>,
+        battery_level -> Nullable<Float4>,
         custom_json -> Nullable<Text>,
-        received_at -> Timestamp,
-        latitude -> Nullable<Double>,
-        longitude -> Nullable<Double>,
-        speed -> Nullable<Float>,
-        altitude -> Nullable<Float>,
-        heading -> Nullable<Float>,
+        latitude -> Nullable<Float8>,
+        longitude -> Nullable<Float8>,
+        speed -> Nullable<Float4>,
+        altitude -> Nullable<Float4>,
+        heading -> Nullable<Float4>,
+        received_at -> Timestamptz,
     }
 }
 
 diesel::table! {
     users (id) {
-        id -> Integer,
+        id -> Int4,
         username -> Text,
         password_hash -> Text,
         role -> Text,
-        created_at -> Timestamp,
+        created_at -> Timestamptz,
     }
 }
 
@@ -281,8 +281,8 @@ diesel::table! {
         geometry_type -> Text,
         geometry_json -> Text,
         color -> Text,
-        created_at -> Timestamp,
-        updated_at -> Timestamp,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
     }
 }
 
