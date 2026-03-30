@@ -1,10 +1,11 @@
 use diesel::Connection;
+use diesel::PgConnection;
 use diesel::prelude::*;
 use crate::db::models::{ApiKey, NewApiKey};
 use crate::db::schema::api_keys;
 
 pub fn insert_api_key(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     new_key: &NewApiKey,
 ) -> Result<ApiKey, diesel::result::Error> {
     conn.transaction(|conn| {
@@ -20,7 +21,7 @@ pub fn insert_api_key(
 }
 
 pub fn find_api_key_by_hash(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     hash: &str,
 ) -> Result<Option<ApiKey>, diesel::result::Error> {
     api_keys::table
@@ -31,7 +32,7 @@ pub fn find_api_key_by_hash(
 }
 
 pub fn list_api_keys(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
 ) -> Result<Vec<ApiKey>, diesel::result::Error> {
     api_keys::table
         .order(api_keys::created_at.desc())
@@ -40,7 +41,7 @@ pub fn list_api_keys(
 }
 
 pub fn delete_api_key(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     key_id: i32,
 ) -> Result<usize, diesel::result::Error> {
     diesel::delete(api_keys::table.filter(api_keys::id.eq(key_id)))
@@ -48,7 +49,7 @@ pub fn delete_api_key(
 }
 
 pub fn update_last_used(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     key_id: i32,
 ) -> Result<usize, diesel::result::Error> {
     diesel::update(api_keys::table.filter(api_keys::id.eq(key_id)))

@@ -1,13 +1,13 @@
 // Repository functions for device types
 
-use diesel::SqliteConnection;
+use diesel::PgConnection;
 use diesel::prelude::*;
 
 use crate::db::models::{DeviceType, NewDeviceType};
 use crate::db::schema::{device_types, devices};
 
 pub fn list_device_types(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     limit: i64,
     offset: i64,
 ) -> Result<(Vec<DeviceType>, i64), diesel::result::Error> {
@@ -25,7 +25,7 @@ pub fn list_device_types(
 
 /// List all device types without pagination (used internally for lookups).
 pub fn list_all_device_types(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
 ) -> Result<Vec<DeviceType>, diesel::result::Error> {
     device_types::table
         .select(DeviceType::as_select())
@@ -34,7 +34,7 @@ pub fn list_all_device_types(
 }
 
 pub fn insert_device_type(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     dt: &NewDeviceType,
 ) -> Result<DeviceType, diesel::result::Error> {
     diesel::insert_into(device_types::table)
@@ -48,7 +48,7 @@ pub fn insert_device_type(
 }
 
 pub fn delete_device_type(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     id: i32,
 ) -> Result<bool, diesel::result::Error> {
     let rows = diesel::delete(device_types::table.find(id)).execute(conn)?;
@@ -56,7 +56,7 @@ pub fn delete_device_type(
 }
 
 pub fn find_default_device_type_id(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
 ) -> Result<Option<i32>, diesel::result::Error> {
     device_types::table
         .select(device_types::id)
@@ -66,7 +66,7 @@ pub fn find_default_device_type_id(
 }
 
 pub fn find_device_type_by_name(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     name: &str,
 ) -> Result<Option<DeviceType>, diesel::result::Error> {
     device_types::table
@@ -77,7 +77,7 @@ pub fn find_device_type_by_name(
 }
 
 pub fn find_device_type_by_id(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     id: i32,
 ) -> Result<DeviceType, diesel::result::Error> {
     device_types::table
@@ -87,7 +87,7 @@ pub fn find_device_type_by_id(
 }
 
 pub fn count_devices_for_type(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_type_id: i32,
 ) -> Result<i64, diesel::result::Error> {
     devices::table

@@ -1,4 +1,4 @@
-use diesel::SqliteConnection;
+use diesel::PgConnection;
 use diesel::prelude::*;
 
 use crate::db::models::{Device, DeviceType, Fleet, NewDevice, UpdateDevice};
@@ -42,7 +42,7 @@ fn filtered_device_query<'a>(
 }
 
 pub fn list_devices(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     status_filter: Option<&str>,
     search_filter: Option<&str>,
     fleet_id_filter: Option<i32>,
@@ -69,7 +69,7 @@ pub fn list_devices(
 /// Resolve device IDs matching the given filters (no pagination).
 /// Joins device_types because the search filter searches device_types::name.
 pub fn resolve_device_ids(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     status_filter: Option<&str>,
     search_filter: Option<&str>,
     fleet_id_filter: Option<i32>,
@@ -98,7 +98,7 @@ pub fn resolve_device_ids(
 
 /// Bulk-update fleet assignment for the given device IDs.
 pub fn bulk_update_fleet(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     ids: &[String],
     fleet_id: Option<i32>,
     now: chrono::NaiveDateTime,
@@ -113,7 +113,7 @@ pub fn bulk_update_fleet(
 
 /// Bulk-delete devices by IDs. Returns the number of rows deleted.
 pub fn bulk_delete_devices(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     ids: &[String],
 ) -> Result<usize, diesel::result::Error> {
     diesel::delete(devices::table.filter(devices::id.eq_any(ids)))
@@ -121,7 +121,7 @@ pub fn bulk_delete_devices(
 }
 
 pub fn find_device_with_joins(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     id: &str,
 ) -> Result<DeviceWithJoins, diesel::result::Error> {
     devices::table
@@ -136,14 +136,14 @@ pub fn find_device_with_joins(
         .first(conn)
 }
 
-pub fn find_device(conn: &mut SqliteConnection, id: &str) -> Result<Device, diesel::result::Error> {
+pub fn find_device(conn: &mut PgConnection, id: &str) -> Result<Device, diesel::result::Error> {
     devices::table
         .find(id)
         .select(Device::as_select())
         .first(conn)
 }
 
-pub fn device_exists(conn: &mut SqliteConnection, id: &str) -> Result<bool, diesel::result::Error> {
+pub fn device_exists(conn: &mut PgConnection, id: &str) -> Result<bool, diesel::result::Error> {
     devices::table
         .find(id)
         .select(devices::id)
@@ -153,7 +153,7 @@ pub fn device_exists(conn: &mut SqliteConnection, id: &str) -> Result<bool, dies
 }
 
 pub fn insert_device(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     new_device: &NewDevice,
 ) -> Result<(), diesel::result::Error> {
     diesel::insert_into(devices::table)
@@ -163,7 +163,7 @@ pub fn insert_device(
 }
 
 pub fn update_device(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     id: &str,
     changeset: &UpdateDevice,
 ) -> Result<(), diesel::result::Error> {
@@ -173,14 +173,14 @@ pub fn update_device(
     Ok(())
 }
 
-pub fn delete_device(conn: &mut SqliteConnection, id: &str) -> Result<bool, diesel::result::Error> {
+pub fn delete_device(conn: &mut PgConnection, id: &str) -> Result<bool, diesel::result::Error> {
     let rows = diesel::delete(devices::table.find(id)).execute(conn)?;
     Ok(rows > 0)
 }
 
 /// Find device IDs that will be marked offline (not already offline, last seen before cutoff).
 pub fn find_devices_going_offline(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     cutoff: chrono::NaiveDateTime,
 ) -> Result<Vec<String>, diesel::result::Error> {
     devices::table
@@ -192,7 +192,7 @@ pub fn find_devices_going_offline(
 
 /// Bulk-update devices that haven't been seen since `cutoff` to "offline".
 pub fn mark_devices_offline(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     cutoff: chrono::NaiveDateTime,
 ) -> Result<usize, diesel::result::Error> {
     diesel::update(

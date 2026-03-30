@@ -1,14 +1,14 @@
 // Repository functions for device configs
 
 use chrono::NaiveDateTime;
-use diesel::SqliteConnection;
+use diesel::PgConnection;
 use diesel::prelude::*;
 
 use crate::db::models::{DeviceConfig, NewDeviceConfig};
 use crate::db::schema::device_configs;
 
 pub fn find_config(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
 ) -> Result<Option<DeviceConfig>, diesel::result::Error> {
     device_configs::table
@@ -19,7 +19,7 @@ pub fn find_config(
 }
 
 pub fn upsert_config(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
     config: &str,
     now: NaiveDateTime,

@@ -1,6 +1,6 @@
 // Repository functions for firmware
 
-use diesel::SqliteConnection;
+use diesel::PgConnection;
 use diesel::prelude::*;
 
 use crate::db::models::{
@@ -12,7 +12,7 @@ use crate::db::schema::{device_types, firmware_blobs, firmware_updates, ota_depl
 pub type FirmwareUpdateRow = (FirmwareUpdate, DeviceType, Option<i32>, Option<String>);
 
 pub fn list_firmware_updates(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_type_id: Option<i32>,
     limit: i64,
     offset: i64,
@@ -50,7 +50,7 @@ pub fn list_firmware_updates(
 }
 
 pub fn find_firmware_update(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     id: i32,
 ) -> Result<FirmwareUpdate, diesel::result::Error> {
     firmware_updates::table
@@ -60,7 +60,7 @@ pub fn find_firmware_update(
 }
 
 pub fn insert_firmware_update(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     record: &NewFirmwareUpdate,
 ) -> Result<FirmwareUpdate, diesel::result::Error> {
     use diesel::Connection;
@@ -82,7 +82,7 @@ pub fn insert_firmware_update(
 }
 
 pub fn delete_firmware_update(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     id: i32,
 ) -> Result<bool, diesel::result::Error> {
     let rows = diesel::delete(firmware_updates::table.find(id)).execute(conn)?;
@@ -90,7 +90,7 @@ pub fn delete_firmware_update(
 }
 
 pub fn insert_firmware_blob(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     blob: &NewFirmwareBlob,
 ) -> Result<(), diesel::result::Error> {
     diesel::insert_into(firmware_blobs::table)
@@ -100,7 +100,7 @@ pub fn insert_firmware_blob(
 }
 
 pub fn find_firmware_blob(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     firmware_update_id: i32,
 ) -> Result<FirmwareBlob, diesel::result::Error> {
     firmware_blobs::table
@@ -110,7 +110,7 @@ pub fn find_firmware_blob(
 }
 
 pub fn find_next_version(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_type_id: i32,
 ) -> Result<Option<String>, diesel::result::Error> {
     firmware_updates::table
@@ -122,7 +122,7 @@ pub fn find_next_version(
 }
 
 pub fn update_firmware_url(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     id: i32,
     url: &str,
 ) -> Result<(), diesel::result::Error> {
@@ -133,7 +133,7 @@ pub fn update_firmware_url(
 }
 
 pub fn list_ota_deployments(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
     limit: i64,
     offset: i64,
@@ -158,7 +158,7 @@ pub fn list_ota_deployments(
 /// Find the ID of the active (non-terminal) OTA deployment for the given device,
 /// optionally filtered by firmware_update_id for precise targeting.
 pub fn find_active_ota_deployment(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
     firmware_update_id: Option<i32>,
 ) -> Result<Option<i32>, diesel::result::Error> {
@@ -180,7 +180,7 @@ pub fn find_active_ota_deployment(
 /// Update OTA deployment status. If terminal (success/failed), also set
 /// completed_at and optional error_message.
 pub fn update_ota_deployment_status(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     deployment_id: i32,
     status: &str,
     error_message: Option<&str>,
@@ -196,7 +196,7 @@ pub fn update_ota_deployment_status(
 }
 
 pub fn insert_ota_deployment(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     deployment: &NewOtaDeployment,
 ) -> Result<(), diesel::result::Error> {
     diesel::insert_into(ota_deployments::table)

@@ -1,13 +1,13 @@
 // Repository functions for device shadows
 
-use diesel::SqliteConnection;
+use diesel::PgConnection;
 use diesel::prelude::*;
 
 use crate::db::models::{DeviceShadow, NewDeviceShadow, UpdateShadow};
 use crate::db::schema::device_shadows;
 
 pub fn find_shadow(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
 ) -> Result<DeviceShadow, diesel::result::Error> {
     device_shadows::table
@@ -17,7 +17,7 @@ pub fn find_shadow(
 }
 
 pub fn find_shadow_optional(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
 ) -> Result<Option<DeviceShadow>, diesel::result::Error> {
     device_shadows::table
@@ -28,7 +28,7 @@ pub fn find_shadow_optional(
 }
 
 pub fn insert_shadow(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     new_shadow: &NewDeviceShadow,
 ) -> Result<(), diesel::result::Error> {
     diesel::insert_into(device_shadows::table)
@@ -38,7 +38,7 @@ pub fn insert_shadow(
 }
 
 pub fn update_shadow(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
     changeset: &UpdateShadow,
 ) -> Result<usize, diesel::result::Error> {

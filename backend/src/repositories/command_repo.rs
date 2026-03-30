@@ -1,13 +1,13 @@
 // Repository functions for commands
 
-use diesel::SqliteConnection;
+use diesel::PgConnection;
 use diesel::prelude::*;
 
 use crate::db::models::{CommandRecord, NewCommandRecord};
 use crate::db::schema::command_history;
 
 pub fn insert_command(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     record: &NewCommandRecord,
 ) -> Result<(), diesel::result::Error> {
     diesel::insert_into(command_history::table)
@@ -17,7 +17,7 @@ pub fn insert_command(
 }
 
 pub fn find_command(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     id: &str,
 ) -> Result<CommandRecord, diesel::result::Error> {
     command_history::table
@@ -27,7 +27,7 @@ pub fn find_command(
 }
 
 pub fn update_command_status(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     id: &str,
     status: &str,
     response_payload: Option<&str>,
@@ -44,7 +44,7 @@ pub fn update_command_status(
 
 /// Bulk-update stale sent/delivered commands to "timed_out".
 pub fn timeout_stale_commands(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     cutoff: chrono::NaiveDateTime,
     now: chrono::NaiveDateTime,
 ) -> Result<usize, diesel::result::Error> {
@@ -61,7 +61,7 @@ pub fn timeout_stale_commands(
 }
 
 pub fn list_commands(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
     status: Option<&str>,
     limit: i64,

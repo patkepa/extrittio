@@ -1,14 +1,14 @@
 // Repository functions for device logs
 
 use chrono::NaiveDateTime;
-use diesel::SqliteConnection;
+use diesel::PgConnection;
 use diesel::prelude::*;
 
 use crate::db::models::{DeviceLog, NewDeviceLog};
 use crate::db::schema::device_logs;
 
 pub fn list_logs(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
     level: Option<&str>,
     since: Option<NaiveDateTime>,
@@ -34,7 +34,7 @@ pub fn list_logs(
 }
 
 pub fn insert_log(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     record: &NewDeviceLog,
 ) -> Result<(), diesel::result::Error> {
     diesel::insert_into(device_logs::table)
