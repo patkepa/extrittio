@@ -12,9 +12,47 @@ import type {
   PaginatedResponse,
 } from '../types/api';
 
+const FETCH_ALL_PAGE_SIZE = 500;
+
 export async function getDevices(params?: ListDevicesParams): Promise<PaginatedResponse<Device>> {
-  const { data } = await client.get<PaginatedResponse<Device>>('/devices', { params });
-  return data;
+  const isExplicitPageRequest = params?.limit != null || params?.offset != null;
+  if (isExplicitPageRequest) {
+    const { data } = await client.get<PaginatedResponse<Device>>('/devices', { params });
+    return data;
+  }
+
+  const allDevices: Device[] = [];
+  let offset = 0;
+  let total = 0;
+
+  while (true) {
+    const { data } = await client.get<PaginatedResponse<Device>>('/devices', {
+      params: {
+        ...params,
+        limit: FETCH_ALL_PAGE_SIZE,
+        offset,
+      },
+    });
+
+    if (offset === 0) {
+      total = data.total;
+    }
+
+    allDevices.push(...data.data);
+
+    if (allDevices.length >= total || data.data.length === 0) {
+      break;
+    }
+
+    offset += data.data.length;
+  }
+
+  return {
+    data: allDevices,
+    total,
+    limit: allDevices.length,
+    offset: 0,
+  };
 }
 
 export async function getDevice(id: string): Promise<Device> {

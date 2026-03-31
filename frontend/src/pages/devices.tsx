@@ -178,6 +178,7 @@ export const Devices = () => {
       if (sortField === 'uptime') return (a.uptime ?? '').localeCompare(b.uptime ?? '') * dir;
       return 0;
     });
+  const totalMatchingCount = filterStatus === 'all' ? totalDeviceCount : filteredDevices.length;
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -259,7 +260,7 @@ export const Devices = () => {
         {hasSelection && (
           <div className="bulk-action-bar-overlay">
             <BulkActionBar
-              totalMatchingCount={totalDeviceCount}
+              totalMatchingCount={totalMatchingCount}
               visibleCount={filteredDevices.length}
               currentFilters={currentFilters}
             />

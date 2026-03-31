@@ -28,6 +28,11 @@ mod tests {
             humidity: 45.0,
             battery_level: 87.3,
             metadata: [("location".to_string(), "room-a".to_string())].into(),
+            latitude: 52.2297,
+            longitude: 21.0122,
+            speed: 12.5,
+            altitude: 103.4,
+            heading: 180.0,
         };
 
         let bytes = telemetry.encode_to_vec();
@@ -36,6 +41,11 @@ mod tests {
         assert_eq!(decoded.device_id, "dev-001");
         assert!((decoded.temperature - 22.5).abs() < f32::EPSILON);
         assert_eq!(decoded.metadata.get("location").unwrap(), "room-a");
+        assert!((decoded.latitude - 52.2297).abs() < f64::EPSILON);
+        assert!((decoded.longitude - 21.0122).abs() < f64::EPSILON);
+        assert!((decoded.speed - 12.5).abs() < f32::EPSILON);
+        assert!((decoded.altitude - 103.4).abs() < f32::EPSILON);
+        assert!((decoded.heading - 180.0).abs() < f32::EPSILON);
     }
 
     #[test]

@@ -28,8 +28,8 @@ export function DeviceMarker({
   const icon = useMemo(() => L.divIcon({
     className: "device-marker-icon",
     html: `<span style="background:${color};box-shadow:0 0 6px ${color}"></span>`,
-    iconSize: [12, 12],
-    iconAnchor: [6, 6],
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
   }), [color]);
 
   return (
