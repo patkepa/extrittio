@@ -7,7 +7,8 @@
 # Use lld for faster linking on Apple Silicon
 # Requires: brew install llvm
 # Then ensure /opt/homebrew/opt/llvm/bin is in PATH
-rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+# Also add Homebrew libpq so Diesel/PostgreSQL binaries link without shell prefixes.
+rustflags = ["-C", "link-arg=-fuse-ld=lld", "-L", "/opt/homebrew/opt/libpq/lib"]
 
 [target.x86_64-apple-darwin]
 rustflags = ["-C", "link-arg=-fuse-ld=lld"]
