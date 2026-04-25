@@ -18,17 +18,17 @@ brew install libpq
 brew install llvm
 ```
 
-After installing `libpq`, make sure the linker can find it:
-```bash
-export LIBRARY_PATH="/opt/homebrew/opt/libpq/lib:$LIBRARY_PATH"
-```
+After installing, add these to your `~/.zshrc` and run `source ~/.zshrc`:
 
-After installing `llvm`, add it to your PATH so the faster linker is picked up automatically:
 ```bash
+# Required: lets the linker find libpq when building the backend
+export LIBRARY_PATH="/opt/homebrew/opt/libpq/lib:$LIBRARY_PATH"
+
+# Optional: enables the faster lld linker (only if you installed llvm above)
 export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
 ```
 
-Add both lines to your `~/.zshrc` to make them permanent.
+> **Note:** Without the `LIBRARY_PATH` export, the build will fail with `ld: library 'pq' not found` even after `brew install libpq`.
 
 ### Other dependencies
 
