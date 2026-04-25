@@ -10,6 +10,7 @@ import {
   InputGroup,
 } from '@blueprintjs/core';
 import { useCreateDevice } from '../../hooks/use-devices';
+import { useConfirmShortcut } from '../../hooks/use-confirm-shortcut';
 import { useDeviceTypes } from '../../hooks/use-device-types';
 import { useFleets } from '../../hooks/use-fleets';
 import { useUIStore } from '../../stores/ui-store';
@@ -37,6 +38,11 @@ export function AddDeviceDialog() {
   const [certBundle, setCertBundle] = useState<DeviceCertificateResponse | null>(null);
   const [createdDeviceName, setCreatedDeviceName] = useState('');
   const caQuery = useCaCertificate();
+  const canAddDevice =
+    !!newDevice.name.trim() &&
+    deviceTypes.length > 0 &&
+    !createDeviceMutation.isPending &&
+    certBundle === null;
 
   // Reset stale mutation error when dialog opens/closes
   const resetCreateMutation = createDeviceMutation.reset;
@@ -76,6 +82,12 @@ export function AddDeviceDialog() {
       },
     );
   };
+
+  useConfirmShortcut({
+    isOpen: isAddDeviceDialogOpen,
+    canConfirm: canAddDevice,
+    onConfirm: handleAddDevice,
+  });
 
   return (
     <>
@@ -142,7 +154,7 @@ export function AddDeviceDialog() {
                 icon="add"
                 onClick={handleAddDevice}
                 loading={createDeviceMutation.isPending}
-                disabled={!newDevice.name.trim() || deviceTypes.length === 0}
+                disabled={!canAddDevice}
               >
                 Add Device
               </Button>

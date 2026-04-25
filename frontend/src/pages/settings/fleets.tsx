@@ -19,6 +19,7 @@ import {
   Icon,
 } from '@blueprintjs/core';
 import { useFleets, useCreateFleet, useUpdateFleet, useDeleteFleet } from '../../hooks/use-fleets';
+import { useConfirmShortcut } from '../../hooks/use-confirm-shortcut';
 import './settings.css';
 
 export const FleetsSettings = () => {
@@ -65,6 +66,24 @@ export const FleetsSettings = () => {
       },
     );
   };
+
+  const canAddFleet = !!newName.trim() && !createMutation.isPending;
+  const canRenameFleet =
+    !!editName.trim() &&
+    editName.trim() !== editingFleet?.name &&
+    !updateMutation.isPending;
+
+  useConfirmShortcut({
+    isOpen: isAddDialogOpen,
+    canConfirm: canAddFleet,
+    onConfirm: handleAdd,
+  });
+
+  useConfirmShortcut({
+    isOpen: editingFleet !== null,
+    canConfirm: canRenameFleet,
+    onConfirm: handleRename,
+  });
 
   if (error) {
     return (
@@ -193,7 +212,7 @@ export const FleetsSettings = () => {
                 icon="add"
                 onClick={handleAdd}
                 loading={createMutation.isPending}
-                disabled={!newName.trim()}
+                disabled={!canAddFleet}
               >
                 Add
               </Button>
@@ -227,7 +246,7 @@ export const FleetsSettings = () => {
                 icon="tick"
                 onClick={handleRename}
                 loading={updateMutation.isPending}
-                disabled={!editName.trim() || editName.trim() === editingFleet?.name}
+                disabled={!canRenameFleet}
               >
                 Rename
               </Button>

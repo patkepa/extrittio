@@ -22,6 +22,7 @@ import {
   useCreateDeviceType,
   useDeleteDeviceType,
 } from '../../hooks/use-device-types';
+import { useConfirmShortcut } from '../../hooks/use-confirm-shortcut';
 import './settings.css';
 
 export const DeviceTypesSettings = () => {
@@ -47,6 +48,14 @@ export const DeviceTypesSettings = () => {
       },
     );
   };
+
+  const canAddDeviceType = !!newName.trim() && !createMutation.isPending;
+
+  useConfirmShortcut({
+    isOpen: isAddDialogOpen,
+    canConfirm: canAddDeviceType,
+    onConfirm: handleAdd,
+  });
 
   if (error) {
     return (
@@ -166,7 +175,7 @@ export const DeviceTypesSettings = () => {
                 icon="add"
                 onClick={handleAdd}
                 loading={createMutation.isPending}
-                disabled={!newName.trim()}
+                disabled={!canAddDeviceType}
               >
                 Add
               </Button>

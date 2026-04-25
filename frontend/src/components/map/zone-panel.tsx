@@ -11,6 +11,7 @@ import {
   Popover,
 } from "@blueprintjs/core";
 import { useZones, useCreateZone, useDeleteZone, useUpdateZone } from "../../hooks/use-zones";
+import { useConfirmShortcut } from "../../hooks/use-confirm-shortcut";
 import type { Zone, CircleGeometry, PolygonGeometry } from "../../types/zones";
 import L from "leaflet";
 import "./zone-panel.css";
@@ -104,6 +105,12 @@ export function ZonePanel({
       }
     );
   };
+
+  useConfirmShortcut({
+    isOpen: nameDialogOpen,
+    canConfirm: !!zoneName.trim() && !createZone.isPending,
+    onConfirm: handleSaveZone,
+  });
 
   const handleChangeZoneColor = (zone: Zone, color: string) => {
     updateZone.mutate({

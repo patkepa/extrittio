@@ -12,6 +12,7 @@ import {
   Code,
 } from '@blueprintjs/core';
 import { useCreateApiKey } from '../../hooks/use-api-keys';
+import { useConfirmShortcut } from '../../hooks/use-confirm-shortcut';
 import { useDeviceTypes } from '../../hooks/use-device-types';
 
 interface Props {
@@ -27,6 +28,7 @@ export const CreateApiKeyDialog = ({ isOpen, onClose }: Props) => {
 
   const createMutation = useCreateApiKey();
   const { data: deviceTypes } = useDeviceTypes();
+  const canCreate = !createdKey && !!name.trim() && !createMutation.isPending;
 
   const handleCreate = async () => {
     const result = await createMutation.mutateAsync({
@@ -51,6 +53,12 @@ export const CreateApiKeyDialog = ({ isOpen, onClose }: Props) => {
     setCopied(false);
     onClose();
   };
+
+  useConfirmShortcut({
+    isOpen,
+    canConfirm: canCreate,
+    onConfirm: handleCreate,
+  });
 
   return (
     <Dialog isOpen={isOpen} onClose={handleClose} title="Create API Key">
@@ -113,7 +121,7 @@ export const CreateApiKeyDialog = ({ isOpen, onClose }: Props) => {
                 intent="primary"
                 onClick={handleCreate}
                 loading={createMutation.isPending}
-                disabled={!name.trim()}
+                disabled={!canCreate}
               >
                 Create Key
               </Button>

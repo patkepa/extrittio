@@ -18,6 +18,7 @@ import {
   useNextVersion,
   useUploadFirmwareUpdate,
 } from '../../hooks/use-firmware-updates';
+import { useConfirmShortcut } from '../../hooks/use-confirm-shortcut';
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -49,7 +50,9 @@ export const AddFirmwareDialog = ({ isOpen, onClose }: AddFirmwareDialogProps) =
   const isError = createMutation.isError || uploadMutation.isError;
 
   const canSubmit =
-    !!selectedDeviceTypeId && (uploadMode === 'file' ? !!selectedFile : !!url.trim());
+    !!selectedDeviceTypeId &&
+    (uploadMode === 'file' ? !!selectedFile : !!url.trim()) &&
+    !isSubmitting;
 
   const handleAdd = () => {
     if (!selectedDeviceTypeId) return;
@@ -104,6 +107,12 @@ export const AddFirmwareDialog = ({ isOpen, onClose }: AddFirmwareDialogProps) =
     uploadMutation.reset();
     onClose();
   };
+
+  useConfirmShortcut({
+    isOpen,
+    canConfirm: canSubmit,
+    onConfirm: handleAdd,
+  });
 
   return (
     <Dialog icon="upload" title="Register Firmware Update" isOpen={isOpen} onClose={handleClose}>

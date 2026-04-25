@@ -16,6 +16,7 @@ import {
   Spinner,
   Icon,
 } from '@blueprintjs/core';
+import { useConfirmShortcut } from '../../hooks/use-confirm-shortcut';
 import { useUsers, useCreateUser, useDeleteUser } from '../../hooks/use-users';
 import './settings.css';
 
@@ -43,6 +44,15 @@ export const UsersSettings = () => {
       },
     );
   };
+
+  const canCreateUser =
+    !!newUsername.trim() && !!newPassword.trim() && !createUserMutation.isPending;
+
+  useConfirmShortcut({
+    isOpen: isDialogOpen,
+    canConfirm: canCreateUser,
+    onConfirm: handleCreate,
+  });
 
   if (error) {
     return (
@@ -161,7 +171,7 @@ export const UsersSettings = () => {
                 icon="add"
                 onClick={handleCreate}
                 loading={createUserMutation.isPending}
-                disabled={!newUsername.trim() || !newPassword.trim()}
+                disabled={!canCreateUser}
               >
                 Add User
               </Button>

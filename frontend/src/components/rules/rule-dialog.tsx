@@ -13,6 +13,7 @@ import {
   Icon,
 } from '@blueprintjs/core';
 import { useRule, useCreateRule, useUpdateRule } from '../../hooks/use-rules';
+import { useConfirmShortcut } from '../../hooks/use-confirm-shortcut';
 import { useDeviceTypes } from '../../hooks/use-device-types';
 import { useFleets } from '../../hooks/use-fleets';
 import { useDevices } from '../../hooks/use-devices';
@@ -268,6 +269,13 @@ export function RuleDialog() {
 
   const isPending = createMutation.isPending || updateMutation.isPending;
   const isError = createMutation.isError || updateMutation.isError;
+  const canSubmit = !!name.trim() && !hasEmptyConditions && !hasInvalidActions && !isPending;
+
+  useConfirmShortcut({
+    isOpen: isRuleDialogOpen,
+    canConfirm: canSubmit,
+    onConfirm: handleSubmit,
+  });
 
   return (
     <Dialog
@@ -653,7 +661,7 @@ export function RuleDialog() {
               icon={editingRuleId ? 'tick' : 'add'}
               onClick={handleSubmit}
               loading={isPending}
-              disabled={!name.trim() || hasEmptyConditions || hasInvalidActions}
+              disabled={!canSubmit}
             >
               {editingRuleId ? 'Update Rule' : 'Add Rule'}
             </Button>
