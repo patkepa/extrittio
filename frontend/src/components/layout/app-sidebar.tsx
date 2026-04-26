@@ -39,6 +39,7 @@ const hasActiveChild = (item: NavItem, pathname: string): boolean => {
 };
 
 const SIDEBAR_NAV_ITEM_SELECTOR = '[data-sidebar-nav-item="true"]';
+const isActivationKey = (key: string) => key === 'Enter' || key === ' ' || key === 'Spacebar';
 
 export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
   const sidebarRef = useRef<HTMLDivElement | null>(null);
@@ -91,6 +92,19 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
     navigate(href);
   };
 
+  const activateNavItem = (item: NavItem) => {
+    const hasChildren = item.children && item.children.length > 0;
+
+    if (hasChildren) {
+      if (isCollapsed) {
+        expandSidebar();
+      }
+      toggleExpanded(item.label);
+    } else {
+      handleNavigation(item.href);
+    }
+  };
+
   const getNavElements = () =>
     Array.from(sidebarRef.current?.querySelectorAll<HTMLElement>(SIDEBAR_NAV_ITEM_SELECTOR) ?? []);
 
@@ -137,22 +151,35 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
   };
 
   const handleSidebarKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.defaultPrevented) return;
+
     const currentItem =
       event.target instanceof HTMLElement
         ? event.target.closest<HTMLElement>(SIDEBAR_NAV_ITEM_SELECTOR)
         : null;
     if (!currentItem) {
       const direction = getDirectionalKey(event);
-      if (!direction && event.key !== 'Enter' && event.key !== ' ') return;
+      if (!direction && !isActivationKey(event.key)) return;
 
       event.preventDefault();
       focusActiveOrFirstNavElement();
       return;
     }
 
-    if (event.key === 'Enter' || event.key === ' ') {
+    if (isActivationKey(event.key)) {
       event.preventDefault();
-      currentItem.click();
+      const hasChildren = currentItem.dataset.hasChildren === 'true';
+      const label = currentItem.dataset.label;
+      const href = currentItem.dataset.href;
+
+      if (hasChildren && label) {
+        if (isCollapsed) {
+          expandSidebar();
+        }
+        toggleExpanded(label);
+      } else if (href) {
+        handleNavigation(href);
+      }
       return;
     }
 
@@ -216,15 +243,13 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
         icon={item.icon}
         text={!isCollapsed ? item.label : undefined}
         active={active}
-        onClick={() => {
-          if (hasChildren) {
-            if (isCollapsed) {
-              expandSidebar();
-            }
-            toggleExpanded(item.label);
-          } else {
-            handleNavigation(item.href);
-          }
+        onClick={() => activateNavItem(item)}
+        onKeyDown={(event) => {
+          if (!isActivationKey(event.key)) return;
+
+          event.preventDefault();
+          event.stopPropagation();
+          activateNavItem(item);
         }}
         labelElement={
           !isCollapsed ? (
@@ -249,6 +274,7 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
         data-expanded={hasChildren ? String(isExpanded) : undefined}
         data-focus-region-initial={active ? 'true' : undefined}
         data-label={item.label}
+        data-href={item.href}
         className={
           [active && 'sidebar-item-active', hasChildren && isExpanded && 'sidebar-item-expanded']
             .filter(Boolean)
