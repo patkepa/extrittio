@@ -59,6 +59,10 @@ function HealthRow({
     <div
       style={style}
       className={`health-panel-row ${isSelected ? 'health-panel-row--selected' : ''}`}
+      role="button"
+      tabIndex={0}
+      data-right-sidebar-item="true"
+      data-focus-region-initial={isSelected ? 'true' : undefined}
       onClick={() => onDeviceClick(node.id)}
     >
       <span

@@ -4,7 +4,7 @@ const shortcuts = [
   ['Cmd/Ctrl + K', 'Open command palette'],
   ['Cmd/Ctrl + B', 'Toggle sidebar'],
   ['F6', 'Focus the sidebar navigation'],
-  ['Shift + ←/→', 'Move focus between sidebar, main content, and page side panels'],
+  ['Shift + A/D or ←/→', 'Move focus between sidebar, main content, and page side panels'],
   ['/', 'Focus device search'],
   ['W/S or ↑/↓', 'Move through device rows, sidebar items, and form controls'],
   ['A/D or ←/→', 'Move between device tabs or expand/collapse sidebar groups'],

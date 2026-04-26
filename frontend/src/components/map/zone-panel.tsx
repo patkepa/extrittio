@@ -184,6 +184,7 @@ export function ZonePanel({
       <div className="map-panel-tabs">
         <button
           className={`map-panel-tab${activeTab === 'devices' ? ' map-panel-tab--active' : ''}`}
+          data-focus-region-initial={activeTab === 'devices' ? 'true' : undefined}
           onClick={() => setActiveTab('devices')}
         >
           Devices
@@ -191,6 +192,7 @@ export function ZonePanel({
         </button>
         <button
           className={`map-panel-tab${activeTab === 'zones' ? ' map-panel-tab--active' : ''}`}
+          data-focus-region-initial={activeTab === 'zones' ? 'true' : undefined}
           onClick={() => setActiveTab('zones')}
         >
           Zones
@@ -214,7 +216,14 @@ export function ZonePanel({
           {devices.map((device) => {
             const color = STATUS_COLORS[device.status] || STATUS_COLORS.offline;
             return (
-              <div key={device.id} className="map-panel-row" onClick={() => onDeviceClick(device)}>
+              <div
+                key={device.id}
+                className="map-panel-row"
+                role="button"
+                tabIndex={0}
+                data-right-sidebar-item="true"
+                onClick={() => onDeviceClick(device)}
+              >
                 <span
                   className="map-panel-led"
                   style={{ backgroundColor: color, boxShadow: `0 0 4px ${color}80` }}
@@ -243,6 +252,9 @@ export function ZonePanel({
               <div
                 key={zone.id}
                 className={`map-panel-row${hidden ? ' map-panel-row--hidden' : ''}`}
+                role="button"
+                tabIndex={0}
+                data-right-sidebar-item="true"
                 onClick={() => onZoneClick(zone)}
               >
                 <Button

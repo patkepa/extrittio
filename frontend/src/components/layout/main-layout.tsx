@@ -24,6 +24,12 @@ const routeNames: Record<string, string> = {
   '/settings/fleets': 'Settings / Fleets',
 };
 
+function getFocusRegionDirection(key: string): 'left' | 'right' | null {
+  if (key === 'ArrowLeft' || key.toLowerCase() === 'a') return 'left';
+  if (key === 'ArrowRight' || key.toLowerCase() === 'd') return 'right';
+  return null;
+}
+
 export const MainLayout = ({ children }: MainLayoutProps) => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -39,7 +45,9 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
         return;
       }
 
+      const focusRegionDirection = getFocusRegionDirection(e.key);
       if (
+        focusRegionDirection &&
         e.shiftKey &&
         !e.metaKey &&
         !e.ctrlKey &&
@@ -47,11 +55,10 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
         !e.defaultPrevented &&
         !e.isComposing &&
         !isEditableTarget(e.target) &&
-        !hasOpenBlockingOverlay() &&
-        (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
+        !hasOpenBlockingOverlay()
       ) {
         e.preventDefault();
-        moveFocusRegion(e.key === 'ArrowLeft' ? 'left' : 'right');
+        moveFocusRegion(focusRegionDirection);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
