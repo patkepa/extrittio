@@ -39,9 +39,13 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
         e.preventDefault();
-        toggleSidebar();
+        if (e.shiftKey) {
+          window.dispatchEvent(new CustomEvent('toggle-right-sidebar'));
+        } else {
+          toggleSidebar();
+        }
         return;
       }
 

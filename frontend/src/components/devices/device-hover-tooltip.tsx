@@ -39,7 +39,8 @@ export function DeviceHoverTooltip({
   position: { x: number; y: number };
 }) {
   // TODO: temporarily disabled — remove this line to re-enable
-  if (true) return null;
+  const tooltipDisabled = true;
+  if (tooltipDisabled) return null;
 
   if (!device) return null;
 

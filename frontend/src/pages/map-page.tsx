@@ -58,6 +58,12 @@ export default function MapPage() {
   const mapRef = useRef<L.Map | null>(null);
   const acceptDrawnLayerRef = useRef<((layer: L.Layer, type: string) => void) | null>(null);
 
+  useEffect(() => {
+    const handler = () => setPanelOpen((v) => !v);
+    window.addEventListener('toggle-right-sidebar', handler);
+    return () => window.removeEventListener('toggle-right-sidebar', handler);
+  }, []);
+
   const handleToggleDrawMode = useCallback(() => {
     setDrawMode((prev) => !prev);
   }, []);
@@ -133,7 +139,7 @@ export default function MapPage() {
         icon={panelOpen ? 'chevron-right' : 'chevron-left'}
         minimal
         small
-        title={panelOpen ? 'Hide panel' : 'Show panel'}
+        title={panelOpen ? 'Hide panel (⇧⌘B)' : 'Show panel (⇧⌘B)'}
         onClick={() => setPanelOpen((v) => !v)}
       />
       <ZonePanel

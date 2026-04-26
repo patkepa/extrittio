@@ -6,74 +6,123 @@
   margin: -24px;
 }
 
+.fleet-graph-workspace {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .fleet-graph-canvas {
   flex: 1;
+  min-height: 0;
   position: relative;
   overflow: hidden;
 }
 
-/* Device Popover backdrop — closes popover on any click outside */
-.fleet-graph-popover-backdrop {
-  position: absolute;
-  inset: 0;
-  z-index: 9;
+.fleet-graph-toolbar-shell {
+  padding-right: 12px;
 }
 
-/* Device Popover (absolute positioned inside canvas container) */
-.fleet-graph-popover {
-  position: absolute;
-  z-index: 10;
-  background-color: var(--card-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 2px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
-  min-width: 260px;
-  overflow: hidden;
-}
-
-.popover-header {
+.fleet-graph-toolbar {
+  width: 100%;
+  min-width: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border-color);
-  font-size: 14px;
+  gap: 16px;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
-.popover-body {
-  padding: 10px 14px;
+.fleet-graph-toolbar::-webkit-scrollbar {
+  height: 3px;
+}
+
+.fleet-graph-toolbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.fleet-graph-toolbar::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 0;
+}
+
+.fleet-graph-toolbar-identity {
+  min-width: 210px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: hsl(var(--foreground));
+}
+
+.fleet-graph-toolbar-title-group {
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
 }
 
-.popover-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.fleet-graph-toolbar-title {
   font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.popover-label {
+.fleet-graph-toolbar-subtitle {
   color: hsl(var(--muted));
-  font-size: 12px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: 11px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.popover-status {
+.fleet-graph-toolbar-metrics {
+  flex: 1;
+  min-width: 460px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(88px, 1fr));
+  gap: 10px;
+}
+
+.fleet-graph-toolbar-metric {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fleet-graph-toolbar-metric-label {
+  color: hsl(var(--muted));
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+}
+
+.fleet-graph-toolbar-metric-value {
+  min-width: 0;
+  color: hsl(var(--foreground));
+  font-size: 12px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fleet-graph-toolbar-spacer {
+  flex: 1;
+}
+
+.fleet-graph-toolbar-actions {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
-  text-transform: capitalize;
-}
-
-.popover-footer {
-  padding: 10px 14px;
-  border-top: 1px solid var(--border-color);
-  display: flex;
-  justify-content: flex-end;
+  gap: 4px;
 }
 
 /* Empty state */
@@ -90,20 +139,6 @@
 .fleet-graph-empty p {
   color: hsl(var(--muted));
   font-size: 14px;
-}
-
-/* Health panel toggle button */
-.health-panel-toggle {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 5;
-  opacity: 0.6;
-  transition: opacity 0.15s ease;
-}
-
-.health-panel-toggle:hover {
-  opacity: 1;
 }
 
 .health-panel-header {
@@ -324,27 +359,6 @@
 }
 
 .fleet-graph-bulk-bar-left .bp6-button:hover {
-  opacity: 1;
-}
-
-/* Zoom controls — bottom-left corner */
-.fleet-graph-zoom-controls {
-  position: absolute;
-  bottom: 16px;
-  left: 16px;
-  z-index: 5;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  background-color: var(--card-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 2px;
-  padding: 2px;
-  opacity: 0.6;
-  transition: opacity 0.15s ease;
-}
-
-.fleet-graph-zoom-controls:hover {
   opacity: 1;
 }
 
