@@ -113,6 +113,9 @@ export const FleetGraphCanvas = memo(
       node: GraphNode | null;
     } | null>(null);
 
+    // Whether a node is currently being dragged (for cursor management).
+    const isDraggingRef = useRef(false);
+
     // --- Custom hooks ---
     const { updateNodeBounds, handleZoom } = useViewportControls(
       graphRef,
@@ -179,8 +182,11 @@ export const FleetGraphCanvas = memo(
       return () => wrapper.removeEventListener('contextmenu', suppress);
     }, []);
 
-    // Sync canvas cursor to pointer only when over a node
+    // Sync canvas cursor — respects drag state so the grab cursor shows
+    // correctly. The library's own .grabbable class is overridden by the
+    // inline style we set here, so we must manage all cursor states ourselves.
     useEffect(() => {
+      if (isDraggingRef.current) return; // don't clobber the drag cursor
       const canvas = canvasWrapperRef.current?.querySelector('canvas');
       if (!canvas) return;
       if (shiftHeld) {
@@ -191,6 +197,23 @@ export const FleetGraphCanvas = memo(
         canvas.style.cursor = 'default';
       }
     }, [hoverNode, shiftHeld]);
+
+    // Node drag cursor handlers — set grabbing cursor immediately (without
+    // waiting for a React re-render) and restore the correct cursor on end.
+    const handleNodeDrag = useCallback(() => {
+      if (!isDraggingRef.current) {
+        isDraggingRef.current = true;
+        const canvas = canvasWrapperRef.current?.querySelector('canvas');
+        if (canvas) canvas.style.cursor = 'grabbing';
+      }
+    }, []);
+
+    const handleNodeDragEnd = useCallback(() => {
+      isDraggingRef.current = false;
+      const canvas = canvasWrapperRef.current?.querySelector('canvas');
+      if (!canvas) return;
+      canvas.style.cursor = hoverNodeRef.current ? 'pointer' : 'default';
+    }, []);
 
     // Hover handler — debounced to avoid flickering when quickly brushing over nodes.
     // The raw ref is updated immediately so click detection always has the
@@ -622,6 +645,8 @@ export const FleetGraphCanvas = memo(
           linkCanvasObjectMode={() => 'replace'}
           nodePointerAreaPaint={paintPointerArea as any}
           onNodeHover={handleNodeHover as any}
+          onNodeDrag={handleNodeDrag as any}
+          onNodeDragEnd={handleNodeDragEnd as any}
           onNodeRightClick={onNodeRightClick as any}
           onEngineStop={handleEngineStop}
           enablePanInteraction={enablePanInteraction as any}
