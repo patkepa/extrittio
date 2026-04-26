@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState, type MutableRefObject } from 'react';
 import {
   Button,
   Dialog,
@@ -13,6 +13,7 @@ import {
 import { useZones, useCreateZone, useDeleteZone, useUpdateZone } from '../../hooks/use-zones';
 import { useConfirmShortcut } from '../../hooks/use-confirm-shortcut';
 import type { Zone, CircleGeometry, PolygonGeometry } from '../../types/zones';
+import { RightSidebar } from '../layout/right-sidebar';
 import L from 'leaflet';
 import './zone-panel.css';
 
@@ -49,6 +50,7 @@ export interface MapDevice {
 }
 
 type PanelTab = 'devices' | 'zones';
+type AcceptDrawnLayer = (layer: L.Layer, type: string) => void;
 
 interface MapPanelProps {
   drawMode: boolean;
@@ -58,6 +60,7 @@ interface MapPanelProps {
   hiddenZoneIds: Set<string>;
   onToggleZoneVisibility: (id: string) => void;
   devices: MapDevice[];
+  acceptDrawnLayerRef: MutableRefObject<AcceptDrawnLayer | null>;
   collapsed?: boolean;
 }
 
@@ -69,6 +72,7 @@ export function ZonePanel({
   hiddenZoneIds,
   onToggleZoneVisibility,
   devices,
+  acceptDrawnLayerRef,
   collapsed,
 }: MapPanelProps) {
   const { data: zones = [] } = useZones();
@@ -131,39 +135,50 @@ export function ZonePanel({
     });
   };
 
-  const acceptDrawnLayer = (layer: L.Layer, type: string) => {
-    let geometry_type: 'circle' | 'polygon';
-    let geometry_json: CircleGeometry | PolygonGeometry;
+  const acceptDrawnLayer = useCallback<AcceptDrawnLayer>(
+    (layer, type) => {
+      let geometry_type: 'circle' | 'polygon';
+      let geometry_json: CircleGeometry | PolygonGeometry;
 
-    if (type === 'circle') {
-      const circle = layer as L.Circle;
-      const center = circle.getLatLng();
-      geometry_type = 'circle';
-      geometry_json = {
-        center: [center.lat, center.lng],
-        radius_meters: circle.getRadius(),
-      };
-    } else {
-      const polygon = layer as L.Polygon;
-      const latlngs = polygon.getLatLngs()[0] as L.LatLng[];
-      geometry_type = 'polygon';
-      geometry_json = {
-        points: latlngs.map((ll) => [ll.lat, ll.lng] as [number, number]),
-      };
-    }
+      if (type === 'circle') {
+        const circle = layer as L.Circle;
+        const center = circle.getLatLng();
+        geometry_type = 'circle';
+        geometry_json = {
+          center: [center.lat, center.lng],
+          radius_meters: circle.getRadius(),
+        };
+      } else {
+        const polygon = layer as L.Polygon;
+        const latlngs = polygon.getLatLngs()[0] as L.LatLng[];
+        geometry_type = 'polygon';
+        geometry_json = {
+          points: latlngs.map((ll) => [ll.lat, ll.lng] as [number, number]),
+        };
+      }
 
-    setPendingGeometry({ geometry_type, geometry_json });
-    setNameDialogOpen(true);
-    onToggleDrawMode();
-  };
+      setPendingGeometry({ geometry_type, geometry_json });
+      setNameDialogOpen(true);
+      onToggleDrawMode();
+    },
+    [onToggleDrawMode],
+  );
 
-  ZonePanel.acceptDrawnLayer = acceptDrawnLayer;
+  useEffect(() => {
+    acceptDrawnLayerRef.current = acceptDrawnLayer;
+    return () => {
+      if (acceptDrawnLayerRef.current === acceptDrawnLayer) {
+        acceptDrawnLayerRef.current = null;
+      }
+    };
+  }, [acceptDrawnLayer, acceptDrawnLayerRef]);
 
   return (
-    <div
-      className={`map-panel${collapsed ? ' map-panel--collapsed' : ''}`}
-      data-focus-region={collapsed ? undefined : 'aside'}
-      tabIndex={collapsed ? undefined : -1}
+    <RightSidebar
+      className="map-panel"
+      collapsed={collapsed}
+      mode="overlay"
+      ariaLabel="Map devices and zones"
     >
       {/* Tab bar */}
       <div className="map-panel-tabs">
@@ -195,7 +210,7 @@ export function ZonePanel({
 
       {/* Devices tab */}
       {activeTab === 'devices' && (
-        <div className="map-panel-list">
+        <div className="map-panel-list right-sidebar-scrollable">
           {devices.map((device) => {
             const color = STATUS_COLORS[device.status] || STATUS_COLORS.offline;
             return (
@@ -221,7 +236,7 @@ export function ZonePanel({
 
       {/* Zones tab */}
       {activeTab === 'zones' && (
-        <div className="map-panel-list">
+        <div className="map-panel-list right-sidebar-scrollable">
           {zones.map((zone) => {
             const hidden = hiddenZoneIds.has(zone.id);
             return (
@@ -297,7 +312,7 @@ export function ZonePanel({
       )}
 
       {/* Footer */}
-      <div className="map-panel-footer">
+      <div className="map-panel-footer right-sidebar-footer">
         {activeTab === 'devices' && (
           <span>
             {devices.length} device{devices.length !== 1 ? 's' : ''} on map
@@ -379,8 +394,6 @@ export function ZonePanel({
       >
         <p>Delete zone "{deleteAlertZone?.name}"? This cannot be undone.</p>
       </Alert>
-    </div>
+    </RightSidebar>
   );
 }
-
-ZonePanel.acceptDrawnLayer = (_layer: L.Layer, _type: string): void => {};

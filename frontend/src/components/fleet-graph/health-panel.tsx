@@ -4,6 +4,7 @@ import type { GraphNode, GraphLink } from './build-force-graph-data';
 import { getHealthTier, getStalenessColor, formatStaleness } from './health-utils';
 import { TIER_COLORS, type HealthTier } from './constants';
 import { FleetGraphMinimap, type ViewportInfo } from './fleet-graph-minimap';
+import { RightSidebar } from '../layout/right-sidebar';
 
 interface DeviceEntry {
   node: GraphNode;
@@ -140,11 +141,7 @@ export const HealthPanel = ({
   );
 
   return (
-    <div
-      className={`health-panel${collapsed ? ' health-panel--collapsed' : ''}`}
-      data-focus-region={collapsed ? undefined : 'aside'}
-      tabIndex={collapsed ? undefined : -1}
-    >
+    <RightSidebar className="health-panel" collapsed={collapsed} ariaLabel="Device health">
       <div className="health-panel-header">
         <span className="health-panel-title">Device Health</span>
         <div className="health-panel-summary-bar">
@@ -176,7 +173,7 @@ export const HealthPanel = ({
         />
       )}
 
-      <div className="health-panel-footer">
+      <div className="health-panel-footer right-sidebar-footer">
         <span style={{ color: TIER_COLORS.fresh }}>
           {tierCounts.fresh + tierCounts.warm + tierCounts.stale} healthy
         </span>
@@ -196,6 +193,6 @@ export const HealthPanel = ({
           drawRef={minimapDrawRef}
         />
       </div>
-    </div>
+    </RightSidebar>
   );
 };

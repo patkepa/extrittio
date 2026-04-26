@@ -1,31 +1,3 @@
-/* Map Panel — floats over the map */
-.map-panel {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 260px;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  background-color: var(--sidebar-bg);
-  border-left: 1px solid var(--border-color);
-  z-index: 6;
-  transition:
-    transform 0.25s ease,
-    opacity 0.25s ease;
-  overflow: hidden;
-}
-
-.map-panel--collapsed {
-  transform: translateX(100%);
-  opacity: 0;
-  pointer-events: none;
-}
-
-.map-panel:focus {
-  outline: none;
-}
-
 /* Tab bar */
 .map-panel-tabs {
   display: flex;
@@ -83,19 +55,6 @@
 .map-panel-list {
   flex: 1;
   overflow-y: auto;
-}
-
-.map-panel-list::-webkit-scrollbar {
-  width: 4px;
-}
-
-.map-panel-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.map-panel-list::-webkit-scrollbar-thumb {
-  background: var(--border-color);
-  border-radius: 0;
 }
 
 /* Shared rows */
@@ -229,16 +188,7 @@
 
 /* Footer */
 .map-panel-footer {
-  padding: 8px 16px;
-  border-top: 1px solid var(--border-color);
   font-size: 11px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--sidebar-muted-foreground);
-  background-color: var(--sidebar-bg);
-  flex-shrink: 0;
 }
 
 .map-panel-footer-muted {

@@ -106,32 +106,6 @@
   opacity: 1;
 }
 
-/* Health Side Panel — styled to match app sidebar */
-.health-panel {
-  width: 260px;
-  min-width: 260px;
-  display: flex;
-  flex-direction: column;
-  background-color: var(--sidebar-bg);
-  border-left: 1px solid var(--border-color);
-  transition:
-    width 0.25s ease,
-    min-width 0.25s ease,
-    opacity 0.25s ease;
-  overflow: hidden;
-}
-
-.health-panel:focus {
-  outline: none;
-}
-
-.health-panel--collapsed {
-  width: 0;
-  min-width: 0;
-  opacity: 0;
-  border-left-color: transparent;
-}
-
 .health-panel-header {
   height: 48px;
   display: flex;
@@ -158,20 +132,6 @@
   border-radius: 2px;
   overflow: hidden;
   gap: 1px;
-}
-
-/* Health panel scrollbar — match sidebar */
-.health-panel > div::-webkit-scrollbar {
-  width: 4px;
-}
-
-.health-panel > div::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.health-panel > div::-webkit-scrollbar-thumb {
-  background: var(--border-color);
-  border-radius: 0;
 }
 
 /* Minimap section */
@@ -252,14 +212,7 @@
 
 /* Counts footer — styled like sidebar footer */
 .health-panel-footer {
-  padding: 8px 16px;
-  border-top: 1px solid var(--border-color);
   font-size: 11px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background-color: var(--sidebar-bg);
 }
 
 .health-panel-dot {
