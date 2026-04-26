@@ -194,7 +194,7 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
                 </div>
                 <div className="user-details">
                   <div className="user-name">{currentUser.name}</div>
-                  {footerOpen && <div className="user-email">{currentUser.email}</div>}
+                  <div className={`user-email footer-email ${footerOpen ? 'visible' : ''}`}>{currentUser.email}</div>
                 </div>
               </div>
               <Icon
@@ -231,8 +231,7 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
                 </button>
               </div>
             </Collapse>
-            {!footerOpen && (
-              <div className="footer-env-badge">
+            <div className={`footer-env-badge ${footerOpen ? 'hidden' : ''}`}>
                 <span
                   className="env-dot"
                   style={{ backgroundColor: envColors[selectedProject.environment] }}
@@ -242,7 +241,6 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
                 </span>
                 <span className="version-text mono-data">v0.1.0</span>
               </div>
-            )}
           </div>
         ) : (
           <Popover

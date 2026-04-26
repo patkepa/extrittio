@@ -157,6 +157,20 @@
   align-items: center;
   gap: 8px;
   padding: 4px 10px 6px;
+  max-height: 30px;
+  opacity: 1;
+  overflow: hidden;
+  transition:
+    max-height 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.15s ease,
+    padding 0.2s ease;
+}
+
+.footer-env-badge.hidden {
+  max-height: 0;
+  opacity: 0;
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 /* Collapsed avatar popover */
@@ -423,6 +437,23 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Animated email in footer trigger — collapses height + fades */
+.footer-email {
+  max-height: 0;
+  opacity: 0;
+  transition:
+    max-height 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.15s ease,
+    margin-top 0.2s ease;
+  margin-top: 0;
+}
+
+.footer-email.visible {
+  max-height: 20px;
+  opacity: 1;
+  margin-top: 0;
 }
 
 /* ── Scrollbar ── */
