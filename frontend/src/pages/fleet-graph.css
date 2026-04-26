@@ -125,6 +125,10 @@
   gap: 4px;
 }
 
+.fleet-graph-toolbar-sidebar-toggle {
+  margin-left: 20px;
+}
+
 /* Empty state */
 .fleet-graph-empty {
   display: flex;

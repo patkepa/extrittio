@@ -125,6 +125,7 @@ export const FleetGraphToolbar = ({
                 onClick={onZoomOut}
               />
               <Button
+                className="fleet-graph-toolbar-sidebar-toggle"
                 icon={healthPanelOpen ? 'chevron-right' : 'chevron-left'}
                 minimal
                 small
