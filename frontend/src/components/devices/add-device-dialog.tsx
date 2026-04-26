@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Button,
   Callout,
@@ -9,7 +9,10 @@ import {
   HTMLSelect,
   InputGroup,
 } from '@blueprintjs/core';
+import type { AxiosError } from 'axios';
 import { useCreateDevice } from '../../hooks/use-devices';
+import { useConfirmShortcut } from '../../hooks/use-confirm-shortcut';
+import { useFormNavigation } from '../../hooks/use-form-navigation';
 import { useDeviceTypes } from '../../hooks/use-device-types';
 import { useFleets } from '../../hooks/use-fleets';
 import { useUIStore } from '../../stores/ui-store';
@@ -19,7 +22,13 @@ import { getDeviceCertificate } from '../../api/certificates';
 import { useCaCertificate } from '../../hooks/use-certificates';
 import type { DeviceCertificateResponse } from '../../types/api';
 
+function getApiErrorMessage(error: unknown, fallback: string): string {
+  const axiosError = error as AxiosError<{ error?: string }>;
+  return axiosError?.response?.data?.error ?? fallback;
+}
+
 export function AddDeviceDialog() {
+  const formRef = useRef<HTMLDivElement | null>(null);
   const { isAddDeviceDialogOpen, closeAddDeviceDialog } = useUIStore();
   const { data: deviceTypes = [] } = useDeviceTypes();
   const { data: fleets = [] } = useFleets();
@@ -37,6 +46,11 @@ export function AddDeviceDialog() {
   const [certBundle, setCertBundle] = useState<DeviceCertificateResponse | null>(null);
   const [createdDeviceName, setCreatedDeviceName] = useState('');
   const caQuery = useCaCertificate();
+  const canAddDevice =
+    !!newDevice.name.trim() &&
+    deviceTypes.length > 0 &&
+    !createDeviceMutation.isPending &&
+    certBundle === null;
 
   // Reset stale mutation error when dialog opens/closes
   const resetCreateMutation = createDeviceMutation.reset;
@@ -70,12 +84,19 @@ export function AddDeviceDialog() {
           closeAddDeviceDialog();
           setNewDevice({ name: '', device_type_id: 0, fleet_id: undefined });
         },
-        onError: () => {
-          void showErrorToast('Failed to add device');
+        onError: (error) => {
+          void showErrorToast(getApiErrorMessage(error, 'Failed to add device'));
         },
       },
     );
   };
+
+  useConfirmShortcut({
+    isOpen: isAddDeviceDialogOpen,
+    canConfirm: canAddDevice,
+    onConfirm: handleAddDevice,
+  });
+  useFormNavigation(formRef, isAddDeviceDialogOpen);
 
   return (
     <>
@@ -86,52 +107,57 @@ export function AddDeviceDialog() {
         onClose={closeAddDeviceDialog}
       >
         <DialogBody>
-          <FormGroup label="Name" labelInfo="(required)">
-            <InputGroup
-              placeholder="e.g. Temperature Sensor A1"
-              value={newDevice.name}
-              onChange={(e) => setNewDevice({ ...newDevice, name: e.target.value })}
-            />
-          </FormGroup>
-          <FormGroup label="Device Type" labelInfo="(required)">
-            <HTMLSelect
-              fill
-              value={newDevice.device_type_id || defaultTypeId}
-              onChange={(e) =>
-                setNewDevice({ ...newDevice, device_type_id: Number(e.target.value) })
-              }
-            >
-              {deviceTypes.map((dt) => (
-                <option key={dt.id} value={dt.id}>
-                  {dt.name}
-                </option>
-              ))}
-            </HTMLSelect>
-          </FormGroup>
-          <FormGroup label="Fleet">
-            <HTMLSelect
-              fill
-              value={newDevice.fleet_id ?? ''}
-              onChange={(e) =>
-                setNewDevice({
-                  ...newDevice,
-                  fleet_id: e.target.value ? Number(e.target.value) : undefined,
-                })
-              }
-            >
-              <option value="">No fleet</option>
-              {fleets.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name}
-                </option>
-              ))}
-            </HTMLSelect>
-          </FormGroup>
-          {createDeviceMutation.isError && (
-            <Callout intent="danger" icon="error">
-              Failed to create device. Please try again.
-            </Callout>
-          )}
+          <div ref={formRef}>
+            <FormGroup label="Name" labelInfo="(required)">
+              <InputGroup
+                placeholder="e.g. Temperature Sensor A1"
+                value={newDevice.name}
+                onChange={(e) => setNewDevice({ ...newDevice, name: e.target.value })}
+              />
+            </FormGroup>
+            <FormGroup label="Device Type" labelInfo="(required)">
+              <HTMLSelect
+                fill
+                value={newDevice.device_type_id || defaultTypeId}
+                onChange={(e) =>
+                  setNewDevice({ ...newDevice, device_type_id: Number(e.target.value) })
+                }
+              >
+                {deviceTypes.map((dt) => (
+                  <option key={dt.id} value={dt.id}>
+                    {dt.name}
+                  </option>
+                ))}
+              </HTMLSelect>
+            </FormGroup>
+            <FormGroup label="Fleet">
+              <HTMLSelect
+                fill
+                value={newDevice.fleet_id ?? ''}
+                onChange={(e) =>
+                  setNewDevice({
+                    ...newDevice,
+                    fleet_id: e.target.value ? Number(e.target.value) : undefined,
+                  })
+                }
+              >
+                <option value="">No fleet</option>
+                {fleets.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </HTMLSelect>
+            </FormGroup>
+            {createDeviceMutation.isError && (
+              <Callout intent="danger" icon="error">
+                {getApiErrorMessage(
+                  createDeviceMutation.error,
+                  'Failed to create device. Please try again.',
+                )}
+              </Callout>
+            )}
+          </div>
         </DialogBody>
         <DialogFooter
           actions={
@@ -142,7 +168,7 @@ export function AddDeviceDialog() {
                 icon="add"
                 onClick={handleAddDevice}
                 loading={createDeviceMutation.isPending}
-                disabled={!newDevice.name.trim() || deviceTypes.length === 0}
+                disabled={!canAddDevice}
               >
                 Add Device
               </Button>

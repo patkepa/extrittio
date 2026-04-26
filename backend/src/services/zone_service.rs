@@ -1,18 +1,19 @@
 // Zone service — business logic for zone management
 
 use diesel::prelude::*;
-use diesel::SqliteConnection;
+use diesel::PgConnection;
+use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
 use crate::db::models::{NewZone, Zone};
 use crate::error::AppError;
 use crate::repositories::zone_repo;
 
-pub fn list_zones(conn: &mut SqliteConnection) -> Result<Vec<Zone>, AppError> {
+pub fn list_zones(conn: &mut PgConnection) -> Result<Vec<Zone>, AppError> {
     Ok(zone_repo::list_zones(conn)?)
 }
 
-pub fn get_zone(conn: &mut SqliteConnection, zone_id: &str) -> Result<Zone, AppError> {
+pub fn get_zone(conn: &mut PgConnection, zone_id: &str) -> Result<Zone, AppError> {
     zone_repo::get_zone(conn, zone_id).map_err(|e| match e {
         diesel::result::Error::NotFound => {
             AppError::NotFound(format!("Zone '{zone_id}' not found"))
@@ -22,11 +23,11 @@ pub fn get_zone(conn: &mut SqliteConnection, zone_id: &str) -> Result<Zone, AppE
 }
 
 pub fn create_zone(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     name: String,
     description: String,
     geometry_type: String,
-    geometry_json: String,
+    geometry_json: JsonValue,
     color: String,
 ) -> Result<Zone, AppError> {
     let zone_id = Uuid::new_v4().to_string();
@@ -44,12 +45,12 @@ pub fn create_zone(
 }
 
 pub fn update_zone(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     zone_id: &str,
     name: Option<String>,
     description: Option<String>,
     geometry_type: Option<String>,
-    geometry_json: Option<String>,
+    geometry_json: Option<JsonValue>,
     color: Option<String>,
 ) -> Result<Zone, AppError> {
     // Verify zone exists first
@@ -71,7 +72,7 @@ pub fn update_zone(
     )?)
 }
 
-pub fn delete_zone(conn: &mut SqliteConnection, zone_id: &str) -> Result<(), AppError> {
+pub fn delete_zone(conn: &mut PgConnection, zone_id: &str) -> Result<(), AppError> {
     // Verify zone exists first
     zone_repo::get_zone(conn, zone_id).map_err(|e| match e {
         diesel::result::Error::NotFound => {

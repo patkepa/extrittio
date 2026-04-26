@@ -67,11 +67,9 @@ pub(crate) async fn get_config(
 
         match config {
             Some(c) => {
-                let config_val: Value = serde_json::from_str(&c.config)
-                    .unwrap_or(Value::Object(serde_json::Map::default()));
                 Ok(ConfigResponse {
                     device_id: c.device_id,
-                    config: config_val,
+                    config: c.config,
                     updated_at: c.updated_at.and_utc().to_rfc3339(),
                 })
             }
@@ -111,12 +109,9 @@ pub(crate) async fn update_config(
     let response = run_db(&state.db_pool, move |conn| {
         let updated = config_service::merge_and_update(conn, &id, &body.entries)?;
 
-        let config_val: Value = serde_json::from_str(&updated.config)
-            .unwrap_or(Value::Object(serde_json::Map::default()));
-
         Ok(ConfigResponse {
             device_id: updated.device_id,
-            config: config_val,
+            config: updated.config,
             updated_at: updated.updated_at.and_utc().to_rfc3339(),
         })
     })

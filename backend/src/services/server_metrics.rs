@@ -180,7 +180,7 @@ pub async fn run_metrics_retention(db_pool: DbPool) {
 
 /// Get the latest system and application metrics snapshot.
 pub fn get_current_metrics(
-    conn: &mut diesel::SqliteConnection,
+    conn: &mut diesel::PgConnection,
 ) -> Result<(Option<ServerMetric>, Option<AppMetric>), AppError> {
     let system = server_metrics_repo::get_latest_server_metric(conn)?;
     let app = server_metrics_repo::get_latest_app_metric(conn)?;
@@ -191,7 +191,7 @@ pub fn get_current_metrics(
 /// When `resolution_secs > 10`, returns downsampled data.
 /// Otherwise returns raw data (limited to 10,000 rows per table).
 pub fn get_metrics_history(
-    conn: &mut diesel::SqliteConnection,
+    conn: &mut diesel::PgConnection,
     since: chrono::NaiveDateTime,
     resolution_secs: i64,
 ) -> Result<MetricsHistoryData, AppError> {

@@ -25,6 +25,11 @@
   padding: 0 16px;
   border-bottom: 1px solid var(--border-color);
   overflow: hidden;
+  transition: border-color 0.15s ease;
+}
+
+.app-sidebar[data-focus-region-keyboard='true'] .sidebar-header {
+  border-bottom-color: hsl(var(--accent));
 }
 
 .sidebar-logo {
@@ -60,54 +65,135 @@
 }
 
 /* ── Environment Switcher (Footer) ── */
-.sidebar-env-switcher {
-  margin-top: 8px;
+
+/* ── Footer Panel (Unified Profile + Env) ── */
+.footer-panel {
+  border: 1px solid var(--border-color);
+  border-radius: 2px;
+  background-color: var(--sidebar-accent);
+  transition: border-color 0.15s ease;
 }
 
-.env-switcher-btn {
+.footer-panel.open {
+  border-color: hsla(0, 0%, 100%, 0.12);
+}
+
+.footer-panel-trigger {
   display: flex;
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding: 6px 10px;
-  background-color: var(--sidebar-accent);
-  border: 1px solid var(--border-color);
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
   border-radius: 2px;
   cursor: pointer;
-  transition: all 0.15s ease;
   font-family: inherit;
   color: var(--sidebar-foreground);
+  transition: background-color 0.15s ease;
 }
 
-.env-switcher-btn:hover {
+.footer-panel-trigger:hover {
   background-color: var(--sidebar-accent-hover);
-  border-color: hsla(0, 0%, 100%, 0.12);
 }
 
-.env-switcher-left {
+.footer-trigger-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  min-width: 0;
 }
 
-.env-switcher-right {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.env-switcher-caret {
+.footer-panel-caret {
   color: var(--sidebar-muted-foreground);
-  transition: transform 0.15s ease;
+  flex-shrink: 0;
 }
 
-/* Environment Dropdown */
-.env-dropdown {
+.footer-panel-content {
+  padding: 4px 10px 8px;
+}
+
+.footer-section-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--sidebar-muted-foreground);
+  letter-spacing: 0.1em;
+  padding: 6px 0 4px;
+  opacity: 0.6;
+}
+
+.footer-env-options {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding-top: 6px;
 }
+
+.footer-divider {
+  height: 1px;
+  background-color: var(--border-color);
+  margin: 8px 0;
+}
+
+.footer-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--sidebar-muted-foreground);
+  transition: all 0.1s ease;
+}
+
+.footer-action:hover {
+  background-color: var(--sidebar-accent-hover);
+  border-color: var(--border-color);
+  color: var(--sidebar-foreground);
+}
+
+.footer-env-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 6px;
+  max-height: 30px;
+  opacity: 1;
+  overflow: hidden;
+  transition:
+    max-height 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.15s ease,
+    padding 0.2s ease;
+}
+
+.footer-env-badge.hidden {
+  max-height: 0;
+  opacity: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+/* Collapsed avatar popover */
+.collapsed-popover {
+  padding: 10px;
+  min-width: 200px;
+  background-color: var(--sidebar-bg);
+  border-radius: 2px;
+}
+
+.collapsed-popover-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 2px;
+}
+
+/* Environment Options */
 
 .env-option {
   display: flex;
@@ -207,6 +293,20 @@
 
 .sidebar-menu .bp6-menu-item:not(.bp6-active):not(.sidebar-item-active):focus {
   background-color: transparent;
+}
+
+.sidebar-menu .bp6-menu-item:focus-visible {
+  outline: 2px solid hsl(var(--accent));
+  outline-offset: -2px;
+  background-color: hsla(0, 0%, 100%, 0.05) !important;
+  color: var(--sidebar-foreground);
+}
+
+.app-sidebar[data-focus-region-keyboard='true'] .sidebar-menu .bp6-menu-item:focus {
+  outline: 2px solid hsl(var(--accent));
+  outline-offset: -2px;
+  background-color: hsla(0, 0%, 100%, 0.05) !important;
+  color: var(--sidebar-foreground);
 }
 
 .sidebar-menu .bp6-menu-item .bp6-menu-item-label,
@@ -311,19 +411,7 @@
   color: var(--sidebar-muted-foreground);
 }
 
-/* User card */
-.user-card {
-  padding: 10px;
-  background-color: transparent;
-  border: none;
-  border-radius: 2px;
-}
-
-.user-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
+/* User avatar */
 
 .user-avatar {
   width: 32px;
@@ -347,6 +435,7 @@
 .user-details {
   flex: 1;
   min-width: 0;
+  text-align: left;
 }
 
 .user-name {
@@ -369,17 +458,21 @@
   white-space: nowrap;
 }
 
-.user-logout {
+/* Animated email in footer trigger — collapses height + fades */
+.footer-email {
+  max-height: 0;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition:
+    max-height 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.15s ease,
+    margin-top 0.2s ease;
+  margin-top: 0;
 }
 
-.user-card:hover .user-logout {
-  opacity: 0.6;
-}
-
-.user-card .user-logout:hover {
+.footer-email.visible {
+  max-height: 20px;
   opacity: 1;
+  margin-top: 0;
 }
 
 /* ── Scrollbar ── */

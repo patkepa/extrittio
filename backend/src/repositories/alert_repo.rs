@@ -1,7 +1,7 @@
 // Repository functions for alerts
 
 use chrono::NaiveDateTime;
-use diesel::SqliteConnection;
+use diesel::PgConnection;
 use diesel::prelude::*;
 
 use crate::db::models::{Alert, NewAlert, UpdateAlert};
@@ -12,7 +12,7 @@ use crate::db::schema::alerts;
 // ---------------------------------------------------------------------------
 
 pub fn list_alerts(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     status: Option<&str>,
     severity: Option<&str>,
     device_id: Option<&str>,
@@ -68,7 +68,7 @@ pub fn list_alerts(
 // ---------------------------------------------------------------------------
 
 pub fn find_alert(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     id: &str,
 ) -> Result<Alert, diesel::result::Error> {
     alerts::table
@@ -82,7 +82,7 @@ pub fn find_alert(
 // ---------------------------------------------------------------------------
 
 pub fn insert_alert(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     new_alert: &NewAlert,
 ) -> Result<(), diesel::result::Error> {
     diesel::insert_into(alerts::table)
@@ -92,7 +92,7 @@ pub fn insert_alert(
 }
 
 pub fn update_alert(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     id: &str,
     changeset: &UpdateAlert,
 ) -> Result<usize, diesel::result::Error> {
@@ -108,7 +108,7 @@ pub fn update_alert(
 /// Returns `(status, severity, count)` rows — useful for the dashboard summary
 /// endpoint. Relies on SQLite's GROUP BY support.
 pub fn count_by_status_and_severity(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
 ) -> Result<Vec<(String, String, i64)>, diesel::result::Error> {
     alerts::table
         .group_by((alerts::status, alerts::severity))
@@ -124,7 +124,7 @@ pub fn count_by_status_and_severity(
 /// Both states represent alerts the rule engine should track to avoid creating
 /// duplicate alerts for the same rule+device pair.
 pub fn load_active_alerts(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
 ) -> Result<Vec<Alert>, diesel::result::Error> {
     alerts::table
         .filter(alerts::status.eq("active").or(alerts::status.eq("acknowledged")))
@@ -138,7 +138,7 @@ pub fn load_active_alerts(
 
 /// Delete resolved alerts whose `created_at` is older than `cutoff`.
 pub fn delete_resolved_older_than(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     cutoff: NaiveDateTime,
 ) -> Result<usize, diesel::result::Error> {
     diesel::delete(

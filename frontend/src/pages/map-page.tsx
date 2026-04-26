@@ -1,48 +1,82 @@
-import { useState, useCallback, useRef } from "react";
-import { useMap } from "react-leaflet";
-import { Button } from "@blueprintjs/core";
-import { DeviceMap } from "../components/map/device-map";
-import { ZoneLayer } from "../components/map/zone-layer";
-import { ZonePanel } from "../components/map/zone-panel";
-import type { MapDevice } from "../components/map/zone-panel";
-import { ZoneDrawControls } from "../components/map/zone-draw-controls";
-import { DeviceMarker } from "../components/map/device-marker";
-import { useDevices } from "../hooks/use-devices";
-import { useZones } from "../hooks/use-zones";
-import type { Zone, CircleGeometry, PolygonGeometry } from "../types/zones";
-import L from "leaflet";
-import "./map-page.css";
+import { useState, useCallback, useEffect, useRef, type MutableRefObject } from 'react';
+import { useMap } from 'react-leaflet';
+import { Button } from '@blueprintjs/core';
+import { DeviceMap } from '../components/map/device-map';
+import { ZoneLayer } from '../components/map/zone-layer';
+import { ZonePanel } from '../components/map/zone-panel';
+import type { MapDevice } from '../components/map/zone-panel';
+import { ZoneDrawControls } from '../components/map/zone-draw-controls';
+import { DeviceMarker } from '../components/map/device-marker';
+import { useDevices } from '../hooks/use-devices';
+import { useZones } from '../hooks/use-zones';
+import type { Device } from '../types/api';
+import type { Zone, CircleGeometry, PolygonGeometry } from '../types/zones';
+import L from 'leaflet';
+import './map-page.css';
 
 /** Captures the Leaflet map instance so the page can call flyToBounds. */
-function MapRef({ mapRef }: { mapRef: React.MutableRefObject<L.Map | null> }) {
+function MapRef({ mapRef }: { mapRef: MutableRefObject<L.Map | null> }) {
   const map = useMap();
-  mapRef.current = map;
+
+  useEffect(() => {
+    mapRef.current = map;
+    return () => {
+      if (mapRef.current === map) {
+        mapRef.current = null;
+      }
+    };
+  }, [map, mapRef]);
+
   return null;
+}
+
+type DeviceLocationFields = {
+  latest_latitude?: number | null;
+  latest_longitude?: number | null;
+};
+
+type LocatedDevice = Device & {
+  latest_latitude: number;
+  latest_longitude: number;
+};
+
+function hasLocation(device: Device): device is LocatedDevice {
+  const candidate = device as Device & DeviceLocationFields;
+  return (
+    typeof candidate.latest_latitude === 'number' && typeof candidate.latest_longitude === 'number'
+  );
 }
 
 export default function MapPage() {
   const { data: devicesData } = useDevices(undefined, { refetchInterval: 30_000 });
-  const devices = Array.isArray(devicesData) ? devicesData : (devicesData as any)?.data ?? [];
+  const devices = devicesData?.data ?? [];
   const { data: zones = [] } = useZones();
 
   const [drawMode, setDrawMode] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
   const [hiddenZoneIds, setHiddenZoneIds] = useState<Set<string>>(new Set());
   const mapRef = useRef<L.Map | null>(null);
+  const acceptDrawnLayerRef = useRef<((layer: L.Layer, type: string) => void) | null>(null);
+
+  useEffect(() => {
+    const handler = () => setPanelOpen((v) => !v);
+    window.addEventListener('toggle-right-sidebar', handler);
+    return () => window.removeEventListener('toggle-right-sidebar', handler);
+  }, []);
 
   const handleToggleDrawMode = useCallback(() => {
     setDrawMode((prev) => !prev);
   }, []);
 
   const handleDrawCreated = useCallback((layer: L.Layer, type: string) => {
-    ZonePanel.acceptDrawnLayer(layer, type);
+    acceptDrawnLayerRef.current?.(layer, type);
   }, []);
 
   const handleZoneClick = useCallback((zone: Zone) => {
     const map = mapRef.current;
     if (!map) return;
 
-    if (zone.geometry_type === "circle") {
+    if (zone.geometry_type === 'circle') {
       const geo = zone.geometry_json as CircleGeometry;
       const center = L.latLng(geo.center[0], geo.center[1]);
       const bounds = center.toBounds(geo.radius_meters * 2);
@@ -69,9 +103,14 @@ export default function MapPage() {
     });
   }, []);
 
-  const devicesWithLocation: MapDevice[] = (devices as any[]).filter(
-    (d: any) => d.latest_latitude != null && d.latest_longitude != null
-  );
+  const devicesWithLocation: MapDevice[] = devices.filter(hasLocation).map((device) => ({
+    id: device.id,
+    name: device.name,
+    status: device.status,
+    latest_latitude: device.latest_latitude,
+    latest_longitude: device.latest_longitude,
+    last_seen_at: device.last_seen_at,
+  }));
 
   const visibleZones = zones.filter((z) => !hiddenZoneIds.has(z.id));
 
@@ -81,10 +120,7 @@ export default function MapPage() {
         <DeviceMap zoom={5}>
           <MapRef mapRef={mapRef} />
           <ZoneLayer zones={visibleZones} />
-          <ZoneDrawControls
-            enabled={drawMode}
-            onCreated={handleDrawCreated}
-          />
+          <ZoneDrawControls enabled={drawMode} onCreated={handleDrawCreated} />
           {devicesWithLocation.map((device) => (
             <DeviceMarker
               key={device.id}
@@ -100,10 +136,10 @@ export default function MapPage() {
       </div>
       <Button
         className="map-panel-toggle"
-        icon={panelOpen ? "chevron-right" : "chevron-left"}
+        icon={panelOpen ? 'chevron-right' : 'chevron-left'}
         minimal
         small
-        title={panelOpen ? "Hide panel" : "Show panel"}
+        title={panelOpen ? 'Hide panel (⇧⌘B)' : 'Show panel (⇧⌘B)'}
         onClick={() => setPanelOpen((v) => !v)}
       />
       <ZonePanel
@@ -114,6 +150,7 @@ export default function MapPage() {
         hiddenZoneIds={hiddenZoneIds}
         onToggleZoneVisibility={handleToggleZoneVisibility}
         devices={devicesWithLocation}
+        acceptDrawnLayerRef={acceptDrawnLayerRef}
         collapsed={!panelOpen}
       />
     </div>

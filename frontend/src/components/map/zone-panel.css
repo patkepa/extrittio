@@ -1,27 +1,3 @@
-/* Map Panel — floats over the map */
-.map-panel {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 260px;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  background-color: var(--sidebar-bg);
-  border-left: 1px solid var(--border-color);
-  z-index: 6;
-  transition:
-    transform 0.25s ease,
-    opacity 0.25s ease;
-  overflow: hidden;
-}
-
-.map-panel--collapsed {
-  transform: translateX(100%);
-  opacity: 0;
-  pointer-events: none;
-}
-
 /* Tab bar */
 .map-panel-tabs {
   display: flex;
@@ -81,19 +57,6 @@
   overflow-y: auto;
 }
 
-.map-panel-list::-webkit-scrollbar {
-  width: 4px;
-}
-
-.map-panel-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.map-panel-list::-webkit-scrollbar-thumb {
-  background: var(--border-color);
-  border-radius: 0;
-}
-
 /* Shared rows */
 .map-panel-row {
   display: flex;
@@ -111,6 +74,14 @@
 .map-panel-row:hover {
   background-color: hsla(0, 0%, 100%, 0.04);
   color: var(--sidebar-foreground);
+}
+
+.map-panel-row:focus,
+.map-panel-row:focus-visible {
+  background-color: hsla(0, 0%, 100%, 0.06);
+  color: var(--sidebar-foreground);
+  outline: 2px solid hsl(var(--accent));
+  outline-offset: -2px;
 }
 
 .map-panel-row:active {
@@ -173,7 +144,9 @@
   cursor: pointer;
   width: 10px;
   height: 10px;
-  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease;
 }
 
 .map-panel-dot--clickable:hover {
@@ -192,7 +165,8 @@
   transition: opacity 0.12s ease;
 }
 
-.map-panel-row:hover .map-panel-delete {
+.map-panel-row:hover .map-panel-delete,
+.map-panel-row:focus-within .map-panel-delete {
   opacity: 1;
 }
 
@@ -223,16 +197,7 @@
 
 /* Footer */
 .map-panel-footer {
-  padding: 8px 16px;
-  border-top: 1px solid var(--border-color);
   font-size: 11px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--sidebar-muted-foreground);
-  background-color: var(--sidebar-bg);
-  flex-shrink: 0;
 }
 
 .map-panel-footer-muted {
@@ -254,7 +219,9 @@
   border: 2px solid transparent;
   cursor: pointer;
   padding: 0;
-  transition: transform 0.1s ease, border-color 0.1s ease;
+  transition:
+    transform 0.1s ease,
+    border-color 0.1s ease;
   outline: none;
 }
 

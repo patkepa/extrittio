@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- react-force-graph-2d lacks proper TS types */
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
 import type { GraphData, GraphNode, GraphLink } from './build-force-graph-data';
 import type { Device } from '../../types/api';
@@ -27,6 +27,11 @@ const GRID_SIZE = 40;
 const GRID_COLOR = 'rgba(255, 255, 255, 0.05)';
 const GRID_ACCENT_COLOR = 'rgba(255, 255, 255, 0.12)';
 const GRID_ACCENT_EVERY = 5; // every 5th line is brighter
+// Click-vs-drag threshold (px). The library's internal threshold is only 5 px
+// and its background-pan detection has *zero* tolerance for mouse events, so
+// fast-approach clicks are swallowed as drags. We bypass the library's click
+// handling entirely and use this more generous threshold instead.
+const CLICK_DIST_THRESHOLD = 12;
 
 // --- Pre-built Path2D cache for device-type icons (16×16 viewBox) ---
 const iconPathCache = new Map<string, Path2D[]>();
@@ -69,6 +74,7 @@ interface FleetGraphCanvasProps {
   onBackgroundClick: (event?: MouseEvent) => void;
   onNodeRightClick?: (node: GraphNode, event: MouseEvent) => void;
   selectedNodeId?: string | null;
+  hoveredNodeId?: string | null;
   onViewportChange?: (transform: ViewportInfo) => void;
   graphActionsRef?: React.MutableRefObject<GraphActions | null>;
   onFrameRedraw?: () => void;
@@ -83,18 +89,32 @@ export const FleetGraphCanvas = memo(
     onBackgroundClick,
     onNodeRightClick,
     selectedNodeId,
+    hoveredNodeId,
     onViewportChange,
     graphActionsRef,
     onFrameRedraw,
   }: FleetGraphCanvasProps) => {
     const graphRef = useRef<any>(null);
     const [hoverNode, setHoverNode] = useState<GraphNode | null>(null);
-    const highlightNodes = useRef(new Set<GraphNode>());
-    const highlightLinks = useRef(new Set<GraphLink>());
     const pulseClockRef = useRef(0);
     const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const canvasWrapperRef = useRef<HTMLDivElement>(null);
     const hasInitialFit = useRef(false);
+
+    // Immediate (non-debounced) hover ref — used for click-target detection so
+    // that fast-approach clicks always know which node the pointer is over,
+    // even before the debounced visual state has updated.
+    const hoverNodeRef = useRef<GraphNode | null>(null);
+
+    // Pointer-down state for our custom click detection.
+    const pointerStartRef = useRef<{
+      x: number;
+      y: number;
+      node: GraphNode | null;
+    } | null>(null);
+
+    // Whether a node is currently being dragged (for cursor management).
+    const isDraggingRef = useRef(false);
 
     // --- Custom hooks ---
     const { updateNodeBounds, handleZoom } = useViewportControls(
@@ -124,6 +144,24 @@ export const FleetGraphCanvas = memo(
       paintLasso,
     } = useLassoSelection(graphRef, canvasWrapperRef, graphData);
 
+    const activeHoverNode = useMemo(() => {
+      if (!hoveredNodeId) return hoverNode;
+      return graphData.nodes.find((node) => node.id === hoveredNodeId) ?? null;
+    }, [graphData.nodes, hoverNode, hoveredNodeId]);
+
+    const hoverHighlight = useMemo(() => {
+      const nodes = new Set<GraphNode>();
+      const links = new Set<GraphLink>();
+
+      if (activeHoverNode) {
+        nodes.add(activeHoverNode);
+        activeHoverNode.neighbors.forEach((node) => nodes.add(node));
+        activeHoverNode.links.forEach((link) => links.add(link));
+      }
+
+      return { nodes, links };
+    }, [activeHoverNode]);
+
     useEffect(() => {
       let rafId: number;
       const tick = () => {
@@ -144,55 +182,166 @@ export const FleetGraphCanvas = memo(
       return () => wrapper.removeEventListener('contextmenu', suppress);
     }, []);
 
-    // Hover handler — debounced to avoid flickering when quickly brushing over nodes
+    // Sync canvas cursor — respects drag state so the grab cursor shows
+    // correctly. The library's own .grabbable class is overridden by the
+    // inline style we set here, so we must manage all cursor states ourselves.
+    useEffect(() => {
+      if (isDraggingRef.current) return; // don't clobber the drag cursor
+      const canvas = canvasWrapperRef.current?.querySelector('canvas');
+      if (!canvas) return;
+      if (shiftHeld) {
+        canvas.style.cursor = 'crosshair';
+      } else if (hoverNode) {
+        canvas.style.cursor = 'pointer';
+      } else {
+        canvas.style.cursor = 'default';
+      }
+    }, [hoverNode, shiftHeld]);
+
+    // Node drag cursor handlers — set grabbing cursor immediately (without
+    // waiting for a React re-render) and restore the correct cursor on end.
+    const handleNodeDrag = useCallback(() => {
+      if (!isDraggingRef.current) {
+        isDraggingRef.current = true;
+        const canvas = canvasWrapperRef.current?.querySelector('canvas');
+        if (canvas) canvas.style.cursor = 'grabbing';
+      }
+    }, []);
+
+    const handleNodeDragEnd = useCallback(() => {
+      isDraggingRef.current = false;
+      const canvas = canvasWrapperRef.current?.querySelector('canvas');
+      if (!canvas) return;
+      canvas.style.cursor = hoverNodeRef.current ? 'pointer' : 'default';
+    }, []);
+
+    // Hover handler — debounced to avoid flickering when quickly brushing over nodes.
+    // The raw ref is updated immediately so click detection always has the
+    // up-to-date hover target even before the debounced state fires.
     const handleNodeHover = useCallback((node: GraphNode | null) => {
+      hoverNodeRef.current = node;
+
       if (hoverTimerRef.current) {
         clearTimeout(hoverTimerRef.current);
         hoverTimerRef.current = null;
       }
 
       if (!node) {
-        highlightNodes.current.clear();
-        highlightLinks.current.clear();
         setHoverNode(null);
         return;
       }
 
       hoverTimerRef.current = setTimeout(() => {
-        highlightNodes.current.clear();
-        highlightLinks.current.clear();
-        highlightNodes.current.add(node);
-        node.neighbors.forEach((n) => highlightNodes.current.add(n));
-        node.links.forEach((l) => highlightLinks.current.add(l));
         setHoverNode(node);
       }, 15);
     }, []);
 
-    // Click handler
-    const handleNodeClick = useCallback(
-      (node: GraphNode, event: MouseEvent) => {
-        if (event.shiftKey && node.type === 'device') {
-          toggleDevice(node.id);
-          return;
+    useEffect(() => {
+      return () => {
+        if (hoverTimerRef.current) {
+          clearTimeout(hoverTimerRef.current);
         }
-        if (node.type === 'device' && node.device) {
-          onNodeClick(node.device, { x: event.clientX, y: event.clientY });
-        } else {
-          onBackgroundClick(event);
-        }
+      };
+    }, []);
+
+    // --- Custom click detection ---
+    // We bypass the library's onNodeClick / onBackgroundClick entirely because
+    // its internal drag-vs-click heuristic has zero tolerance for mouse
+    // movement on background-pan detection (any pointermove while pressed →
+    // isPointerDragging=true → click suppressed). This makes fast-approach
+    // clicks unreliable. Our wrapper-level handler uses a generous distance
+    // threshold so quick cursor settling doesn't eat the click.
+    //
+    // Removing onBackgroundClick from ForceGraph2D also disables the
+    // library's aggressive zero-tolerance drag guard (it's gated behind
+    // `state.onBackgroundClick` being truthy).
+
+    const handleWrapperPointerDown = useCallback(
+      (e: React.PointerEvent) => {
+        if (e.button !== 0) return; // left-click only
+        pointerStartRef.current = {
+          x: e.clientX,
+          y: e.clientY,
+          node: hoverNodeRef.current,
+        };
       },
-      [onNodeClick, onBackgroundClick, toggleDevice],
+      [],
     );
 
-    // Background click: clear selection unless Shift is held
-    const handleBackgroundClickInternal = useCallback(
-      (event: MouseEvent) => {
-        if (!event.shiftKey) {
-          clearSelection();
+    const handleWrapperPointerUp = useCallback(
+      (e: React.PointerEvent) => {
+        if (e.button !== 0) return;
+        const start = pointerStartRef.current;
+        pointerStartRef.current = null;
+        if (!start) return;
+
+        const dx = e.clientX - start.x;
+        const dy = e.clientY - start.y;
+        if (dx * dx + dy * dy > CLICK_DIST_THRESHOLD * CLICK_DIST_THRESHOLD) return;
+
+        // Prefer the node captured at pointer-down (guaranteed to be the
+        // intended target even if hover drifted during the gesture), but
+        // fall back to the current hover for edge-cases where the pointer
+        // landed on the node between frames.
+        const node = start.node ?? hoverNodeRef.current;
+
+        if (node) {
+          if (e.shiftKey && node.type === 'device') {
+            toggleDevice(node.id);
+          } else if (node.type === 'device' && node.device) {
+            onNodeClick(node.device, { x: e.clientX, y: e.clientY });
+          } else {
+            // Fleet hub node or unknown — treat as background
+            onBackgroundClick();
+          }
+        } else {
+          if (!e.shiftKey) {
+            clearSelection();
+          }
+          onBackgroundClick();
         }
-        onBackgroundClick(event);
       },
-      [onBackgroundClick, clearSelection],
+      [onNodeClick, onBackgroundClick, toggleDevice, clearSelection],
+    );
+
+    // --- Pointer hit-area callback ---
+    // The library detects hover/click by painting each node in a unique color
+    // on a hidden shadow canvas, then sampling the pixel under the cursor.
+    // Without this, the default hit area is Math.sqrt(val)*nodeRelSize (=8px
+    // for devices), which is smaller than the visual radius (11px, or 14.3px
+    // on hover). This mismatch causes clicks to miss, especially during
+    // the hover-expand transition. We paint the hit area at the *expanded*
+    // size so clicks always register on the visible area.
+    const paintPointerArea = useCallback(
+      (node: GraphNode, color: string, ctx: CanvasRenderingContext2D) => {
+        if (node.x == null || node.y == null) return;
+
+        if (node.type === 'fleet') {
+          // Fleet nodes are rendered as label rectangles — approximate the
+          // clickable area with a generous rectangle matching the visual.
+          const padX = 8;
+          const padY = 4;
+          const barH = 3;
+          ctx.font = FLEET_LABEL_FONT;
+          const textWidth = ctx.measureText(node.name).width;
+          // Always use the hover-expanded size for the hit area
+          const hoverScale = 1.1;
+          const rectW = (textWidth + padX * 2) * hoverScale;
+          const rectH = (FLEET_RADIUS + padY + barH) * hoverScale;
+
+          ctx.fillStyle = color;
+          ctx.fillRect(node.x - rectW / 2, node.y - rectH / 2, rectW, rectH);
+        } else {
+          // Device nodes — use hover-expanded radius so the click area
+          // always covers the visual, even mid-expansion.
+          const radius = DEVICE_RADIUS * HOVER_SCALE;
+          const side = radius * 2;
+
+          ctx.fillStyle = color;
+          ctx.fillRect(node.x - side / 2, node.y - side / 2, side, side);
+        }
+      },
+      [],
     );
 
     // --- Canvas rendering callbacks ---
@@ -200,9 +349,9 @@ export const FleetGraphCanvas = memo(
       (node: GraphNode, ctx: CanvasRenderingContext2D, globalScale: number) => {
         const isFleet = node.type === 'fleet';
         const baseRadius = isFleet ? FLEET_RADIUS : DEVICE_RADIUS;
-        const isHighlighted = highlightNodes.current.has(node);
-        const isHovered = node === hoverNode;
-        const shouldDim = hoverNode && !isHighlighted;
+        const isHovered = node === activeHoverNode;
+        const isHighlighted = hoverHighlight.nodes.has(node);
+        const shouldDim = activeHoverNode && !isHighlighted;
 
         if (node.x == null || node.y == null) return;
 
@@ -359,13 +508,13 @@ export const FleetGraphCanvas = memo(
 
         ctx.globalAlpha = 1;
       },
-      [hoverNode, selectedDeviceIds],
+      [activeHoverNode, hoverHighlight, selectedDeviceIds],
     );
 
     const paintLink = useCallback(
       (link: GraphLink, ctx: CanvasRenderingContext2D) => {
-        const isHighlighted = highlightLinks.current.has(link);
-        const shouldDim = hoverNode && !isHighlighted;
+        const isHighlighted = hoverHighlight.links.has(link);
+        const shouldDim = activeHoverNode && !isHighlighted;
 
         const source = link.source as any as GraphNode;
         const target = link.target as any as GraphNode;
@@ -426,7 +575,7 @@ export const FleetGraphCanvas = memo(
         ctx.lineDashOffset = 0;
         ctx.shadowBlur = 0;
       },
-      [hoverNode],
+      [activeHoverNode, hoverHighlight],
     );
 
     // Draw a grid in world-space
@@ -476,7 +625,12 @@ export const FleetGraphCanvas = memo(
     );
 
     return (
-      <div ref={canvasWrapperRef} style={{ width, height }}>
+      <div
+        ref={canvasWrapperRef}
+        style={{ width, height }}
+        onPointerDown={handleWrapperPointerDown}
+        onPointerUp={handleWrapperPointerUp}
+      >
         <ForceGraph2D
           ref={graphRef}
           graphData={graphData}
@@ -489,10 +643,11 @@ export const FleetGraphCanvas = memo(
           nodeCanvasObjectMode={() => 'replace'}
           linkCanvasObject={paintLink as any}
           linkCanvasObjectMode={() => 'replace'}
+          nodePointerAreaPaint={paintPointerArea as any}
           onNodeHover={handleNodeHover as any}
-          onNodeClick={handleNodeClick as any}
+          onNodeDrag={handleNodeDrag as any}
+          onNodeDragEnd={handleNodeDragEnd as any}
           onNodeRightClick={onNodeRightClick as any}
-          onBackgroundClick={handleBackgroundClickInternal as any}
           onEngineStop={handleEngineStop}
           enablePanInteraction={enablePanInteraction as any}
           enableNodeDrag={!shiftHeld}

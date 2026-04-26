@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -16,6 +16,7 @@ import {
   useOtaDeployments,
   useTriggerOta,
 } from '../../hooks/use-firmware-updates';
+import { useFormNavigation } from '../../hooks/use-form-navigation';
 import { showSuccessToast, showErrorToast } from '../../utils/toaster';
 import { useDeviceShadow } from '../../hooks/use-shadow';
 import type { Device } from '../../types/api';
@@ -25,6 +26,7 @@ interface OtaTabProps {
 }
 
 export const OtaTab = ({ device }: OtaTabProps) => {
+  const formRef = useRef<HTMLDivElement | null>(null);
   const {
     data: firmwareUpdates = [],
     isLoading,
@@ -37,6 +39,7 @@ export const OtaTab = ({ device }: OtaTabProps) => {
   const triggerOtaMutation = useTriggerOta();
   const [selectedFwId, setSelectedFwId] = useState<number | null>(null);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  useFormNavigation(formRef);
 
   const pendingOta = shadow?.desired?.ota as
     | { firmware_version?: string; firmware_url?: string }
@@ -92,7 +95,7 @@ export const OtaTab = ({ device }: OtaTabProps) => {
   };
 
   return (
-    <div className="ota-tab">
+    <div className="ota-tab" ref={formRef}>
       {/* Current firmware status */}
       <Card elevation={Elevation.ONE} className="tab-card">
         <span className="section-label">Current Firmware</span>

@@ -1,6 +1,0 @@
-CREATE TABLE ca_certificates (
-    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-    private_key_pem TEXT NOT NULL,
-    certificate_pem TEXT NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);

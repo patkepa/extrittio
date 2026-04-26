@@ -116,21 +116,12 @@ fn to_rule_response(details: rule_service::RuleWithDetails) -> Result<RuleRespon
     let actions = details
         .actions
         .into_iter()
-        .map(|a| {
-            let config: serde_json::Value = serde_json::from_str(&a.config)
-                .map_err(|e| {
-                    AppError::Internal(format!(
-                        "Corrupt action config for action {}: {e}",
-                        a.id
-                    ))
-                })?;
-            Ok(ActionResponse {
-                id: a.id,
-                action_type: a.action_type,
-                config,
-            })
+        .map(|a| ActionResponse {
+            id: a.id,
+            action_type: a.action_type,
+            config: a.config,
         })
-        .collect::<Result<Vec<_>, AppError>>()?;
+        .collect();
 
     Ok(RuleResponse {
         id: rule.id,
@@ -234,10 +225,10 @@ pub(crate) async fn create_rule(
         .map(|c| (c.field, c.operator, c.value))
         .collect();
 
-    let actions: Vec<(String, String)> = body
+    let actions: Vec<(String, serde_json::Value)> = body
         .actions
         .into_iter()
-        .map(|a| (a.action_type, a.config.to_string()))
+        .map(|a| (a.action_type, a.config))
         .collect();
 
     let cooldown = body.cooldown_seconds.unwrap_or(0);
@@ -274,9 +265,9 @@ pub(crate) async fn update_rule_handler(
             .collect()
     });
 
-    let actions: Option<Vec<(String, String)>> = body.actions.map(|acts| {
+    let actions: Option<Vec<(String, serde_json::Value)>> = body.actions.map(|acts| {
         acts.into_iter()
-            .map(|a| (a.action_type, a.config.to_string()))
+            .map(|a| (a.action_type, a.config))
             .collect()
     });
 

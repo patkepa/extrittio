@@ -1,5 +1,5 @@
 use chrono::Utc;
-use diesel::SqliteConnection;
+use diesel::PgConnection;
 use serde_json::{Map, Value};
 
 use crate::db::models::DeviceConfig;
@@ -9,7 +9,7 @@ use crate::repositories::{config_repo, device_repo};
 /// Get the current configuration for a device, or None if not set.
 /// Returns 404 if the device does not exist.
 pub fn get_config(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
 ) -> Result<Option<DeviceConfig>, AppError> {
     if !device_repo::device_exists(conn, device_id)? {
@@ -22,7 +22,7 @@ pub fn get_config(
 /// Merge semantics: null values remove keys, all other values upsert.
 /// Returns 404 if the device does not exist.
 pub fn merge_and_update(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
     patch: &Map<String, Value>,
 ) -> Result<DeviceConfig, AppError> {
@@ -34,7 +34,11 @@ pub fn merge_and_update(
     let current: Value = existing
         .as_ref()
         .map_or(Value::Object(Map::default()), |c| {
-            serde_json::from_str(&c.config).unwrap_or(Value::Object(Map::default()))
+            if c.config.is_object() {
+                c.config.clone()
+            } else {
+                Value::Object(Map::default())
+            }
         });
 
     let mut obj = current.as_object().cloned().unwrap_or_default();
@@ -48,7 +52,6 @@ pub fn merge_and_update(
 
     let merged = Value::Object(obj);
     let now = Utc::now().naive_utc();
-    let config_str = serde_json::to_string(&merged)?;
 
-    Ok(config_repo::upsert_config(conn, device_id, &config_str, now)?)
+    Ok(config_repo::upsert_config(conn, device_id, &merged, now)?)
 }

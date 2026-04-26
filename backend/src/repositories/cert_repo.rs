@@ -1,11 +1,11 @@
-use diesel::SqliteConnection;
+use diesel::PgConnection;
 use diesel::prelude::*;
 
 use crate::db::models::{CaCertificate, DeviceCertificate, NewCaCertificate, NewDeviceCertificate};
 use crate::db::schema::{ca_certificates, device_certificates};
 
 pub fn get_ca_certificate(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
 ) -> Result<Option<CaCertificate>, diesel::result::Error> {
     ca_certificates::table
         .select(CaCertificate::as_select())
@@ -15,7 +15,7 @@ pub fn get_ca_certificate(
 }
 
 pub fn insert_ca_certificate(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     ca: &NewCaCertificate,
 ) -> Result<CaCertificate, diesel::result::Error> {
     diesel::insert_into(ca_certificates::table)
@@ -29,7 +29,7 @@ pub fn insert_ca_certificate(
 }
 
 pub fn get_device_certificate(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
 ) -> Result<Option<DeviceCertificate>, diesel::result::Error> {
     device_certificates::table
@@ -41,7 +41,7 @@ pub fn get_device_certificate(
 }
 
 pub fn insert_device_certificate(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     cert: &NewDeviceCertificate,
 ) -> Result<DeviceCertificate, diesel::result::Error> {
     diesel::insert_into(device_certificates::table)
@@ -56,7 +56,7 @@ pub fn insert_device_certificate(
 }
 
 pub fn clear_device_private_key(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     cert_id: i32,
 ) -> Result<(), diesel::result::Error> {
     diesel::update(device_certificates::table.find(cert_id))
@@ -66,7 +66,7 @@ pub fn clear_device_private_key(
 }
 
 pub fn delete_device_certificates(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
 ) -> Result<usize, diesel::result::Error> {
     diesel::delete(device_certificates::table.filter(device_certificates::device_id.eq(device_id)))

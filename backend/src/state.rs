@@ -1,4 +1,4 @@
-use diesel::SqliteConnection;
+use diesel::PgConnection;
 use diesel::r2d2::{ConnectionManager, Pool};
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -9,7 +9,7 @@ use crate::error::AppError;
 use crate::rate_limit::{ApiKeyRateLimiter, RateLimiter};
 use crate::rule_engine::cache::RuleCache;
 
-pub type DbPool = Pool<ConnectionManager<SqliteConnection>>;
+pub type DbPool = Pool<ConnectionManager<PgConnection>>;
 
 /// Tracks Zenoh message counts. Shared between subscriber, services, and metrics flush.
 pub struct ZenohMetrics {
@@ -90,7 +90,7 @@ pub struct AppState {
 /// returns the result.
 pub async fn run_db<F, T>(pool: &DbPool, f: F) -> Result<T, AppError>
 where
-    F: FnOnce(&mut SqliteConnection) -> Result<T, AppError> + Send + 'static,
+    F: FnOnce(&mut PgConnection) -> Result<T, AppError> + Send + 'static,
     T: Send + 'static,
 {
     let pool = pool.clone();

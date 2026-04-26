@@ -1,7 +1,7 @@
 // Rule service — business logic for rule management and cache building
 
 use chrono::Utc;
-use diesel::SqliteConnection;
+use diesel::PgConnection;
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -43,7 +43,7 @@ fn validate_rule(
     target_id: &Option<String>,
     cooldown_seconds: i32,
     conditions: &[(String, String, String)],
-    actions: &[(String, String)],
+    actions: &[(String, Value)],
 ) -> Result<(), AppError> {
     // --- name ---
     let name = name.trim();
@@ -162,12 +162,10 @@ fn validate_rule(
         ));
     }
 
-    for (action_type, config_str) in actions {
+    for (action_type, config_val) in actions {
         match action_type.as_str() {
             "webhook" => {
-                let cfg: Value = serde_json::from_str(config_str)
-                    .map_err(|_| AppError::BadRequest("webhook action config must be valid JSON".into()))?;
-                let url = cfg.get("url").and_then(|v| v.as_str()).unwrap_or("");
+                let url = config_val.get("url").and_then(|v| v.as_str()).unwrap_or("");
                 if url.is_empty() {
                     return Err(AppError::BadRequest(
                         "webhook action config must have a non-empty 'url'".into(),
@@ -180,9 +178,7 @@ fn validate_rule(
                 }
             }
             "command" => {
-                let cfg: Value = serde_json::from_str(config_str)
-                    .map_err(|_| AppError::BadRequest("command action config must be valid JSON".into()))?;
-                let cmd = cfg.get("command").and_then(|v| v.as_str()).unwrap_or("");
+                let cmd = config_val.get("command").and_then(|v| v.as_str()).unwrap_or("");
                 if cmd.is_empty() {
                     return Err(AppError::BadRequest(
                         "command action config must have a non-empty 'command'".into(),
@@ -209,7 +205,7 @@ fn validate_rule(
 // ---------------------------------------------------------------------------
 
 pub fn list_rules(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     enabled: Option<bool>,
     trigger_type: Option<&str>,
     target_type: Option<&str>,
@@ -221,7 +217,7 @@ pub fn list_rules(
 /// (3 queries total, regardless of rule count). This avoids the N+1 query
 /// problem that occurs when fetching details for each rule individually.
 pub fn list_rules_with_details(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     enabled: Option<bool>,
     trigger_type: Option<&str>,
     target_type: Option<&str>,
@@ -237,7 +233,7 @@ pub fn list_rules_with_details(
         .collect())
 }
 
-pub fn get_rule(conn: &mut SqliteConnection, id: &str) -> Result<RuleWithDetails, AppError> {
+pub fn get_rule(conn: &mut PgConnection, id: &str) -> Result<RuleWithDetails, AppError> {
     let rule = rule_repo::find_rule(conn, id).map_err(|e| match e {
         diesel::result::Error::NotFound => {
             AppError::NotFound(format!("Rule '{id}' not found"))
@@ -255,7 +251,7 @@ pub fn get_rule(conn: &mut SqliteConnection, id: &str) -> Result<RuleWithDetails
 
 #[allow(clippy::too_many_arguments)]
 pub fn create_rule(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     name: &str,
     description: Option<String>,
     trigger_type: &str,
@@ -263,7 +259,7 @@ pub fn create_rule(
     target_id: Option<String>,
     cooldown_seconds: i32,
     conditions: Vec<(String, String, String)>,
-    actions: Vec<(String, String)>,
+    actions: Vec<(String, Value)>,
 ) -> Result<RuleWithDetails, AppError> {
     validate_rule(
         name,
@@ -324,7 +320,7 @@ pub fn create_rule(
 
 #[allow(clippy::too_many_arguments)]
 pub fn update_rule(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     id: &str,
     name: Option<String>,
     description: Option<Option<String>>,
@@ -333,7 +329,7 @@ pub fn update_rule(
     target_id: Option<Option<String>>,
     cooldown_seconds: Option<i32>,
     conditions: Option<Vec<(String, String, String)>>,
-    actions: Option<Vec<(String, String)>>,
+    actions: Option<Vec<(String, Value)>>,
 ) -> Result<RuleWithDetails, AppError> {
     // Fetch current rule to fill in defaults for validation
     let current = rule_repo::find_rule(conn, id).map_err(|e| match e {
@@ -368,7 +364,7 @@ pub fn update_rule(
             .map(|c| (c.field.clone(), c.operator.clone(), c.value.clone()))
             .collect(),
     };
-    let validated_actions: Vec<(String, String)> = match &actions {
+    let validated_actions: Vec<(String, Value)> = match &actions {
         Some(a) => a.clone(),
         None => current_actions
             .iter()
@@ -443,7 +439,7 @@ pub fn update_rule(
     get_rule(conn, id)
 }
 
-pub fn delete_rule(conn: &mut SqliteConnection, id: &str) -> Result<(), AppError> {
+pub fn delete_rule(conn: &mut PgConnection, id: &str) -> Result<(), AppError> {
     let rows = rule_repo::delete_rule(conn, id)?;
     if rows == 0 {
         return Err(AppError::NotFound(format!("Rule '{id}' not found")));
@@ -452,7 +448,7 @@ pub fn delete_rule(conn: &mut SqliteConnection, id: &str) -> Result<(), AppError
 }
 
 pub fn toggle_rule(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     id: &str,
     enabled: bool,
 ) -> Result<(), AppError> {
@@ -475,7 +471,7 @@ pub fn toggle_rule(
 
 /// Delete stale cooldown records older than `cutoff`.
 pub fn delete_stale_cooldowns(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     cutoff: chrono::NaiveDateTime,
 ) -> Result<usize, AppError> {
     Ok(rule_repo::delete_cooldowns_older_than(conn, cutoff)?)
@@ -486,7 +482,7 @@ pub fn delete_stale_cooldowns(
 // ---------------------------------------------------------------------------
 
 /// Build the in-memory RuleCache from the current database state.
-pub fn build_cache(conn: &mut SqliteConnection) -> Result<RuleCache, AppError> {
+pub fn build_cache(conn: &mut PgConnection) -> Result<RuleCache, AppError> {
     let enabled_rules = rule_repo::load_all_enabled_rules(conn)?;
     let cooldowns = rule_repo::load_all_cooldowns(conn)?;
     let active_alerts = alert_repo::load_active_alerts(conn)?;
@@ -550,20 +546,18 @@ pub fn build_cache(conn: &mut SqliteConnection) -> Result<RuleCache, AppError> {
     Ok(cache)
 }
 
-fn parse_zone_geometry(geometry_type: &str, geometry_json: &str) -> Result<ZoneGeometry, String> {
-    let json: serde_json::Value = serde_json::from_str(geometry_json)
-        .map_err(|e| format!("Invalid zone geometry JSON: {}", e))?;
+fn parse_zone_geometry(geometry_type: &str, geometry_json: &Value) -> Result<ZoneGeometry, String> {
     match geometry_type {
         "circle" => {
-            let center = json["center"].as_array().ok_or("Missing center")?;
+            let center = geometry_json["center"].as_array().ok_or("Missing center")?;
             Ok(ZoneGeometry::Circle {
                 center_lat: center[0].as_f64().unwrap_or(0.0),
                 center_lon: center[1].as_f64().unwrap_or(0.0),
-                radius_meters: json["radius_meters"].as_f64().unwrap_or(0.0),
+                radius_meters: geometry_json["radius_meters"].as_f64().unwrap_or(0.0),
             })
         }
         "polygon" => {
-            let points = json["points"].as_array().ok_or("Missing points")?;
+            let points = geometry_json["points"].as_array().ok_or("Missing points")?;
             Ok(ZoneGeometry::Polygon {
                 points: points.iter().map(|p| {
                     let a = p.as_array().unwrap();

@@ -6,6 +6,8 @@ import { AppSidebar } from './app-sidebar';
 import { CommandPalette } from '../command-palette/command-palette';
 import { useUIStore } from '../../stores/ui-store';
 import { ErrorBoundary } from '../error-boundary';
+import { clearKeyboardFocusRegions, moveFocusRegion } from '../../utils/focus-regions';
+import { hasOpenBlockingOverlay, isEditableTarget } from '../../utils/keyboard';
 import './main-layout.css';
 
 interface MainLayoutProps {
@@ -22,6 +24,12 @@ const routeNames: Record<string, string> = {
   '/settings/fleets': 'Settings / Fleets',
 };
 
+function getFocusRegionDirection(key: string): 'left' | 'right' | null {
+  if (key === 'ArrowLeft' || key.toLowerCase() === 'a') return 'left';
+  if (key === 'ArrowRight' || key.toLowerCase() === 'd') return 'right';
+  return null;
+}
+
 export const MainLayout = ({ children }: MainLayoutProps) => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -31,9 +39,30 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
         e.preventDefault();
-        toggleSidebar();
+        if (e.shiftKey) {
+          window.dispatchEvent(new CustomEvent('toggle-right-sidebar'));
+        } else {
+          toggleSidebar();
+        }
+        return;
+      }
+
+      const focusRegionDirection = getFocusRegionDirection(e.key);
+      if (
+        focusRegionDirection &&
+        e.shiftKey &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        !e.defaultPrevented &&
+        !e.isComposing &&
+        !isEditableTarget(e.target) &&
+        !hasOpenBlockingOverlay()
+      ) {
+        e.preventDefault();
+        moveFocusRegion(focusRegionDirection);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -86,7 +115,12 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
           </NavbarGroup>
         </Navbar>
 
-        <div className="page-content">
+        <div
+          className="page-content"
+          data-focus-region="main"
+          tabIndex={-1}
+          onMouseDown={() => clearKeyboardFocusRegions()}
+        >
           <ErrorBoundary>{children}</ErrorBoundary>
         </div>
       </div>

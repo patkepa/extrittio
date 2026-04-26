@@ -1,14 +1,14 @@
 // Repository functions for users
 
 use diesel::Connection;
-use diesel::SqliteConnection;
+use diesel::PgConnection;
 use diesel::prelude::*;
 
 use crate::db::models::{NewUser, User};
 use crate::db::schema::users;
 
 pub fn list_users(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     limit: i64,
     offset: i64,
 ) -> Result<(Vec<User>, i64), diesel::result::Error> {
@@ -25,7 +25,7 @@ pub fn list_users(
 }
 
 pub fn find_user_by_username(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     username: &str,
 ) -> Result<User, diesel::result::Error> {
     users::table
@@ -35,7 +35,7 @@ pub fn find_user_by_username(
 }
 
 pub fn insert_user(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     user: &NewUser,
 ) -> Result<User, diesel::result::Error> {
     conn.transaction(|conn| {
@@ -50,13 +50,13 @@ pub fn insert_user(
     })
 }
 
-pub fn delete_user(conn: &mut SqliteConnection, id: i32) -> Result<bool, diesel::result::Error> {
+pub fn delete_user(conn: &mut PgConnection, id: i32) -> Result<bool, diesel::result::Error> {
     let rows = diesel::delete(users::table.find(id)).execute(conn)?;
     Ok(rows > 0)
 }
 
 pub fn update_password(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     id: i32,
     hash: &str,
 ) -> Result<(), diesel::result::Error> {
@@ -67,7 +67,7 @@ pub fn update_password(
 }
 
 pub fn find_user_by_id(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     id: i32,
 ) -> Result<User, diesel::result::Error> {
     users::table.find(id).select(User::as_select()).first(conn)

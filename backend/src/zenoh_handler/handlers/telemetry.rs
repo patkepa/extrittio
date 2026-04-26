@@ -44,8 +44,8 @@ pub fn handle_telemetry(
     let custom_json = if telemetry_msg.metadata.is_empty() {
         None
     } else {
-        match serde_json::to_string(&telemetry_msg.metadata) {
-            Ok(json) => Some(json),
+        match serde_json::to_value(&telemetry_msg.metadata) {
+            Ok(val) => Some(val),
             Err(e) => {
                 warn!("Failed to serialize metadata: {}", e);
                 None

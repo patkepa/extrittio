@@ -4,15 +4,15 @@ use rcgen::{
 };
 use sha2::{Digest, Sha256};
 
-use diesel::SqliteConnection;
+use diesel::PgConnection;
 
 use crate::db::models::{CaCertificate, DeviceCertificate, NewCaCertificate, NewDeviceCertificate};
 use crate::error::AppError;
 use crate::repositories::{cert_repo, device_repo};
 
-/// Generate a self-signed root CA certificate (ECDSA P-256, 10-year validity).
+/// Generate a self-signed root CA certificate (Ed25519, 10-year validity).
 pub fn generate_ca_certificate() -> Result<NewCaCertificate, AppError> {
-    let key_pair = KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256)
+    let key_pair = KeyPair::generate_for(&rcgen::PKCS_ED25519)
         .map_err(|e| AppError::Internal(format!("Failed to generate CA key pair: {e}")))?;
 
     let mut params = CertificateParams::new(Vec::<String>::new())
@@ -42,7 +42,7 @@ pub fn generate_ca_certificate() -> Result<NewCaCertificate, AppError> {
     })
 }
 
-/// Generate a device certificate signed by the CA (ECDSA P-256, 1-year validity).
+/// Generate a device certificate signed by the CA (Ed25519, 1-year validity).
 /// CN is set to the device ID.
 pub fn generate_device_certificate(
     device_id: &str,
@@ -55,7 +55,7 @@ pub fn generate_device_certificate(
         .map_err(|e| AppError::Internal(format!("Failed to parse CA certificate: {e}")))?;
 
     // Generate device key pair
-    let device_key_pair = KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256)
+    let device_key_pair = KeyPair::generate_for(&rcgen::PKCS_ED25519)
         .map_err(|e| AppError::Internal(format!("Failed to generate device key pair: {e}")))?;
 
     let mut params = CertificateParams::new(Vec::<String>::new())
@@ -105,7 +105,7 @@ pub fn generate_server_certificate(ca: &CaCertificate) -> Result<(String, String
     let issuer = Issuer::from_ca_cert_pem(&ca.certificate_pem, ca_key_pair)
         .map_err(|e| AppError::Internal(format!("Failed to parse CA certificate: {e}")))?;
 
-    let server_key_pair = KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256)
+    let server_key_pair = KeyPair::generate_for(&rcgen::PKCS_ED25519)
         .map_err(|e| AppError::Internal(format!("Failed to generate server key pair: {e}")))?;
 
     let mut params = CertificateParams::new(vec!["localhost".to_string()])
@@ -157,7 +157,7 @@ pub struct CertBundle {
 
 /// Get the device certificate bundle. One-time private key download.
 pub fn get_device_certificate_bundle(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
 ) -> Result<CertBundle, AppError> {
     device_repo::find_device(conn, device_id)?;
@@ -184,7 +184,7 @@ pub fn get_device_certificate_bundle(
 
 /// Get certificate status (metadata only, no private key).
 pub fn get_device_certificate_status(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
 ) -> Result<Option<DeviceCertificate>, AppError> {
     device_repo::find_device(conn, device_id)?;
@@ -193,14 +193,14 @@ pub fn get_device_certificate_status(
 
 /// Get the CA certificate, if one has been initialized.
 pub fn get_ca_certificate(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
 ) -> Result<Option<CaCertificate>, AppError> {
     Ok(cert_repo::get_ca_certificate(conn)?)
 }
 
 /// Delete old certificates and generate a new one.
 pub fn regenerate_device_certificate(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
 ) -> Result<DeviceCertificate, AppError> {
     device_repo::find_device(conn, device_id)?;

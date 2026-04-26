@@ -2,14 +2,14 @@
 
 use chrono::NaiveDateTime;
 use diesel::OptionalExtension;
-use diesel::SqliteConnection;
+use diesel::PgConnection;
 use diesel::prelude::*;
 
 use crate::db::models::{NewTelemetryRecord, TelemetryRecord};
 use crate::db::schema::telemetry;
 
 pub fn list_telemetry(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
     since: Option<NaiveDateTime>,
     before: Option<NaiveDateTime>,
@@ -35,7 +35,7 @@ pub fn list_telemetry(
 }
 
 pub fn get_latest_location(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     dev_id: &str,
 ) -> QueryResult<Option<TelemetryRecord>> {
     use crate::db::schema::telemetry::dsl::*;
@@ -44,12 +44,13 @@ pub fn get_latest_location(
         .filter(latitude.is_not_null())
         .filter(longitude.is_not_null())
         .order(received_at.desc())
-        .first::<TelemetryRecord>(conn)
+        .select(TelemetryRecord::as_select())
+        .first(conn)
         .optional()
 }
 
 pub fn insert_telemetry(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     record: &NewTelemetryRecord,
 ) -> Result<(), diesel::result::Error> {
     diesel::insert_into(telemetry::table)

@@ -44,12 +44,9 @@ pub struct UpdateShadowRequest {
 fn to_shadow_response(shadow: DeviceShadow) -> ShadowResponse {
     ShadowResponse {
         device_id: shadow.device_id,
-        desired: serde_json::from_str(&shadow.desired)
-            .unwrap_or(Value::Object(serde_json::Map::default())),
-        reported: serde_json::from_str(&shadow.reported)
-            .unwrap_or(Value::Object(serde_json::Map::default())),
-        delta: serde_json::from_str(&shadow.delta)
-            .unwrap_or(Value::Object(serde_json::Map::default())),
+        desired: shadow.desired,
+        reported: shadow.reported,
+        delta: shadow.delta,
         version: shadow.version,
         updated_at: shadow.updated_at.to_string(),
     }

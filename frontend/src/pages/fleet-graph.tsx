@@ -1,28 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Spinner, Callout, Icon, H4, Button } from '@blueprintjs/core';
+import { Spinner, Callout, Icon, H4 } from '@blueprintjs/core';
 import { useDevices, useBulkChangeFleet } from '../hooks/use-devices';
 import { useFleets } from '../hooks/use-fleets';
 import { buildForceGraphData } from '../components/fleet-graph/build-force-graph-data';
 import { FleetGraphCanvas } from '../components/fleet-graph/fleet-graph-canvas';
 import type { GraphActions } from '../components/fleet-graph/fleet-graph-canvas';
-import { DevicePopover } from '../components/fleet-graph/device-popover';
 import { HealthPanel } from '../components/fleet-graph/health-panel';
 import {
   FleetGraphContextMenu,
   type ContextMenuState,
 } from '../components/fleet-graph/fleet-graph-context-menu';
 import { FleetGraphBulkBar } from '../components/fleet-graph/fleet-graph-bulk-bar';
+import { FleetGraphToolbar } from '../components/fleet-graph/fleet-graph-toolbar';
 import { useSelectionStore } from '../stores/selection-store';
 import { showSuccessToast, showErrorToast } from '../utils/toaster';
 import type { GraphNode } from '../components/fleet-graph/build-force-graph-data';
 import type { ViewportInfo } from '../components/fleet-graph/fleet-graph-minimap';
 import type { Device } from '../types/api';
 import './fleet-graph.css';
-
-interface PopoverState {
-  device: Device;
-  position: { x: number; y: number };
-}
 
 export const FleetGraph = () => {
   const devicesQuery = useDevices({ limit: 10000 }, { refetchInterval: 30_000 });
@@ -31,11 +26,17 @@ export const FleetGraph = () => {
   const devicesError = devicesQuery.error;
   const { data: fleetsData, isLoading: fleetsLoading, error: fleetsError } = useFleets();
   const fleets = useMemo(() => fleetsData ?? [], [fleetsData]);
-  const [popover, setPopover] = useState<PopoverState | null>(null);
+  const [toolbarDeviceId, setToolbarDeviceId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const bulkFleetMutation = useBulkChangeFleet();
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const [healthPanelOpen, setHealthPanelOpen] = useState(true);
+  const viewportRef = useRef<ViewportInfo | null>(null);
+  const minimapDrawRef = useRef<(() => void) | null>(null);
+  const graphActionsRef = useRef<GraphActions | null>(null);
 
   const isLoading = devicesLoading || fleetsLoading;
   const error = devicesError || fleetsError;
@@ -83,24 +84,19 @@ export const FleetGraph = () => {
   }
 
   const graphData = graphState.data;
+  const toolbarDevice = useMemo(
+    () => devices.find((device) => device.id === toolbarDeviceId) ?? null,
+    [devices, toolbarDeviceId],
+  );
 
-  const handleNodeClick = useCallback((device: Device, screenPos: { x: number; y: number }) => {
-    const rect = containerRef.current?.getBoundingClientRect() ?? {
-      left: 0,
-      top: 0,
-      width: 0,
-      height: 0,
-    };
-    const x = Math.max(0, Math.min(screenPos.x - rect.left, rect.width - 280));
-    const y = Math.max(0, Math.min(screenPos.y - rect.top, rect.height - 300));
-    setPopover({
-      device,
-      position: { x, y },
-    });
+  const handleNodeClick = useCallback((device: Device) => {
+    setToolbarDeviceId(device.id);
+    setSelectedNodeId(`device-${device.id}`);
   }, []);
 
   const handleBackgroundClick = useCallback(() => {
-    setPopover(null);
+    setToolbarDeviceId(null);
+    setSelectedNodeId(null);
   }, []);
 
   const handleNodeRightClick = useCallback((node: GraphNode, event: MouseEvent) => {
@@ -113,16 +109,8 @@ export const FleetGraph = () => {
 
   const handleContextMenuViewDetails = useCallback((node: GraphNode) => {
     if (node.type === 'device' && node.device) {
-      const rect = containerRef.current?.getBoundingClientRect() ?? {
-        left: 0,
-        top: 0,
-        width: 0,
-        height: 0,
-      };
-      setPopover({
-        device: node.device,
-        position: { x: rect.width / 2 - 130, y: rect.height / 2 - 150 },
-      });
+      setToolbarDeviceId(node.device.id);
+      setSelectedNodeId(node.id);
     }
   }, []);
 
@@ -159,12 +147,6 @@ export const FleetGraph = () => {
     [bulkFleetMutation],
   );
 
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [healthPanelOpen, setHealthPanelOpen] = useState(true);
-  const viewportRef = useRef<ViewportInfo | null>(null);
-  const minimapDrawRef = useRef<(() => void) | null>(null);
-  const graphActionsRef = useRef<GraphActions | null>(null);
-
   const handleViewportChange = useCallback((t: ViewportInfo) => {
     viewportRef.current = t;
     minimapDrawRef.current?.();
@@ -177,23 +159,24 @@ export const FleetGraph = () => {
   const handlePanelDeviceClick = useCallback(
     (nodeId: string) => {
       setSelectedNodeId(nodeId);
-      // Also open popover for the device
       const node = graphData?.nodes.find((n) => n.id === nodeId);
       if (node?.type === 'device' && node.device) {
-        const rect = containerRef.current?.getBoundingClientRect() ?? {
-          left: 0,
-          top: 0,
-          width: 0,
-          height: 0,
-        };
-        setPopover({
-          device: node.device,
-          position: { x: rect.width / 2 - 130, y: rect.height / 2 - 150 },
-        });
+        setToolbarDeviceId(node.device.id);
       }
     },
     [graphData],
   );
+
+  const handleClearToolbarDevice = useCallback(() => {
+    setToolbarDeviceId(null);
+    setSelectedNodeId(null);
+  }, []);
+
+  useEffect(() => {
+    const handler = () => setHealthPanelOpen((v) => !v);
+    window.addEventListener('toggle-right-sidebar', handler);
+    return () => window.removeEventListener('toggle-right-sidebar', handler);
+  }, []);
 
   // Prune stale selections on data refresh
   useEffect(() => {
@@ -215,14 +198,14 @@ export const FleetGraph = () => {
     };
   }, []);
 
-  // Dismiss context menu → popover → selection on Escape key (priority ordering)
+  // Dismiss context menu → toolbar details → selection on Escape key (priority ordering)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (contextMenu) {
           setContextMenu(null);
-        } else if (popover) {
-          setPopover(null);
+        } else if (toolbarDeviceId) {
+          handleClearToolbarDevice();
         } else {
           useSelectionStore.getState().clearSelection();
         }
@@ -230,91 +213,69 @@ export const FleetGraph = () => {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [contextMenu, popover]);
+  }, [contextMenu, handleClearToolbarDevice, toolbarDeviceId]);
 
   // Always render the container so ResizeObserver can measure it.
   // Show loading/error/empty states inside the canvas area.
   return (
     <div className="fleet-graph-page">
-      <div className="fleet-graph-canvas" ref={containerRef}>
-        {error ? (
-          <Callout intent="danger" icon="error">
-            Failed to load fleet data. Is the backend running?
-          </Callout>
-        ) : isLoading ? (
-          <div className="fleet-graph-empty">
-            <Spinner />
-          </div>
-        ) : devices.length === 0 ? (
-          <div className="fleet-graph-empty">
-            <Icon icon="graph" size={48} />
-            <H4>No devices yet</H4>
-            <p>Add devices to see your fleet graph</p>
-          </div>
-        ) : graphData && dimensions.width > 0 ? (
-          <FleetGraphCanvas
-            graphData={graphData}
-            width={dimensions.width}
-            height={dimensions.height}
-            onNodeClick={handleNodeClick}
-            onBackgroundClick={handleBackgroundClick}
-            onNodeRightClick={handleNodeRightClick}
-            selectedNodeId={selectedNodeId}
-            onViewportChange={handleViewportChange}
-            graphActionsRef={graphActionsRef}
-            onFrameRedraw={handleFrameRedraw}
-          />
-        ) : null}
+      <div className="fleet-graph-workspace">
+        <FleetGraphToolbar
+          selectedDevice={toolbarDevice}
+          deviceCount={devices.length}
+          fleetCount={fleets.length}
+          healthPanelOpen={healthPanelOpen}
+          hasGraphData={Boolean(graphData)}
+          onClearDevice={handleClearToolbarDevice}
+          onFitView={() => graphActionsRef.current?.fitView()}
+          onZoomIn={() => graphActionsRef.current?.zoomIn()}
+          onZoomOut={() => graphActionsRef.current?.zoomOut()}
+          onToggleHealthPanel={() => setHealthPanelOpen((v) => !v)}
+        />
 
-        {popover && (
-          <DevicePopover
-            device={popover.device}
-            position={popover.position}
-            onClose={() => setPopover(null)}
-          />
-        )}
-
-        {contextMenu && (
-          <FleetGraphContextMenu
-            state={contextMenu}
-            onClose={() => setContextMenu(null)}
-            onViewDetails={handleContextMenuViewDetails}
-            onAssignFleet={(ids, fid) => void handleAssignFleet(ids, fid)}
-            onRemoveFromFleet={(ids) => void handleRemoveFromFleet(ids)}
-          />
-        )}
-
-        <FleetGraphBulkBar />
-
-        {graphData && (
-          <div className="fleet-graph-zoom-controls">
-            <Button
-              icon="plus"
-              minimal
-              small
-              title="Zoom in"
-              onClick={() => graphActionsRef.current?.zoomIn()}
+        <div className="fleet-graph-canvas" ref={containerRef}>
+          {error ? (
+            <Callout intent="danger" icon="error">
+              Failed to load fleet data. Is the backend running?
+            </Callout>
+          ) : isLoading ? (
+            <div className="fleet-graph-empty">
+              <Spinner />
+            </div>
+          ) : devices.length === 0 ? (
+            <div className="fleet-graph-empty">
+              <Icon icon="graph" size={48} />
+              <H4>No devices yet</H4>
+              <p>Add devices to see your fleet graph</p>
+            </div>
+          ) : graphData && dimensions.width > 0 ? (
+            <FleetGraphCanvas
+              graphData={graphData}
+              width={dimensions.width}
+              height={dimensions.height}
+              onNodeClick={handleNodeClick}
+              onBackgroundClick={handleBackgroundClick}
+              onNodeRightClick={handleNodeRightClick}
+              selectedNodeId={selectedNodeId}
+              hoveredNodeId={hoveredNodeId}
+              onViewportChange={handleViewportChange}
+              graphActionsRef={graphActionsRef}
+              onFrameRedraw={handleFrameRedraw}
             />
-            <Button
-              icon="minus"
-              minimal
-              small
-              title="Zoom out"
-              onClick={() => graphActionsRef.current?.zoomOut()}
-            />
-          </div>
-        )}
+          ) : null}
 
-        {graphData && (
-          <Button
-            className="health-panel-toggle"
-            icon={healthPanelOpen ? 'chevron-right' : 'chevron-left'}
-            minimal
-            small
-            title={healthPanelOpen ? 'Hide health panel' : 'Show health panel'}
-            onClick={() => setHealthPanelOpen((v) => !v)}
-          />
-        )}
+          {contextMenu && (
+            <FleetGraphContextMenu
+              state={contextMenu}
+              onClose={() => setContextMenu(null)}
+              onViewDetails={handleContextMenuViewDetails}
+              onAssignFleet={(ids, fid) => void handleAssignFleet(ids, fid)}
+              onRemoveFromFleet={(ids) => void handleRemoveFromFleet(ids)}
+            />
+          )}
+
+          <FleetGraphBulkBar />
+        </div>
       </div>
 
       {graphData && (
@@ -322,7 +283,9 @@ export const FleetGraph = () => {
           nodes={graphData.nodes}
           links={graphData.links}
           onDeviceClick={handlePanelDeviceClick}
+          onDeviceHover={setHoveredNodeId}
           selectedNodeId={selectedNodeId}
+          hoveredNodeId={hoveredNodeId}
           height={dimensions.height || 600}
           viewportRef={viewportRef}
           minimapDrawRef={minimapDrawRef}

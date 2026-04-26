@@ -1,5 +1,5 @@
 use chrono::NaiveDateTime;
-use diesel::SqliteConnection;
+use diesel::PgConnection;
 
 use crate::db::models::NewFirmwareUpdate;
 use crate::error::AppError;
@@ -24,7 +24,7 @@ pub struct CiIngestParams {
 /// Validates the API key, resolves device type by name, checks scope,
 /// and inserts the firmware update. Returns (firmware_id, version, device_type_name).
 pub fn ingest(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     key_hash: &str,
     params: CiIngestParams,
 ) -> Result<(i32, String, String), AppError> {

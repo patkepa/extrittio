@@ -2,7 +2,7 @@ use axum::{
     Json, Router,
     extract::{Path, State},
     http::StatusCode,
-    routing::{get, post},
+    routing::get,
 };
 use chrono::DateTime;
 use serde::{Deserialize, Serialize};
@@ -55,20 +55,12 @@ impl TryFrom<Zone> for ZoneResponse {
     type Error = AppError;
 
     fn try_from(zone: Zone) -> Result<Self, Self::Error> {
-        let geometry_json: serde_json::Value =
-            serde_json::from_str(&zone.geometry_json).map_err(|e| {
-                AppError::Internal(format!(
-                    "Corrupt geometry_json for zone {}: {e}",
-                    zone.id
-                ))
-            })?;
-
         Ok(ZoneResponse {
             id: zone.id,
             name: zone.name,
             description: zone.description,
             geometry_type: zone.geometry_type,
-            geometry_json,
+            geometry_json: zone.geometry_json,
             color: zone.color,
             created_at: DateTime::<chrono::Utc>::from_naive_utc_and_offset(
                 zone.created_at,
@@ -128,7 +120,6 @@ pub(crate) async fn create_zone(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreateZoneRequest>,
 ) -> Result<(StatusCode, Json<ZoneResponse>), AppError> {
-    let geometry_json_str = body.geometry_json.to_string();
     let description = body.description.unwrap_or_default();
     let color = body.color.unwrap_or_else(|| "#4A90D9".to_string());
 
@@ -138,7 +129,7 @@ pub(crate) async fn create_zone(
             body.name,
             description,
             body.geometry_type,
-            geometry_json_str,
+            body.geometry_json,
             color,
         )
     })
@@ -152,8 +143,6 @@ pub(crate) async fn update_zone(
     Path(zone_id): Path<String>,
     Json(body): Json<UpdateZoneRequest>,
 ) -> Result<Json<ZoneResponse>, AppError> {
-    let geometry_json_str = body.geometry_json.map(|v| v.to_string());
-
     let zone = run_db(&state.db_pool, move |conn| {
         zone_service::update_zone(
             conn,
@@ -161,7 +150,7 @@ pub(crate) async fn update_zone(
             body.name,
             body.description,
             body.geometry_type,
-            geometry_json_str,
+            body.geometry_json,
             body.color,
         )
     })

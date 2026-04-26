@@ -75,10 +75,7 @@ pub fn handle_shadow_report(db_pool: &DbPool, payload: &[u8]) {
     );
 
     // Update OTA deployment status if reported state contains ota.status
-    let merged_reported: serde_json::Value =
-        serde_json::from_str(&shadow.reported).unwrap_or_default();
-
-    if let Err(e) = shadow_service::process_ota_from_report(&mut conn, &report.device_id, &merged_reported) {
+    if let Err(e) = shadow_service::process_ota_from_report(&mut conn, &report.device_id, &shadow.reported) {
         warn!("Failed to process OTA from shadow report: {}", e);
     }
 }
@@ -119,7 +116,7 @@ pub async fn handle_shadow_get(db_pool: &DbPool, session: &Arc<zenoh::Session>, 
     };
 
     // Only send delta if non-empty
-    let delta: serde_json::Value = serde_json::from_str(&shadow.delta).unwrap_or_default();
+    let delta = &shadow.delta;
     if delta.as_object().is_some_and(serde_json::Map::is_empty) {
         info!(
             "Shadow get from device {}: already in sync",
@@ -128,7 +125,7 @@ pub async fn handle_shadow_get(db_pool: &DbPool, session: &Arc<zenoh::Session>, 
         return;
     }
 
-    shadow_service::publish_delta_if_nonempty(session, &get_msg.device_id, &delta, shadow.version, zenoh_metrics)
+    shadow_service::publish_delta_if_nonempty(session, &get_msg.device_id, delta, shadow.version, zenoh_metrics)
         .await;
 
     info!("Shadow get from device {}: sent delta", get_msg.device_id);

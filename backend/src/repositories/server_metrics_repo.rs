@@ -1,8 +1,8 @@
 // Repository functions for server diagnostics metrics
 
 use chrono::NaiveDateTime;
-use diesel::sql_types::{BigInt, Float, Integer, Timestamp};
-use diesel::SqliteConnection;
+use diesel::sql_types::{BigInt, Float, Integer, Timestamptz};
+use diesel::PgConnection;
 use diesel::prelude::*;
 use serde::Serialize;
 
@@ -68,7 +68,7 @@ pub struct DownsampledAppMetric {
 // ---------------------------------------------------------------------------
 
 pub fn insert_server_metric(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     record: &NewServerMetric,
 ) -> Result<(), diesel::result::Error> {
     diesel::insert_into(server_metrics::table)
@@ -78,7 +78,7 @@ pub fn insert_server_metric(
 }
 
 pub fn insert_app_metric(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     record: &NewAppMetric,
 ) -> Result<(), diesel::result::Error> {
     diesel::insert_into(app_metrics::table)
@@ -92,7 +92,7 @@ pub fn insert_app_metric(
 // ---------------------------------------------------------------------------
 
 pub fn get_latest_server_metric(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
 ) -> Result<Option<ServerMetric>, diesel::result::Error> {
     server_metrics::table
         .order(server_metrics::recorded_at.desc())
@@ -102,7 +102,7 @@ pub fn get_latest_server_metric(
 }
 
 pub fn get_latest_app_metric(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
 ) -> Result<Option<AppMetric>, diesel::result::Error> {
     app_metrics::table
         .order(app_metrics::recorded_at.desc())
@@ -116,7 +116,7 @@ pub fn get_latest_app_metric(
 // ---------------------------------------------------------------------------
 
 pub fn list_server_metrics(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     since: NaiveDateTime,
     limit: i64,
 ) -> Result<Vec<ServerMetric>, diesel::result::Error> {
@@ -129,7 +129,7 @@ pub fn list_server_metrics(
 }
 
 pub fn list_app_metrics(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     since: NaiveDateTime,
     limit: i64,
 ) -> Result<Vec<AppMetric>, diesel::result::Error> {
@@ -146,13 +146,13 @@ pub fn list_app_metrics(
 // ---------------------------------------------------------------------------
 
 pub fn list_server_metrics_downsampled(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     since: NaiveDateTime,
     resolution_secs: i64,
 ) -> Result<Vec<DownsampledServerMetric>, diesel::result::Error> {
     let sql = "\
         SELECT \
-            (CAST(strftime('%s', recorded_at) AS INTEGER) / ?) * ? AS bucket, \
+            EXTRACT(EPOCH FROM date_bin(make_interval(secs => $1), recorded_at, TIMESTAMPTZ '1970-01-01'))::BIGINT AS bucket, \
             AVG(cpu_usage_percent) AS cpu_usage_percent, \
             AVG(memory_used_bytes) AS memory_used_bytes, \
             AVG(memory_total_bytes) AS memory_total_bytes, \
@@ -164,25 +164,24 @@ pub fn list_server_metrics_downsampled(
             AVG(load_avg_5m) AS load_avg_5m, \
             AVG(load_avg_15m) AS load_avg_15m \
          FROM server_metrics \
-         WHERE recorded_at > ? \
+         WHERE recorded_at > $2 \
          GROUP BY bucket \
          ORDER BY bucket ASC";
 
     diesel::sql_query(sql)
         .bind::<BigInt, _>(resolution_secs)
-        .bind::<BigInt, _>(resolution_secs)
-        .bind::<Timestamp, _>(since)
+        .bind::<Timestamptz, _>(since)
         .load(conn)
 }
 
 pub fn list_app_metrics_downsampled(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     since: NaiveDateTime,
     resolution_secs: i64,
 ) -> Result<Vec<DownsampledAppMetric>, diesel::result::Error> {
     let sql = "\
         SELECT \
-            (CAST(strftime('%s', recorded_at) AS INTEGER) / ?) * ? AS bucket, \
+            EXTRACT(EPOCH FROM date_bin(make_interval(secs => $1), recorded_at, TIMESTAMPTZ '1970-01-01'))::BIGINT AS bucket, \
             SUM(request_count) AS request_count, \
             SUM(error_count) AS error_count, \
             AVG(avg_latency_ms) AS avg_latency_ms, \
@@ -192,14 +191,13 @@ pub fn list_app_metrics_downsampled(
             SUM(zenoh_messages_in) AS zenoh_messages_in, \
             SUM(zenoh_messages_out) AS zenoh_messages_out \
          FROM app_metrics \
-         WHERE recorded_at > ? \
+         WHERE recorded_at > $2 \
          GROUP BY bucket \
          ORDER BY bucket ASC";
 
     diesel::sql_query(sql)
         .bind::<BigInt, _>(resolution_secs)
-        .bind::<BigInt, _>(resolution_secs)
-        .bind::<Timestamp, _>(since)
+        .bind::<Timestamptz, _>(since)
         .load(conn)
 }
 
@@ -208,7 +206,7 @@ pub fn list_app_metrics_downsampled(
 // ---------------------------------------------------------------------------
 
 pub fn delete_old_server_metrics(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     older_than: NaiveDateTime,
 ) -> Result<usize, diesel::result::Error> {
     diesel::delete(server_metrics::table.filter(server_metrics::recorded_at.lt(older_than)))
@@ -216,7 +214,7 @@ pub fn delete_old_server_metrics(
 }
 
 pub fn delete_old_app_metrics(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     older_than: NaiveDateTime,
 ) -> Result<usize, diesel::result::Error> {
     diesel::delete(app_metrics::table.filter(app_metrics::recorded_at.lt(older_than)))

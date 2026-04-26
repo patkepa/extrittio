@@ -1,5 +1,5 @@
 use diesel::Connection;
-use diesel::SqliteConnection;
+use diesel::PgConnection;
 use serde_json::Value;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -19,16 +19,22 @@ use crate::state::{DbPool, ZenohMetrics, run_db};
 /// needed (e.g. `trigger_ota`). When called via `update_desired` the outer
 /// `run_db` closure provides the transactional boundary.
 pub fn update_desired_db(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
     patch: &serde_json::Map<String, Value>,
 ) -> Result<(Value, i32), AppError> {
     let shadow = shadow_repo::find_shadow(conn, device_id)?;
 
-    let current_desired: Value = serde_json::from_str(&shadow.desired)
-        .unwrap_or(Value::Object(serde_json::Map::default()));
-    let current_reported: Value = serde_json::from_str(&shadow.reported)
-        .unwrap_or(Value::Object(serde_json::Map::default()));
+    let current_desired = if shadow.desired.is_object() {
+        shadow.desired
+    } else {
+        Value::Object(serde_json::Map::default())
+    };
+    let current_reported = if shadow.reported.is_object() {
+        shadow.reported
+    } else {
+        Value::Object(serde_json::Map::default())
+    };
 
     let new_desired = merge_json(current_desired, patch);
     let new_delta = compute_shadow_delta(&new_desired, &current_reported);
@@ -36,8 +42,8 @@ pub fn update_desired_db(
     let now = chrono::Utc::now().naive_utc();
 
     let changeset = UpdateShadow {
-        desired: Some(serde_json::to_string(&new_desired)?),
-        delta: Some(serde_json::to_string(&new_delta)?),
+        desired: Some(new_desired),
+        delta: Some(new_delta.clone()),
         version: Some(new_version),
         updated_at: Some(now),
         ..Default::default()
@@ -69,25 +75,31 @@ pub async fn update_desired(
 
 /// Merge a JSON patch into the reported state, recompute delta, persist.
 pub fn update_reported(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
     patch: &serde_json::Map<String, Value>,
 ) -> Result<(), AppError> {
     conn.transaction(|conn| {
         let shadow = shadow_repo::find_shadow(conn, device_id)?;
 
-        let current_desired: Value = serde_json::from_str(&shadow.desired)
-            .unwrap_or(Value::Object(serde_json::Map::default()));
-        let current_reported: Value = serde_json::from_str(&shadow.reported)
-            .unwrap_or(Value::Object(serde_json::Map::default()));
+        let current_desired = if shadow.desired.is_object() {
+            shadow.desired
+        } else {
+            Value::Object(serde_json::Map::default())
+        };
+        let current_reported = if shadow.reported.is_object() {
+            shadow.reported
+        } else {
+            Value::Object(serde_json::Map::default())
+        };
 
         let new_reported = merge_json(current_reported, patch);
         let new_delta = compute_shadow_delta(&current_desired, &new_reported);
         let now = chrono::Utc::now().naive_utc();
 
         let changeset = UpdateShadow {
-            reported: Some(serde_json::to_string(&new_reported)?),
-            delta: Some(serde_json::to_string(&new_delta)?),
+            reported: Some(new_reported),
+            delta: Some(new_delta),
             version: Some(shadow.version + 1),
             updated_at: Some(now),
             ..Default::default()
@@ -132,7 +144,7 @@ pub async fn publish_delta_if_nonempty(
 
 /// Get the full shadow state for a device.
 pub fn get_shadow(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
 ) -> Result<DeviceShadow, AppError> {
     Ok(shadow_repo::find_shadow(conn, device_id)?)
@@ -140,15 +152,16 @@ pub fn get_shadow(
 
 /// Reset a device's shadow to empty state.
 pub fn delete_shadow(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
 ) -> Result<(), AppError> {
     let shadow = shadow_repo::find_shadow(conn, device_id)?;
     let now = chrono::Utc::now().naive_utc();
+    let empty = Value::Object(serde_json::Map::default());
     let changeset = UpdateShadow {
-        desired: Some("{}".to_string()),
-        reported: Some("{}".to_string()),
-        delta: Some("{}".to_string()),
+        desired: Some(empty.clone()),
+        reported: Some(empty.clone()),
+        delta: Some(empty),
         version: Some(shadow.version + 1),
         updated_at: Some(now),
     };
@@ -158,7 +171,7 @@ pub fn delete_shadow(
 
 /// Process OTA status from a shadow report's reported state.
 pub fn process_ota_from_report(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
     reported: &serde_json::Value,
 ) -> Result<(), AppError> {

@@ -1,6 +1,6 @@
 use chrono::NaiveDateTime;
 use chrono::Utc;
-use diesel::SqliteConnection;
+use diesel::PgConnection;
 use diesel::OptionalExtension;
 
 use crate::db::models::{Device, NewTelemetryRecord, TelemetryRecord, UpdateDevice};
@@ -8,7 +8,7 @@ use crate::error::AppError;
 use crate::repositories::{device_repo, telemetry_repo};
 
 pub fn list(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     device_id: &str,
     since: Option<NaiveDateTime>,
     before: Option<NaiveDateTime>,
@@ -19,7 +19,7 @@ pub fn list(
 }
 
 pub fn record(
-    conn: &mut SqliteConnection,
+    conn: &mut PgConnection,
     record: NewTelemetryRecord,
 ) -> Result<Option<Device>, AppError> {
     let device: Option<Device> = device_repo::find_device(conn, &record.device_id)

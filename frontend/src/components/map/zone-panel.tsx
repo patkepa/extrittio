@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState, type MutableRefObject } from 'react';
 import {
   Button,
   Dialog,
@@ -9,32 +9,34 @@ import {
   Tag,
   Alert,
   Popover,
-} from "@blueprintjs/core";
-import { useZones, useCreateZone, useDeleteZone, useUpdateZone } from "../../hooks/use-zones";
-import type { Zone, CircleGeometry, PolygonGeometry } from "../../types/zones";
-import L from "leaflet";
-import "./zone-panel.css";
+} from '@blueprintjs/core';
+import { useZones, useCreateZone, useDeleteZone, useUpdateZone } from '../../hooks/use-zones';
+import { useConfirmShortcut } from '../../hooks/use-confirm-shortcut';
+import type { Zone, CircleGeometry, PolygonGeometry } from '../../types/zones';
+import { RightSidebar } from '../layout/right-sidebar';
+import L from 'leaflet';
+import './zone-panel.css';
 
 const ZONE_COLORS = [
-  "#4A90D9",
-  "#0F9960",
-  "#D9822B",
-  "#E76A6E",
-  "#9F7AEA",
-  "#00B5D8",
-  "#D69E2E",
-  "#ED64A6",
-  "#5C7080",
+  '#4A90D9',
+  '#0F9960',
+  '#D9822B',
+  '#E76A6E',
+  '#9F7AEA',
+  '#00B5D8',
+  '#D69E2E',
+  '#ED64A6',
+  '#5C7080',
 ];
 
 const STATUS_COLORS: Record<string, string> = {
-  online: "#43bf4d",
-  offline: "#868686",
-  warning: "#d4a017",
+  online: '#43bf4d',
+  offline: '#868686',
+  warning: '#d4a017',
 };
 
 interface PendingZoneGeometry {
-  geometry_type: "circle" | "polygon";
+  geometry_type: 'circle' | 'polygon';
   geometry_json: CircleGeometry | PolygonGeometry;
 }
 
@@ -47,7 +49,8 @@ export interface MapDevice {
   last_seen_at?: string | null;
 }
 
-type PanelTab = "devices" | "zones";
+type PanelTab = 'devices' | 'zones';
+type AcceptDrawnLayer = (layer: L.Layer, type: string) => void;
 
 interface MapPanelProps {
   drawMode: boolean;
@@ -57,6 +60,7 @@ interface MapPanelProps {
   hiddenZoneIds: Set<string>;
   onToggleZoneVisibility: (id: string) => void;
   devices: MapDevice[];
+  acceptDrawnLayerRef: MutableRefObject<AcceptDrawnLayer | null>;
   collapsed?: boolean;
 }
 
@@ -68,6 +72,7 @@ export function ZonePanel({
   hiddenZoneIds,
   onToggleZoneVisibility,
   devices,
+  acceptDrawnLayerRef,
   collapsed,
 }: MapPanelProps) {
   const { data: zones = [] } = useZones();
@@ -75,11 +80,11 @@ export function ZonePanel({
   const updateZone = useUpdateZone();
   const deleteZoneMutation = useDeleteZone();
 
-  const [activeTab, setActiveTab] = useState<PanelTab>("devices");
+  const [activeTab, setActiveTab] = useState<PanelTab>('devices');
   const [nameDialogOpen, setNameDialogOpen] = useState(false);
   const [pendingGeometry, setPendingGeometry] = useState<PendingZoneGeometry | null>(null);
-  const [zoneName, setZoneName] = useState("");
-  const [zoneDescription, setZoneDescription] = useState("");
+  const [zoneName, setZoneName] = useState('');
+  const [zoneDescription, setZoneDescription] = useState('');
   const [zoneColor, setZoneColor] = useState(ZONE_COLORS[0]);
   const [deleteAlertZone, setDeleteAlertZone] = useState<Zone | null>(null);
 
@@ -97,13 +102,19 @@ export function ZonePanel({
         onSuccess: () => {
           setNameDialogOpen(false);
           setPendingGeometry(null);
-          setZoneName("");
-          setZoneDescription("");
+          setZoneName('');
+          setZoneDescription('');
           setZoneColor(ZONE_COLORS[0]);
         },
-      }
+      },
     );
   };
+
+  useConfirmShortcut({
+    isOpen: nameDialogOpen,
+    canConfirm: !!zoneName.trim() && !createZone.isPending,
+    onConfirm: handleSaveZone,
+  });
 
   const handleChangeZoneColor = (zone: Zone, color: string) => {
     updateZone.mutate({
@@ -124,58 +135,75 @@ export function ZonePanel({
     });
   };
 
-  const acceptDrawnLayer = (layer: L.Layer, type: string) => {
-    let geometry_type: "circle" | "polygon";
-    let geometry_json: CircleGeometry | PolygonGeometry;
+  const acceptDrawnLayer = useCallback<AcceptDrawnLayer>(
+    (layer, type) => {
+      let geometry_type: 'circle' | 'polygon';
+      let geometry_json: CircleGeometry | PolygonGeometry;
 
-    if (type === "circle") {
-      const circle = layer as L.Circle;
-      const center = circle.getLatLng();
-      geometry_type = "circle";
-      geometry_json = {
-        center: [center.lat, center.lng],
-        radius_meters: circle.getRadius(),
-      };
-    } else {
-      const polygon = layer as L.Polygon;
-      const latlngs = polygon.getLatLngs()[0] as L.LatLng[];
-      geometry_type = "polygon";
-      geometry_json = {
-        points: latlngs.map((ll) => [ll.lat, ll.lng] as [number, number]),
-      };
-    }
+      if (type === 'circle') {
+        const circle = layer as L.Circle;
+        const center = circle.getLatLng();
+        geometry_type = 'circle';
+        geometry_json = {
+          center: [center.lat, center.lng],
+          radius_meters: circle.getRadius(),
+        };
+      } else {
+        const polygon = layer as L.Polygon;
+        const latlngs = polygon.getLatLngs()[0] as L.LatLng[];
+        geometry_type = 'polygon';
+        geometry_json = {
+          points: latlngs.map((ll) => [ll.lat, ll.lng] as [number, number]),
+        };
+      }
 
-    setPendingGeometry({ geometry_type, geometry_json });
-    setNameDialogOpen(true);
-    onToggleDrawMode();
-  };
+      setPendingGeometry({ geometry_type, geometry_json });
+      setNameDialogOpen(true);
+      onToggleDrawMode();
+    },
+    [onToggleDrawMode],
+  );
 
-  ZonePanel.acceptDrawnLayer = acceptDrawnLayer;
+  useEffect(() => {
+    acceptDrawnLayerRef.current = acceptDrawnLayer;
+    return () => {
+      if (acceptDrawnLayerRef.current === acceptDrawnLayer) {
+        acceptDrawnLayerRef.current = null;
+      }
+    };
+  }, [acceptDrawnLayer, acceptDrawnLayerRef]);
 
   return (
-    <div className={`map-panel${collapsed ? " map-panel--collapsed" : ""}`}>
+    <RightSidebar
+      className="map-panel"
+      collapsed={collapsed}
+      mode="overlay"
+      ariaLabel="Map devices and zones"
+    >
       {/* Tab bar */}
       <div className="map-panel-tabs">
         <button
-          className={`map-panel-tab${activeTab === "devices" ? " map-panel-tab--active" : ""}`}
-          onClick={() => setActiveTab("devices")}
+          className={`map-panel-tab${activeTab === 'devices' ? ' map-panel-tab--active' : ''}`}
+          data-focus-region-initial={activeTab === 'devices' ? 'true' : undefined}
+          onClick={() => setActiveTab('devices')}
         >
           Devices
           <span className="map-panel-tab-count">{devices.length}</span>
         </button>
         <button
-          className={`map-panel-tab${activeTab === "zones" ? " map-panel-tab--active" : ""}`}
-          onClick={() => setActiveTab("zones")}
+          className={`map-panel-tab${activeTab === 'zones' ? ' map-panel-tab--active' : ''}`}
+          data-focus-region-initial={activeTab === 'zones' ? 'true' : undefined}
+          onClick={() => setActiveTab('zones')}
         >
           Zones
           <span className="map-panel-tab-count">{zones.length}</span>
         </button>
-        {activeTab === "zones" && (
+        {activeTab === 'zones' && (
           <Button
             small
             minimal
-            intent={drawMode ? "danger" : "primary"}
-            icon={drawMode ? "cross" : "plus"}
+            intent={drawMode ? 'danger' : 'primary'}
+            icon={drawMode ? 'cross' : 'plus'}
             className="map-panel-tab-action"
             onClick={onToggleDrawMode}
           />
@@ -183,14 +211,17 @@ export function ZonePanel({
       </div>
 
       {/* Devices tab */}
-      {activeTab === "devices" && (
-        <div className="map-panel-list">
+      {activeTab === 'devices' && (
+        <div className="map-panel-list right-sidebar-scrollable">
           {devices.map((device) => {
             const color = STATUS_COLORS[device.status] || STATUS_COLORS.offline;
             return (
               <div
                 key={device.id}
                 className="map-panel-row"
+                role="button"
+                tabIndex={0}
+                data-right-sidebar-item="true"
                 onClick={() => onDeviceClick(device)}
               >
                 <span
@@ -213,20 +244,23 @@ export function ZonePanel({
       )}
 
       {/* Zones tab */}
-      {activeTab === "zones" && (
-        <div className="map-panel-list">
+      {activeTab === 'zones' && (
+        <div className="map-panel-list right-sidebar-scrollable">
           {zones.map((zone) => {
             const hidden = hiddenZoneIds.has(zone.id);
             return (
               <div
                 key={zone.id}
-                className={`map-panel-row${hidden ? " map-panel-row--hidden" : ""}`}
+                className={`map-panel-row${hidden ? ' map-panel-row--hidden' : ''}`}
+                role="button"
+                tabIndex={0}
+                data-right-sidebar-item="true"
                 onClick={() => onZoneClick(zone)}
               >
                 <Button
                   minimal
                   small
-                  icon={hidden ? "eye-off" : "eye-open"}
+                  icon={hidden ? 'eye-off' : 'eye-open'}
                   className="map-panel-visibility"
                   onClick={(e) => {
                     e.stopPropagation();
@@ -239,7 +273,7 @@ export function ZonePanel({
                       {ZONE_COLORS.map((c) => (
                         <button
                           key={c}
-                          className={`zone-color-swatch${c === zone.color ? " zone-color-swatch--active" : ""}`}
+                          className={`zone-color-swatch${c === zone.color ? ' zone-color-swatch--active' : ''}`}
                           style={{ backgroundColor: c }}
                           onClick={() => handleChangeZoneColor(zone, c)}
                         />
@@ -256,7 +290,9 @@ export function ZonePanel({
                   />
                 </Popover>
                 <span className="map-panel-name">{zone.name}</span>
-                <Tag minimal className="map-panel-tag">{zone.geometry_type}</Tag>
+                <Tag minimal className="map-panel-tag">
+                  {zone.geometry_type}
+                </Tag>
                 <Button
                   minimal
                   small
@@ -274,7 +310,9 @@ export function ZonePanel({
           {zones.length === 0 && !drawMode && (
             <div className="map-panel-empty">
               <p>No zones defined yet.</p>
-              <p>Click <strong>+</strong> to draw one on the map.</p>
+              <p>
+                Click <strong>+</strong> to draw one on the map.
+              </p>
             </div>
           )}
           {drawMode && (
@@ -286,17 +324,19 @@ export function ZonePanel({
       )}
 
       {/* Footer */}
-      <div className="map-panel-footer">
-        {activeTab === "devices" && (
-          <span>{devices.length} device{devices.length !== 1 ? "s" : ""} on map</span>
+      <div className="map-panel-footer right-sidebar-footer">
+        {activeTab === 'devices' && (
+          <span>
+            {devices.length} device{devices.length !== 1 ? 's' : ''} on map
+          </span>
         )}
-        {activeTab === "zones" && (
+        {activeTab === 'zones' && (
           <>
-            <span>{zones.length} zone{zones.length !== 1 ? "s" : ""}</span>
+            <span>
+              {zones.length} zone{zones.length !== 1 ? 's' : ''}
+            </span>
             {hiddenZoneIds.size > 0 && (
-              <span className="map-panel-footer-muted">
-                {hiddenZoneIds.size} hidden
-              </span>
+              <span className="map-panel-footer-muted">{hiddenZoneIds.size} hidden</span>
             )}
           </>
         )}
@@ -330,7 +370,7 @@ export function ZonePanel({
               {ZONE_COLORS.map((c) => (
                 <button
                   key={c}
-                  className={`zone-color-swatch${c === zoneColor ? " zone-color-swatch--active" : ""}`}
+                  className={`zone-color-swatch${c === zoneColor ? ' zone-color-swatch--active' : ''}`}
                   style={{ backgroundColor: c }}
                   onClick={() => setZoneColor(c)}
                 />
@@ -366,8 +406,6 @@ export function ZonePanel({
       >
         <p>Delete zone "{deleteAlertZone?.name}"? This cannot be undone.</p>
       </Alert>
-    </div>
+    </RightSidebar>
   );
 }
-
-ZonePanel.acceptDrawnLayer = (_layer: L.Layer, _type: string): void => {};
