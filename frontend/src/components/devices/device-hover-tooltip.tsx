@@ -38,6 +38,9 @@ export function DeviceHoverTooltip({
   device: Device | null;
   position: { x: number; y: number };
 }) {
+  // TODO: temporarily disabled — remove this line to re-enable
+  if (true) return null;
+
   if (!device) return null;
 
   return createPortal(
