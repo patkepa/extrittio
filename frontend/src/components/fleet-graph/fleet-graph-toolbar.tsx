@@ -39,10 +39,9 @@ const ToolbarMetric = ({ label, value }: ToolbarMetricProps) => (
 
 interface SelectedDeviceActionsProps {
   device: Device;
-  onClearDevice: () => void;
 }
 
-const SelectedDeviceActions = ({ device, onClearDevice }: SelectedDeviceActionsProps) => {
+const SelectedDeviceActions = ({ device }: SelectedDeviceActionsProps) => {
   const navigate = useNavigate();
   const restartIdsRef = useRef<string[]>([]);
   const [restartAlertOpen, setRestartAlertOpen] = useState(false);
@@ -194,8 +193,6 @@ const SelectedDeviceActions = ({ device, onClearDevice }: SelectedDeviceActionsP
         />
       </Popover>
 
-      <Button icon="cross" minimal small title="Clear device" onClick={onClearDevice} />
-
       <Alert
         isOpen={restartAlertOpen}
         icon="refresh"
@@ -260,7 +257,9 @@ export const FleetGraphToolbar = ({
             <div className="fleet-graph-toolbar-divider" aria-hidden="true" />
 
             <div className="fleet-graph-toolbar-actions">
-              <SelectedDeviceActions device={selectedDevice} onClearDevice={onClearDevice} />
+              <SelectedDeviceActions device={selectedDevice} />
+              <div className="fleet-graph-toolbar-divider" aria-hidden="true" />
+              <Button icon="cross" minimal small title="Clear device" onClick={onClearDevice} />
               <div className="fleet-graph-toolbar-divider" aria-hidden="true" />
               <Button
                 icon={healthPanelOpen ? 'chevron-right' : 'chevron-left'}
