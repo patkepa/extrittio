@@ -1,5 +1,6 @@
 const FOCUS_REGION_SELECTOR = '[data-focus-region]';
 const INITIAL_FOCUS_SELECTOR = '[data-focus-region-initial="true"]';
+const KEYBOARD_REGION_ATTRIBUTE = 'data-focus-region-keyboard';
 const FOCUSABLE_SELECTOR = [
   'button:not([disabled])',
   'a[href]',
@@ -52,6 +53,12 @@ function getFocusTarget(region: HTMLElement): HTMLElement {
   return focusableTarget ?? region;
 }
 
+export function clearKeyboardFocusRegions() {
+  document
+    .querySelectorAll<HTMLElement>(`[${KEYBOARD_REGION_ATTRIBUTE}="true"]`)
+    .forEach((element) => element.removeAttribute(KEYBOARD_REGION_ATTRIBUTE));
+}
+
 export function moveFocusRegion(direction: 'left' | 'right') {
   const regions = getRegionElements();
   if (regions.length === 0) return;
@@ -66,5 +73,7 @@ export function moveFocusRegion(direction: 'left' | 'right') {
   const targetRegion = regions[nextIndex];
   if (!targetRegion) return;
 
-  getFocusTarget(targetRegion).focus();
+  clearKeyboardFocusRegions();
+  targetRegion.setAttribute(KEYBOARD_REGION_ATTRIBUTE, 'true');
+  getFocusTarget(targetRegion).focus({ preventScroll: true });
 }

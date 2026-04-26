@@ -97,6 +97,8 @@ export const RightSidebar = ({
   };
 
   const handleMouseDown = (event: MouseEvent<HTMLElement>) => {
+    sidebarRef.current?.removeAttribute('data-focus-region-keyboard');
+
     if (!(event.target instanceof HTMLElement)) return;
 
     if (event.target.closest('button, a, input, select, textarea')) return;

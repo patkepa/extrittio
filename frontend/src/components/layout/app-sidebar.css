@@ -25,6 +25,11 @@
   padding: 0 16px;
   border-bottom: 1px solid var(--border-color);
   overflow: hidden;
+  transition: border-color 0.15s ease;
+}
+
+.app-sidebar[data-focus-region-keyboard='true'] .sidebar-header {
+  border-bottom-color: hsl(var(--accent));
 }
 
 .sidebar-logo {
@@ -291,6 +296,13 @@
 }
 
 .sidebar-menu .bp6-menu-item:focus-visible {
+  outline: 2px solid hsl(var(--accent));
+  outline-offset: -2px;
+  background-color: hsla(0, 0%, 100%, 0.05) !important;
+  color: var(--sidebar-foreground);
+}
+
+.app-sidebar[data-focus-region-keyboard='true'] .sidebar-menu .bp6-menu-item:focus {
   outline: 2px solid hsl(var(--accent));
   outline-offset: -2px;
   background-color: hsla(0, 0%, 100%, 0.05) !important;

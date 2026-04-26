@@ -6,7 +6,7 @@ import { AppSidebar } from './app-sidebar';
 import { CommandPalette } from '../command-palette/command-palette';
 import { useUIStore } from '../../stores/ui-store';
 import { ErrorBoundary } from '../error-boundary';
-import { moveFocusRegion } from '../../utils/focus-regions';
+import { clearKeyboardFocusRegions, moveFocusRegion } from '../../utils/focus-regions';
 import { hasOpenBlockingOverlay, isEditableTarget } from '../../utils/keyboard';
 import './main-layout.css';
 
@@ -111,7 +111,12 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
           </NavbarGroup>
         </Navbar>
 
-        <div className="page-content" data-focus-region="main" tabIndex={-1}>
+        <div
+          className="page-content"
+          data-focus-region="main"
+          tabIndex={-1}
+          onMouseDown={clearKeyboardFocusRegions}
+        >
           <ErrorBoundary>{children}</ErrorBoundary>
         </div>
       </div>

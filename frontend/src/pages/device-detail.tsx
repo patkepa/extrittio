@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useParams, useSearchParams, Navigate, useNavigate } from 'react-router-dom';
 import { Spinner, Tabs, Tab, Callout } from '@blueprintjs/core';
 import { useDevice } from '../hooks/use-devices';
@@ -31,6 +31,7 @@ const VALID_TABS = [
 export const DeviceDetail = () => {
   const { deviceId } = useParams<{ deviceId: string }>();
   const navigate = useNavigate();
+  const tabsRef = useRef<HTMLDivElement | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const { data: device, isLoading, error } = useDevice(deviceId ?? null);
 
@@ -54,6 +55,26 @@ export const DeviceDetail = () => {
     },
     [setSearchParams],
   );
+
+  useEffect(() => {
+    const tabsElement = tabsRef.current;
+    if (!tabsElement) return;
+
+    tabsElement
+      .querySelectorAll<HTMLElement>('[data-device-detail-initial-tab="true"]')
+      .forEach((element) => {
+        element.removeAttribute('data-device-detail-initial-tab');
+        element.removeAttribute('data-focus-region-initial');
+      });
+
+    const selectedTab = tabsElement.querySelector<HTMLElement>(
+      '[role="tab"][aria-selected="true"]',
+    );
+    if (!selectedTab) return;
+
+    selectedTab.setAttribute('data-device-detail-initial-tab', 'true');
+    selectedTab.setAttribute('data-focus-region-initial', 'true');
+  }, [currentTab]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -110,7 +131,7 @@ export const DeviceDetail = () => {
     <div className="device-detail-page">
       <DeviceHeader device={device} />
 
-      <div className="detail-tabs">
+      <div className="detail-tabs" ref={tabsRef}>
         <Tabs
           id="device-detail-tabs"
           selectedTabId={currentTab}

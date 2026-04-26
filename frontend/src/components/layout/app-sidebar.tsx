@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Menu,
@@ -16,6 +16,7 @@ import { useAuthStore } from '../../stores/auth-store';
 import { useUIStore } from '../../stores/ui-store';
 import { useDashboardStats } from '../../hooks/use-dashboard';
 import { useAlertSummary } from '../../hooks/use-alerts';
+import { clearKeyboardFocusRegions } from '../../utils/focus-regions';
 import { getDirectionalKey, shouldIgnorePageShortcut } from '../../utils/keyboard';
 import type { NavItem } from '../../types/navigation';
 import './app-sidebar.css';
@@ -107,24 +108,32 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
     }
   };
 
-  const getNavElements = () =>
-    Array.from(sidebarRef.current?.querySelectorAll<HTMLElement>(SIDEBAR_NAV_ITEM_SELECTOR) ?? []);
+  const getNavElements = useCallback(
+    () =>
+      Array.from(
+        sidebarRef.current?.querySelectorAll<HTMLElement>(SIDEBAR_NAV_ITEM_SELECTOR) ?? [],
+      ),
+    [],
+  );
 
-  const focusNavElement = (index: number) => {
-    const navElements = getNavElements();
-    if (navElements.length === 0) return;
+  const focusNavElement = useCallback(
+    (index: number) => {
+      const navElements = getNavElements();
+      if (navElements.length === 0) return;
 
-    const nextIndex = Math.min(Math.max(index, 0), navElements.length - 1);
-    navElements[nextIndex]?.focus();
-  };
+      const nextIndex = Math.min(Math.max(index, 0), navElements.length - 1);
+      navElements[nextIndex]?.focus();
+    },
+    [getNavElements],
+  );
 
-  const focusActiveOrFirstNavElement = () => {
+  const focusActiveOrFirstNavElement = useCallback(() => {
     const navElements = getNavElements();
     const activeIndex = navElements.findIndex((element) =>
       element.classList.contains('sidebar-item-active'),
     );
     focusNavElement(activeIndex >= 0 ? activeIndex : 0);
-  };
+  }, [focusNavElement, getNavElements]);
 
   useEffect(() => {
     const handleDocumentKeyDown = (event: KeyboardEvent) => {
@@ -136,7 +145,7 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
 
     document.addEventListener('keydown', handleDocumentKeyDown);
     return () => document.removeEventListener('keydown', handleDocumentKeyDown);
-  });
+  }, [focusActiveOrFirstNavElement]);
 
   // Restore focus when sidebar collapse state changes.
   // DOM elements are recreated (Tooltip wrap/unwrap), which moves focus to body.
@@ -163,9 +172,11 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
     } else {
       focusActiveOrFirstNavElement();
     }
-  }, [isCollapsed]);
+  }, [focusActiveOrFirstNavElement, getNavElements, isCollapsed]);
 
   const handleSidebarMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
+    clearKeyboardFocusRegions();
+
     if (!(event.target instanceof HTMLElement)) return;
 
     const navItem = event.target.closest<HTMLElement>(SIDEBAR_NAV_ITEM_SELECTOR);
