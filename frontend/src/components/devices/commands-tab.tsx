@@ -12,6 +12,7 @@ import {
   Tag,
 } from '@blueprintjs/core';
 import { useCommandHistory, useSendCommand } from '../../hooks/use-commands';
+import { useFormNavigation } from '../../hooks/use-form-navigation';
 import { showSuccessToast, showErrorToast } from '../../utils/toaster';
 
 interface CommandsTabProps {
@@ -19,6 +20,7 @@ interface CommandsTabProps {
 }
 
 export const CommandsTab = ({ deviceId }: CommandsTabProps) => {
+  const formRef = useRef<HTMLDivElement | null>(null);
   const { data: commands = [], isLoading, isError } = useCommandHistory(deviceId);
   const sendCommandMutation = useSendCommand();
 
@@ -26,6 +28,7 @@ export const CommandsTab = ({ deviceId }: CommandsTabProps) => {
   const [params, setParams] = useState<Array<{ id: number; key: string; value: string }>>([]);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const nextParamId = useRef(0);
+  useFormNavigation(formRef);
 
   const addParam = () => setParams([...params, { id: nextParamId.current++, key: '', value: '' }]);
 
@@ -97,7 +100,7 @@ export const CommandsTab = ({ deviceId }: CommandsTabProps) => {
   }
 
   return (
-    <div className="commands-tab">
+    <div className="commands-tab" ref={formRef}>
       <Card elevation={Elevation.ONE} className="tab-card">
         <span className="section-label">Send Command</span>
         <p className="tab-help-text">

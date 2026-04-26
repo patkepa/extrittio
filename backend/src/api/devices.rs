@@ -281,6 +281,7 @@ pub(crate) async fn get_device(
     responses(
         (status = 201, description = "Device created", body = DeviceResponse),
         (status = 400, description = "Invalid input"),
+        (status = 409, description = "Device name already exists"),
     ),
 )]
 pub(crate) async fn create_device(
@@ -309,7 +310,8 @@ pub(crate) async fn create_device(
 
         Ok(to_device_response(joined))
     })
-    .await?;
+    .await
+    .map_err(map_unique_violation("A device with this name already exists"))?;
 
     Ok((StatusCode::CREATED, Json(response)))
 }
@@ -326,6 +328,7 @@ pub(crate) async fn create_device(
         (status = 200, description = "Device updated", body = DeviceResponse),
         (status = 400, description = "Invalid input"),
         (status = 404, description = "Device not found"),
+        (status = 409, description = "Device name already exists"),
     ),
 )]
 pub(crate) async fn update_device(
@@ -353,7 +356,8 @@ pub(crate) async fn update_device(
 
         Ok(to_device_response(joined))
     })
-    .await?;
+    .await
+    .map_err(map_unique_violation("A device with this name already exists"))?;
 
     Ok(Json(response))
 }
@@ -674,4 +678,20 @@ pub(crate) async fn get_device_latest_location(
     })
     .await?;
     Ok(Json(result))
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/// Map a `UniqueViolation` database error to `AppError::Conflict` with the
+/// given message, passing through all other errors unchanged.
+fn map_unique_violation(msg: &'static str) -> impl FnOnce(AppError) -> AppError {
+    move |e| match e {
+        AppError::Database(diesel::result::Error::DatabaseError(
+            diesel::result::DatabaseErrorKind::UniqueViolation,
+            _,
+        )) => AppError::Conflict(msg.into()),
+        other => other,
+    }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, memo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Card,
@@ -26,6 +26,8 @@ import {
 } from '../components/devices/device-hover-tooltip';
 import { useSelectionStore } from '../stores/selection-store';
 import { BulkActionBar } from '../components/devices/bulk-action-bar';
+import { useRovingFocus } from '../hooks/use-roving-focus';
+import { getDirectionalKey, shouldIgnorePageShortcut } from '../utils/keyboard';
 import type { Device, BulkDeviceFilters, ListDevicesParams } from '../types/api';
 import './devices.css';
 
@@ -79,6 +81,7 @@ const RowSparkline = memo(({ deviceId, color }: { deviceId: string; color: strin
 export const Devices = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [sortField, setSortField] = useState<SortField>('last_seen');
@@ -167,17 +170,26 @@ export const Devices = () => {
   }, [deviceParam, devices, navigate, setSearchParams]);
 
   // Status filtering stays client-side so we can show pill counts
-  const filteredDevices = devices
-    .filter((device) => filterStatus === 'all' || device.status === filterStatus)
-    .sort((a, b) => {
-      const dir = sortDir === 'asc' ? 1 : -1;
-      if (sortField === 'name') return a.name.localeCompare(b.name) * dir;
-      if (sortField === 'status') return a.status.localeCompare(b.status) * dir;
-      if (sortField === 'last_seen')
-        return (a.last_seen_at ?? '').localeCompare(b.last_seen_at ?? '') * dir;
-      if (sortField === 'uptime') return (a.uptime ?? '').localeCompare(b.uptime ?? '') * dir;
-      return 0;
-    });
+  const filteredDevices = useMemo(
+    () =>
+      devices
+        .filter((device) => filterStatus === 'all' || device.status === filterStatus)
+        .sort((a, b) => {
+          const dir = sortDir === 'asc' ? 1 : -1;
+          if (sortField === 'name') return a.name.localeCompare(b.name) * dir;
+          if (sortField === 'status') return a.status.localeCompare(b.status) * dir;
+          if (sortField === 'last_seen')
+            return (a.last_seen_at ?? '').localeCompare(b.last_seen_at ?? '') * dir;
+          if (sortField === 'uptime') return (a.uptime ?? '').localeCompare(b.uptime ?? '') * dir;
+          return 0;
+        }),
+    [devices, filterStatus, sortDir, sortField],
+  );
+  const {
+    activeIndex: activeRowIndex,
+    focusIndex: focusRowIndex,
+    getItemProps: getRowProps,
+  } = useRovingFocus({ itemCount: filteredDevices.length });
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -188,9 +200,76 @@ export const Devices = () => {
     }
   };
 
-  const handleViewDevice = (device: Device) => {
+  const handleViewDevice = useCallback((device: Device) => {
     navigate(`/devices/${device.id}`);
-  };
+  }, [navigate]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (shouldIgnorePageShortcut(event)) return;
+
+      if (event.key === '/') {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        if (hasSelection) {
+          event.preventDefault();
+          clearSelection();
+          return;
+        }
+
+        if (document.activeElement instanceof HTMLElement) {
+          document.activeElement.blur();
+        }
+        return;
+      }
+
+      if (filteredDevices.length === 0) return;
+
+      const activeElement = document.activeElement;
+      const isRowFocused =
+        activeElement instanceof HTMLElement && activeElement.hasAttribute('data-roving-item');
+
+      if (event.key === 'Enter' && isRowFocused) {
+        const device = filteredDevices[activeRowIndex];
+        if (!device) return;
+        event.preventDefault();
+        handleViewDevice(device);
+        return;
+      }
+
+      if (event.key === ' ' && isRowFocused) {
+        const device = filteredDevices[activeRowIndex];
+        if (!device) return;
+        event.preventDefault();
+        toggleDevice(device.id);
+        return;
+      }
+
+      const direction = getDirectionalKey(event);
+      if (!direction || direction === 'left' || direction === 'right') return;
+
+      event.preventDefault();
+      if (direction === 'up') focusRowIndex(activeRowIndex - 1);
+      if (direction === 'down') focusRowIndex(activeRowIndex + 1);
+      if (direction === 'first') focusRowIndex(0);
+      if (direction === 'last') focusRowIndex(filteredDevices.length - 1);
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [
+    activeRowIndex,
+    clearSelection,
+    filteredDevices,
+    focusRowIndex,
+    handleViewDevice,
+    hasSelection,
+    toggleDevice,
+  ]);
 
   const statusCounts = useMemo(
     () => ({
@@ -269,6 +348,7 @@ export const Devices = () => {
           <div className="controls-row">
             <div className="search-section">
               <InputGroup
+                inputRef={searchInputRef}
                 leftIcon="search"
                 placeholder="Search by name or type..."
                 value={searchQuery}
@@ -381,58 +461,67 @@ export const Devices = () => {
               </tr>
             </thead>
             <tbody>
-              {filteredDevices.map((device) => (
-                <tr
-                  key={device.id}
-                  className={`device-row ${isSelected(device.id) ? 'device-row--selected' : ''}`}
-                  onClick={() => handleViewDevice(device)}
-                  onMouseEnter={(e) => onMouseEnter(device, e)}
-                  onMouseLeave={onMouseLeave}
-                >
-                  <td onClick={(e) => e.stopPropagation()}>
-                    <Checkbox
-                      checked={isSelected(device.id)}
-                      onChange={() => toggleDevice(device.id)}
-                      style={{ marginBottom: 0 }}
-                    />
-                  </td>
-                  <td>
-                    <span className={`status-led status-led--${device.status}`} />
-                  </td>
-                  <td>
-                    <div className="device-name-cell">
-                      <strong>{device.name}</strong>
-                      <span className="device-id mono-data">{device.id}</span>
-                    </div>
-                  </td>
-                  <td>
-                    <Tag minimal>{device.device_type_name}</Tag>
-                  </td>
-                  <td>
-                    {device.fleet_name ? (
-                      <Tag minimal intent="primary">
-                        {device.fleet_name}
-                      </Tag>
-                    ) : (
-                      <span style={{ color: 'hsl(var(--muted))', fontSize: 12 }}>—</span>
-                    )}
-                  </td>
-                  <td>
-                    <span className="mono-data">{device.last_seen}</span>
-                  </td>
-                  <td>
-                    <code className="firmware-badge">{device.firmware}</code>
-                  </td>
-                  <td>
-                    <div className="row-sparkline">
-                      <RowSparkline deviceId={device.id} color={getStatusColor(device.status)} />
-                    </div>
-                  </td>
-                  <td>
-                    <span className="mono-data">{device.uptime}</span>
-                  </td>
-                </tr>
-              ))}
+              {filteredDevices.map((device, index) => {
+                const rowProps = getRowProps(index);
+                return (
+                  <tr
+                    key={device.id}
+                    ref={rowProps.ref}
+                    tabIndex={rowProps.tabIndex}
+                    data-roving-item={rowProps['data-roving-item']}
+                    data-keyboard-active={rowProps['data-keyboard-active']}
+                    aria-selected={isSelected(device.id)}
+                    className={`device-row ${isSelected(device.id) ? 'device-row--selected' : ''}`}
+                    onClick={() => handleViewDevice(device)}
+                    onFocus={rowProps.onFocus}
+                    onMouseEnter={(e) => onMouseEnter(device, e)}
+                    onMouseLeave={onMouseLeave}
+                  >
+                    <td onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={isSelected(device.id)}
+                        onChange={() => toggleDevice(device.id)}
+                        style={{ marginBottom: 0 }}
+                      />
+                    </td>
+                    <td>
+                      <span className={`status-led status-led--${device.status}`} />
+                    </td>
+                    <td>
+                      <div className="device-name-cell">
+                        <strong>{device.name}</strong>
+                        <span className="device-id mono-data">{device.id}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <Tag minimal>{device.device_type_name}</Tag>
+                    </td>
+                    <td>
+                      {device.fleet_name ? (
+                        <Tag minimal intent="primary">
+                          {device.fleet_name}
+                        </Tag>
+                      ) : (
+                        <span style={{ color: 'hsl(var(--muted))', fontSize: 12 }}>—</span>
+                      )}
+                    </td>
+                    <td>
+                      <span className="mono-data">{device.last_seen}</span>
+                    </td>
+                    <td>
+                      <code className="firmware-badge">{device.firmware}</code>
+                    </td>
+                    <td>
+                      <div className="row-sparkline">
+                        <RowSparkline deviceId={device.id} color={getStatusColor(device.status)} />
+                      </div>
+                    </td>
+                    <td>
+                      <span className="mono-data">{device.uptime}</span>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </HTMLTable>
         )}

@@ -37,6 +37,12 @@
   background: none;
 }
 
+.detail-tabs .bp6-tab:focus-visible {
+  outline: 2px solid hsl(var(--accent));
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
 /* Tab content area */
 .detail-tab-content {
   min-height: 400px;

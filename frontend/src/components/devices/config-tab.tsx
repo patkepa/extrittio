@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Button, Callout, Divider, InputGroup, Spinner } from '@blueprintjs/core';
 import { useDeviceConfig, useUpdateDeviceConfig } from '../../hooks/use-config';
+import { useFormNavigation } from '../../hooks/use-form-navigation';
 import { showSuccessToast, showErrorToast } from '../../utils/toaster';
 
 interface ConfigTabProps {
@@ -8,10 +9,12 @@ interface ConfigTabProps {
 }
 
 export const ConfigTab = ({ deviceId }: ConfigTabProps) => {
+  const formRef = useRef<HTMLDivElement | null>(null);
   const { data: configData, isLoading, isError } = useDeviceConfig(deviceId);
   const updateMutation = useUpdateDeviceConfig();
   const [newKey, setNewKey] = useState('');
   const [newValue, setNewValue] = useState('');
+  useFormNavigation(formRef);
 
   if (isLoading) return <Spinner />;
 
@@ -65,7 +68,7 @@ export const ConfigTab = ({ deviceId }: ConfigTabProps) => {
   };
 
   return (
-    <div className="config-tab">
+    <div className="config-tab" ref={formRef}>
       {!hasEntries && (
         <Callout icon="info-sign" intent="primary" style={{ marginBottom: 16 }}>
           No configuration entries yet. Add key-value pairs below.

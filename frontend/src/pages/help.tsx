@@ -1,4 +1,16 @@
-import { Card, Elevation, H3, AnchorButton } from '@blueprintjs/core';
+import { AnchorButton, Card, Elevation, H3, HTMLTable, Tag } from '@blueprintjs/core';
+
+const shortcuts = [
+  ['Cmd/Ctrl + K', 'Open command palette'],
+  ['Cmd/Ctrl + B', 'Toggle sidebar'],
+  ['/', 'Focus device search'],
+  ['W/S or ↑/↓', 'Move through device rows and form controls'],
+  ['A/D or ←/→', 'Move between device detail tabs'],
+  ['Enter', 'Open the focused device row'],
+  ['Space', 'Select the focused device row'],
+  ['Home/End', 'Jump to the first or last row/control'],
+  ['Esc or B', 'Leave a device detail page'],
+];
 
 export const Help = () => {
   return (
@@ -11,6 +23,24 @@ export const Help = () => {
       </div>
 
       <div className="settings-content">
+        <Card elevation={Elevation.ONE} className="settings-card">
+          <span className="section-label">Keyboard Shortcuts</span>
+          <HTMLTable compact className="tab-table" style={{ marginTop: 12 }}>
+            <tbody>
+              {shortcuts.map(([keys, action]) => (
+                <tr key={keys}>
+                  <td>
+                    <Tag minimal className="mono-data">
+                      {keys}
+                    </Tag>
+                  </td>
+                  <td>{action}</td>
+                </tr>
+              ))}
+            </tbody>
+          </HTMLTable>
+        </Card>
+
         <Card elevation={Elevation.ONE} className="settings-card">
           <span className="section-label">Source Code</span>
           <p style={{ marginTop: 12, marginBottom: 16 }}>

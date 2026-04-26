@@ -209,6 +209,16 @@
   background-color: hsla(0, 0%, 100%, 0.03);
 }
 
+.device-row:focus-visible {
+  outline: 2px solid hsl(var(--accent));
+  outline-offset: -2px;
+  background-color: hsla(0, 0%, 100%, 0.05);
+}
+
+.device-row[data-keyboard-active='true'] {
+  border-left-color: hsl(var(--accent));
+}
+
 .device-row:nth-child(even) {
   background-color: rgba(255, 255, 255, 0.015);
 }
