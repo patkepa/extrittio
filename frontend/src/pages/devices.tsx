@@ -256,6 +256,15 @@ export const Devices = () => {
       if (!direction || direction === 'left' || direction === 'right') return;
 
       event.preventDefault();
+      if (!isRowFocused) {
+        if (direction === 'last') {
+          focusRowIndex(filteredDevices.length - 1);
+        } else {
+          focusRowIndex(direction === 'first' ? 0 : activeRowIndex);
+        }
+        return;
+      }
+
       if (direction === 'up') focusRowIndex(activeRowIndex - 1);
       if (direction === 'down') focusRowIndex(activeRowIndex + 1);
       if (direction === 'first') focusRowIndex(0);
@@ -338,15 +347,13 @@ export const Devices = () => {
 
       {/* Filters and Search / Bulk Action Bar */}
       <Card elevation={Elevation.ONE} className="devices-controls">
-        {hasSelection && (
-          <div className="bulk-action-bar-overlay">
-            <BulkActionBar
-              totalMatchingCount={totalDeviceCount}
-              visibleCount={filteredDevices.length}
-              currentFilters={currentFilters}
-            />
-          </div>
-        )}
+        <div className={`bulk-action-bar-overlay ${hasSelection ? 'bulk-action-bar-overlay--visible' : ''}`}>
+          <BulkActionBar
+            totalMatchingCount={totalDeviceCount}
+            visibleCount={filteredDevices.length}
+            currentFilters={currentFilters}
+          />
+        </div>
         <div className={`controls-content ${hasSelection ? 'controls-content--hidden' : ''}`}>
           <div className="controls-row">
             <div className="search-section">
@@ -473,6 +480,7 @@ export const Devices = () => {
                     tabIndex={rowProps.tabIndex}
                     data-roving-item={rowProps['data-roving-item']}
                     data-keyboard-active={rowProps['data-keyboard-active']}
+                    data-focus-region-initial={index === activeRowIndex ? 'true' : undefined}
                     aria-selected={isSelected(device.id)}
                     className={`device-row ${isSelected(device.id) ? 'device-row--selected' : ''}`}
                     onClick={() => handleViewDevice(device)}

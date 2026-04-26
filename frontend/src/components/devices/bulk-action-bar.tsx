@@ -183,7 +183,6 @@ export const BulkActionBar = ({
           <Button
             icon="flows"
             text="Change Fleet"
-            small
             loading={bulkFleetMutation.isPending}
             disabled={isAnyPending}
           />
@@ -192,7 +191,6 @@ export const BulkActionBar = ({
         <Button
           icon="refresh"
           text="Restart"
-          small
           loading={bulkRestartMutation.isPending}
           disabled={isAnyPending}
           onClick={() => setRestartAlertOpen(true)}
@@ -219,7 +217,6 @@ export const BulkActionBar = ({
           <Button
             icon="cloud-upload"
             text="Update Firmware"
-            small
             loading={bulkOtaMutation.isPending}
             disabled={isAnyPending}
           />
@@ -228,7 +225,6 @@ export const BulkActionBar = ({
         <Button
           icon="trash"
           text="Delete"
-          small
           intent="danger"
           loading={bulkDeleteMutation.isPending}
           disabled={isAnyPending}
