@@ -200,9 +200,12 @@ export const Devices = () => {
     }
   };
 
-  const handleViewDevice = useCallback((device: Device) => {
-    navigate(`/devices/${device.id}`);
-  }, [navigate]);
+  const handleViewDevice = useCallback(
+    (device: Device) => {
+      navigate(`/devices/${device.id}`);
+    },
+    [navigate],
+  );
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {

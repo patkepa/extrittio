@@ -8,7 +8,8 @@ interface UseRovingFocusOptions {
 export function useRovingFocus({ itemCount, initialIndex = 0 }: UseRovingFocusOptions) {
   const itemRefs = useRef<Array<HTMLElement | null>>([]);
   const [activeIndex, setActiveIndex] = useState(initialIndex);
-  const boundedActiveIndex = itemCount === 0 ? 0 : Math.min(Math.max(activeIndex, 0), itemCount - 1);
+  const boundedActiveIndex =
+    itemCount === 0 ? 0 : Math.min(Math.max(activeIndex, 0), itemCount - 1);
 
   const focusIndex = useCallback(
     (index: number) => {

@@ -149,11 +149,14 @@ export function AddDeviceDialog() {
                 ))}
               </HTMLSelect>
             </FormGroup>
-          {createDeviceMutation.isError && (
-            <Callout intent="danger" icon="error">
-              {getApiErrorMessage(createDeviceMutation.error, 'Failed to create device. Please try again.')}
-            </Callout>
-          )}
+            {createDeviceMutation.isError && (
+              <Callout intent="danger" icon="error">
+                {getApiErrorMessage(
+                  createDeviceMutation.error,
+                  'Failed to create device. Please try again.',
+                )}
+              </Callout>
+            )}
           </div>
         </DialogBody>
         <DialogFooter

@@ -16,7 +16,17 @@ import { ErrorBoundary } from '../components/error-boundary';
 import { getDirectionalKey, shouldIgnorePageShortcut } from '../utils/keyboard';
 import './device-detail.css';
 
-const VALID_TABS = ['overview', 'shadow', 'commands', 'telemetry', 'location', 'ota', 'config', 'logs', 'alerts'];
+const VALID_TABS = [
+  'overview',
+  'shadow',
+  'commands',
+  'telemetry',
+  'location',
+  'ota',
+  'config',
+  'logs',
+  'alerts',
+];
 
 export const DeviceDetail = () => {
   const { deviceId } = useParams<{ deviceId: string }>();
@@ -27,20 +37,23 @@ export const DeviceDetail = () => {
   const activeTab = searchParams.get('tab') ?? 'overview';
   const currentTab = VALID_TABS.includes(activeTab) ? activeTab : 'overview';
 
-  const handleTabChange = useCallback((newTab: string) => {
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        if (newTab === 'overview') {
-          next.delete('tab');
-        } else {
-          next.set('tab', newTab);
-        }
-        return next;
-      },
-      { replace: true },
-    );
-  }, [setSearchParams]);
+  const handleTabChange = useCallback(
+    (newTab: string) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (newTab === 'overview') {
+            next.delete('tab');
+          } else {
+            next.set('tab', newTab);
+          }
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -129,7 +142,11 @@ export const DeviceDetail = () => {
         )}
         {currentTab === 'location' && (
           <ErrorBoundary>
-            <LocationTab deviceId={device.id} deviceName={device.name} deviceStatus={device.status} />
+            <LocationTab
+              deviceId={device.id}
+              deviceName={device.name}
+              deviceStatus={device.status}
+            />
           </ErrorBoundary>
         )}
         {currentTab === 'logs' && (

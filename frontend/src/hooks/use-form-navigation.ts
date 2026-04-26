@@ -48,7 +48,8 @@ export function useFormNavigation(containerRef: RefObject<HTMLElement>, enabled 
       if (controls.length === 0) return;
 
       const activeElement = document.activeElement;
-      const currentIndex = activeElement instanceof HTMLElement ? controls.indexOf(activeElement) : -1;
+      const currentIndex =
+        activeElement instanceof HTMLElement ? controls.indexOf(activeElement) : -1;
       if (currentIndex === -1) return;
 
       let nextIndex = currentIndex;
@@ -68,4 +69,3 @@ export function useFormNavigation(containerRef: RefObject<HTMLElement>, enabled 
     return () => container.removeEventListener('keydown', handleKeyDown);
   }, [containerRef, enabled]);
 }
-
