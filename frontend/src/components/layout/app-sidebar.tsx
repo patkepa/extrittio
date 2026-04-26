@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Menu,
@@ -43,6 +43,8 @@ const isActivationKey = (key: string) => key === 'Enter' || key === ' ' || key =
 
 export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
   const sidebarRef = useRef<HTMLDivElement | null>(null);
+  const focusedNavLabelRef = useRef<string | null>(null);
+  const prevCollapsedRef = useRef(isCollapsed);
   const navigate = useNavigate();
   const location = useLocation();
   const { data: dashboardStats } = useDashboardStats();
@@ -135,6 +137,33 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
     document.addEventListener('keydown', handleDocumentKeyDown);
     return () => document.removeEventListener('keydown', handleDocumentKeyDown);
   });
+
+  // Restore focus when sidebar collapse state changes.
+  // DOM elements are recreated (Tooltip wrap/unwrap), which moves focus to body.
+  useLayoutEffect(() => {
+    if (prevCollapsedRef.current === isCollapsed) return;
+    prevCollapsedRef.current = isCollapsed;
+
+    // Only restore if focus was lost (removed element → focus moved to body)
+    const active = document.activeElement;
+    if (active !== document.body && active !== document.documentElement) return;
+
+    const label = focusedNavLabelRef.current;
+    if (!label) return;
+
+    if (label === '__sidebar__') {
+      sidebarRef.current?.focus();
+      return;
+    }
+
+    const navElements = getNavElements();
+    const match = navElements.find((el) => el.dataset.label === label);
+    if (match) {
+      match.focus();
+    } else {
+      focusActiveOrFirstNavElement();
+    }
+  }, [isCollapsed]);
 
   const handleSidebarMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
     if (!(event.target instanceof HTMLElement)) return;
@@ -311,6 +340,10 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
       tabIndex={-1}
       onKeyDown={handleSidebarKeyDown}
       onMouseDown={handleSidebarMouseDown}
+      onFocusCapture={(e) => {
+        const navItem = (e.target as HTMLElement).closest<HTMLElement>(SIDEBAR_NAV_ITEM_SELECTOR);
+        focusedNavLabelRef.current = navItem ? (navItem.dataset.label ?? null) : '__sidebar__';
+      }}
     >
       {/* Header */}
       <div className="sidebar-header">
