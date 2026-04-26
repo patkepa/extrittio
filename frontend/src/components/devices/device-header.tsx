@@ -50,7 +50,7 @@ export const DeviceHeader = ({ device, currentTab, onTabChange }: DeviceHeaderPr
 
         <div className="device-toolbar-divider" aria-hidden="true" />
 
-        <div className="device-toolbar-tabs">
+        <div className="device-toolbar-tabs" tabIndex={-1}>
           <Tabs
             id="device-detail-tabs"
             selectedTabId={currentTab}

@@ -92,12 +92,24 @@
   flex-shrink: 0;
 }
 
+.device-toolbar-actions--left .bp6-button {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* ── Inline tabs inside toolbar ── */
 .device-toolbar-tabs {
   flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
+  outline: none;
 }
 
 /* Strip all default Blueprint tab chrome — no borders, no panel, compact fit */

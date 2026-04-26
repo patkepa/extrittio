@@ -60,21 +60,11 @@ export const DeviceDetail = () => {
     const toolbarElement = toolbarRef.current;
     if (!toolbarElement) return;
 
-    toolbarElement
-      .querySelectorAll<HTMLElement>('[data-device-detail-initial-tab="true"]')
-      .forEach((element) => {
-        element.removeAttribute('data-device-detail-initial-tab');
-        element.removeAttribute('data-focus-region-initial');
-      });
+    const tabsContainer = toolbarElement.querySelector<HTMLElement>('.device-toolbar-tabs');
+    if (!tabsContainer) return;
 
-    const selectedTab = toolbarElement.querySelector<HTMLElement>(
-      '[role="tab"][aria-selected="true"]',
-    );
-    if (!selectedTab) return;
-
-    selectedTab.setAttribute('data-device-detail-initial-tab', 'true');
-    selectedTab.setAttribute('data-focus-region-initial', 'true');
-  }, [currentTab]);
+    tabsContainer.setAttribute('data-focus-region-initial', 'true');
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
