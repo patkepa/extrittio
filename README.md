@@ -33,7 +33,7 @@ export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
 ### Other dependencies
 
 - **Rust** — install via [rustup](https://rustup.rs/)
-- **Docker** — required to run PostgreSQL locally (`docker compose up -d postgres`)
+- **Docker** — required to run PostgreSQL locally (`docker compose -f docker/docker-compose.yml up -d postgres`)
 - **Node.js 18+** — required for the frontend (`npm install && npm run dev`)
 - **diesel_cli** — required for database migrations:
   ```bash
@@ -44,7 +44,7 @@ export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
 
 ```bash
 # 1. Start PostgreSQL
-docker compose up -d postgres
+docker compose -f docker/docker-compose.yml up -d postgres
 
 # 2. Apply database migrations
 cd backend && diesel migration run && cd ..

@@ -15,7 +15,7 @@ services:
 
   backend:
     build:
-      context: .
+      context: ..
       dockerfile: backend/Dockerfile
     restart: unless-stopped
     depends_on:
@@ -32,7 +32,7 @@ services:
 
   frontend:
     build:
-      context: frontend
+      context: ../frontend
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
