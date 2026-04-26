@@ -162,6 +162,19 @@ export const FleetGraphCanvas = memo(
       return () => wrapper.removeEventListener('contextmenu', suppress);
     }, []);
 
+    // Sync canvas cursor to pointer only when over a node
+    useEffect(() => {
+      const canvas = canvasWrapperRef.current?.querySelector('canvas');
+      if (!canvas) return;
+      if (shiftHeld) {
+        canvas.style.cursor = 'crosshair';
+      } else if (hoverNode) {
+        canvas.style.cursor = 'pointer';
+      } else {
+        canvas.style.cursor = 'default';
+      }
+    }, [hoverNode, shiftHeld]);
+
     // Hover handler — debounced to avoid flickering when quickly brushing over nodes
     const handleNodeHover = useCallback((node: GraphNode | null) => {
       if (hoverTimerRef.current) {
