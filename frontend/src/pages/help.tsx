@@ -3,9 +3,11 @@ import { AnchorButton, Card, Elevation, H3, HTMLTable, Tag } from '@blueprintjs/
 const shortcuts = [
   ['Cmd/Ctrl + K', 'Open command palette'],
   ['Cmd/Ctrl + B', 'Toggle sidebar'],
+  ['F6', 'Focus the sidebar navigation'],
+  ['Shift + ←/→', 'Move focus between sidebar, main content, and page side panels'],
   ['/', 'Focus device search'],
-  ['W/S or ↑/↓', 'Move through device rows and form controls'],
-  ['A/D or ←/→', 'Move between device detail tabs'],
+  ['W/S or ↑/↓', 'Move through device rows, sidebar items, and form controls'],
+  ['A/D or ←/→', 'Move between device tabs or expand/collapse sidebar groups'],
   ['Enter', 'Open the focused device row'],
   ['Space', 'Select the focused device row'],
   ['Home/End', 'Jump to the first or last row/control'],

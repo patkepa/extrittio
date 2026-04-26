@@ -6,6 +6,8 @@ import { AppSidebar } from './app-sidebar';
 import { CommandPalette } from '../command-palette/command-palette';
 import { useUIStore } from '../../stores/ui-store';
 import { ErrorBoundary } from '../error-boundary';
+import { moveFocusRegion } from '../../utils/focus-regions';
+import { hasOpenBlockingOverlay, isEditableTarget } from '../../utils/keyboard';
 import './main-layout.css';
 
 interface MainLayoutProps {
@@ -34,6 +36,22 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
         e.preventDefault();
         toggleSidebar();
+        return;
+      }
+
+      if (
+        e.shiftKey &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        !e.defaultPrevented &&
+        !e.isComposing &&
+        !isEditableTarget(e.target) &&
+        !hasOpenBlockingOverlay() &&
+        (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
+      ) {
+        e.preventDefault();
+        moveFocusRegion(e.key === 'ArrowLeft' ? 'left' : 'right');
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -86,7 +104,7 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
           </NavbarGroup>
         </Navbar>
 
-        <div className="page-content">
+        <div className="page-content" data-focus-region="main" tabIndex={-1}>
           <ErrorBoundary>{children}</ErrorBoundary>
         </div>
       </div>

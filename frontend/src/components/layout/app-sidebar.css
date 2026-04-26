@@ -290,6 +290,13 @@
   background-color: transparent;
 }
 
+.sidebar-menu .bp6-menu-item:focus-visible {
+  outline: 2px solid hsl(var(--accent));
+  outline-offset: -2px;
+  background-color: hsla(0, 0%, 100%, 0.05) !important;
+  color: var(--sidebar-foreground);
+}
+
 .sidebar-menu .bp6-menu-item .bp6-menu-item-label,
 .sidebar-menu .bp6-menu-item .bp6-text-overflow-ellipsis {
   color: inherit;

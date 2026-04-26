@@ -140,7 +140,11 @@ export const HealthPanel = ({
   );
 
   return (
-    <div className={`health-panel${collapsed ? ' health-panel--collapsed' : ''}`}>
+    <div
+      className={`health-panel${collapsed ? ' health-panel--collapsed' : ''}`}
+      data-focus-region={collapsed ? undefined : 'aside'}
+      tabIndex={collapsed ? undefined : -1}
+    >
       <div className="health-panel-header">
         <span className="health-panel-title">Device Health</span>
         <div className="health-panel-summary-bar">

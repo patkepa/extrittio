@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Menu,
@@ -16,6 +16,7 @@ import { useAuthStore } from '../../stores/auth-store';
 import { useUIStore } from '../../stores/ui-store';
 import { useDashboardStats } from '../../hooks/use-dashboard';
 import { useAlertSummary } from '../../hooks/use-alerts';
+import { getDirectionalKey, shouldIgnorePageShortcut } from '../../utils/keyboard';
 import type { NavItem } from '../../types/navigation';
 import './app-sidebar.css';
 
@@ -37,7 +38,10 @@ const hasActiveChild = (item: NavItem, pathname: string): boolean => {
   );
 };
 
+const SIDEBAR_NAV_ITEM_SELECTOR = '[data-sidebar-nav-item="true"]';
+
 export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
+  const sidebarRef = useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { data: dashboardStats } = useDashboardStats();
@@ -87,9 +91,117 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
     navigate(href);
   };
 
+  const getNavElements = () =>
+    Array.from(sidebarRef.current?.querySelectorAll<HTMLElement>(SIDEBAR_NAV_ITEM_SELECTOR) ?? []);
+
+  const focusNavElement = (index: number) => {
+    const navElements = getNavElements();
+    if (navElements.length === 0) return;
+
+    const nextIndex = Math.min(Math.max(index, 0), navElements.length - 1);
+    navElements[nextIndex]?.focus();
+  };
+
+  const focusActiveOrFirstNavElement = () => {
+    const navElements = getNavElements();
+    const activeIndex = navElements.findIndex((element) =>
+      element.classList.contains('sidebar-item-active'),
+    );
+    focusNavElement(activeIndex >= 0 ? activeIndex : 0);
+  };
+
+  useEffect(() => {
+    const handleDocumentKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'F6' || shouldIgnorePageShortcut(event)) return;
+
+      event.preventDefault();
+      focusActiveOrFirstNavElement();
+    };
+
+    document.addEventListener('keydown', handleDocumentKeyDown);
+    return () => document.removeEventListener('keydown', handleDocumentKeyDown);
+  });
+
+  const handleSidebarMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!(event.target instanceof HTMLElement)) return;
+
+    const navItem = event.target.closest<HTMLElement>(SIDEBAR_NAV_ITEM_SELECTOR);
+    if (navItem) {
+      navItem.focus();
+      return;
+    }
+
+    if (event.target.closest('button, a, input, select, textarea, [role="button"]')) return;
+
+    sidebarRef.current?.focus();
+  };
+
+  const handleSidebarKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const currentItem =
+      event.target instanceof HTMLElement
+        ? event.target.closest<HTMLElement>(SIDEBAR_NAV_ITEM_SELECTOR)
+        : null;
+    if (!currentItem) {
+      const direction = getDirectionalKey(event);
+      if (!direction && event.key !== 'Enter' && event.key !== ' ') return;
+
+      event.preventDefault();
+      focusActiveOrFirstNavElement();
+      return;
+    }
+
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      currentItem.click();
+      return;
+    }
+
+    const direction = getDirectionalKey(event);
+    if (!direction) return;
+
+    const navElements = getNavElements();
+    const currentIndex = navElements.indexOf(currentItem);
+    if (currentIndex === -1) return;
+
+    const hasChildren = currentItem.dataset.hasChildren === 'true';
+    const isExpanded = currentItem.dataset.expanded === 'true';
+    const label = currentItem.dataset.label;
+
+    if (direction === 'right' && hasChildren && !isExpanded) {
+      event.preventDefault();
+      if (isCollapsed) {
+        expandSidebar();
+      }
+      if (label) {
+        setExpandedItems((prev) => new Set(prev).add(label));
+      }
+      return;
+    }
+
+    if (direction === 'left' && hasChildren && isExpanded && label) {
+      event.preventDefault();
+      setExpandedItems((prev) => {
+        const next = new Set(prev);
+        next.delete(label);
+        return next;
+      });
+      return;
+    }
+
+    let nextIndex = currentIndex;
+    if (direction === 'down' || direction === 'right') nextIndex = currentIndex + 1;
+    if (direction === 'up' || direction === 'left') nextIndex = currentIndex - 1;
+    if (direction === 'first') nextIndex = 0;
+    if (direction === 'last') nextIndex = navElements.length - 1;
+
+    event.preventDefault();
+    focusNavElement(nextIndex);
+  };
+
   const navBadges: Record<string, { count?: number; status?: 'online' | 'warning' | 'offline' }> = {
     ...(dashboardStats && { Devices: { count: dashboardStats.total_devices } }),
-    ...(alertSummary && alertSummary.total_active > 0 && { Alerts: { count: alertSummary.total_active } }),
+    ...(alertSummary &&
+      alertSummary.total_active > 0 && { Alerts: { count: alertSummary.total_active } }),
   };
 
   const renderNavItem = (item: NavItem, depth: number = 0) => {
@@ -132,6 +244,11 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
           ) : undefined
         }
         aria-expanded={hasChildren ? isExpanded : undefined}
+        data-sidebar-nav-item="true"
+        data-has-children={hasChildren ? 'true' : undefined}
+        data-expanded={hasChildren ? String(isExpanded) : undefined}
+        data-focus-region-initial={active ? 'true' : undefined}
+        data-label={item.label}
         className={
           [active && 'sidebar-item-active', hasChildren && isExpanded && 'sidebar-item-expanded']
             .filter(Boolean)
@@ -161,7 +278,14 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
   };
 
   return (
-    <div className={`app-sidebar ${isCollapsed ? 'collapsed' : ''}`}>
+    <div
+      className={`app-sidebar ${isCollapsed ? 'collapsed' : ''}`}
+      ref={sidebarRef}
+      data-focus-region="sidebar"
+      tabIndex={-1}
+      onKeyDown={handleSidebarKeyDown}
+      onMouseDown={handleSidebarMouseDown}
+    >
       {/* Header */}
       <div className="sidebar-header">
         <div className="sidebar-logo">
@@ -184,24 +308,17 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
       <div className="sidebar-footer">
         {!isCollapsed ? (
           <div className={`footer-panel ${footerOpen ? 'open' : ''}`}>
-            <button
-              className="footer-panel-trigger"
-              onClick={() => setFooterOpen(!footerOpen)}
-            >
+            <button className="footer-panel-trigger" onClick={() => setFooterOpen(!footerOpen)}>
               <div className="footer-trigger-left">
-                <div className="user-avatar">
-                  {currentUser.name.charAt(0).toUpperCase()}
-                </div>
+                <div className="user-avatar">{currentUser.name.charAt(0).toUpperCase()}</div>
                 <div className="user-details">
                   <div className="user-name">{currentUser.name}</div>
-                  <div className={`user-email footer-email ${footerOpen ? 'visible' : ''}`}>{currentUser.email}</div>
+                  <div className={`user-email footer-email ${footerOpen ? 'visible' : ''}`}>
+                    {currentUser.email}
+                  </div>
                 </div>
               </div>
-              <Icon
-                icon="double-caret-vertical"
-                size={12}
-                className="footer-panel-caret"
-              />
+              <Icon icon="double-caret-vertical" size={12} className="footer-panel-caret" />
             </button>
             <Collapse isOpen={footerOpen}>
               <div className="footer-panel-content">
@@ -232,15 +349,15 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
               </div>
             </Collapse>
             <div className={`footer-env-badge ${footerOpen ? 'hidden' : ''}`}>
-                <span
-                  className="env-dot"
-                  style={{ backgroundColor: envColors[selectedProject.environment] }}
-                />
-                <span className="env-text mono-data">
-                  {selectedProject.environment.toUpperCase()}
-                </span>
-                <span className="version-text mono-data">v0.1.0</span>
-              </div>
+              <span
+                className="env-dot"
+                style={{ backgroundColor: envColors[selectedProject.environment] }}
+              />
+              <span className="env-text mono-data">
+                {selectedProject.environment.toUpperCase()}
+              </span>
+              <span className="version-text mono-data">v0.1.0</span>
+            </div>
           </div>
         ) : (
           <Popover
@@ -250,9 +367,7 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
             content={
               <div className="collapsed-popover">
                 <div className="collapsed-popover-header">
-                  <div className="user-avatar">
-                    {currentUser.name.charAt(0).toUpperCase()}
-                  </div>
+                  <div className="user-avatar">{currentUser.name.charAt(0).toUpperCase()}</div>
                   <div className="user-details">
                     <div className="user-name">{currentUser.name}</div>
                     <div className="user-email">{currentUser.email}</div>

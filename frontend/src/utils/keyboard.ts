@@ -25,6 +25,8 @@ export function hasOpenBlockingOverlay(): boolean {
 export function getDirectionalKey(
   event: KeyboardEvent | ReactKeyboardEvent,
 ): DirectionalKey | null {
+  if (event.shiftKey) return null;
+
   switch (event.key) {
     case 'ArrowUp':
       return 'up';

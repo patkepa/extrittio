@@ -121,6 +121,10 @@
   overflow: hidden;
 }
 
+.health-panel:focus {
+  outline: none;
+}
+
 .health-panel--collapsed {
   width: 0;
   min-width: 0;

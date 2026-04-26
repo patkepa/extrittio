@@ -30,6 +30,10 @@
   background-color: var(--content-bg);
 }
 
+.page-content:focus {
+  outline: none;
+}
+
 /* Breadcrumb */
 .navbar-breadcrumb {
   font-size: 13px;
