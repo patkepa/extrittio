@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- react-force-graph-2d lacks proper TS types */
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
 import type { GraphData, GraphNode, GraphLink } from './build-force-graph-data';
 import type { Device } from '../../types/api';
@@ -69,6 +69,7 @@ interface FleetGraphCanvasProps {
   onBackgroundClick: (event?: MouseEvent) => void;
   onNodeRightClick?: (node: GraphNode, event: MouseEvent) => void;
   selectedNodeId?: string | null;
+  hoveredNodeId?: string | null;
   onViewportChange?: (transform: ViewportInfo) => void;
   graphActionsRef?: React.MutableRefObject<GraphActions | null>;
   onFrameRedraw?: () => void;
@@ -83,14 +84,13 @@ export const FleetGraphCanvas = memo(
     onBackgroundClick,
     onNodeRightClick,
     selectedNodeId,
+    hoveredNodeId,
     onViewportChange,
     graphActionsRef,
     onFrameRedraw,
   }: FleetGraphCanvasProps) => {
     const graphRef = useRef<any>(null);
     const [hoverNode, setHoverNode] = useState<GraphNode | null>(null);
-    const highlightNodes = useRef(new Set<GraphNode>());
-    const highlightLinks = useRef(new Set<GraphLink>());
     const pulseClockRef = useRef(0);
     const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const canvasWrapperRef = useRef<HTMLDivElement>(null);
@@ -124,6 +124,24 @@ export const FleetGraphCanvas = memo(
       paintLasso,
     } = useLassoSelection(graphRef, canvasWrapperRef, graphData);
 
+    const activeHoverNode = useMemo(() => {
+      if (!hoveredNodeId) return hoverNode;
+      return graphData.nodes.find((node) => node.id === hoveredNodeId) ?? null;
+    }, [graphData.nodes, hoverNode, hoveredNodeId]);
+
+    const hoverHighlight = useMemo(() => {
+      const nodes = new Set<GraphNode>();
+      const links = new Set<GraphLink>();
+
+      if (activeHoverNode) {
+        nodes.add(activeHoverNode);
+        activeHoverNode.neighbors.forEach((node) => nodes.add(node));
+        activeHoverNode.links.forEach((link) => links.add(link));
+      }
+
+      return { nodes, links };
+    }, [activeHoverNode]);
+
     useEffect(() => {
       let rafId: number;
       const tick = () => {
@@ -152,20 +170,21 @@ export const FleetGraphCanvas = memo(
       }
 
       if (!node) {
-        highlightNodes.current.clear();
-        highlightLinks.current.clear();
         setHoverNode(null);
         return;
       }
 
       hoverTimerRef.current = setTimeout(() => {
-        highlightNodes.current.clear();
-        highlightLinks.current.clear();
-        highlightNodes.current.add(node);
-        node.neighbors.forEach((n) => highlightNodes.current.add(n));
-        node.links.forEach((l) => highlightLinks.current.add(l));
         setHoverNode(node);
       }, 15);
+    }, []);
+
+    useEffect(() => {
+      return () => {
+        if (hoverTimerRef.current) {
+          clearTimeout(hoverTimerRef.current);
+        }
+      };
     }, []);
 
     // Click handler
@@ -200,9 +219,9 @@ export const FleetGraphCanvas = memo(
       (node: GraphNode, ctx: CanvasRenderingContext2D, globalScale: number) => {
         const isFleet = node.type === 'fleet';
         const baseRadius = isFleet ? FLEET_RADIUS : DEVICE_RADIUS;
-        const isHighlighted = highlightNodes.current.has(node);
-        const isHovered = node === hoverNode;
-        const shouldDim = hoverNode && !isHighlighted;
+        const isHovered = node === activeHoverNode;
+        const isHighlighted = hoverHighlight.nodes.has(node);
+        const shouldDim = activeHoverNode && !isHighlighted;
 
         if (node.x == null || node.y == null) return;
 
@@ -359,13 +378,13 @@ export const FleetGraphCanvas = memo(
 
         ctx.globalAlpha = 1;
       },
-      [hoverNode, selectedDeviceIds],
+      [activeHoverNode, hoverHighlight, selectedDeviceIds],
     );
 
     const paintLink = useCallback(
       (link: GraphLink, ctx: CanvasRenderingContext2D) => {
-        const isHighlighted = highlightLinks.current.has(link);
-        const shouldDim = hoverNode && !isHighlighted;
+        const isHighlighted = hoverHighlight.links.has(link);
+        const shouldDim = activeHoverNode && !isHighlighted;
 
         const source = link.source as any as GraphNode;
         const target = link.target as any as GraphNode;
@@ -426,7 +445,7 @@ export const FleetGraphCanvas = memo(
         ctx.lineDashOffset = 0;
         ctx.shadowBlur = 0;
       },
-      [hoverNode],
+      [activeHoverNode, hoverHighlight],
     );
 
     // Draw a grid in world-space

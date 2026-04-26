@@ -160,6 +160,7 @@ export const FleetGraph = () => {
   );
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [healthPanelOpen, setHealthPanelOpen] = useState(true);
   const viewportRef = useRef<ViewportInfo | null>(null);
   const minimapDrawRef = useRef<(() => void) | null>(null);
@@ -260,6 +261,7 @@ export const FleetGraph = () => {
             onBackgroundClick={handleBackgroundClick}
             onNodeRightClick={handleNodeRightClick}
             selectedNodeId={selectedNodeId}
+            hoveredNodeId={hoveredNodeId}
             onViewportChange={handleViewportChange}
             graphActionsRef={graphActionsRef}
             onFrameRedraw={handleFrameRedraw}
@@ -322,7 +324,9 @@ export const FleetGraph = () => {
           nodes={graphData.nodes}
           links={graphData.links}
           onDeviceClick={handlePanelDeviceClick}
+          onDeviceHover={setHoveredNodeId}
           selectedNodeId={selectedNodeId}
+          hoveredNodeId={hoveredNodeId}
           height={dimensions.height || 600}
           viewportRef={viewportRef}
           minimapDrawRef={minimapDrawRef}

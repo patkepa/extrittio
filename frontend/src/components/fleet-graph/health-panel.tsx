@@ -16,7 +16,9 @@ interface HealthPanelProps {
   nodes: GraphNode[];
   links: GraphLink[];
   onDeviceClick: (nodeId: string) => void;
+  onDeviceHover?: (nodeId: string | null) => void;
   selectedNodeId?: string | null;
+  hoveredNodeId?: string | null;
   height: number;
   viewportRef: React.RefObject<ViewportInfo | null>;
   minimapDrawRef: React.MutableRefObject<(() => void) | null>;
@@ -28,7 +30,9 @@ interface HealthPanelProps {
 interface RowExtraProps {
   deviceEntries: DeviceEntry[];
   selectedNodeId?: string | null;
+  hoveredNodeId?: string | null;
   onDeviceClick: (nodeId: string) => void;
+  onDeviceHover?: (nodeId: string | null) => void;
 }
 
 const HEADER_HEIGHT = 48;
@@ -41,29 +45,40 @@ function HealthRow({
   style,
   deviceEntries,
   selectedNodeId,
+  hoveredNodeId,
   onDeviceClick,
+  onDeviceHover,
 }: {
   index: number;
   style: React.CSSProperties;
   deviceEntries: DeviceEntry[];
   selectedNodeId?: string | null;
+  hoveredNodeId?: string | null;
   onDeviceClick: (nodeId: string) => void;
+  onDeviceHover?: (nodeId: string | null) => void;
 }) {
   const entry = deviceEntries[index];
   if (!entry) return null;
   const { node, stalenessMs, status } = entry;
   const color = getStalenessColor(stalenessMs, status);
   const isSelected = node.id === selectedNodeId;
+  const isHovered = node.id === hoveredNodeId;
 
   return (
     <div
       style={style}
-      className={`health-panel-row ${isSelected ? 'health-panel-row--selected' : ''}`}
+      className={`health-panel-row ${isSelected ? 'health-panel-row--selected' : ''} ${
+        isHovered ? 'health-panel-row--hovered' : ''
+      }`}
       role="button"
       tabIndex={0}
       data-right-sidebar-item="true"
       data-focus-region-initial={isSelected ? 'true' : undefined}
       onClick={() => onDeviceClick(node.id)}
+      onMouseEnter={() => onDeviceHover?.(node.id)}
+      onMouseLeave={() => onDeviceHover?.(null)}
+      onFocus={() => onDeviceHover?.(node.id)}
+      onBlur={() => onDeviceHover?.(null)}
     >
       <span
         className="health-panel-led"
@@ -82,7 +97,9 @@ export const HealthPanel = ({
   nodes,
   links,
   onDeviceClick,
+  onDeviceHover,
   selectedNodeId,
+  hoveredNodeId,
   height,
   viewportRef,
   minimapDrawRef,
@@ -140,8 +157,8 @@ export const HealthPanel = ({
   const listHeight = height - HEADER_HEIGHT - FOOTER_HEIGHT - MINIMAP_SECTION_HEIGHT;
 
   const rowProps: RowExtraProps = useMemo(
-    () => ({ deviceEntries, selectedNodeId, onDeviceClick }),
-    [deviceEntries, selectedNodeId, onDeviceClick],
+    () => ({ deviceEntries, selectedNodeId, hoveredNodeId, onDeviceClick, onDeviceHover }),
+    [deviceEntries, selectedNodeId, hoveredNodeId, onDeviceClick, onDeviceHover],
   );
 
   return (

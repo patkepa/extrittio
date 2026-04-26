@@ -115,7 +115,7 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
           className="page-content"
           data-focus-region="main"
           tabIndex={-1}
-          onMouseDown={clearKeyboardFocusRegions}
+          onMouseDown={() => clearKeyboardFocusRegions()}
         >
           <ErrorBoundary>{children}</ErrorBoundary>
         </div>

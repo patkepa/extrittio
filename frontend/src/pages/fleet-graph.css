@@ -159,7 +159,8 @@
   border-left: 2px solid transparent;
 }
 
-.health-panel-row:hover {
+.health-panel-row:hover,
+.health-panel-row--hovered {
   background-color: hsla(0, 0%, 100%, 0.04);
   color: var(--sidebar-foreground);
 }

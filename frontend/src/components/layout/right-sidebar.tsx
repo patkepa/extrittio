@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from 'react';
+import { clearKeyboardFocusRegions } from '../../utils/focus-regions';
 import { getDirectionalKey, isEditableTarget } from '../../utils/keyboard';
 import './right-sidebar.css';
 
@@ -97,7 +98,7 @@ export const RightSidebar = ({
   };
 
   const handleMouseDown = (event: MouseEvent<HTMLElement>) => {
-    sidebarRef.current?.removeAttribute('data-focus-region-keyboard');
+    clearKeyboardFocusRegions();
 
     if (!(event.target instanceof HTMLElement)) return;
 
