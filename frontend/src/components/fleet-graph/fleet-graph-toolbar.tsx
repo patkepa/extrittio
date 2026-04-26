@@ -1,7 +1,15 @@
-import { Button, Icon } from '@blueprintjs/core';
-import type { ReactNode } from 'react';
+import { Alert, Button, Icon, Menu, MenuDivider, MenuItem, Popover } from '@blueprintjs/core';
+import { useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MainToolbar } from '../layout/main-toolbar';
+import { useFleets } from '../../hooks/use-fleets';
+import {
+  useBulkChangeFleet,
+  useBulkRestartDevices,
+  useBulkTriggerOta,
+} from '../../hooks/use-devices';
+import { useFirmwareUpdates } from '../../hooks/use-firmware-updates';
+import { showErrorToast, showSuccessToast, showWarningToast } from '../../utils/toaster';
 import type { Device } from '../../types/api';
 
 interface FleetGraphToolbarProps {
@@ -29,6 +37,182 @@ const ToolbarMetric = ({ label, value }: ToolbarMetricProps) => (
   </div>
 );
 
+interface SelectedDeviceActionsProps {
+  device: Device;
+  onClearDevice: () => void;
+}
+
+const SelectedDeviceActions = ({ device, onClearDevice }: SelectedDeviceActionsProps) => {
+  const navigate = useNavigate();
+  const restartIdsRef = useRef<string[]>([]);
+  const [restartAlertOpen, setRestartAlertOpen] = useState(false);
+
+  const { data: fleets = [] } = useFleets();
+  const { data: firmwareUpdates } = useFirmwareUpdates();
+  const bulkFleetMutation = useBulkChangeFleet();
+  const bulkRestartMutation = useBulkRestartDevices();
+  const bulkOtaMutation = useBulkTriggerOta();
+
+  const deviceIds = [device.id];
+  const isAnyPending =
+    bulkFleetMutation.isPending || bulkRestartMutation.isPending || bulkOtaMutation.isPending;
+
+  async function handleFleetChange(fleetId: number | null) {
+    try {
+      const result = await bulkFleetMutation.mutateAsync({
+        device_ids: deviceIds,
+        fleet_id: fleetId,
+      });
+      void showSuccessToast(
+        fleetId === null
+          ? `${result.affected} device${result.affected !== 1 ? 's' : ''} removed from fleet`
+          : `${result.affected} device${result.affected !== 1 ? 's' : ''} moved to fleet`,
+      );
+    } catch {
+      void showErrorToast('Failed to change fleet');
+    }
+  }
+
+  async function handleRestart() {
+    try {
+      const result = await bulkRestartMutation.mutateAsync({ device_ids: restartIdsRef.current });
+      if (result.failed > 0) {
+        void showWarningToast(`${result.succeeded} restarted, ${result.failed} failed`);
+      } else {
+        void showSuccessToast(
+          `${result.succeeded} device${result.succeeded !== 1 ? 's' : ''} restarted`,
+        );
+      }
+    } catch {
+      void showErrorToast('Failed to restart device');
+    }
+    setRestartAlertOpen(false);
+  }
+
+  async function handleOta(firmwareUpdateId: number) {
+    try {
+      const result = await bulkOtaMutation.mutateAsync({
+        device_ids: deviceIds,
+        firmware_update_id: firmwareUpdateId,
+      });
+      if (result.failed > 0) {
+        void showWarningToast(`${result.succeeded} updated, ${result.failed} failed`);
+      } else {
+        void showSuccessToast(
+          `OTA triggered on ${result.succeeded} device${result.succeeded !== 1 ? 's' : ''}`,
+        );
+      }
+    } catch {
+      void showErrorToast('Failed to trigger OTA update');
+    }
+  }
+
+  return (
+    <>
+      <Button
+        icon="eye-open"
+        minimal
+        small
+        title="View details"
+        aria-label="View details"
+        onClick={() => navigate(`/devices/${device.id}`)}
+      />
+
+      <Popover
+        content={
+          <Menu>
+            {fleets.map((fleet) => (
+              <MenuItem
+                key={fleet.id}
+                text={fleet.name}
+                onClick={() => void handleFleetChange(fleet.id)}
+              />
+            ))}
+            {fleets.length > 0 && <MenuDivider />}
+            <MenuItem
+              text="Remove from fleet"
+              icon="cross"
+              intent="warning"
+              onClick={() => void handleFleetChange(null)}
+            />
+          </Menu>
+        }
+        placement="bottom"
+        disabled={isAnyPending}
+      >
+        <Button
+          icon="flows"
+          minimal
+          small
+          loading={bulkFleetMutation.isPending}
+          disabled={isAnyPending}
+          title="Change fleet"
+          aria-label="Change fleet"
+        />
+      </Popover>
+
+      <Button
+        icon="refresh"
+        minimal
+        small
+        loading={bulkRestartMutation.isPending}
+        disabled={isAnyPending}
+        title="Restart device"
+        aria-label="Restart device"
+        onClick={() => {
+          restartIdsRef.current = deviceIds;
+          setRestartAlertOpen(true);
+        }}
+      />
+
+      <Popover
+        content={
+          <Menu>
+            {(firmwareUpdates ?? []).map((fw) => (
+              <MenuItem
+                key={fw.id}
+                text={`${fw.version} (${fw.device_type_name})`}
+                onClick={() => void handleOta(fw.id)}
+              />
+            ))}
+            {(firmwareUpdates ?? []).length === 0 && (
+              <MenuItem text="No firmware updates available" disabled />
+            )}
+          </Menu>
+        }
+        placement="bottom"
+        disabled={isAnyPending}
+      >
+        <Button
+          icon="cloud-upload"
+          minimal
+          small
+          loading={bulkOtaMutation.isPending}
+          disabled={isAnyPending}
+          title="Update firmware"
+          aria-label="Update firmware"
+        />
+      </Popover>
+
+      <Button icon="cross" minimal small title="Clear device" onClick={onClearDevice} />
+
+      <Alert
+        isOpen={restartAlertOpen}
+        icon="refresh"
+        intent="warning"
+        confirmButtonText="Restart"
+        cancelButtonText="Cancel"
+        onConfirm={() => void handleRestart()}
+        onCancel={() => setRestartAlertOpen(false)}
+      >
+        <p>
+          Restart <strong>{device.name}</strong>?
+        </p>
+      </Alert>
+    </>
+  );
+};
+
 export const FleetGraphToolbar = ({
   selectedDevice,
   deviceCount,
@@ -41,8 +225,6 @@ export const FleetGraphToolbar = ({
   onZoomOut,
   onToggleHealthPanel,
 }: FleetGraphToolbarProps) => {
-  const navigate = useNavigate();
-
   return (
     <MainToolbar className="fleet-graph-toolbar-shell" ariaLabel="Fleet graph toolbar">
       <div className="fleet-graph-toolbar">
@@ -55,6 +237,8 @@ export const FleetGraphToolbar = ({
                 <span className="fleet-graph-toolbar-subtitle mono-data">{selectedDevice.id}</span>
               </div>
             </div>
+
+            <div className="fleet-graph-toolbar-divider" aria-hidden="true" />
 
             <div className="fleet-graph-toolbar-metrics" aria-label="Selected device summary">
               <ToolbarMetric label="Type" value={selectedDevice.device_type_name} />
@@ -73,16 +257,19 @@ export const FleetGraphToolbar = ({
               />
             </div>
 
+            <div className="fleet-graph-toolbar-divider" aria-hidden="true" />
+
             <div className="fleet-graph-toolbar-actions">
+              <SelectedDeviceActions device={selectedDevice} onClearDevice={onClearDevice} />
+              <div className="fleet-graph-toolbar-divider" aria-hidden="true" />
               <Button
-                icon="eye-open"
+                icon={healthPanelOpen ? 'chevron-right' : 'chevron-left'}
+                minimal
                 small
-                intent="primary"
-                onClick={() => navigate(`/devices/${selectedDevice.id}`)}
-              >
-                View Details
-              </Button>
-              <Button icon="cross" minimal small title="Clear device" onClick={onClearDevice} />
+                disabled={!hasGraphData}
+                title={healthPanelOpen ? 'Hide health panel' : 'Show health panel'}
+                onClick={onToggleHealthPanel}
+              />
             </div>
           </>
         ) : (
@@ -124,8 +311,8 @@ export const FleetGraphToolbar = ({
                 title="Zoom out"
                 onClick={onZoomOut}
               />
+              <div className="fleet-graph-toolbar-divider" aria-hidden="true" />
               <Button
-                className="fleet-graph-toolbar-sidebar-toggle"
                 icon={healthPanelOpen ? 'chevron-right' : 'chevron-left'}
                 minimal
                 small

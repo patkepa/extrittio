@@ -123,10 +123,16 @@
   display: flex;
   align-items: center;
   gap: 4px;
+  align-self: stretch;
 }
 
-.fleet-graph-toolbar-sidebar-toggle {
-  margin-left: 20px;
+.fleet-graph-toolbar-divider {
+  align-self: stretch;
+  width: 1px;
+  min-height: 48px;
+  margin: 0 8px;
+  background-color: var(--border-color);
+  flex-shrink: 0;
 }
 
 /* Empty state */
