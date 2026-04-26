@@ -9,7 +9,7 @@ import {
   Tag,
   Tooltip,
   Position,
-  Button,
+  Popover,
 } from '@blueprintjs/core';
 import { navGroups, projects, currentUser } from '../../data/sidebar-data';
 import { useAuthStore } from '../../stores/auth-store';
@@ -62,7 +62,7 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
     }
   }
   const [selectedProject, setSelectedProject] = useState(projects[0]!);
-  const [projectSwitcherOpen, setProjectSwitcherOpen] = useState(false);
+  const [footerOpen, setFooterOpen] = useState(false);
   const logout = useAuthStore((s) => s.logout);
   const expandSidebar = useUIStore((s) => s.toggleSidebar);
 
@@ -183,53 +183,35 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
       {/* Footer */}
       <div className="sidebar-footer">
         {!isCollapsed ? (
-          <>
-            <div className="user-card">
-              <div className="user-info">
-                <div className="user-avatar">{currentUser.name.charAt(0).toUpperCase()}</div>
+          <div className={`footer-panel ${footerOpen ? 'open' : ''}`}>
+            <button
+              className="footer-panel-trigger"
+              onClick={() => setFooterOpen(!footerOpen)}
+            >
+              <div className="footer-trigger-left">
+                <div className="user-avatar">
+                  {currentUser.name.charAt(0).toUpperCase()}
+                </div>
                 <div className="user-details">
                   <div className="user-name">{currentUser.name}</div>
-                  <div className="user-email">{currentUser.email}</div>
+                  {footerOpen && <div className="user-email">{currentUser.email}</div>}
                 </div>
-                <Button
-                  icon="log-out"
-                  minimal
-                  small
-                  className="user-logout"
-                  title="Sign out"
-                  onClick={logout}
-                />
               </div>
-            </div>
-            <div className="sidebar-env-switcher">
-              <button
-                className="env-switcher-btn"
-                onClick={() => setProjectSwitcherOpen(!projectSwitcherOpen)}
-              >
-                <div className="env-switcher-left">
-                  <span
-                    className="env-dot"
-                    style={{ backgroundColor: envColors[selectedProject.environment] }}
-                  />
-                  <span className="env-text mono-data">
-                    {selectedProject.environment.toUpperCase()}
-                  </span>
-                </div>
-                <div className="env-switcher-right">
-                  <span className="version-text mono-data">v0.1.0</span>
-                  <Icon icon="double-caret-vertical" size={12} className="env-switcher-caret" />
-                </div>
-              </button>
-              <Collapse isOpen={projectSwitcherOpen}>
-                <div className="env-dropdown">
+              <Icon
+                icon="double-caret-vertical"
+                size={12}
+                className="footer-panel-caret"
+              />
+            </button>
+            <Collapse isOpen={footerOpen}>
+              <div className="footer-panel-content">
+                <div className="footer-section-label">ENVIRONMENT</div>
+                <div className="footer-env-options">
                   {projects.map((project) => (
                     <button
                       key={project.environment}
                       className={`env-option ${selectedProject.environment === project.environment ? 'active' : ''}`}
-                      onClick={() => {
-                        setSelectedProject(project);
-                        setProjectSwitcherOpen(false);
-                      }}
+                      onClick={() => setSelectedProject(project)}
                     >
                       <span
                         className="env-dot"
@@ -242,15 +224,74 @@ export const AppSidebar = ({ isCollapsed = false }: AppSidebarProps) => {
                     </button>
                   ))}
                 </div>
-              </Collapse>
-            </div>
-          </>
+                <div className="footer-divider" />
+                <button className="footer-action" onClick={logout}>
+                  <Icon icon="log-out" size={14} />
+                  <span>Sign out</span>
+                </button>
+              </div>
+            </Collapse>
+            {!footerOpen && (
+              <div className="footer-env-badge">
+                <span
+                  className="env-dot"
+                  style={{ backgroundColor: envColors[selectedProject.environment] }}
+                />
+                <span className="env-text mono-data">
+                  {selectedProject.environment.toUpperCase()}
+                </span>
+                <span className="version-text mono-data">v0.1.0</span>
+              </div>
+            )}
+          </div>
         ) : (
-          <Tooltip content={currentUser.name} position={Position.RIGHT} minimal>
+          <Popover
+            position={Position.RIGHT_TOP}
+            minimal
+            modifiers={{ offset: { enabled: true, options: { offset: [0, 16] } } }}
+            content={
+              <div className="collapsed-popover">
+                <div className="collapsed-popover-header">
+                  <div className="user-avatar">
+                    {currentUser.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="user-details">
+                    <div className="user-name">{currentUser.name}</div>
+                    <div className="user-email">{currentUser.email}</div>
+                  </div>
+                </div>
+                <div className="footer-divider" />
+                <div className="footer-section-label">ENVIRONMENT</div>
+                <div className="footer-env-options">
+                  {projects.map((project) => (
+                    <button
+                      key={project.environment}
+                      className={`env-option ${selectedProject.environment === project.environment ? 'active' : ''}`}
+                      onClick={() => setSelectedProject(project)}
+                    >
+                      <span
+                        className="env-dot"
+                        style={{ backgroundColor: envColors[project.environment] }}
+                      />
+                      <span className="env-option-label">{project.environment}</span>
+                      {selectedProject.environment === project.environment && (
+                        <Icon icon="tick" size={12} className="env-option-check" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+                <div className="footer-divider" />
+                <button className="footer-action" onClick={logout}>
+                  <Icon icon="log-out" size={14} />
+                  <span>Sign out</span>
+                </button>
+              </div>
+            }
+          >
             <div className="user-avatar collapsed-avatar">
               {currentUser.name.charAt(0).toUpperCase()}
             </div>
-          </Tooltip>
+          </Popover>
         )}
       </div>
     </div>
