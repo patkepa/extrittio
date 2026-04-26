@@ -9,5 +9,5 @@ std = ["extrittio-common/std", "dep:serde_json", "serde_json?/std"]
 alloc = ["extrittio-common/alloc", "dep:serde_json", "serde_json?/alloc"]
 
 [dependencies]
-extrittio-common = { path = "../../common", default-features = false }
+extrittio-common = { path = "../../../common", default-features = false }
 serde_json = { version = "1", default-features = false, optional = true }

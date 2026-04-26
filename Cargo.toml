@@ -2,10 +2,10 @@
 resolver = "2"
 members = [
     "backend",
-    "client/linux",
-    "client/macos",
-    "client/rpi",
-    "client/sdk",
+    "client/rust/linux",
+    "client/rust/macos",
+    "client/rust/rpi",
+    "client/rust/sdk",
     "common",
 ]
 
