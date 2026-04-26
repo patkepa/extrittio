@@ -1,53 +1,185 @@
+/* Device detail page — full-bleed toolbar, centered body */
 .device-detail-page {
-  max-width: 1200px;
-  margin: 0 auto;
+  margin: -24px;
   animation: fadeIn 0.3s ease;
 }
 
-.device-detail-page .device-status-banner {
-  margin-bottom: 24px;
+.device-detail-body {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
 }
 
-/* Tabs bar */
-.detail-tabs {
-  border-bottom: 1px solid var(--border-color);
-  margin-bottom: 24px;
+/* ── Device Toolbar ── */
+.device-toolbar-shell {
+  padding-right: 16px;
 }
 
-.detail-tabs .bp6-tabs {
-  margin-bottom: -1px;
+.device-toolbar {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
-.detail-tabs .bp6-tab {
+.device-toolbar::-webkit-scrollbar {
+  height: 3px;
+}
+
+.device-toolbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.device-toolbar::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 0;
+}
+
+.device-toolbar-identity {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: hsl(var(--foreground));
+}
+
+.device-toolbar-title-group {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.device-toolbar-title {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-toolbar-subtitle {
+  color: hsl(var(--muted));
+  font-size: 11px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-toolbar-divider {
+  align-self: stretch;
+  width: 1px;
+  min-height: 48px;
+  margin: 0 12px;
+  background-color: var(--border-color);
+  flex-shrink: 0;
+}
+
+.device-toolbar-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  align-self: stretch;
+}
+
+.device-toolbar-actions--left {
+  flex-shrink: 0;
+}
+
+/* ── Inline tabs inside toolbar ── */
+.device-toolbar-tabs {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+/* Strip all default Blueprint tab chrome — no borders, no panel, compact fit */
+.device-toolbar-tabs .bp6-tabs {
+  display: flex;
+  align-items: center;
+}
+
+.device-toolbar-tabs .bp6-tab-list {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+.device-toolbar-tabs .bp6-tab-panel {
+  display: none;
+}
+
+.device-toolbar-tabs .bp6-tab-indicator-wrapper {
+  display: none;
+}
+
+.device-toolbar-tabs .bp6-tab {
+  position: relative;
+  padding: 4px 10px 6px;
+  border-radius: 0;
+  font-size: 12px;
   font-weight: 600;
-  font-size: 14px;
   letter-spacing: 0.01em;
+  line-height: 1;
+  color: hsl(var(--muted));
+  background: none;
+  border: none;
+  box-shadow: none;
+  outline: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color 0.12s ease,
+    background-color 0.12s ease;
 }
 
-.detail-tabs .bp6-tab:focus,
-.detail-tabs .bp6-tab:active {
+.device-toolbar-tabs .bp6-tab:hover {
+  color: hsl(var(--foreground));
+  background: hsla(0, 0%, 100%, 0.06);
+}
+
+.device-toolbar-tabs .bp6-tab[aria-selected='true'] {
+  color: hsl(var(--foreground));
+  background: hsla(0, 0%, 100%, 0.1);
+}
+
+.device-toolbar-tabs .bp6-tab[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: hsl(var(--accent));
+}
+
+.device-toolbar-tabs .bp6-tab:focus,
+.device-toolbar-tabs .bp6-tab:active {
   outline: none;
   box-shadow: none;
-  background: none;
 }
 
-.detail-tabs .bp6-tab[aria-selected='true'] {
-  outline: none;
-  box-shadow: none;
-  background: none;
-}
-
-.detail-tabs .bp6-tab:focus-visible {
+.device-toolbar-tabs .bp6-tab:focus-visible {
   outline: none;
   box-shadow: inset 0 0 0 2px hsl(var(--accent));
 }
 
-/* Tab content area */
+/* ── Tab content area ── */
 .detail-tab-content {
   min-height: 400px;
 }
 
-/* Shadow two-column layout */
+/* ── Shadow two-column layout ── */
 .shadow-panes-horizontal {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -104,7 +236,7 @@
   background: rgba(63, 185, 80, 0.1);
 }
 
-/* Telemetry sections */
+/* ── Telemetry sections ── */
 .telemetry-section {
   margin-bottom: 24px;
 }
@@ -232,7 +364,7 @@
   background: hsla(0, 0%, 100%, 0.04);
 }
 
-/* Logs tab */
+/* ── Logs tab ── */
 .logs-toolbar {
   display: flex;
   align-items: center;
@@ -278,7 +410,7 @@
   word-break: break-word;
 }
 
-/* Config tab */
+/* ── Config tab ── */
 .config-table {
   border: 1px solid hsla(0, 0%, 100%, 0.06);
   border-radius: 2px;
@@ -322,7 +454,7 @@
   flex: 1;
 }
 
-/* Animations */
+/* ── Animations ── */
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -332,7 +464,7 @@
   }
 }
 
-/* Responsive */
+/* ── Responsive ── */
 @media (max-width: 768px) {
   .shadow-panes-horizontal {
     grid-template-columns: 1fr;

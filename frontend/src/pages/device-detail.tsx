@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useParams, useSearchParams, Navigate, useNavigate } from 'react-router-dom';
-import { Spinner, Tabs, Tab, Callout } from '@blueprintjs/core';
+import { Spinner, Callout } from '@blueprintjs/core';
 import { useDevice } from '../hooks/use-devices';
 import { DeviceHeader } from '../components/devices/device-header';
 import { OverviewTab } from '../components/devices/overview-tab';
@@ -31,7 +31,7 @@ const VALID_TABS = [
 export const DeviceDetail = () => {
   const { deviceId } = useParams<{ deviceId: string }>();
   const navigate = useNavigate();
-  const tabsRef = useRef<HTMLDivElement | null>(null);
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const { data: device, isLoading, error } = useDevice(deviceId ?? null);
 
@@ -57,17 +57,17 @@ export const DeviceDetail = () => {
   );
 
   useEffect(() => {
-    const tabsElement = tabsRef.current;
-    if (!tabsElement) return;
+    const toolbarElement = toolbarRef.current;
+    if (!toolbarElement) return;
 
-    tabsElement
+    toolbarElement
       .querySelectorAll<HTMLElement>('[data-device-detail-initial-tab="true"]')
       .forEach((element) => {
         element.removeAttribute('data-device-detail-initial-tab');
         element.removeAttribute('data-focus-region-initial');
       });
 
-    const selectedTab = tabsElement.querySelector<HTMLElement>(
+    const selectedTab = toolbarElement.querySelector<HTMLElement>(
       '[role="tab"][aria-selected="true"]',
     );
     if (!selectedTab) return;
@@ -112,9 +112,11 @@ export const DeviceDetail = () => {
   if (error) {
     return (
       <div className="device-detail-page">
-        <Callout intent="danger" icon="error">
-          Failed to load device. It may have been deleted.
-        </Callout>
+        <div className="device-detail-body">
+          <Callout intent="danger" icon="error">
+            Failed to load device. It may have been deleted.
+          </Callout>
+        </div>
       </div>
     );
   }
@@ -122,84 +124,69 @@ export const DeviceDetail = () => {
   if (isLoading || !device) {
     return (
       <div className="device-detail-page">
-        <Spinner />
+        <div className="device-detail-body">
+          <Spinner />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="device-detail-page">
-      <DeviceHeader device={device} />
+    <div className="device-detail-page" ref={toolbarRef}>
+      <DeviceHeader device={device} currentTab={currentTab} onTabChange={handleTabChange} />
 
-      <div className="detail-tabs" ref={tabsRef}>
-        <Tabs
-          id="device-detail-tabs"
-          selectedTabId={currentTab}
-          onChange={(newTab) => handleTabChange(newTab as string)}
-          large
-        >
-          <Tab id="overview" title="Overview" />
-          <Tab id="shadow" title="Shadow" />
-          <Tab id="commands" title="Commands" />
-          <Tab id="telemetry" title="Telemetry" />
-          <Tab id="location" title="Location" />
-          <Tab id="ota" title="OTA" />
-          <Tab id="config" title="Config" />
-          <Tab id="logs" title="Logs" />
-          <Tab id="alerts" title="Alerts" />
-        </Tabs>
-      </div>
-
-      <div className="detail-tab-content">
-        {currentTab === 'overview' && (
-          <ErrorBoundary>
-            <OverviewTab device={device} />
-          </ErrorBoundary>
-        )}
-        {currentTab === 'telemetry' && (
-          <ErrorBoundary>
-            <TelemetryTab deviceId={device.id} deviceTypeName={device.device_type_name} />
-          </ErrorBoundary>
-        )}
-        {currentTab === 'location' && (
-          <ErrorBoundary>
-            <LocationTab
-              deviceId={device.id}
-              deviceName={device.name}
-              deviceStatus={device.status}
-            />
-          </ErrorBoundary>
-        )}
-        {currentTab === 'logs' && (
-          <ErrorBoundary>
-            <LogsTab deviceId={device.id} />
-          </ErrorBoundary>
-        )}
-        {currentTab === 'config' && (
-          <ErrorBoundary>
-            <ConfigTab deviceId={device.id} />
-          </ErrorBoundary>
-        )}
-        {currentTab === 'shadow' && (
-          <ErrorBoundary>
-            <ShadowTab deviceId={device.id} />
-          </ErrorBoundary>
-        )}
-        {currentTab === 'commands' && (
-          <ErrorBoundary>
-            <CommandsTab deviceId={device.id} />
-          </ErrorBoundary>
-        )}
-        {currentTab === 'ota' && (
-          <ErrorBoundary>
-            <OtaTab device={device} />
-          </ErrorBoundary>
-        )}
-        {currentTab === 'alerts' && (
-          <ErrorBoundary>
-            <AlertsTab deviceId={device.id} />
-          </ErrorBoundary>
-        )}
+      <div className="device-detail-body">
+        <div className="detail-tab-content">
+          {currentTab === 'overview' && (
+            <ErrorBoundary>
+              <OverviewTab device={device} />
+            </ErrorBoundary>
+          )}
+          {currentTab === 'telemetry' && (
+            <ErrorBoundary>
+              <TelemetryTab deviceId={device.id} deviceTypeName={device.device_type_name} />
+            </ErrorBoundary>
+          )}
+          {currentTab === 'location' && (
+            <ErrorBoundary>
+              <LocationTab
+                deviceId={device.id}
+                deviceName={device.name}
+                deviceStatus={device.status}
+              />
+            </ErrorBoundary>
+          )}
+          {currentTab === 'logs' && (
+            <ErrorBoundary>
+              <LogsTab deviceId={device.id} />
+            </ErrorBoundary>
+          )}
+          {currentTab === 'config' && (
+            <ErrorBoundary>
+              <ConfigTab deviceId={device.id} />
+            </ErrorBoundary>
+          )}
+          {currentTab === 'shadow' && (
+            <ErrorBoundary>
+              <ShadowTab deviceId={device.id} />
+            </ErrorBoundary>
+          )}
+          {currentTab === 'commands' && (
+            <ErrorBoundary>
+              <CommandsTab deviceId={device.id} />
+            </ErrorBoundary>
+          )}
+          {currentTab === 'ota' && (
+            <ErrorBoundary>
+              <OtaTab device={device} />
+            </ErrorBoundary>
+          )}
+          {currentTab === 'alerts' && (
+            <ErrorBoundary>
+              <AlertsTab deviceId={device.id} />
+            </ErrorBoundary>
+          )}
+        </div>
       </div>
     </div>
   );

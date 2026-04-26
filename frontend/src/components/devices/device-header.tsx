@@ -1,49 +1,73 @@
-import { H4, Tooltip } from '@blueprintjs/core';
+import { Button, Tab, Tabs, Tooltip } from '@blueprintjs/core';
+import { useNavigate } from 'react-router-dom';
+import { MainToolbar } from '../layout/main-toolbar';
 import { showSuccessToast } from '../../utils/toaster';
 import type { Device } from '../../types/api';
 
 interface DeviceHeaderProps {
   device: Device;
+  currentTab: string;
+  onTabChange: (tab: string) => void;
 }
 
-export const DeviceHeader = ({ device }: DeviceHeaderProps) => (
-  <div className="device-status-banner">
-    <span className={`status-led status-led--${device.status}`} style={{ width: 10, height: 10 }} />
-    <div>
-      <H4 style={{ margin: 0 }}>{device.name}</H4>
-      <p style={{ margin: 0 }} className="banner-subtitle">
-        <Tooltip content="Click to copy" placement="top" compact minimal>
-          <span
-            className="mono-data copy-on-click"
-            onClick={() =>
-              void navigator.clipboard
-                .writeText(device.id)
-                .then(() => showSuccessToast('Device ID copied'))
-            }
+export const DeviceHeader = ({ device, currentTab, onTabChange }: DeviceHeaderProps) => {
+  const navigate = useNavigate();
+
+  return (
+    <MainToolbar className="device-toolbar-shell" ariaLabel="Device detail toolbar">
+      <div className="device-toolbar">
+        <div className="device-toolbar-actions device-toolbar-actions--left">
+          <Button
+            icon="arrow-left"
+            minimal
+            small
+            title="Back to devices (B)"
+            aria-label="Back to devices"
+            onClick={() => navigate('/devices')}
+          />
+        </div>
+
+        <div className="device-toolbar-divider" aria-hidden="true" />
+
+        <div className="device-toolbar-identity">
+          <span className={`status-led status-led--${device.status}`} />
+          <div className="device-toolbar-title-group">
+            <span className="device-toolbar-title">{device.name}</span>
+            <Tooltip content="Click to copy" placement="bottom" compact minimal>
+              <span
+                className="device-toolbar-subtitle mono-data copy-on-click"
+                onClick={() =>
+                  void navigator.clipboard
+                    .writeText(device.id)
+                    .then(() => showSuccessToast('Device ID copied'))
+                }
+              >
+                {device.id}
+              </span>
+            </Tooltip>
+          </div>
+        </div>
+
+        <div className="device-toolbar-divider" aria-hidden="true" />
+
+        <div className="device-toolbar-tabs">
+          <Tabs
+            id="device-detail-tabs"
+            selectedTabId={currentTab}
+            onChange={(newTab) => onTabChange(newTab as string)}
           >
-            {device.id}
-          </span>
-        </Tooltip>
-        <span className="banner-sep">|</span>
-        {device.device_type_name}
-        {device.fleet_name && (
-          <>
-            <span className="banner-sep">|</span>
-            {device.fleet_name}
-          </>
-        )}
-        <span className="banner-sep">|</span>
-        <span
-          style={{
-            textTransform: 'uppercase',
-            fontWeight: 700,
-            fontSize: 12,
-            letterSpacing: '0.06em',
-          }}
-        >
-          {device.status}
-        </span>
-      </p>
-    </div>
-  </div>
-);
+            <Tab id="overview" title="Overview" />
+            <Tab id="shadow" title="Shadow" />
+            <Tab id="commands" title="Commands" />
+            <Tab id="telemetry" title="Telemetry" />
+            <Tab id="location" title="Location" />
+            <Tab id="ota" title="OTA" />
+            <Tab id="config" title="Config" />
+            <Tab id="logs" title="Logs" />
+            <Tab id="alerts" title="Alerts" />
+          </Tabs>
+        </div>
+      </div>
+    </MainToolbar>
+  );
+};
