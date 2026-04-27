@@ -129,24 +129,6 @@ export const FleetGraphBottomToolbar = ({
 
         <div className="fleet-graph-toolbar-divider" aria-hidden="true" />
 
-        <div className="fleet-graph-toolbar-actions fleet-graph-toolbar-actions--mock">
-          {mockActionConfig.map((action) => (
-            <ToolbarTooltip key={action.label} title={action.label} description={action.description}>
-              <Button
-                className={toolbarWideButtonClass}
-                icon={action.icon}
-                text={action.label}
-                small
-                disabled={!hasGraphData}
-                aria-label={action.label}
-                onClick={() => showMockToast(action.label)}
-              />
-            </ToolbarTooltip>
-          ))}
-        </div>
-
-        <div className="fleet-graph-toolbar-divider" aria-hidden="true" />
-
         <div className="fleet-graph-toolbar-actions" aria-label="Display toggles">
           {displayToggleConfig.map((toggle) => {
             const isActive = displayToggles[toggle.key];
@@ -170,6 +152,24 @@ export const FleetGraphBottomToolbar = ({
               </ToolbarTooltip>
             );
           })}
+        </div>
+
+        <div className="fleet-graph-toolbar-divider" aria-hidden="true" />
+
+        <div className="fleet-graph-toolbar-actions fleet-graph-toolbar-actions--mock">
+          {mockActionConfig.map((action) => (
+            <ToolbarTooltip key={action.label} title={action.label} description={action.description}>
+              <Button
+                className={toolbarWideButtonClass}
+                icon={action.icon}
+                text={action.label}
+                small
+                disabled={!hasGraphData}
+                aria-label={action.label}
+                onClick={() => showMockToast(action.label)}
+              />
+            </ToolbarTooltip>
+          ))}
         </div>
         <div className="fleet-graph-toolbar-spacer" />
       </div>

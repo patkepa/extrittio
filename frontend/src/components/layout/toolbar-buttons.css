@@ -27,6 +27,14 @@
   background: hsla(0, 0%, 0%, 0.68) !important;
 }
 
+.bp6-button.panel-toolbar-button:focus,
+.bp6-button.panel-toolbar-button:focus-visible,
+.bp6-button.panel-toolbar-switch:focus,
+.bp6-button.panel-toolbar-switch:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
 .bp6-button.panel-toolbar-button:disabled,
 .bp6-button.panel-toolbar-button.bp6-disabled {
   border-color: hsla(0, 0%, 100%, 0.04) !important;
