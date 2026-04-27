@@ -112,3 +112,33 @@
 .bp6-button.panel-toolbar-switch--off:hover::after {
   background: hsla(0, 0%, 100%, 0.18);
 }
+
+.panel-toolbar-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 220px;
+  padding: 2px 0;
+}
+
+.bp6-tooltip.panel-toolbar-tooltip-popover .bp6-popover-content,
+.bp6-tooltip.panel-toolbar-tooltip-popover.bp6-minimal .bp6-popover-content {
+  border: 1px solid hsla(0, 0%, 100%, 0.18) !important;
+  border-radius: 0 !important;
+  background-color: #000000 !important;
+  box-shadow: none !important;
+  color: #ffffff !important;
+}
+
+.panel-toolbar-tooltip-title {
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.panel-toolbar-tooltip-description {
+  color: hsla(0, 0%, 100%, 0.72);
+  font-size: 11px;
+  line-height: 1.35;
+}
