@@ -43,6 +43,17 @@ export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
 ## Development Setup
 
 ```bash
+# Start PostgreSQL, run migrations when diesel_cli is installed, then start
+# the backend and frontend dev servers.
+./start-dev.sh
+```
+
+The frontend runs on http://localhost:5173 and proxies `/api` to the backend at http://localhost:8080.
+If port 5432 is already in use, the script will automatically publish Docker PostgreSQL on the next available port from 5433-5439 and pass that URL to the backend.
+
+Manual setup:
+
+```bash
 # 1. Start PostgreSQL
 docker compose -f docker/docker-compose.yml up -d postgres
 
@@ -56,5 +67,3 @@ cargo run -p extrittio-backend
 # 4. Start the frontend (in another terminal)
 cd frontend && npm install && npm run dev
 ```
-
-The frontend runs on http://localhost:5173 and proxies `/api` to the backend at http://localhost:8080.
