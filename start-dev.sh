@@ -21,6 +21,17 @@ require_command() {
   fi
 }
 
+kill_process_tree() {
+  local pid="$1"
+  local child
+
+  for child in $(pgrep -P "$pid" 2>/dev/null || true); do
+    kill_process_tree "$child"
+  done
+
+  kill "$pid" 2>/dev/null || true
+}
+
 port_is_listening() {
   lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
 }
@@ -59,14 +70,16 @@ choose_postgres_port() {
 cleanup() {
   local status=$?
 
+  trap - INT TERM EXIT
+
   if [[ -n "$BACKEND_PID" ]] && kill -0 "$BACKEND_PID" 2>/dev/null; then
     log "Stopping backend..."
-    kill "$BACKEND_PID" 2>/dev/null || true
+    kill_process_tree "$BACKEND_PID"
   fi
 
   if [[ -n "$FRONTEND_PID" ]] && kill -0 "$FRONTEND_PID" 2>/dev/null; then
     log "Stopping frontend..."
-    kill "$FRONTEND_PID" 2>/dev/null || true
+    kill_process_tree "$FRONTEND_PID"
   fi
 
   wait "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null || true
@@ -79,6 +92,7 @@ require_command docker
 require_command cargo
 require_command npm
 require_command lsof
+require_command pgrep
 
 if [[ -f "$ROOT_DIR/.env" ]]; then
   log "Loading .env"
@@ -145,18 +159,49 @@ if [[ ! -d "$ROOT_DIR/frontend/node_modules" ]]; then
   (cd "$ROOT_DIR/frontend" && npm install)
 fi
 
+if port_is_listening 8080; then
+  printf '[start-dev] Port 8080 is already in use. Stop the existing backend or set PORT in .env and update the frontend proxy.\n' >&2
+  exit 1
+fi
+
 log "Starting backend on http://localhost:8080"
 (
   cd "$ROOT_DIR"
   export DATABASE_URL RUST_LOG
-  cargo run -p extrittio-backend
+  exec cargo run -p extrittio-backend --bin extrittio-backend
 ) &
 BACKEND_PID=$!
+
+log "Waiting for backend to listen on http://localhost:8080"
+backend_ready=0
+for _ in {1..300}; do
+  if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
+    printf '[start-dev] Backend exited before it started listening on port 8080.\n' >&2
+    exit 1
+  fi
+
+  if port_is_listening 8080; then
+    backend_ready=1
+    break
+  fi
+
+  sleep 1
+done
+
+if [[ "$backend_ready" != "1" ]]; then
+  printf '[start-dev] Backend did not start listening on port 8080 within 300 seconds.\n' >&2
+  exit 1
+fi
+
+if port_is_listening 5173; then
+  printf '[start-dev] Port 5173 is already in use. Stop the existing frontend dev server first.\n' >&2
+  exit 1
+fi
 
 log "Starting frontend on http://localhost:5173"
 (
   cd "$ROOT_DIR/frontend"
-  npm run dev -- --host 127.0.0.1
+  exec npm run dev -- --host 127.0.0.1 --strictPort
 ) &
 FRONTEND_PID=$!
 
