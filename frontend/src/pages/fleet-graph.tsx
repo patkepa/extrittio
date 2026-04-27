@@ -11,6 +11,7 @@ import {
   type ContextMenuState,
 } from '../components/fleet-graph/fleet-graph-context-menu';
 import { FleetGraphBulkBar } from '../components/fleet-graph/fleet-graph-bulk-bar';
+import { FleetGraphBottomToolbar } from '../components/fleet-graph/fleet-graph-bottom-toolbar';
 import { FleetGraphToolbar } from '../components/fleet-graph/fleet-graph-toolbar';
 import { useSelectionStore } from '../stores/selection-store';
 import { showSuccessToast, showErrorToast } from '../utils/toaster';
@@ -276,6 +277,8 @@ export const FleetGraph = () => {
 
           <FleetGraphBulkBar />
         </div>
+
+        <FleetGraphBottomToolbar deviceCount={devices.length} hasGraphData={Boolean(graphData)} />
       </div>
 
       {graphData && (

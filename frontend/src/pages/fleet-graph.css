@@ -126,6 +126,15 @@
   align-self: stretch;
 }
 
+.fleet-graph-toolbar-actions--mock {
+  gap: 6px;
+}
+
+.fleet-graph-toolbar-actions--mock .bp6-button {
+  min-width: 108px;
+  justify-content: center;
+}
+
 .fleet-graph-toolbar-divider {
   align-self: stretch;
   width: 1px;
