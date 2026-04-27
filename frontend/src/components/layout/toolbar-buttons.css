@@ -3,7 +3,7 @@
   height: 34px;
   padding: 0 14px;
   border: 1px solid hsla(0, 0%, 100%, 0.08) !important;
-  border-radius: 4px !important;
+  border-radius: 0 !important;
   background: hsla(0, 0%, 0%, 0.34) !important;
   box-shadow: none !important;
   color: hsl(var(--foreground)) !important;
@@ -47,4 +47,68 @@
 
 .bp6-button.panel-toolbar-button--wide {
   min-width: 136px;
+}
+
+.bp6-button.panel-toolbar-switch {
+  position: relative;
+  overflow: hidden;
+  width: 36px;
+  min-width: 36px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  border: 1px solid hsl(var(--foreground)) !important;
+  border-radius: 0 !important;
+  background: hsla(0, 0%, 0%, 0.48) !important;
+  box-shadow: none !important;
+  color: hsl(var(--foreground)) !important;
+  justify-content: center;
+  opacity: 1;
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease,
+    opacity 0.12s ease;
+}
+
+.bp6-button.panel-toolbar-switch:hover {
+  border-color: hsl(var(--foreground)) !important;
+  background: hsla(0, 0%, 0%, 0.64) !important;
+}
+
+.bp6-button.panel-toolbar-switch--off {
+  border-color: hsla(0, 0%, 100%, 0.12) !important;
+  background: transparent !important;
+  color: hsla(0, 0%, 100%, 0.12) !important;
+  opacity: 1;
+}
+
+.bp6-button.panel-toolbar-switch--off:hover {
+  border-color: hsla(0, 0%, 100%, 0.18) !important;
+  background: hsla(0, 0%, 100%, 0.02) !important;
+  color: hsla(0, 0%, 100%, 0.18) !important;
+  opacity: 1;
+}
+
+.bp6-button.panel-toolbar-switch--off::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 48px;
+  height: 1px;
+  border-radius: 0;
+  background: hsla(0, 0%, 100%, 0.12);
+  opacity: 1;
+  transform: translate(-50%, -50%) rotate(43deg);
+  transform-origin: center;
+  pointer-events: none;
+}
+
+.bp6-button.panel-toolbar-switch .bp6-icon {
+  color: inherit !important;
+}
+
+.bp6-button.panel-toolbar-switch--off:hover::after {
+  background: hsla(0, 0%, 100%, 0.18);
 }
