@@ -17,6 +17,13 @@ export interface GraphActions {
   zoomOut: () => void;
 }
 
+export type AlertSeverity = 'info' | 'warning' | 'critical';
+
+export interface DeviceAlertBadge {
+  count: number;
+  severity: AlertSeverity;
+}
+
 // --- Constants ---
 const FLEET_RADIUS = 14;
 const DEVICE_RADIUS = 11;
@@ -27,6 +34,11 @@ const GRID_SIZE = 40;
 const GRID_COLOR = 'rgba(255, 255, 255, 0.05)';
 const GRID_ACCENT_COLOR = 'rgba(255, 255, 255, 0.12)';
 const GRID_ACCENT_EVERY = 5; // every 5th line is brighter
+const ALERT_BADGE_COLORS: Record<AlertSeverity, string> = {
+  info: '#2D72D2',
+  warning: '#D9822B',
+  critical: '#C23030',
+};
 // Click-vs-drag threshold (px). The library's internal threshold is only 5 px
 // and its background-pan detection has *zero* tolerance for mouse events, so
 // fast-approach clicks are swallowed as drags. We bypass the library's click
@@ -78,6 +90,9 @@ interface FleetGraphCanvasProps {
   onViewportChange?: (transform: ViewportInfo) => void;
   graphActionsRef?: React.MutableRefObject<GraphActions | null>;
   onFrameRedraw?: () => void;
+  showDeviceLabels?: boolean;
+  showAlertBadges?: boolean;
+  alertBadges?: Record<string, DeviceAlertBadge>;
 }
 
 export const FleetGraphCanvas = memo(
@@ -93,6 +108,9 @@ export const FleetGraphCanvas = memo(
     onViewportChange,
     graphActionsRef,
     onFrameRedraw,
+    showDeviceLabels = true,
+    showAlertBadges = true,
+    alertBadges = {},
   }: FleetGraphCanvasProps) => {
     const graphRef = useRef<any>(null);
     const [hoverNode, setHoverNode] = useState<GraphNode | null>(null);
@@ -129,11 +147,7 @@ export const FleetGraphCanvas = memo(
       graphActionsRef,
     );
 
-    const { handleEngineStop } = useForceSimulation(
-      graphRef,
-      updateNodeBounds,
-      hasInitialFit,
-    );
+    const { handleEngineStop } = useForceSimulation(graphRef, updateNodeBounds, hasInitialFit);
 
     const {
       shiftHeld,
@@ -256,17 +270,14 @@ export const FleetGraphCanvas = memo(
     // library's aggressive zero-tolerance drag guard (it's gated behind
     // `state.onBackgroundClick` being truthy).
 
-    const handleWrapperPointerDown = useCallback(
-      (e: React.PointerEvent) => {
-        if (e.button !== 0) return; // left-click only
-        pointerStartRef.current = {
-          x: e.clientX,
-          y: e.clientY,
-          node: hoverNodeRef.current,
-        };
-      },
-      [],
-    );
+    const handleWrapperPointerDown = useCallback((e: React.PointerEvent) => {
+      if (e.button !== 0) return; // left-click only
+      pointerStartRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        node: hoverNodeRef.current,
+      };
+    }, []);
 
     const handleWrapperPointerUp = useCallback(
       (e: React.PointerEvent) => {
@@ -500,15 +511,48 @@ export const FleetGraphCanvas = memo(
           ctx.fillStyle = '#ffffff';
           drawIcon(ctx, iconPaths, node.x!, node.y!, iconSize);
 
-          const fontSize = Math.max(10, 12 / globalScale);
-          ctx.font = `${fontSize}px -apple-system, sans-serif`;
-          ctx.fillStyle = shouldDim ? `rgba(255,255,255,${DIM_OPACITY})` : 'rgba(255,255,255,0.8)';
-          ctx.fillText(node.name, node.x!, node.y! + effectiveRadius + fontSize + 2);
+          if (showAlertBadges && node.device) {
+            const badge = alertBadges[node.device.id];
+            if (badge && badge.count > 0) {
+              const badgeRadius = Math.max(5, 7 / Math.sqrt(globalScale));
+              const badgeX = node.x! + effectiveRadius - 1;
+              const badgeY = node.y! - effectiveRadius + 1;
+              ctx.beginPath();
+              ctx.arc(badgeX, badgeY, badgeRadius, 0, 2 * Math.PI);
+              ctx.fillStyle = ALERT_BADGE_COLORS[badge.severity];
+              ctx.fill();
+              ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+              ctx.lineWidth = 1 / globalScale;
+              ctx.stroke();
+
+              ctx.font = `bold ${Math.max(7, 9 / Math.sqrt(globalScale))}px -apple-system, sans-serif`;
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillStyle = '#ffffff';
+              ctx.fillText(badge.count > 9 ? '9+' : String(badge.count), badgeX, badgeY + 0.5);
+            }
+          }
+
+          if (showDeviceLabels) {
+            const fontSize = Math.max(10, 12 / globalScale);
+            ctx.font = `${fontSize}px -apple-system, sans-serif`;
+            ctx.fillStyle = shouldDim
+              ? `rgba(255,255,255,${DIM_OPACITY})`
+              : 'rgba(255,255,255,0.8)';
+            ctx.fillText(node.name, node.x!, node.y! + effectiveRadius + fontSize + 2);
+          }
         }
 
         ctx.globalAlpha = 1;
       },
-      [activeHoverNode, hoverHighlight, selectedDeviceIds],
+      [
+        activeHoverNode,
+        alertBadges,
+        hoverHighlight,
+        selectedDeviceIds,
+        showAlertBadges,
+        showDeviceLabels,
+      ],
     );
 
     const paintLink = useCallback(

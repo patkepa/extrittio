@@ -2,9 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Spinner, Callout, Icon, H4 } from '@blueprintjs/core';
 import { useDevices, useBulkChangeFleet } from '../hooks/use-devices';
 import { useFleets } from '../hooks/use-fleets';
+import { useAlerts } from '../hooks/use-alerts';
 import { buildForceGraphData } from '../components/fleet-graph/build-force-graph-data';
 import { FleetGraphCanvas } from '../components/fleet-graph/fleet-graph-canvas';
-import type { GraphActions } from '../components/fleet-graph/fleet-graph-canvas';
+import type {
+  AlertSeverity,
+  DeviceAlertBadge,
+  GraphActions,
+} from '../components/fleet-graph/fleet-graph-canvas';
 import { HealthPanel } from '../components/fleet-graph/health-panel';
 import {
   FleetGraphContextMenu,
@@ -12,6 +17,7 @@ import {
 } from '../components/fleet-graph/fleet-graph-context-menu';
 import { FleetGraphBulkBar } from '../components/fleet-graph/fleet-graph-bulk-bar';
 import { FleetGraphBottomToolbar } from '../components/fleet-graph/fleet-graph-bottom-toolbar';
+import type { FleetGraphDisplayOptions } from '../components/fleet-graph/fleet-graph-bottom-toolbar';
 import { FleetGraphToolbar } from '../components/fleet-graph/fleet-graph-toolbar';
 import { useSelectionStore } from '../stores/selection-store';
 import { showSuccessToast, showErrorToast } from '../utils/toaster';
@@ -27,8 +33,15 @@ export const FleetGraph = () => {
   const devicesError = devicesQuery.error;
   const { data: fleetsData, isLoading: fleetsLoading, error: fleetsError } = useFleets();
   const fleets = useMemo(() => fleetsData ?? [], [fleetsData]);
+  const activeAlertsQuery = useAlerts({ status: 'active', limit: 10000 });
   const [toolbarDeviceId, setToolbarDeviceId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [displayOptions, setDisplayOptions] = useState<FleetGraphDisplayOptions>({
+    labels: true,
+    alerts: true,
+    fleets: true,
+    offline: true,
+  });
   const bulkFleetMutation = useBulkChangeFleet();
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
@@ -38,6 +51,12 @@ export const FleetGraph = () => {
   const viewportRef = useRef<ViewportInfo | null>(null);
   const minimapDrawRef = useRef<(() => void) | null>(null);
   const graphActionsRef = useRef<GraphActions | null>(null);
+
+  const visibleDevices = useMemo(
+    () =>
+      displayOptions.offline ? devices : devices.filter((device) => device.status !== 'offline'),
+    [devices, displayOptions.offline],
+  );
 
   const isLoading = devicesLoading || fleetsLoading;
   const error = devicesError || fleetsError;
@@ -66,29 +85,66 @@ export const FleetGraph = () => {
   const [graphState, setGraphState] = useState<{
     data: ReturnType<typeof buildForceGraphData> | null;
     prevNodes: GraphNode[] | undefined;
-    inputDevices: typeof devices;
+    inputDevices: typeof visibleDevices;
     inputFleets: typeof fleets;
   }>(() => {
-    const data = devices.length === 0 ? null : buildForceGraphData(devices, fleets, undefined);
-    return { data, prevNodes: data?.nodes, inputDevices: devices, inputFleets: fleets };
+    const data =
+      visibleDevices.length === 0 ? null : buildForceGraphData(visibleDevices, fleets, undefined);
+    return { data, prevNodes: data?.nodes, inputDevices: visibleDevices, inputFleets: fleets };
   });
 
-  if (devices !== graphState.inputDevices || fleets !== graphState.inputFleets) {
+  if (visibleDevices !== graphState.inputDevices || fleets !== graphState.inputFleets) {
     const newData =
-      devices.length === 0 ? null : buildForceGraphData(devices, fleets, graphState.prevNodes);
+      visibleDevices.length === 0
+        ? null
+        : buildForceGraphData(visibleDevices, fleets, graphState.prevNodes);
     setGraphState({
       data: newData,
       prevNodes: newData?.nodes ?? graphState.prevNodes,
-      inputDevices: devices,
+      inputDevices: visibleDevices,
       inputFleets: fleets,
     });
   }
 
-  const graphData = graphState.data;
+  const graphData = useMemo(() => {
+    if (!graphState.data) return null;
+    if (displayOptions.fleets) return graphState.data;
+
+    return {
+      nodes: graphState.data.nodes
+        .filter((node) => node.type === 'device')
+        .map((node) => ({ ...node, neighbors: [], links: [] })),
+      links: [],
+    };
+  }, [displayOptions.fleets, graphState.data]);
+
+  const sidebarGraphData = graphState.data;
+
   const toolbarDevice = useMemo(
     () => devices.find((device) => device.id === toolbarDeviceId) ?? null,
     [devices, toolbarDeviceId],
   );
+
+  const alertBadges = useMemo<Record<string, DeviceAlertBadge>>(() => {
+    const severityRank: Record<AlertSeverity, number> = { info: 0, warning: 1, critical: 2 };
+    const badges: Record<string, DeviceAlertBadge> = {};
+
+    for (const alert of activeAlertsQuery.data?.data ?? []) {
+      const severity = alert.severity as AlertSeverity;
+      const existing = badges[alert.device_id];
+      if (!existing) {
+        badges[alert.device_id] = { count: 1, severity };
+        continue;
+      }
+
+      existing.count += 1;
+      if (severityRank[severity] > severityRank[existing.severity]) {
+        existing.severity = severity;
+      }
+    }
+
+    return badges;
+  }, [activeAlertsQuery.data?.data]);
 
   const handleNodeClick = useCallback((device: Device) => {
     setToolbarDeviceId(device.id);
@@ -160,12 +216,12 @@ export const FleetGraph = () => {
   const handlePanelDeviceClick = useCallback(
     (nodeId: string) => {
       setSelectedNodeId(nodeId);
-      const node = graphData?.nodes.find((n) => n.id === nodeId);
+      const node = sidebarGraphData?.nodes.find((n) => n.id === nodeId);
       if (node?.type === 'device' && node.device) {
         setToolbarDeviceId(node.device.id);
       }
     },
-    [graphData],
+    [sidebarGraphData],
   );
 
   const handleClearToolbarDevice = useCallback(() => {
@@ -181,16 +237,16 @@ export const FleetGraph = () => {
 
   // Prune stale selections on data refresh
   useEffect(() => {
-    if (!graphData) return;
+    if (!sidebarGraphData) return;
     const currentDeviceIds = new Set(
-      graphData.nodes.filter((n) => n.type === 'device').map((n) => n.id),
+      sidebarGraphData.nodes.filter((n) => n.type === 'device').map((n) => n.id),
     );
     const { selectedDeviceIds, removeFromSelection } = useSelectionStore.getState();
     const staleIds = Array.from(selectedDeviceIds).filter((id) => !currentDeviceIds.has(id));
     if (staleIds.length > 0) {
       removeFromSelection(staleIds);
     }
-  }, [graphData]);
+  }, [sidebarGraphData]);
 
   // Clear selection when navigating away from fleet graph page
   useEffect(() => {
@@ -223,7 +279,7 @@ export const FleetGraph = () => {
       <div className="fleet-graph-workspace">
         <FleetGraphToolbar
           selectedDevice={toolbarDevice}
-          deviceCount={devices.length}
+          deviceCount={visibleDevices.length}
           fleetCount={fleets.length}
           healthPanelOpen={healthPanelOpen}
           hasGraphData={Boolean(graphData)}
@@ -249,6 +305,12 @@ export const FleetGraph = () => {
               <H4>No devices yet</H4>
               <p>Add devices to see your fleet graph</p>
             </div>
+          ) : visibleDevices.length === 0 ? (
+            <div className="fleet-graph-empty">
+              <Icon icon="offline" size={48} />
+              <H4>No visible devices</H4>
+              <p>Show offline devices to bring them back into the graph</p>
+            </div>
           ) : graphData && dimensions.width > 0 ? (
             <FleetGraphCanvas
               graphData={graphData}
@@ -262,6 +324,9 @@ export const FleetGraph = () => {
               onViewportChange={handleViewportChange}
               graphActionsRef={graphActionsRef}
               onFrameRedraw={handleFrameRedraw}
+              showDeviceLabels={displayOptions.labels}
+              showAlertBadges={displayOptions.alerts}
+              alertBadges={alertBadges}
             />
           ) : null}
 
@@ -278,13 +343,19 @@ export const FleetGraph = () => {
           <FleetGraphBulkBar />
         </div>
 
-        <FleetGraphBottomToolbar deviceCount={devices.length} hasGraphData={Boolean(graphData)} />
+        <FleetGraphBottomToolbar
+          deviceCount={visibleDevices.length}
+          hasGraphData={devices.length > 0}
+          visibleDevices={visibleDevices}
+          displayOptions={displayOptions}
+          onDisplayOptionsChange={setDisplayOptions}
+        />
       </div>
 
-      {graphData && (
+      {sidebarGraphData && (
         <HealthPanel
-          nodes={graphData.nodes}
-          links={graphData.links}
+          nodes={sidebarGraphData.nodes}
+          links={sidebarGraphData.links}
           onDeviceClick={handlePanelDeviceClick}
           onDeviceHover={setHoveredNodeId}
           selectedNodeId={selectedNodeId}
