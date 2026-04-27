@@ -65,11 +65,11 @@
   height: 34px;
   min-height: 34px;
   padding: 0;
-  border: 1px solid hsl(var(--foreground)) !important;
+  border: 1px solid hsla(0, 0%, 100%, 0.42) !important;
   border-radius: 0 !important;
   background: hsla(0, 0%, 0%, 0.48) !important;
   box-shadow: none !important;
-  color: hsl(var(--foreground)) !important;
+  color: hsla(0, 0%, 100%, 0.62) !important;
   justify-content: center;
   opacity: 1;
   transition:
@@ -80,8 +80,9 @@
 }
 
 .bp6-button.panel-toolbar-switch:hover {
-  border-color: hsl(var(--foreground)) !important;
+  border-color: hsla(0, 0%, 100%, 0.58) !important;
   background: hsla(0, 0%, 0%, 0.64) !important;
+  color: hsla(0, 0%, 100%, 0.76) !important;
 }
 
 .bp6-button.panel-toolbar-switch--off {
