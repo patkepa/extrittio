@@ -12,6 +12,8 @@ const showMockToast = (label: string) => {
   void showWarningToast(`${label} is a mock action for now`);
 };
 
+const toolbarWideButtonClass = 'panel-toolbar-button panel-toolbar-button--wide';
+
 export const FleetGraphBottomToolbar = ({
   deviceCount,
   hasGraphData,
@@ -37,6 +39,7 @@ export const FleetGraphBottomToolbar = ({
 
         <div className="fleet-graph-toolbar-actions fleet-graph-toolbar-actions--mock">
           <Button
+            className={toolbarWideButtonClass}
             icon="flows"
             text="Assign fleet"
             small
@@ -44,6 +47,7 @@ export const FleetGraphBottomToolbar = ({
             onClick={() => showMockToast('Assign fleet')}
           />
           <Button
+            className={toolbarWideButtonClass}
             icon="refresh"
             text="Restart"
             small
@@ -51,6 +55,7 @@ export const FleetGraphBottomToolbar = ({
             onClick={() => showMockToast('Restart')}
           />
           <Button
+            className={toolbarWideButtonClass}
             icon="cloud-upload"
             text="Trigger OTA"
             small
@@ -58,6 +63,7 @@ export const FleetGraphBottomToolbar = ({
             onClick={() => showMockToast('Trigger OTA')}
           />
           <Button
+            className={toolbarWideButtonClass}
             icon="export"
             text="Export"
             small

@@ -1,0 +1,50 @@
+.bp6-button.panel-toolbar-button {
+  min-height: 34px;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid hsla(0, 0%, 100%, 0.08) !important;
+  border-radius: 4px !important;
+  background: hsla(0, 0%, 0%, 0.34) !important;
+  box-shadow: none !important;
+  color: hsl(var(--foreground)) !important;
+  font-size: 12px;
+  font-weight: 600;
+  justify-content: center;
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease;
+}
+
+.bp6-button.panel-toolbar-button:hover {
+  border-color: hsla(0, 0%, 100%, 0.14) !important;
+  background: hsla(0, 0%, 0%, 0.52) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+.bp6-button.panel-toolbar-button:active {
+  border-color: hsla(0, 0%, 100%, 0.18) !important;
+  background: hsla(0, 0%, 0%, 0.68) !important;
+}
+
+.bp6-button.panel-toolbar-button:disabled,
+.bp6-button.panel-toolbar-button.bp6-disabled {
+  border-color: hsla(0, 0%, 100%, 0.04) !important;
+  background: hsla(0, 0%, 0%, 0.18) !important;
+  color: hsl(var(--muted)) !important;
+  opacity: 0.58;
+}
+
+.bp6-button.panel-toolbar-button .bp6-icon {
+  color: inherit !important;
+}
+
+.bp6-button.panel-toolbar-button--icon {
+  width: 36px;
+  min-width: 36px;
+  padding: 0;
+}
+
+.bp6-button.panel-toolbar-button--wide {
+  min-width: 136px;
+}

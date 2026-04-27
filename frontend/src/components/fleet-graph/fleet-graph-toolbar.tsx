@@ -37,6 +37,8 @@ const ToolbarMetric = ({ label, value }: ToolbarMetricProps) => (
   </div>
 );
 
+const toolbarIconButtonClass = 'panel-toolbar-button panel-toolbar-button--icon';
+
 interface SelectedDeviceActionsProps {
   device: Device;
 }
@@ -109,6 +111,7 @@ const SelectedDeviceActions = ({ device }: SelectedDeviceActionsProps) => {
   return (
     <>
       <Button
+        className={toolbarIconButtonClass}
         icon="eye-open"
         minimal
         small
@@ -140,6 +143,7 @@ const SelectedDeviceActions = ({ device }: SelectedDeviceActionsProps) => {
         disabled={isAnyPending}
       >
         <Button
+          className={toolbarIconButtonClass}
           icon="flows"
           minimal
           small
@@ -151,6 +155,7 @@ const SelectedDeviceActions = ({ device }: SelectedDeviceActionsProps) => {
       </Popover>
 
       <Button
+        className={toolbarIconButtonClass}
         icon="refresh"
         minimal
         small
@@ -183,6 +188,7 @@ const SelectedDeviceActions = ({ device }: SelectedDeviceActionsProps) => {
         disabled={isAnyPending}
       >
         <Button
+          className={toolbarIconButtonClass}
           icon="cloud-upload"
           minimal
           small
@@ -259,9 +265,17 @@ export const FleetGraphToolbar = ({
             <div className="fleet-graph-toolbar-actions">
               <SelectedDeviceActions device={selectedDevice} />
               <div className="fleet-graph-toolbar-divider" aria-hidden="true" />
-              <Button icon="cross" minimal small title="Clear device" onClick={onClearDevice} />
+              <Button
+                className={toolbarIconButtonClass}
+                icon="cross"
+                minimal
+                small
+                title="Clear device"
+                onClick={onClearDevice}
+              />
               <div className="fleet-graph-toolbar-divider" aria-hidden="true" />
               <Button
+                className={toolbarIconButtonClass}
                 icon={healthPanelOpen ? 'chevron-right' : 'chevron-left'}
                 minimal
                 small
@@ -287,6 +301,7 @@ export const FleetGraphToolbar = ({
 
             <div className="fleet-graph-toolbar-actions">
               <Button
+                className={toolbarIconButtonClass}
                 icon="zoom-to-fit"
                 minimal
                 small
@@ -295,6 +310,7 @@ export const FleetGraphToolbar = ({
                 onClick={onFitView}
               />
               <Button
+                className={toolbarIconButtonClass}
                 icon="plus"
                 minimal
                 small
@@ -303,6 +319,7 @@ export const FleetGraphToolbar = ({
                 onClick={onZoomIn}
               />
               <Button
+                className={toolbarIconButtonClass}
                 icon="minus"
                 minimal
                 small
@@ -312,6 +329,7 @@ export const FleetGraphToolbar = ({
               />
               <div className="fleet-graph-toolbar-divider" aria-hidden="true" />
               <Button
+                className={toolbarIconButtonClass}
                 icon={healthPanelOpen ? 'chevron-right' : 'chevron-left'}
                 minimal
                 small

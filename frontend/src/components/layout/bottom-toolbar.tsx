@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import './bottom-toolbar.css';
+import './toolbar-buttons.css';
 
 interface BottomToolbarProps {
   children: ReactNode;
