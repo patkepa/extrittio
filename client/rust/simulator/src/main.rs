@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use clap::{Parser, ValueEnum};
@@ -53,6 +54,10 @@ struct Args {
     #[arg(long, default_value_t = 5)]
     sensor_noise_percent: u8,
 
+    /// Seconds between aggregate simulator stats logs.
+    #[arg(long, default_value_t = 5)]
+    stats_interval: u64,
+
     /// Firmware string sent in heartbeats. Backend uses this for device-type inference.
     #[arg(long, default_value = "simulator-v1.0.0")]
     firmware: String,
@@ -60,6 +65,10 @@ struct Args {
     /// Fake telemetry scenario.
     #[arg(long, value_enum, default_value_t = Scenario::Normal)]
     scenario: Scenario,
+
+    /// Initial location distribution for mobile simulated devices.
+    #[arg(long, value_enum, default_value_t = LocationArea::Poland)]
+    location_area: LocationArea,
 
     /// Use one shared Zenoh session, or one session per logical device.
     #[arg(long, value_enum, default_value_t = SessionMode::Shared)]
@@ -93,6 +102,12 @@ enum Scenario {
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
+enum LocationArea {
+    Poland,
+    Warsaw,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
 enum SessionMode {
     Shared,
     PerDevice,
@@ -112,6 +127,45 @@ struct DeviceRuntime {
     speed: f32,
     altitude: f32,
 }
+
+#[derive(Default)]
+struct SimulatorMetrics {
+    devices_started: AtomicU64,
+    heartbeats_sent: AtomicU64,
+    heartbeats_failed: AtomicU64,
+    telemetry_sent: AtomicU64,
+    telemetry_failed: AtomicU64,
+    flaky_heartbeats_skipped: AtomicU64,
+}
+
+#[derive(Clone, Copy, Default)]
+struct MetricsSnapshot {
+    devices_started: u64,
+    heartbeats_sent: u64,
+    heartbeats_failed: u64,
+    telemetry_sent: u64,
+    telemetry_failed: u64,
+    flaky_heartbeats_skipped: u64,
+}
+
+const POLISH_CITY_CENTERS: &[(f64, f64)] = &[
+    (52.2297, 21.0122), // Warsaw
+    (50.0647, 19.9450), // Krakow
+    (51.7592, 19.4560), // Lodz
+    (51.1079, 17.0385), // Wroclaw
+    (52.4064, 16.9252), // Poznan
+    (54.3520, 18.6466), // Gdansk
+    (53.4285, 14.5528), // Szczecin
+    (53.1235, 18.0084), // Bydgoszcz
+    (51.2465, 22.5684), // Lublin
+    (53.1325, 23.1688), // Bialystok
+    (50.2649, 19.0238), // Katowice
+    (50.0412, 21.9991), // Rzeszow
+    (53.7784, 20.4801), // Olsztyn
+    (54.5189, 18.5305), // Gdynia
+    (50.8661, 20.6286), // Kielce
+    (52.7325, 15.2369), // Gorzow Wielkopolski
+];
 
 #[tokio::main]
 async fn main() {
@@ -149,13 +203,20 @@ async fn run_shared(args: Args) {
     let session = Arc::new(open_session(&args).await);
     info!("Opened shared Zenoh session");
 
+    let metrics = Arc::new(SimulatorMetrics::default());
     let mut tasks = JoinSet::new();
+    tasks.spawn(report_stats(
+        metrics.clone(),
+        args.count,
+        Duration::from_secs(args.stats_interval),
+    ));
     for index in 0..args.count {
         let device = build_device(&args, index);
         let device_args = args.clone();
         let device_session = session.clone();
+        let device_metrics = metrics.clone();
         tasks.spawn(async move {
-            run_device(device, device_args, device_session).await;
+            run_device(device, device_args, device_session, device_metrics).await;
         });
     }
 
@@ -163,13 +224,20 @@ async fn run_shared(args: Args) {
 }
 
 async fn run_per_device(args: Args) {
+    let metrics = Arc::new(SimulatorMetrics::default());
     let mut tasks = JoinSet::new();
+    tasks.spawn(report_stats(
+        metrics.clone(),
+        args.count,
+        Duration::from_secs(args.stats_interval),
+    ));
     for index in 0..args.count {
         let device = build_device(&args, index);
         let device_args = args.clone();
+        let device_metrics = metrics.clone();
         tasks.spawn(async move {
             let session = Arc::new(open_session(&device_args).await);
-            run_device(device, device_args, session).await;
+            run_device(device, device_args, session, device_metrics).await;
         });
     }
 
@@ -203,13 +271,21 @@ async fn shutdown_signal() {
     }
 }
 
-async fn run_device(mut device: DeviceRuntime, args: Args, session: Arc<zenoh::Session>) {
+async fn run_device(
+    mut device: DeviceRuntime,
+    args: Args,
+    session: Arc<zenoh::Session>,
+    metrics: Arc<SimulatorMetrics>,
+) {
     sleep_random(Duration::from_millis(args.startup_spread_ms)).await;
 
     if let Err(e) = publish_heartbeat(&device, &session, device_status::ONLINE).await {
+        metrics.heartbeats_failed.fetch_add(1, Ordering::Relaxed);
         warn!("{} failed initial heartbeat: {e}", device.id);
         return;
     }
+    metrics.heartbeats_sent.fetch_add(1, Ordering::Relaxed);
+    metrics.devices_started.fetch_add(1, Ordering::Relaxed);
 
     let mut next_heartbeat = Box::pin(tokio::time::sleep(jittered_delay(
         device.heartbeat_period,
@@ -224,9 +300,13 @@ async fn run_device(mut device: DeviceRuntime, args: Args, session: Arc<zenoh::S
         tokio::select! {
             _ = &mut next_heartbeat => {
                 if should_skip_flaky_heartbeat(args.scenario) {
+                    metrics.flaky_heartbeats_skipped.fetch_add(1, Ordering::Relaxed);
                     warn!("{} skipped heartbeat due to flaky scenario", device.id);
                 } else if let Err(e) = publish_heartbeat(&device, &session, device_status::ONLINE).await {
+                    metrics.heartbeats_failed.fetch_add(1, Ordering::Relaxed);
                     warn!("{} failed heartbeat: {e}", device.id);
+                } else {
+                    metrics.heartbeats_sent.fetch_add(1, Ordering::Relaxed);
                 }
                 next_heartbeat.as_mut().reset(
                     tokio::time::Instant::now() + jittered_delay(device.heartbeat_period, args.jitter_percent),
@@ -237,7 +317,10 @@ async fn run_device(mut device: DeviceRuntime, args: Args, session: Arc<zenoh::S
                 for _ in 0..samples {
                     advance_device(&mut device, args.scenario);
                     if let Err(e) = publish_telemetry(&device, args.scenario, args.sensor_noise_percent, &session).await {
+                        metrics.telemetry_failed.fetch_add(1, Ordering::Relaxed);
                         warn!("{} failed telemetry: {e}", device.id);
+                    } else {
+                        metrics.telemetry_sent.fetch_add(1, Ordering::Relaxed);
                     }
                     if samples > 1 {
                         tokio::time::sleep(Duration::from_millis(20)).await;
@@ -379,6 +462,8 @@ fn build_device(args: &Args, index: u32) -> DeviceRuntime {
     sensor.humidity = (sensor.humidity + offset + rng.random_range(-5.0..=5.0)).clamp(20.0, 80.0);
     sensor.battery = rng.random_range(55.0..=100.0);
 
+    let (latitude, longitude) = initial_location(args.location_area, index, &mut rng);
+
     DeviceRuntime {
         id: format!("{}-{ordinal:06}", args.prefix),
         firmware: args.firmware.clone(),
@@ -393,11 +478,27 @@ fn build_device(args: &Args, index: u32) -> DeviceRuntime {
             args.device_interval_variance_percent,
         ),
         battery_drain_multiplier: rng.random_range(0.6..=1.6),
-        latitude: 52.2297 + f64::from(index % 50) * 0.001,
-        longitude: 21.0122 + f64::from(index / 50) * 0.001,
+        latitude,
+        longitude,
         heading: ((index % 360) as f32 + rng.random_range(-15.0..=15.0)).rem_euclid(360.0),
         speed: rng.random_range(4.0..=24.0),
         altitude: rng.random_range(60.0..=120.0),
+    }
+}
+
+fn initial_location(area: LocationArea, index: u32, rng: &mut impl Rng) -> (f64, f64) {
+    match area {
+        LocationArea::Poland => {
+            let center = POLISH_CITY_CENTERS[index as usize % POLISH_CITY_CENTERS.len()];
+            (
+                center.0 + rng.random_range(-0.28..=0.28),
+                center.1 + rng.random_range(-0.38..=0.38),
+            )
+        }
+        LocationArea::Warsaw => (
+            52.2297 + f64::from(index % 50) * 0.001 + rng.random_range(-0.02..=0.02),
+            21.0122 + f64::from(index / 50) * 0.001 + rng.random_range(-0.02..=0.02),
+        ),
     }
 }
 
@@ -475,6 +576,50 @@ fn validate_args(args: &Args) {
     if args.sensor_noise_percent > 100 {
         eprintln!("--sensor-noise-percent must be between 0 and 100");
         std::process::exit(2);
+    }
+    if args.stats_interval == 0 {
+        eprintln!("--stats-interval must be greater than 0");
+        std::process::exit(2);
+    }
+}
+
+async fn report_stats(metrics: Arc<SimulatorMetrics>, device_count: u32, interval: Duration) {
+    let mut previous = MetricsSnapshot::default();
+
+    loop {
+        tokio::time::sleep(interval).await;
+        let current = metrics.snapshot();
+        let seconds = interval.as_secs_f64();
+        let telemetry_rate = (current.telemetry_sent - previous.telemetry_sent) as f64 / seconds;
+        let heartbeat_rate = (current.heartbeats_sent - previous.heartbeats_sent) as f64 / seconds;
+
+        info!(
+            "stats: devices_started={}/{} telemetry_sent={} ({:.1}/s) heartbeats_sent={} ({:.1}/s) telemetry_failed={} heartbeats_failed={} flaky_heartbeats_skipped={}",
+            current.devices_started,
+            device_count,
+            current.telemetry_sent,
+            telemetry_rate,
+            current.heartbeats_sent,
+            heartbeat_rate,
+            current.telemetry_failed,
+            current.heartbeats_failed,
+            current.flaky_heartbeats_skipped,
+        );
+
+        previous = current;
+    }
+}
+
+impl SimulatorMetrics {
+    fn snapshot(&self) -> MetricsSnapshot {
+        MetricsSnapshot {
+            devices_started: self.devices_started.load(Ordering::Relaxed),
+            heartbeats_sent: self.heartbeats_sent.load(Ordering::Relaxed),
+            heartbeats_failed: self.heartbeats_failed.load(Ordering::Relaxed),
+            telemetry_sent: self.telemetry_sent.load(Ordering::Relaxed),
+            telemetry_failed: self.telemetry_failed.load(Ordering::Relaxed),
+            flaky_heartbeats_skipped: self.flaky_heartbeats_skipped.load(Ordering::Relaxed),
+        }
     }
 }
 
