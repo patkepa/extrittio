@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, type MutableRefObject } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, type MutableRefObject } from 'react';
 import { useMap } from 'react-leaflet';
 import { Button } from '@blueprintjs/core';
 import { DeviceMap } from '../components/map/device-map';
@@ -6,13 +6,15 @@ import { ZoneLayer } from '../components/map/zone-layer';
 import { ZonePanel } from '../components/map/zone-panel';
 import type { MapDevice } from '../components/map/zone-panel';
 import { ZoneDrawControls } from '../components/map/zone-draw-controls';
-import { DeviceMarker } from '../components/map/device-marker';
+import { DeviceCanvasLayer } from '../components/map/device-canvas-layer';
 import { useAllDevices } from '../hooks/use-devices';
 import { useZones } from '../hooks/use-zones';
 import type { Device } from '../types/api';
 import type { Zone, CircleGeometry, PolygonGeometry } from '../types/zones';
 import L from 'leaflet';
 import './map-page.css';
+
+const EMPTY_DEVICES: Device[] = [];
 
 /** Captures the Leaflet map instance so the page can call flyToBounds. */
 function MapRef({ mapRef }: { mapRef: MutableRefObject<L.Map | null> }) {
@@ -49,7 +51,7 @@ function hasLocation(device: Device): device is LocatedDevice {
 
 export default function MapPage() {
   const { data: devicesData } = useAllDevices(undefined, { refetchInterval: 30_000 });
-  const devices = devicesData?.data ?? [];
+  const devices = devicesData?.data ?? EMPTY_DEVICES;
   const { data: zones = [] } = useZones();
 
   const [drawMode, setDrawMode] = useState(false);
@@ -103,16 +105,23 @@ export default function MapPage() {
     });
   }, []);
 
-  const devicesWithLocation: MapDevice[] = devices.filter(hasLocation).map((device) => ({
-    id: device.id,
-    name: device.name,
-    status: device.status,
-    latest_latitude: device.latest_latitude,
-    latest_longitude: device.latest_longitude,
-    last_seen_at: device.last_seen_at,
-  }));
+  const devicesWithLocation: MapDevice[] = useMemo(
+    () =>
+      devices.filter(hasLocation).map((device) => ({
+        id: device.id,
+        name: device.name,
+        status: device.status,
+        latest_latitude: device.latest_latitude,
+        latest_longitude: device.latest_longitude,
+        last_seen_at: device.last_seen_at,
+      })),
+    [devices],
+  );
 
-  const visibleZones = zones.filter((z) => !hiddenZoneIds.has(z.id));
+  const visibleZones = useMemo(
+    () => zones.filter((z) => !hiddenZoneIds.has(z.id)),
+    [hiddenZoneIds, zones],
+  );
 
   return (
     <div className="map-page">
@@ -121,17 +130,7 @@ export default function MapPage() {
           <MapRef mapRef={mapRef} />
           <ZoneLayer zones={visibleZones} />
           <ZoneDrawControls enabled={drawMode} onCreated={handleDrawCreated} />
-          {devicesWithLocation.map((device) => (
-            <DeviceMarker
-              key={device.id}
-              deviceId={device.id}
-              deviceName={device.name}
-              status={device.status}
-              latitude={device.latest_latitude}
-              longitude={device.latest_longitude}
-              lastSeen={device.last_seen_at}
-            />
-          ))}
+          <DeviceCanvasLayer devices={devicesWithLocation} />
         </DeviceMap>
       </div>
       <Button

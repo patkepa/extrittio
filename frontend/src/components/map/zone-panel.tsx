@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useState, type MutableRefObject } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type MutableRefObject,
+} from 'react';
+import { List } from 'react-window';
 import {
   Button,
   Dialog,
@@ -35,6 +43,8 @@ const STATUS_COLORS: Record<string, string> = {
   warning: '#d4a017',
 };
 
+const DEVICE_ROW_HEIGHT = 36;
+
 interface PendingZoneGeometry {
   geometry_type: 'circle' | 'polygon';
   geometry_json: CircleGeometry | PolygonGeometry;
@@ -51,6 +61,46 @@ export interface MapDevice {
 
 type PanelTab = 'devices' | 'zones';
 type AcceptDrawnLayer = (layer: L.Layer, type: string) => void;
+
+interface MapDeviceRowProps {
+  devices: MapDevice[];
+  onDeviceClick: (device: MapDevice) => void;
+}
+
+function MapDeviceRow({
+  index,
+  style,
+  devices,
+  onDeviceClick,
+}: {
+  index: number;
+  style: CSSProperties;
+} & MapDeviceRowProps) {
+  const device = devices[index];
+  if (!device) return null;
+
+  const color = STATUS_COLORS[device.status] ?? '#868686';
+
+  return (
+    <div
+      style={style}
+      className="map-panel-row"
+      role="button"
+      tabIndex={0}
+      data-right-sidebar-item="true"
+      onClick={() => onDeviceClick(device)}
+    >
+      <span
+        className="map-panel-led"
+        style={{ backgroundColor: color, boxShadow: `0 0 4px ${color}80` }}
+      />
+      <span className="map-panel-name">{device.name}</span>
+      <span className="map-panel-status" style={{ color }}>
+        {device.status}
+      </span>
+    </div>
+  );
+}
 
 interface MapPanelProps {
   drawMode: boolean;
@@ -87,6 +137,7 @@ export function ZonePanel({
   const [zoneDescription, setZoneDescription] = useState('');
   const [zoneColor, setZoneColor] = useState(ZONE_COLORS[0]);
   const [deleteAlertZone, setDeleteAlertZone] = useState<Zone | null>(null);
+  const deviceRowProps = useMemo(() => ({ devices, onDeviceClick }), [devices, onDeviceClick]);
 
   const handleSaveZone = () => {
     if (!pendingGeometry || !zoneName.trim()) return;
@@ -212,35 +263,23 @@ export function ZonePanel({
 
       {/* Devices tab */}
       {activeTab === 'devices' && (
-        <div className="map-panel-list right-sidebar-scrollable">
-          {devices.map((device) => {
-            const color = STATUS_COLORS[device.status] || STATUS_COLORS.offline;
-            return (
-              <div
-                key={device.id}
-                className="map-panel-row"
-                role="button"
-                tabIndex={0}
-                data-right-sidebar-item="true"
-                onClick={() => onDeviceClick(device)}
-              >
-                <span
-                  className="map-panel-led"
-                  style={{ backgroundColor: color, boxShadow: `0 0 4px ${color}80` }}
-                />
-                <span className="map-panel-name">{device.name}</span>
-                <span className="map-panel-status" style={{ color }}>
-                  {device.status}
-                </span>
-              </div>
-            );
-          })}
-          {devices.length === 0 && (
+        <>
+          {devices.length > 0 ? (
+            <List<MapDeviceRowProps>
+              className="map-panel-list right-sidebar-scrollable"
+              rowComponent={MapDeviceRow}
+              rowCount={devices.length}
+              rowHeight={DEVICE_ROW_HEIGHT}
+              rowProps={deviceRowProps}
+              overscanCount={8}
+              style={{ height: '100%', width: '100%' }}
+            />
+          ) : (
             <div className="map-panel-empty">
               <p>No devices with location data.</p>
             </div>
           )}
-        </div>
+        </>
       )}
 
       {/* Zones tab */}
