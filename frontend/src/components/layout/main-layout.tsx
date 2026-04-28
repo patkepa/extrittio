@@ -5,6 +5,7 @@ import { Button, Navbar, NavbarGroup } from '@blueprintjs/core';
 import { AppSidebar } from './app-sidebar';
 import { CommandPalette } from '../command-palette/command-palette';
 import { useUIStore } from '../../stores/ui-store';
+import { getRouteLabel } from '../../app/routes';
 import { ErrorBoundary } from '../error-boundary';
 import { clearKeyboardFocusRegions, moveFocusRegion } from '../../utils/focus-regions';
 import { hasOpenBlockingOverlay, isEditableTarget } from '../../utils/keyboard';
@@ -13,16 +14,6 @@ import './main-layout.css';
 interface MainLayoutProps {
   children: React.ReactNode;
 }
-
-const routeNames: Record<string, string> = {
-  '/': 'Dashboard',
-  '/devices': 'Devices',
-  '/fleet-graph': 'Fleet Graph',
-  '/settings': 'Settings',
-  '/settings/profile': 'Settings / Profile',
-  '/settings/device-types': 'Settings / Device Types',
-  '/settings/fleets': 'Settings / Fleets',
-};
 
 function getFocusRegionDirection(key: string): 'left' | 'right' | null {
   if (key === 'ArrowLeft' || key.toLowerCase() === 'a') return 'left';
@@ -74,14 +65,7 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
   const deviceId = deviceDetailMatch?.[1] ?? null;
   const { data: deviceData } = useDevice(deviceId);
 
-  const currentRoute = deviceDetailMatch
-    ? null
-    : (routeNames[location.pathname] ??
-      location.pathname
-        .split('/')
-        .filter(Boolean)
-        .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
-        .join(' / '));
+  const currentRoute = deviceDetailMatch ? null : getRouteLabel(location.pathname);
 
   return (
     <div className="main-layout">

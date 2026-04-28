@@ -15,12 +15,13 @@ import type {
 const FETCH_ALL_PAGE_SIZE = 500;
 
 export async function getDevices(params?: ListDevicesParams): Promise<PaginatedResponse<Device>> {
-  const isExplicitPageRequest = params?.limit != null || params?.offset != null;
-  if (isExplicitPageRequest) {
-    const { data } = await client.get<PaginatedResponse<Device>>('/devices', { params });
-    return data;
-  }
+  const { data } = await client.get<PaginatedResponse<Device>>('/devices', { params });
+  return data;
+}
 
+export async function getAllDevices(
+  params?: Omit<ListDevicesParams, 'limit' | 'offset'>,
+): Promise<PaginatedResponse<Device>> {
   const allDevices: Device[] = [];
   let offset = 0;
   let total = 0;

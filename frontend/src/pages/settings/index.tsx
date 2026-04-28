@@ -6,17 +6,28 @@ import { UsersSettings } from './users';
 import { FirmwareSettings } from './firmware';
 import { CertificatesSettings } from './certificates';
 import { ApiKeysSettings } from './api-keys';
+import { settingsRoutes } from '../../app/routes';
+
+const settingsElements = {
+  profile: <ProfileSettings />,
+  'device-types': <DeviceTypesSettings />,
+  fleets: <FleetsSettings />,
+  users: <UsersSettings />,
+  firmware: <FirmwareSettings />,
+  certificates: <CertificatesSettings />,
+  'api-keys': <ApiKeysSettings />,
+} as const;
 
 export const Settings = () => (
   <Routes>
     <Route index element={<Navigate to="profile" replace />} />
-    <Route path="profile" element={<ProfileSettings />} />
-    <Route path="device-types" element={<DeviceTypesSettings />} />
-    <Route path="fleets" element={<FleetsSettings />} />
-    <Route path="users" element={<UsersSettings />} />
-    <Route path="firmware" element={<FirmwareSettings />} />
-    <Route path="certificates" element={<CertificatesSettings />} />
-    <Route path="api-keys" element={<ApiKeysSettings />} />
+    {settingsRoutes.map((route) => (
+      <Route
+        key={route.id}
+        path={route.path}
+        element={settingsElements[route.id as keyof typeof settingsElements]}
+      />
+    ))}
     <Route path="*" element={<Navigate to="profile" replace />} />
   </Routes>
 );

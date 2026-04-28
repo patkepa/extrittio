@@ -16,7 +16,7 @@ import {
 } from '@blueprintjs/core';
 import { UPlotChart } from '../components/charts/UPlot';
 import { toSparklineData, sparklineOpts } from '../components/charts/uplot-helpers';
-import { useDevices } from '../hooks/use-devices';
+import { useAllDevices } from '../hooks/use-devices';
 import { useFleets } from '../hooks/use-fleets';
 import { useUIStore } from '../stores/ui-store';
 import { AddDeviceDialog } from '../components/devices/add-device-dialog';
@@ -142,7 +142,7 @@ export const Devices = () => {
     ...(filterFleetId ? { fleet_id: filterFleetId } : {}),
     ...(debouncedSearch ? { search: debouncedSearch } : {}),
   };
-  const devicesQuery = useDevices(Object.keys(queryParams).length > 0 ? queryParams : undefined);
+  const devicesQuery = useAllDevices(Object.keys(queryParams).length > 0 ? queryParams : undefined);
   const devices = useMemo(() => devicesQuery.data?.data ?? [], [devicesQuery.data?.data]);
   const totalDeviceCount = devicesQuery.data?.total ?? 0;
   const isLoading = devicesQuery.isLoading;
@@ -347,7 +347,9 @@ export const Devices = () => {
 
       {/* Filters and Search / Bulk Action Bar */}
       <Card elevation={Elevation.ONE} className="devices-controls">
-        <div className={`bulk-action-bar-overlay ${hasSelection ? 'bulk-action-bar-overlay--visible' : ''}`}>
+        <div
+          className={`bulk-action-bar-overlay ${hasSelection ? 'bulk-action-bar-overlay--visible' : ''}`}
+        >
           <BulkActionBar
             totalMatchingCount={totalDeviceCount}
             visibleCount={filteredDevices.length}

@@ -1,13 +1,18 @@
-import { useEffect } from "react";
-import { useMap } from "react-leaflet";
-import L from "leaflet";
-import "leaflet-draw";
-import "leaflet-draw/dist/leaflet.draw.css";
+import { useEffect } from 'react';
+import { useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet-draw';
+import 'leaflet-draw/dist/leaflet.draw.css';
 
 interface ZoneDrawControlsProps {
   enabled: boolean;
   onCreated: (layer: L.Layer, type: string) => void;
 }
+
+type CreatedEvent = L.LeafletEvent & {
+  layer: L.Layer;
+  layerType: string;
+};
 
 export function ZoneDrawControls({ enabled, onCreated }: ZoneDrawControlsProps) {
   const map = useMap();
@@ -18,32 +23,33 @@ export function ZoneDrawControls({ enabled, onCreated }: ZoneDrawControlsProps) 
     const drawnItems = new L.FeatureGroup();
     map.addLayer(drawnItems);
 
-    const drawControl = new (L.Control as any).Draw({
+    const drawControl = new L.Control.Draw({
       draw: {
         polyline: false,
         rectangle: false,
         marker: false,
         circlemarker: false,
-        circle: { shapeOptions: { color: "#4A90D9", fillOpacity: 0.15 } },
-        polygon: { shapeOptions: { color: "#4A90D9", fillOpacity: 0.15 } },
+        circle: { shapeOptions: { color: '#4A90D9', fillOpacity: 0.15 } },
+        polygon: { shapeOptions: { color: '#4A90D9', fillOpacity: 0.15 } },
       },
       edit: { featureGroup: drawnItems },
     });
 
     map.addControl(drawControl);
 
-    const handleCreated = (e: any) => {
+    const handleCreated: L.LeafletEventHandlerFn = (event) => {
+      const e = event as CreatedEvent;
       drawnItems.addLayer(e.layer);
       onCreated(e.layer, e.layerType);
       setTimeout(() => drawnItems.removeLayer(e.layer), 100);
     };
 
-    map.on("draw:created", handleCreated);
+    map.on('draw:created', handleCreated);
 
     return () => {
       map.removeControl(drawControl);
       map.removeLayer(drawnItems);
-      map.off("draw:created", handleCreated);
+      map.off('draw:created', handleCreated);
     };
   }, [enabled, map, onCreated]);
 

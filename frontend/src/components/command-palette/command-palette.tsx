@@ -2,44 +2,18 @@ import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Command } from 'cmdk';
 import { Icon } from '@blueprintjs/core';
-import type { IconName } from '@blueprintjs/icons';
+import { commandPaletteRoutes } from '../../app/routes';
 import { useDevices } from '../../hooks/use-devices';
 import { useUIStore } from '../../stores/ui-store';
 import './command-palette.css';
-
-interface PageEntry {
-  label: string;
-  icon: IconName;
-  href: string;
-}
-
-const pages: PageEntry[] = [
-  // General
-  { label: 'Dashboard', icon: 'dashboard', href: '/' },
-  { label: 'Devices', icon: 'mobile-video', href: '/devices' },
-  { label: 'Fleet Graph', icon: 'graph', href: '/fleet-graph' },
-  { label: 'Map', icon: 'map', href: '/map' },
-  // Automation
-  { label: 'Rules', icon: 'filter', href: '/rules' },
-  { label: 'Alerts', icon: 'warning-sign', href: '/alerts' },
-  // Management
-  { label: 'Firmware', icon: 'upload', href: '/settings/firmware' },
-  { label: 'Fleets', icon: 'layers', href: '/settings/fleets' },
-  { label: 'Settings', icon: 'cog', href: '/settings' },
-  { label: 'Profile', icon: 'user', href: '/settings/profile' },
-  { label: 'Device Types', icon: 'tag', href: '/settings/device-types' },
-  { label: 'Users', icon: 'people', href: '/settings/users' },
-  { label: 'Certificates', icon: 'lock', href: '/settings/certificates' },
-  { label: 'API Keys', icon: 'key', href: '/settings/api-keys' },
-  { label: 'Help', icon: 'help', href: '/help' },
-];
 
 const MAX_PALETTE_DEVICES = 20;
 
 export const CommandPalette = () => {
   const navigate = useNavigate();
-  const devicesQuery = useDevices();
+  const devicesQuery = useDevices({ limit: MAX_PALETTE_DEVICES, offset: 0 });
   const devices = devicesQuery.data?.data ?? [];
+  const totalDevices = devicesQuery.data?.total ?? devices.length;
   const open = useUIStore((s) => s.isCommandPaletteOpen);
   const toggleCommandPalette = useUIStore((s) => s.toggleCommandPalette);
   const closeCommandPalette = useUIStore((s) => s.closeCommandPalette);
@@ -85,11 +59,11 @@ export const CommandPalette = () => {
 
         {/* Pages */}
         <Command.Group heading="Pages">
-          {pages.map((page) => (
+          {commandPaletteRoutes.map((page) => (
             <Command.Item
-              key={page.href}
+              key={page.id}
               value={page.label}
-              onSelect={() => runAction(() => navigate(page.href))}
+              onSelect={() => runAction(() => navigate(page.href ?? page.path))}
             >
               <Icon icon={page.icon} size={16} />
               <span className="cmdk-item-label">{page.label}</span>
@@ -112,13 +86,13 @@ export const CommandPalette = () => {
                 <span className="cmdk-item-meta">{device.device_type_name}</span>
               </Command.Item>
             ))}
-            {devices.length > MAX_PALETTE_DEVICES && (
+            {totalDevices > MAX_PALETTE_DEVICES && (
               <Command.Item
                 value="View all devices"
                 onSelect={() => runAction(() => navigate('/devices'))}
               >
                 <Icon icon="more" size={16} />
-                <span className="cmdk-item-label">View all {devices.length} devices...</span>
+                <span className="cmdk-item-label">View all {totalDevices} devices...</span>
               </Command.Item>
             )}
           </Command.Group>

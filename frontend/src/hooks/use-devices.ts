@@ -9,6 +9,7 @@ import type {
 } from '../types/api';
 import {
   getDevices,
+  getAllDevices,
   getDevice,
   createDevice,
   updateDevice,
@@ -25,6 +26,18 @@ export function useDevices(params?: ListDevicesParams, options?: { refetchInterv
   return useQuery({
     queryKey: queryKeys.devices.list(params),
     queryFn: () => getDevices(params),
+    staleTime: 30_000,
+    refetchInterval: options?.refetchInterval,
+  });
+}
+
+export function useAllDevices(
+  params?: Omit<ListDevicesParams, 'limit' | 'offset'>,
+  options?: { refetchInterval?: number },
+) {
+  return useQuery({
+    queryKey: queryKeys.devices.fullList(params),
+    queryFn: () => getAllDevices(params),
     staleTime: 30_000,
     refetchInterval: options?.refetchInterval,
   });

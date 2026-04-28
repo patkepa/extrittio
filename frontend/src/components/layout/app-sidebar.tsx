@@ -11,7 +11,8 @@ import {
   Position,
   Popover,
 } from '@blueprintjs/core';
-import { navGroups, projects, currentUser } from '../../data/sidebar-data';
+import { projects, currentUser } from '../../data/sidebar-data';
+import { navGroups } from '../../app/routes';
 import { useAuthStore } from '../../stores/auth-store';
 import { useUIStore } from '../../stores/ui-store';
 import { useDashboardStats } from '../../hooks/use-dashboard';

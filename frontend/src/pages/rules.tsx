@@ -17,7 +17,7 @@ import {
 import { useRules, useDeleteRule, useToggleRule } from '../hooks/use-rules';
 import { useDeviceTypes } from '../hooks/use-device-types';
 import { useFleets } from '../hooks/use-fleets';
-import { useDevices } from '../hooks/use-devices';
+import { useAllDevices } from '../hooks/use-devices';
 import { useUIStore } from '../stores/ui-store';
 import { RuleDialog } from '../components/rules/rule-dialog';
 import { showSuccessToast, showErrorToast } from '../utils/toaster';
@@ -35,21 +35,27 @@ export const Rules = () => {
   const toggleMutation = useToggleRule();
   const { data: deviceTypes } = useDeviceTypes();
   const { data: fleets } = useFleets();
-  const { data: devicesData } = useDevices();
+  const { data: devicesData } = useAllDevices();
 
-  const rules = rulesQuery.data ?? [];
+  const rules = useMemo(() => rulesQuery.data ?? [], [rulesQuery.data]);
 
-  const statusCounts = useMemo(() => ({
-    all: rules.length,
-    enabled: rules.filter((r) => r.enabled).length,
-    disabled: rules.filter((r) => !r.enabled).length,
-  }), [rules]);
+  const statusCounts = useMemo(
+    () => ({
+      all: rules.length,
+      enabled: rules.filter((r) => r.enabled).length,
+      disabled: rules.filter((r) => !r.enabled).length,
+    }),
+    [rules],
+  );
 
-  const triggerCounts = useMemo(() => ({
-    all: rules.length,
-    telemetry: rules.filter((r) => r.trigger_type === 'telemetry').length,
-    device_status: rules.filter((r) => r.trigger_type === 'device_status').length,
-  }), [rules]);
+  const triggerCounts = useMemo(
+    () => ({
+      all: rules.length,
+      telemetry: rules.filter((r) => r.trigger_type === 'telemetry').length,
+      device_status: rules.filter((r) => r.trigger_type === 'device_status').length,
+    }),
+    [rules],
+  );
 
   const resolveTargetName = (rule: Rule): string => {
     if (rule.target_type === 'global') return 'All devices';
@@ -101,7 +107,12 @@ export const Rules = () => {
   };
 
   const operatorLabel: Record<string, string> = {
-    gt: '>', gte: '>=', lt: '<', lte: '<=', eq: '=', neq: '!=',
+    gt: '>',
+    gte: '>=',
+    lt: '<',
+    lte: '<=',
+    eq: '=',
+    neq: '!=',
   };
 
   const conditionsSummary = (rule: Rule) => {
@@ -195,10 +206,7 @@ export const Rules = () => {
                 onClick={() => setFilterTrigger(trigger)}
               >
                 {trigger !== 'all' && (
-                  <Icon
-                    icon={trigger === 'telemetry' ? 'pulse' : 'signal-search'}
-                    size={12}
-                  />
+                  <Icon icon={trigger === 'telemetry' ? 'pulse' : 'signal-search'} size={12} />
                 )}
                 <span className="pill-label">
                   {trigger === 'all'
@@ -237,11 +245,7 @@ export const Rules = () => {
             </thead>
             <tbody>
               {filteredRules.map((rule) => (
-                <tr
-                  key={rule.id}
-                  className="rule-row"
-                  onClick={() => openRuleDialog(rule.id)}
-                >
+                <tr key={rule.id} className="rule-row" onClick={() => openRuleDialog(rule.id)}>
                   <td>
                     <div className="rule-name-cell">
                       <strong>{rule.name}</strong>
@@ -260,9 +264,7 @@ export const Rules = () => {
                       {rule.target_type === 'device_type' ? 'type' : rule.target_type}
                     </Tag>
                     {rule.target_type !== 'global' && (
-                      <span style={{ marginLeft: 6 }}>
-                        {resolveTargetName(rule)}
-                      </span>
+                      <span style={{ marginLeft: 6 }}>{resolveTargetName(rule)}</span>
                     )}
                   </td>
                   <td>

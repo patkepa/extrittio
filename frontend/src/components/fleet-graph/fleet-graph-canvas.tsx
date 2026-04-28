@@ -9,6 +9,7 @@ import type { ViewportInfo } from './fleet-graph-minimap';
 import { useForceSimulation } from './use-force-simulation';
 import { useLassoSelection } from './use-lasso-selection';
 import { useViewportControls } from './use-viewport-controls';
+import type { ForceGraphApi } from './force-graph-types';
 
 export interface GraphActions {
   navigateTo: (x: number, y: number) => void;
@@ -112,7 +113,7 @@ export const FleetGraphCanvas = memo(
     showAlertBadges = true,
     alertBadges = {},
   }: FleetGraphCanvasProps) => {
-    const graphRef = useRef<any>(null);
+    const graphRef = useRef<ForceGraphApi>();
     const [hoverNode, setHoverNode] = useState<GraphNode | null>(null);
     const pulseClockRef = useRef(0);
     const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

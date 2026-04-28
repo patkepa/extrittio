@@ -2,14 +2,20 @@ import { useCallback, useEffect, useRef } from 'react';
 import type { GraphData, GraphNode } from './build-force-graph-data';
 import type { ViewportInfo } from './fleet-graph-minimap';
 import type { GraphActions } from './fleet-graph-canvas';
+import type {
+  ForceGraphApi,
+  ZoomCanvas,
+  ZoomTransformConstructor,
+  ZoomTransformLike,
+} from './force-graph-types';
 
 export function useViewportControls(
-  graphRef: React.MutableRefObject<any>,
+  graphRef: React.MutableRefObject<ForceGraphApi | undefined>,
   canvasWrapperRef: React.RefObject<HTMLDivElement | null>,
   graphData: GraphData,
   width: number,
   height: number,
-  hasInitialFit: React.MutableRefObject<boolean>,
+  hasInitialFitRef: React.MutableRefObject<boolean>,
   selectedNodeId?: string | null,
   onViewportChange?: (transform: ViewportInfo) => void,
   graphActionsRef?: React.MutableRefObject<GraphActions | null>,
@@ -22,7 +28,10 @@ export function useViewportControls(
     padY: number;
   } | null>(null);
   const dimensionsRef = useRef({ width, height });
-  dimensionsRef.current = { width, height };
+
+  useEffect(() => {
+    dimensionsRef.current = { width, height };
+  }, [height, width]);
 
   // Recompute bounds when node positions settle
   const updateNodeBounds = useCallback(() => {
@@ -56,11 +65,11 @@ export function useViewportControls(
 
   // Install the __zoom interceptor on the canvas element
   useEffect(() => {
-    const canvas = canvasWrapperRef.current?.querySelector('canvas');
+    const canvas = canvasWrapperRef.current?.querySelector('canvas') as ZoomCanvas | null;
     if (!canvas) return;
 
     // Grab the existing transform value that d3-zoom already set
-    let currentZoom = (canvas as any).__zoom;
+    let currentZoom = canvas.__zoom;
 
     Object.defineProperty(canvas, '__zoom', {
       configurable: true,
@@ -68,17 +77,18 @@ export function useViewportControls(
       get() {
         return currentZoom;
       },
-      set(val) {
+      set(val: ZoomTransformLike | undefined) {
         const bounds = nodeBoundsRef.current;
         const { width: w, height: h } = dimensionsRef.current;
-        if (!hasInitialFit.current || !bounds || !val) {
+        const transform = val as ZoomTransformLike | undefined;
+        if (!hasInitialFitRef.current || !bounds || !transform) {
           currentZoom = val;
           return;
         }
 
-        const k = val.k;
-        const viewCenterX = (w / 2 - val.x) / k;
-        const viewCenterY = (h / 2 - val.y) / k;
+        const k = transform.k;
+        const viewCenterX = (w / 2 - transform.x) / k;
+        const viewCenterY = (h / 2 - transform.y) / k;
 
         const clampedX = Math.max(
           bounds.centerX - bounds.padX,
@@ -92,9 +102,10 @@ export function useViewportControls(
         if (clampedX !== viewCenterX || clampedY !== viewCenterY) {
           const newTx = w / 2 - clampedX * k;
           const newTy = h / 2 - clampedY * k;
-          currentZoom = new val.constructor(k, newTx, newTy);
+          const Transform = transform.constructor as ZoomTransformConstructor;
+          currentZoom = new Transform(k, newTx, newTy);
         } else {
-          currentZoom = val;
+          currentZoom = transform;
         }
       },
     });
@@ -108,7 +119,7 @@ export function useViewportControls(
         value: currentZoom,
       });
     };
-  }, [canvasWrapperRef, hasInitialFit]); // Canvas element is stable — refs provide latest values
+  }, [canvasWrapperRef, hasInitialFitRef]); // Canvas element is stable — refs provide latest values
 
   // Expose graph actions via ref
   useEffect(() => {

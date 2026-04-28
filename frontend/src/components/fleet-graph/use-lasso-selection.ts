@@ -2,12 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { GraphData, GraphNode } from './build-force-graph-data';
 import { useSelectionStore } from '../../stores/selection-store';
 import { SELECTION_COLOR } from './constants';
+import type { ForceGraphApi } from './force-graph-types';
 
 const FLEET_RADIUS = 14;
 const DEVICE_RADIUS = 11;
 
 export function useLassoSelection(
-  graphRef: React.MutableRefObject<any>,
+  graphRef: React.MutableRefObject<ForceGraphApi | undefined>,
   canvasWrapperRef: React.RefObject<HTMLDivElement | null>,
   graphData: GraphData,
 ) {
@@ -23,7 +24,9 @@ export function useLassoSelection(
 
   // Keep a ref so the lasso mousedown handler can read selection without re-registering
   const selectionRef = useRef(selectedDeviceIds);
-  selectionRef.current = selectedDeviceIds;
+  useEffect(() => {
+    selectionRef.current = selectedDeviceIds;
+  }, [selectedDeviceIds]);
 
   // Shift key tracking for lasso mode
   useEffect(() => {

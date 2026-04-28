@@ -11,7 +11,7 @@ import {
   Spinner,
   Tooltip,
 } from '@blueprintjs/core';
-import { useDevices } from '../../hooks/use-devices';
+import { useAllDevices } from '../../hooks/use-devices';
 import {
   useCaCertificate,
   useDeviceCertificateStatuses,
@@ -35,7 +35,7 @@ export function CertificatesSettings() {
   } | null>(null);
 
   const caQuery = useCaCertificate();
-  const devicesQuery = useDevices();
+  const devicesQuery = useAllDevices();
   const devices = devicesQuery.data?.data ?? [];
   const deviceIds = devices.map((d) => d.id);
   const statusQueries = useDeviceCertificateStatuses(deviceIds);

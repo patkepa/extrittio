@@ -2,6 +2,7 @@ export const queryKeys = {
   devices: {
     all: ['devices'] as const,
     list: (params?: unknown) => ['devices', params] as const,
+    fullList: (params?: unknown) => ['devices', 'all-pages', params] as const,
     detailAll: ['device'] as const,
     detail: (id: string) => ['device', id] as const,
   },
@@ -64,11 +65,11 @@ export const queryKeys = {
     history: (params?: unknown) => ['server-metrics-history', params] as const,
   },
   zones: {
-    all: ["zones"] as const,
-    list: () => ["zones"] as const,
-    detail: (id: string) => ["zone", id] as const,
+    all: ['zones'] as const,
+    list: () => ['zones'] as const,
+    detail: (id: string) => ['zone', id] as const,
   },
   locations: {
-    latest: (deviceId: string) => ["device-location", deviceId, "latest"] as const,
+    latest: (deviceId: string) => ['device-location', deviceId, 'latest'] as const,
   },
 } as const;

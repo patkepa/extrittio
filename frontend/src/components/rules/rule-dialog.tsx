@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Button,
   Callout,
@@ -16,7 +16,7 @@ import { useRule, useCreateRule, useUpdateRule } from '../../hooks/use-rules';
 import { useConfirmShortcut } from '../../hooks/use-confirm-shortcut';
 import { useDeviceTypes } from '../../hooks/use-device-types';
 import { useFleets } from '../../hooks/use-fleets';
-import { useDevices } from '../../hooks/use-devices';
+import { useAllDevices } from '../../hooks/use-devices';
 import { useZones } from '../../hooks/use-zones';
 import { useUIStore } from '../../stores/ui-store';
 import { showSuccessToast, showErrorToast } from '../../utils/toaster';
@@ -83,8 +83,7 @@ const emptyCondition = (triggerType: string): ConditionRow => ({
       : triggerType === 'geofence'
         ? 'zone_state'
         : 'temperature',
-  operator:
-    triggerType === 'device_status' || triggerType === 'geofence' ? 'eq' : 'gt',
+  operator: triggerType === 'device_status' || triggerType === 'geofence' ? 'eq' : 'gt',
   value: '',
   zone_id: undefined,
 });
@@ -102,7 +101,7 @@ export function RuleDialog() {
   // Data for target dropdowns
   const { data: deviceTypes } = useDeviceTypes();
   const { data: fleets } = useFleets();
-  const { data: devicesData } = useDevices();
+  const { data: devicesData } = useAllDevices();
   const devices = devicesData?.data ?? [];
   const { data: zones = [] } = useZones();
 
@@ -115,7 +114,19 @@ export function RuleDialog() {
   const [conditions, setConditions] = useState<ConditionRow[]>([emptyCondition('telemetry')]);
   const [actions, setActions] = useState<ActionRow[]>([emptyAction()]);
 
+  const resetForm = useCallback(() => {
+    setName('');
+    setDescription('');
+    setTriggerType('telemetry');
+    setTargetType('global');
+    setTargetId('');
+    setCooldownSeconds(300);
+    setConditions([emptyCondition('telemetry')]);
+    setActions([emptyAction()]);
+  }, []);
+
   // Populate form when editing
+  /* eslint-disable react-hooks/set-state-in-effect -- hydrate form state when async rule data arrives */
   useEffect(() => {
     if (editingRuleId && existingRule) {
       setName(existingRule.name);
@@ -145,18 +156,8 @@ export function RuleDialog() {
     } else if (!editingRuleId) {
       resetForm();
     }
-  }, [editingRuleId, existingRule]);
-
-  const resetForm = () => {
-    setName('');
-    setDescription('');
-    setTriggerType('telemetry');
-    setTargetType('global');
-    setTargetId('');
-    setCooldownSeconds(300);
-    setConditions([emptyCondition('telemetry')]);
-    setActions([emptyAction()]);
-  };
+  }, [editingRuleId, existingRule, resetForm]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Reset mutation errors when dialog opens/closes
   const resetCreate = createMutation.reset;
@@ -340,11 +341,7 @@ export function RuleDialog() {
 
         {targetType === 'device_type' && (
           <FormGroup label="Device Type">
-            <HTMLSelect
-              fill
-              value={targetId}
-              onChange={(e) => setTargetId(e.target.value)}
-            >
+            <HTMLSelect fill value={targetId} onChange={(e) => setTargetId(e.target.value)}>
               <option value="">Select device type...</option>
               {(deviceTypes ?? []).map((dt) => (
                 <option key={dt.id} value={String(dt.id)}>
@@ -356,11 +353,7 @@ export function RuleDialog() {
         )}
         {targetType === 'fleet' && (
           <FormGroup label="Fleet">
-            <HTMLSelect
-              fill
-              value={targetId}
-              onChange={(e) => setTargetId(e.target.value)}
-            >
+            <HTMLSelect fill value={targetId} onChange={(e) => setTargetId(e.target.value)}>
               <option value="">Select fleet...</option>
               {(fleets ?? []).map((f) => (
                 <option key={f.id} value={String(f.id)}>
@@ -372,11 +365,7 @@ export function RuleDialog() {
         )}
         {targetType === 'device' && (
           <FormGroup label="Device">
-            <HTMLSelect
-              fill
-              value={targetId}
-              onChange={(e) => setTargetId(e.target.value)}
-            >
+            <HTMLSelect fill value={targetId} onChange={(e) => setTargetId(e.target.value)}>
               <option value="">Select device...</option>
               {devices.map((d) => (
                 <option key={d.id} value={d.id}>
@@ -398,8 +387,17 @@ export function RuleDialog() {
 
         {/* Conditions */}
         <div style={{ marginBottom: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <span className="section-label" style={{ margin: 0 }}>Conditions</span>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 8,
+            }}
+          >
+            <span className="section-label" style={{ margin: 0 }}>
+              Conditions
+            </span>
             <Button icon="add" minimal small onClick={addCondition}>
               Add
             </Button>
@@ -410,7 +408,18 @@ export function RuleDialog() {
               const operators = isZoneState ? ZONE_STATE_OPERATORS : NUMERIC_OPERATORS;
 
               return (
-                <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12, padding: 8, border: '1px solid var(--border-color)', background: 'hsla(0,0%,100%,0.02)' }}>
+                <div
+                  key={i}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 6,
+                    marginBottom: 12,
+                    padding: 8,
+                    border: '1px solid var(--border-color)',
+                    background: 'hsla(0,0%,100%,0.02)',
+                  }}
+                >
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     {/* Field selector */}
                     <HTMLSelect
@@ -502,11 +511,15 @@ export function RuleDialog() {
 
             // Telemetry / device_status conditions (original layout)
             const fields = triggerType === 'device_status' ? STATUS_FIELDS : TELEMETRY_FIELDS;
-            const operators = triggerType === 'device_status' ? STATUS_OPERATORS : NUMERIC_OPERATORS;
+            const operators =
+              triggerType === 'device_status' ? STATUS_OPERATORS : NUMERIC_OPERATORS;
             const isStatusField = cond.field === 'status';
 
             return (
-              <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+              <div
+                key={i}
+                style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}
+              >
                 <HTMLSelect
                   value={cond.field}
                   onChange={(e) => updateCondition(i, 'field', e.target.value)}
@@ -565,8 +578,17 @@ export function RuleDialog() {
 
         {/* Actions */}
         <div style={{ marginBottom: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <span className="section-label" style={{ margin: 0 }}>Actions</span>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 8,
+            }}
+          >
+            <span className="section-label" style={{ margin: 0 }}>
+              Actions
+            </span>
             <Button icon="add" minimal small onClick={addAction}>
               Add
             </Button>

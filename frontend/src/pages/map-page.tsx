@@ -7,7 +7,7 @@ import { ZonePanel } from '../components/map/zone-panel';
 import type { MapDevice } from '../components/map/zone-panel';
 import { ZoneDrawControls } from '../components/map/zone-draw-controls';
 import { DeviceMarker } from '../components/map/device-marker';
-import { useDevices } from '../hooks/use-devices';
+import { useAllDevices } from '../hooks/use-devices';
 import { useZones } from '../hooks/use-zones';
 import type { Device } from '../types/api';
 import type { Zone, CircleGeometry, PolygonGeometry } from '../types/zones';
@@ -48,7 +48,7 @@ function hasLocation(device: Device): device is LocatedDevice {
 }
 
 export default function MapPage() {
-  const { data: devicesData } = useDevices(undefined, { refetchInterval: 30_000 });
+  const { data: devicesData } = useAllDevices(undefined, { refetchInterval: 30_000 });
   const devices = devicesData?.data ?? [];
   const { data: zones = [] } = useZones();
 
