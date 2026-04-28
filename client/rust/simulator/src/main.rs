@@ -9,7 +9,6 @@ use extrittio_sdk::sensor::SensorState;
 use prost::Message;
 use rand::Rng;
 use tokio::task::JoinSet;
-use tokio::time::MissedTickBehavior;
 use tracing::{info, warn};
 
 #[derive(Debug, Clone, Parser)]
@@ -42,9 +41,17 @@ struct Args {
     #[arg(long, default_value_t = 2_000)]
     startup_spread_ms: u64,
 
-    /// Add random interval jitter in percent to avoid synchronized publish bursts.
+    /// Randomize each send interval by +/- this percent.
     #[arg(long, default_value_t = 20)]
     jitter_percent: u8,
+
+    /// Give each device a persistent +/- interval variance so they do not share the same cadence.
+    #[arg(long, default_value_t = 15)]
+    device_interval_variance_percent: u8,
+
+    /// Add random measurement noise to emitted telemetry values.
+    #[arg(long, default_value_t = 5)]
+    sensor_noise_percent: u8,
 
     /// Firmware string sent in heartbeats. Backend uses this for device-type inference.
     #[arg(long, default_value = "simulator-v1.0.0")]
@@ -96,9 +103,14 @@ struct DeviceRuntime {
     firmware: String,
     sensor: SensorState,
     start: Instant,
+    telemetry_period: Duration,
+    heartbeat_period: Duration,
+    battery_drain_multiplier: f32,
     latitude: f64,
     longitude: f64,
     heading: f32,
+    speed: f32,
+    altitude: f32,
 }
 
 #[tokio::main]
@@ -116,12 +128,15 @@ async fn main() {
     let estimated_telemetry_rate = args.count as f64 / args.telemetry_interval as f64;
     let estimated_heartbeat_rate = args.count as f64 / args.heartbeat_interval as f64;
     info!(
-        "Starting {} simulated devices ({:?}, {:?}); estimated inbound rate: {:.1} telemetry/s + {:.1} heartbeat/s",
+        "Starting {} simulated devices ({:?}, {:?}); nominal inbound rate: {:.1} telemetry/s + {:.1} heartbeat/s; jitter={}%, device variance={}%, sensor noise={}%",
         args.count,
         args.scenario,
         args.session_mode,
         estimated_telemetry_rate,
         estimated_heartbeat_rate,
+        args.jitter_percent,
+        args.device_interval_variance_percent,
+        args.sensor_noise_percent,
     );
 
     match args.session_mode {
@@ -196,34 +211,41 @@ async fn run_device(mut device: DeviceRuntime, args: Args, session: Arc<zenoh::S
         return;
     }
 
-    let mut heartbeat = tokio::time::interval(Duration::from_secs(args.heartbeat_interval));
-    let mut telemetry = tokio::time::interval(Duration::from_secs(args.telemetry_interval));
-    heartbeat.set_missed_tick_behavior(MissedTickBehavior::Skip);
-    telemetry.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    let mut next_heartbeat = Box::pin(tokio::time::sleep(jittered_delay(
+        device.heartbeat_period,
+        args.jitter_percent,
+    )));
+    let mut next_telemetry = Box::pin(tokio::time::sleep(jittered_delay(
+        device.telemetry_period,
+        args.jitter_percent,
+    )));
 
     loop {
         tokio::select! {
-            _ = heartbeat.tick() => {
+            _ = &mut next_heartbeat => {
                 if should_skip_flaky_heartbeat(args.scenario) {
-                    continue;
-                }
-                sleep_jitter(args.jitter_percent, args.heartbeat_interval).await;
-                if let Err(e) = publish_heartbeat(&device, &session, device_status::ONLINE).await {
+                    warn!("{} skipped heartbeat due to flaky scenario", device.id);
+                } else if let Err(e) = publish_heartbeat(&device, &session, device_status::ONLINE).await {
                     warn!("{} failed heartbeat: {e}", device.id);
                 }
+                next_heartbeat.as_mut().reset(
+                    tokio::time::Instant::now() + jittered_delay(device.heartbeat_period, args.jitter_percent),
+                );
             }
-            _ = telemetry.tick() => {
-                sleep_jitter(args.jitter_percent, args.telemetry_interval).await;
+            _ = &mut next_telemetry => {
                 let samples = if matches!(args.scenario, Scenario::Burst) { 5 } else { 1 };
                 for _ in 0..samples {
                     advance_device(&mut device, args.scenario);
-                    if let Err(e) = publish_telemetry(&device, args.scenario, &session).await {
+                    if let Err(e) = publish_telemetry(&device, args.scenario, args.sensor_noise_percent, &session).await {
                         warn!("{} failed telemetry: {e}", device.id);
                     }
                     if samples > 1 {
                         tokio::time::sleep(Duration::from_millis(20)).await;
                     }
                 }
+                next_telemetry.as_mut().reset(
+                    tokio::time::Instant::now() + jittered_delay(device.telemetry_period, args.jitter_percent),
+                );
             }
         }
     }
@@ -251,6 +273,7 @@ async fn publish_heartbeat(
 async fn publish_telemetry(
     device: &DeviceRuntime,
     scenario: Scenario,
+    sensor_noise_percent: u8,
     session: &zenoh::Session,
 ) -> Result<(), zenoh::Error> {
     let mut metadata = HashMap::new();
@@ -264,14 +287,34 @@ async fn publish_telemetry(
     let message = DeviceTelemetry {
         device_id: device.id.clone(),
         timestamp: extrittio_sdk::time::now_millis(),
-        temperature: device.sensor.temperature,
-        humidity: device.sensor.humidity,
-        battery_level: device.sensor.battery,
+        temperature: noisy_reading(
+            device.sensor.temperature,
+            sensor_noise_percent,
+            0.3,
+            15.0,
+            95.0,
+        ),
+        humidity: noisy_reading(
+            device.sensor.humidity,
+            sensor_noise_percent,
+            0.6,
+            20.0,
+            80.0,
+        ),
+        battery_level: noisy_reading(device.sensor.battery, sensor_noise_percent, 0.2, 0.0, 100.0),
         metadata,
         latitude: if has_location { device.latitude } else { 0.0 },
         longitude: if has_location { device.longitude } else { 0.0 },
-        speed: if has_location { 12.0 } else { 0.0 },
-        altitude: if has_location { 80.0 } else { 0.0 },
+        speed: if has_location {
+            noisy_reading(device.speed, sensor_noise_percent, 0.4, 0.0, 60.0)
+        } else {
+            0.0
+        },
+        altitude: if has_location {
+            noisy_reading(device.altitude, sensor_noise_percent, 0.8, -100.0, 5_000.0)
+        } else {
+            0.0
+        },
         heading: if has_location { device.heading } else { 0.0 },
     };
 
@@ -287,7 +330,7 @@ fn advance_device(device: &mut DeviceRuntime, scenario: Scenario) {
             device.sensor.step(
                 rng.random_range(-0.5..=0.5),
                 rng.random_range(-1.0..=1.0),
-                rng.random_range(0.05..=0.15),
+                rng.random_range(0.05..=0.15) * device.battery_drain_multiplier,
             );
         }
         Scenario::Hot => {
@@ -295,7 +338,7 @@ fn advance_device(device: &mut DeviceRuntime, scenario: Scenario) {
             device.sensor.step(
                 0.0,
                 rng.random_range(-1.0..=1.0),
-                rng.random_range(0.05..=0.15),
+                rng.random_range(0.05..=0.15) * device.battery_drain_multiplier,
             );
             device.sensor.temperature =
                 (device.sensor.temperature + rng.random_range(0.2..=0.8)).clamp(15.0, 95.0);
@@ -305,7 +348,7 @@ fn advance_device(device: &mut DeviceRuntime, scenario: Scenario) {
             device.sensor.step(
                 rng.random_range(-0.5..=0.5),
                 rng.random_range(-1.0..=1.0),
-                rng.random_range(0.8..=2.0),
+                rng.random_range(0.8..=2.0) * device.battery_drain_multiplier,
             );
         }
         Scenario::Mobile => {
@@ -313,31 +356,48 @@ fn advance_device(device: &mut DeviceRuntime, scenario: Scenario) {
             device.sensor.step(
                 rng.random_range(-0.5..=0.5),
                 rng.random_range(-1.0..=1.0),
-                rng.random_range(0.05..=0.15),
+                rng.random_range(0.05..=0.15) * device.battery_drain_multiplier,
             );
             device.heading = (device.heading + rng.random_range(-8.0..=8.0)).rem_euclid(360.0);
             let radians = f64::from(device.heading).to_radians();
-            device.latitude += radians.cos() * 0.00008;
-            device.longitude += radians.sin() * 0.00008;
+            let movement = f64::from(device.speed) * 0.000006;
+            device.latitude += radians.cos() * movement;
+            device.longitude += radians.sin() * movement;
+            device.altitude =
+                (device.altitude + rng.random_range(-0.5..=0.5)).clamp(-100.0, 5_000.0);
         }
     }
 }
 
 fn build_device(args: &Args, index: u32) -> DeviceRuntime {
     let ordinal = index + 1;
+    let mut rng = rand::rng();
     let mut sensor = SensorState::new();
     let offset = (index % 20) as f32 * 0.1;
-    sensor.temperature += offset;
-    sensor.humidity = (sensor.humidity + offset).clamp(20.0, 80.0);
+    sensor.temperature =
+        (sensor.temperature + offset + rng.random_range(-2.0..=2.0)).clamp(15.0, 30.0);
+    sensor.humidity = (sensor.humidity + offset + rng.random_range(-5.0..=5.0)).clamp(20.0, 80.0);
+    sensor.battery = rng.random_range(55.0..=100.0);
 
     DeviceRuntime {
         id: format!("{}-{ordinal:06}", args.prefix),
         firmware: args.firmware.clone(),
         sensor,
         start: Instant::now(),
+        telemetry_period: varied_period(
+            Duration::from_secs(args.telemetry_interval),
+            args.device_interval_variance_percent,
+        ),
+        heartbeat_period: varied_period(
+            Duration::from_secs(args.heartbeat_interval),
+            args.device_interval_variance_percent,
+        ),
+        battery_drain_multiplier: rng.random_range(0.6..=1.6),
         latitude: 52.2297 + f64::from(index % 50) * 0.001,
         longitude: 21.0122 + f64::from(index / 50) * 0.001,
-        heading: (index % 360) as f32,
+        heading: ((index % 360) as f32 + rng.random_range(-15.0..=15.0)).rem_euclid(360.0),
+        speed: rng.random_range(4.0..=24.0),
+        altitude: rng.random_range(60.0..=120.0),
     }
 }
 
@@ -408,17 +468,14 @@ fn validate_args(args: &Args) {
         eprintln!("--jitter-percent must be between 0 and 100");
         std::process::exit(2);
     }
-}
-
-async fn sleep_jitter(percent: u8, base_secs: u64) {
-    if percent == 0 {
-        return;
+    if args.device_interval_variance_percent > 90 {
+        eprintln!("--device-interval-variance-percent must be between 0 and 90");
+        std::process::exit(2);
     }
-    let max_ms = base_secs
-        .saturating_mul(1_000)
-        .saturating_mul(u64::from(percent))
-        / 100;
-    sleep_random(Duration::from_millis(max_ms)).await;
+    if args.sensor_noise_percent > 100 {
+        eprintln!("--sensor-noise-percent must be between 0 and 100");
+        std::process::exit(2);
+    }
 }
 
 async fn sleep_random(max: Duration) {
@@ -441,6 +498,41 @@ fn should_skip_flaky_heartbeat(scenario: Scenario) -> bool {
         let mut rng = rand::rng();
         rng.random_bool(0.2)
     }
+}
+
+fn varied_period(base: Duration, percent: u8) -> Duration {
+    if percent == 0 {
+        return base;
+    }
+    let factor = random_factor(percent);
+    duration_mul(base, factor).max(Duration::from_millis(100))
+}
+
+fn jittered_delay(base: Duration, percent: u8) -> Duration {
+    if percent == 0 {
+        return base;
+    }
+    let factor = random_factor(percent);
+    duration_mul(base, factor).max(Duration::from_millis(25))
+}
+
+fn random_factor(percent: u8) -> f64 {
+    let spread = f64::from(percent) / 100.0;
+    let mut rng = rand::rng();
+    rng.random_range(1.0 - spread..=1.0 + spread)
+}
+
+fn duration_mul(duration: Duration, factor: f64) -> Duration {
+    Duration::from_secs_f64(duration.as_secs_f64() * factor.max(0.01))
+}
+
+fn noisy_reading(value: f32, percent: u8, floor_noise: f32, min: f32, max: f32) -> f32 {
+    if percent == 0 {
+        return value.clamp(min, max);
+    }
+    let mut rng = rand::rng();
+    let spread = (value.abs() * f32::from(percent) / 100.0).max(floor_noise);
+    (value + rng.random_range(-spread..=spread)).clamp(min, max)
 }
 
 fn parse_duration(value: &str) -> Result<Duration, String> {
