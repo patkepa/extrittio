@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useMap } from 'react-leaflet';
 import { useNavigate } from 'react-router-dom';
 import L from 'leaflet';
@@ -15,10 +15,22 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const MARKER_RADIUS = 6;
-const HIT_RADIUS = 10;
 
 function getStatusColor(status: string) {
   return STATUS_COLORS[status] ?? '#868686';
+}
+
+function getMarkerStyle(status: string): L.CircleMarkerOptions {
+  const color = getStatusColor(status);
+
+  return {
+    radius: MARKER_RADIUS,
+    fillColor: color,
+    fillOpacity: 1,
+    color: 'rgba(255, 255, 255, 0.35)',
+    opacity: 1,
+    weight: 2,
+  };
 }
 
 function createPopupContent(device: MapDevice, onNavigate: (deviceId: string) => void) {
@@ -52,120 +64,59 @@ function createPopupContent(device: MapDevice, onNavigate: (deviceId: string) =>
 export function DeviceCanvasLayer({ devices }: DeviceCanvasLayerProps) {
   const map = useMap();
   const navigate = useNavigate();
-  const devicesRef = useRef(devices);
-  const drawRef = useRef<(() => void) | null>(null);
+  const layerGroupRef = useRef<L.LayerGroup | null>(null);
+  const markerLayersRef = useRef<Map<string, L.CircleMarker>>(new Map());
+  const renderer = useMemo(() => L.canvas({ padding: 0.5 }), []);
 
   useEffect(() => {
-    devicesRef.current = devices;
-    drawRef.current?.();
-  }, [devices]);
-
-  useEffect(() => {
-    const canvas = L.DomUtil.create('canvas', 'device-canvas-layer');
-    const ctx = canvas.getContext('2d');
-    const pane = map.getPanes().overlayPane;
-    let frameId: number | null = null;
-
-    pane.appendChild(canvas);
-
-    const scheduleDraw = () => {
-      if (frameId != null) return;
-      frameId = window.requestAnimationFrame(() => {
-        frameId = null;
-        draw();
-      });
-    };
-
-    const resize = () => {
-      const size = map.getSize();
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = Math.round(size.x * dpr);
-      canvas.height = Math.round(size.y * dpr);
-      canvas.style.width = `${size.x}px`;
-      canvas.style.height = `${size.y}px`;
-      scheduleDraw();
-    };
-
-    const draw = () => {
-      if (!ctx) return;
-
-      const size = map.getSize();
-      const dpr = window.devicePixelRatio || 1;
-      const topLeft = map.containerPointToLayerPoint([0, 0]);
-      const visibleBounds = map.getBounds().pad(0.05);
-
-      L.DomUtil.setPosition(canvas, topLeft);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, size.x, size.y);
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
-
-      for (const device of devicesRef.current) {
-        const latLng = L.latLng(device.latest_latitude, device.latest_longitude);
-        if (!visibleBounds.contains(latLng)) continue;
-
-        const point = map.latLngToLayerPoint(latLng).subtract(topLeft);
-        const color = getStatusColor(device.status);
-
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.arc(point.x, point.y, MARKER_RADIUS, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-      }
-    };
-
-    const findDeviceAtPoint = (point: L.Point) => {
-      let closestDevice: MapDevice | null = null;
-      let closestDistance = HIT_RADIUS * HIT_RADIUS;
-
-      for (const device of devicesRef.current) {
-        const devicePoint = map.latLngToContainerPoint([
-          device.latest_latitude,
-          device.latest_longitude,
-        ]);
-        const dx = devicePoint.x - point.x;
-        const dy = devicePoint.y - point.y;
-        const distance = dx * dx + dy * dy;
-
-        if (distance <= closestDistance) {
-          closestDistance = distance;
-          closestDevice = device;
-        }
-      }
-
-      return closestDevice;
-    };
-
-    const handleClick = (event: L.LeafletMouseEvent) => {
-      const device = findDeviceAtPoint(event.containerPoint);
-      if (!device) return;
-
-      L.popup({ className: 'device-map-popup' })
-        .setLatLng([device.latest_latitude, device.latest_longitude])
-        .setContent(
-          createPopupContent(device, (deviceId) => {
-            navigate(`/devices/${encodeURIComponent(deviceId)}?tab=location`);
-          }),
-        )
-        .openOn(map);
-    };
-
-    drawRef.current = draw;
-    resize();
-    map.on('resize zoom move viewreset zoomend moveend', scheduleDraw);
-    map.on('click', handleClick);
+    const layerGroup = L.layerGroup().addTo(map);
+    const markerLayers = markerLayersRef.current;
+    layerGroupRef.current = layerGroup;
 
     return () => {
-      drawRef.current = null;
-      if (frameId != null) {
-        window.cancelAnimationFrame(frameId);
-      }
-      map.off('resize zoom move viewreset zoomend moveend', scheduleDraw);
-      map.off('click', handleClick);
-      canvas.remove();
+      markerLayers.clear();
+      layerGroup.clearLayers();
+      layerGroup.remove();
+      renderer.remove();
+      layerGroupRef.current = null;
     };
-  }, [map, navigate]);
+  }, [map, renderer]);
+
+  useEffect(() => {
+    const layerGroup = layerGroupRef.current;
+    if (!layerGroup) return;
+
+    const markers = markerLayersRef.current;
+    const nextDeviceIds = new Set<string>();
+
+    for (const device of devices) {
+      nextDeviceIds.add(device.id);
+
+      const marker =
+        markers.get(device.id) ??
+        L.circleMarker([device.latest_latitude, device.latest_longitude], {
+          ...getMarkerStyle(device.status),
+          renderer,
+        }).addTo(layerGroup);
+
+      marker.setLatLng([device.latest_latitude, device.latest_longitude]);
+      marker.setStyle(getMarkerStyle(device.status));
+      marker.bindPopup(() =>
+        createPopupContent(device, (deviceId) => {
+          navigate(`/devices/${encodeURIComponent(deviceId)}?tab=location`);
+        }),
+      );
+
+      markers.set(device.id, marker);
+    }
+
+    for (const [deviceId, marker] of markers) {
+      if (!nextDeviceIds.has(deviceId)) {
+        layerGroup.removeLayer(marker);
+        markers.delete(deviceId);
+      }
+    }
+  }, [devices, navigate, renderer]);
 
   return null;
 }
