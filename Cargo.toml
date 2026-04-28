@@ -6,6 +6,7 @@ members = [
     "client/rust/macos",
     "client/rust/rpi",
     "client/rust/sdk",
+    "client/rust/simulator",
     "common",
 ]
 
