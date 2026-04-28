@@ -14,6 +14,27 @@ type CreatedEvent = L.LeafletEvent & {
   layerType: string;
 };
 
+type DrawToolbarHandle = {
+  disable?: () => void;
+};
+
+type DrawControlWithToolbars = L.Control.Draw & {
+  _toolbars?: Record<string, DrawToolbarHandle | undefined>;
+};
+
+function disableDrawToolbars(drawControl: DrawControlWithToolbars) {
+  Object.values(drawControl._toolbars ?? {}).forEach((toolbar) => toolbar?.disable?.());
+}
+
+function restoreMapInteractions(map: L.Map) {
+  map.dragging.enable();
+  map.touchZoom.enable();
+  map.doubleClickZoom.enable();
+  map.scrollWheelZoom.enable();
+  map.boxZoom.enable();
+  map.keyboard.enable();
+}
+
 export function ZoneDrawControls({ enabled, onCreated }: ZoneDrawControlsProps) {
   const map = useMap();
 
@@ -33,7 +54,7 @@ export function ZoneDrawControls({ enabled, onCreated }: ZoneDrawControlsProps) 
         polygon: { shapeOptions: { color: '#4A90D9', fillOpacity: 0.15 } },
       },
       edit: { featureGroup: drawnItems },
-    });
+    }) as DrawControlWithToolbars;
 
     map.addControl(drawControl);
 
@@ -47,9 +68,11 @@ export function ZoneDrawControls({ enabled, onCreated }: ZoneDrawControlsProps) 
     map.on('draw:created', handleCreated);
 
     return () => {
+      disableDrawToolbars(drawControl);
       map.removeControl(drawControl);
-      map.removeLayer(drawnItems);
       map.off('draw:created', handleCreated);
+      map.removeLayer(drawnItems);
+      restoreMapInteractions(map);
     };
   }, [enabled, map, onCreated]);
 
