@@ -1,7 +1,6 @@
 import { memo, useMemo } from 'react';
-import { Card, Checkbox, Elevation, H4, HTMLTable, Icon, Tag } from '@blueprintjs/core';
-import { UPlotChart } from '../../../components/charts/UPlot';
-import { toSparklineData, sparklineOpts } from '../../../components/charts/uplot-helpers';
+import { List } from 'react-window';
+import { Card, Checkbox, Elevation, H4, Icon, Tag } from '@blueprintjs/core';
 import type { Device } from '../../../types/api';
 import type { DeviceSortDir, DeviceSortField } from '../hooks/use-device-list-state';
 
@@ -11,21 +10,31 @@ interface DeviceTableProps {
   sortDir: DeviceSortDir;
   activeRowIndex: number;
   getRowProps: (index: number) => {
-    ref: (element: HTMLElement | null) => void;
     tabIndex: number;
     'data-roving-item': boolean;
     'data-keyboard-active': boolean | undefined;
     onFocus: () => void;
   };
+  registerRow: (index: number, element: HTMLElement | null) => void;
   isSelected: (id: string) => boolean;
   onSort: (field: DeviceSortField) => void;
   onViewDevice: (device: Device) => void;
   onToggleDevice: (id: string) => void;
   onSelectAllVisible: (ids: string[]) => void;
   onDeselectAllVisible: () => void;
-  onMouseEnter: (device: Device, event: React.MouseEvent<HTMLElement>) => void;
-  onMouseLeave: () => void;
 }
+
+interface DeviceRowProps {
+  devices: Device[];
+  activeRowIndex: number;
+  getRowProps: DeviceTableProps['getRowProps'];
+  registerRow: DeviceTableProps['registerRow'];
+  isSelected: (id: string) => boolean;
+  onViewDevice: (device: Device) => void;
+  onToggleDevice: (id: string) => void;
+}
+
+const ROW_HEIGHT = 58;
 
 const SortHeader = memo(
   ({
@@ -41,14 +50,18 @@ const SortHeader = memo(
     onSort: (field: DeviceSortField) => void;
     children: React.ReactNode;
   }) => (
-    <th className="sortable-th" onClick={() => onSort(field)}>
+    <div
+      role="columnheader"
+      className="devices-grid-cell sortable-th"
+      onClick={() => onSort(field)}
+    >
       <span className="th-content">
         {children}
         {sortField === field && (
           <Icon icon={sortDir === 'asc' ? 'chevron-up' : 'chevron-down'} size={12} />
         )}
       </span>
-    </th>
+    </div>
   ),
 );
 
@@ -77,10 +90,109 @@ function getStatusColor(status: string) {
 
 const RowSparkline = memo(({ deviceId, color }: { deviceId: string; color: string }) => {
   const values = getSparklineValues(deviceId);
-  const plotData = useMemo(() => toSparklineData(values), [values]);
-  const opts = useMemo(() => sparklineOpts(color, 0.15), [color]);
-  return <UPlotChart options={opts} data={plotData} height={24} />;
+  const points = useMemo(() => {
+    const max = Math.max(...values, 1);
+    return values
+      .map((value, index) => {
+        const x = (index / Math.max(values.length - 1, 1)) * 76 + 2;
+        const y = 22 - (value / max) * 18;
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      })
+      .join(' ');
+  }, [values]);
+
+  return (
+    <svg
+      className="row-sparkline-svg"
+      viewBox="0 0 80 24"
+      role="img"
+      aria-label="Device activity"
+      focusable="false"
+    >
+      <polyline points={points} fill="none" stroke={color} strokeWidth="1.5" />
+    </svg>
+  );
 });
+
+function DeviceRow({
+  index,
+  style,
+  devices,
+  activeRowIndex,
+  getRowProps,
+  registerRow,
+  isSelected,
+  onViewDevice,
+  onToggleDevice,
+}: {
+  index: number;
+  style: React.CSSProperties;
+} & DeviceRowProps) {
+  const device = devices[index];
+  if (!device) return null;
+
+  const focusProps = getRowProps(index);
+  const selected = isSelected(device.id);
+
+  return (
+    <div
+      ref={(element) => registerRow(index, element)}
+      style={style}
+      role="row"
+      tabIndex={focusProps.tabIndex}
+      data-roving-item={focusProps['data-roving-item']}
+      data-keyboard-active={focusProps['data-keyboard-active']}
+      data-focus-region-initial={index === activeRowIndex ? 'true' : undefined}
+      aria-selected={selected}
+      className={`device-row devices-grid-row ${selected ? 'device-row--selected' : ''}`}
+      onClick={() => onViewDevice(device)}
+      onFocus={focusProps.onFocus}
+    >
+      <div role="cell" className="devices-grid-cell" onClick={(e) => e.stopPropagation()}>
+        <Checkbox
+          checked={selected}
+          onChange={() => onToggleDevice(device.id)}
+          style={{ marginBottom: 0 }}
+        />
+      </div>
+      <div role="cell" className="devices-grid-cell">
+        <span className={`status-led status-led--${device.status}`} />
+      </div>
+      <div role="cell" className="devices-grid-cell">
+        <div className="device-name-cell">
+          <strong>{device.name}</strong>
+          <span className="device-id mono-data">{device.id}</span>
+        </div>
+      </div>
+      <div role="cell" className="devices-grid-cell">
+        <Tag minimal>{device.device_type_name}</Tag>
+      </div>
+      <div role="cell" className="devices-grid-cell">
+        {device.fleet_name ? (
+          <Tag minimal intent="primary">
+            {device.fleet_name}
+          </Tag>
+        ) : (
+          <span style={{ color: 'hsl(var(--muted))', fontSize: 12 }}>-</span>
+        )}
+      </div>
+      <div role="cell" className="devices-grid-cell">
+        <span className="mono-data">{device.last_seen}</span>
+      </div>
+      <div role="cell" className="devices-grid-cell">
+        <code className="firmware-badge">{device.firmware}</code>
+      </div>
+      <div role="cell" className="devices-grid-cell">
+        <div className="row-sparkline">
+          <RowSparkline deviceId={device.id} color={getStatusColor(device.status)} />
+        </div>
+      </div>
+      <div role="cell" className="devices-grid-cell">
+        <span className="mono-data">{device.uptime}</span>
+      </div>
+    </div>
+  );
+}
 
 export function DeviceTable({
   devices,
@@ -88,18 +200,29 @@ export function DeviceTable({
   sortDir,
   activeRowIndex,
   getRowProps,
+  registerRow,
   isSelected,
   onSort,
   onViewDevice,
   onToggleDevice,
   onSelectAllVisible,
   onDeselectAllVisible,
-  onMouseEnter,
-  onMouseLeave,
 }: DeviceTableProps) {
   const allVisibleSelected = devices.length > 0 && devices.every((device) => isSelected(device.id));
   const someVisibleSelected =
     devices.some((device) => isSelected(device.id)) && !allVisibleSelected;
+  const rowProps = useMemo<DeviceRowProps>(
+    () => ({
+      devices,
+      activeRowIndex,
+      getRowProps,
+      registerRow,
+      isSelected,
+      onViewDevice,
+      onToggleDevice,
+    }),
+    [activeRowIndex, devices, getRowProps, isSelected, onToggleDevice, onViewDevice, registerRow],
+  );
 
   return (
     <Card elevation={Elevation.ONE} className="devices-card">
@@ -110,102 +233,59 @@ export function DeviceTable({
           <p>Try adjusting your search or filter criteria</p>
         </div>
       ) : (
-        <HTMLTable interactive className="devices-table">
-          <thead>
-            <tr>
-              <th style={{ width: 40 }} onClick={(e) => e.stopPropagation()}>
-                <Checkbox
-                  checked={allVisibleSelected}
-                  indeterminate={someVisibleSelected}
-                  onChange={() => {
-                    if (allVisibleSelected) {
-                      onDeselectAllVisible();
-                    } else {
-                      onSelectAllVisible(devices.map((d) => d.id));
-                    }
-                  }}
-                  style={{ marginBottom: 0 }}
-                />
-              </th>
-              <th style={{ width: 40 }} />
-              <SortHeader field="name" sortField={sortField} sortDir={sortDir} onSort={onSort}>
-                Name
-              </SortHeader>
-              <th>Type</th>
-              <th>Fleet</th>
-              <SortHeader field="last_seen" sortField={sortField} sortDir={sortDir} onSort={onSort}>
-                Last Seen
-              </SortHeader>
-              <th>Firmware</th>
-              <th style={{ width: 80 }}>Activity</th>
-              <th>Uptime</th>
-            </tr>
-          </thead>
-          <tbody>
-            {devices.map((device, index) => {
-              const rowProps = getRowProps(index);
-              return (
-                <tr
-                  key={device.id}
-                  ref={rowProps.ref}
-                  tabIndex={rowProps.tabIndex}
-                  data-roving-item={rowProps['data-roving-item']}
-                  data-keyboard-active={rowProps['data-keyboard-active']}
-                  data-focus-region-initial={index === activeRowIndex ? 'true' : undefined}
-                  aria-selected={isSelected(device.id)}
-                  className={`device-row ${isSelected(device.id) ? 'device-row--selected' : ''}`}
-                  onClick={() => onViewDevice(device)}
-                  onFocus={rowProps.onFocus}
-                  onMouseEnter={(e) => onMouseEnter(device, e)}
-                  onMouseLeave={onMouseLeave}
-                >
-                  <td onClick={(e) => e.stopPropagation()}>
-                    <Checkbox
-                      checked={isSelected(device.id)}
-                      onChange={() => onToggleDevice(device.id)}
-                      style={{ marginBottom: 0 }}
-                    />
-                  </td>
-                  <td>
-                    <span className={`status-led status-led--${device.status}`} />
-                  </td>
-                  <td>
-                    <div className="device-name-cell">
-                      <strong>{device.name}</strong>
-                      <span className="device-id mono-data">{device.id}</span>
-                    </div>
-                  </td>
-                  <td>
-                    <Tag minimal>{device.device_type_name}</Tag>
-                  </td>
-                  <td>
-                    {device.fleet_name ? (
-                      <Tag minimal intent="primary">
-                        {device.fleet_name}
-                      </Tag>
-                    ) : (
-                      <span style={{ color: 'hsl(var(--muted))', fontSize: 12 }}>-</span>
-                    )}
-                  </td>
-                  <td>
-                    <span className="mono-data">{device.last_seen}</span>
-                  </td>
-                  <td>
-                    <code className="firmware-badge">{device.firmware}</code>
-                  </td>
-                  <td>
-                    <div className="row-sparkline">
-                      <RowSparkline deviceId={device.id} color={getStatusColor(device.status)} />
-                    </div>
-                  </td>
-                  <td>
-                    <span className="mono-data">{device.uptime}</span>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </HTMLTable>
+        <div className="devices-grid" role="grid" aria-rowcount={devices.length}>
+          <div className="devices-grid-header" role="row">
+            <div
+              role="columnheader"
+              className="devices-grid-cell"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Checkbox
+                checked={allVisibleSelected}
+                indeterminate={someVisibleSelected}
+                onChange={() => {
+                  if (allVisibleSelected) {
+                    onDeselectAllVisible();
+                  } else {
+                    onSelectAllVisible(devices.map((d) => d.id));
+                  }
+                }}
+                style={{ marginBottom: 0 }}
+              />
+            </div>
+            <div role="columnheader" className="devices-grid-cell" />
+            <SortHeader field="name" sortField={sortField} sortDir={sortDir} onSort={onSort}>
+              Name
+            </SortHeader>
+            <div role="columnheader" className="devices-grid-cell">
+              Type
+            </div>
+            <div role="columnheader" className="devices-grid-cell">
+              Fleet
+            </div>
+            <SortHeader field="last_seen" sortField={sortField} sortDir={sortDir} onSort={onSort}>
+              Last Seen
+            </SortHeader>
+            <div role="columnheader" className="devices-grid-cell">
+              Firmware
+            </div>
+            <div role="columnheader" className="devices-grid-cell">
+              Activity
+            </div>
+            <div role="columnheader" className="devices-grid-cell">
+              Uptime
+            </div>
+          </div>
+          <List<DeviceRowProps>
+            className="devices-virtual-list"
+            rowComponent={DeviceRow}
+            rowCount={devices.length}
+            rowHeight={ROW_HEIGHT}
+            rowProps={rowProps}
+            overscanCount={8}
+            style={{ height: 'min(68vh, 820px)', width: '100%' }}
+          />
+        </div>
       )}
     </Card>
   );

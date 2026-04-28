@@ -1,10 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Button, Callout, H3, Spinner } from '@blueprintjs/core';
 import { AddDeviceDialog } from '../components/devices/add-device-dialog';
-import {
-  DeviceHoverTooltip,
-  useDeviceHoverTooltip,
-} from '../components/devices/device-hover-tooltip';
 import { DeviceFilters } from '../features/devices/components/device-filters';
 import { DeviceTable } from '../features/devices/components/device-table';
 import { useDeviceListState } from '../features/devices/hooks/use-device-list-state';
@@ -18,7 +14,6 @@ import './devices.css';
 export const Devices = () => {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const { openAddDeviceDialog } = useUIStore();
-  const { hoveredDevice, hoverPos, onMouseEnter, onMouseLeave } = useDeviceHoverTooltip();
   const {
     selectedDeviceIds,
     isAllMatchingSelected,
@@ -58,6 +53,7 @@ export const Devices = () => {
     activeIndex: activeRowIndex,
     focusIndex: focusRowIndex,
     getItemProps: getRowProps,
+    registerItem: registerRow,
   } = useRovingFocus({ itemCount: filteredDevices.length });
 
   useEffect(() => {
@@ -196,17 +192,15 @@ export const Devices = () => {
         sortDir={sortDir}
         activeRowIndex={activeRowIndex}
         getRowProps={getRowProps}
+        registerRow={registerRow}
         isSelected={isSelected}
         onSort={handleSort}
         onViewDevice={handleViewDevice}
         onToggleDevice={toggleDevice}
         onSelectAllVisible={selectAllVisible}
         onDeselectAllVisible={deselectAllVisible}
-        onMouseEnter={onMouseEnter}
-        onMouseLeave={onMouseLeave}
       />
 
-      <DeviceHoverTooltip device={hoveredDevice} position={hoverPos} />
       <AddDeviceDialog />
     </div>
   );

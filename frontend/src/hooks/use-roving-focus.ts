@@ -29,9 +29,6 @@ export function useRovingFocus({ itemCount, initialIndex = 0 }: UseRovingFocusOp
 
   const getItemProps = useCallback(
     (index: number) => ({
-      ref: (element: HTMLElement | null) => {
-        itemRefs.current[index] = element;
-      },
       tabIndex: boundedActiveIndex === index ? 0 : -1,
       'data-roving-item': true,
       'data-keyboard-active': boundedActiveIndex === index ? true : undefined,
@@ -40,9 +37,14 @@ export function useRovingFocus({ itemCount, initialIndex = 0 }: UseRovingFocusOp
     [boundedActiveIndex],
   );
 
+  const registerItem = useCallback((index: number, element: HTMLElement | null) => {
+    itemRefs.current[index] = element;
+  }, []);
+
   return {
     activeIndex: boundedActiveIndex,
     focusIndex,
     getItemProps,
+    registerItem,
   };
 }
