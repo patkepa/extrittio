@@ -148,7 +148,12 @@ export const FleetGraphCanvas = memo(
       graphActionsRef,
     );
 
-    const { handleEngineStop } = useForceSimulation(graphRef, updateNodeBounds, hasInitialFit);
+    const { handleEngineStop } = useForceSimulation(
+      graphRef,
+      graphData,
+      updateNodeBounds,
+      hasInitialFit,
+    );
 
     const {
       shiftHeld,

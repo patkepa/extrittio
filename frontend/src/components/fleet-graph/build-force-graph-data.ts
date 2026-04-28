@@ -27,6 +27,10 @@ export interface GraphNode {
   // Cross-linked by buildForceGraphData after construction
   neighbors: GraphNode[];
   links: GraphLink[];
+  // Stable force targets used to keep large fleets readable.
+  layoutX?: number;
+  layoutY?: number;
+  layoutRadius?: number;
   // D3 adds these at runtime
   x?: number;
   y?: number;
@@ -40,6 +44,55 @@ export interface GraphLink {
 export interface GraphData {
   nodes: GraphNode[];
   links: GraphLink[];
+}
+
+const FLEET_SPACING = 620;
+const STRUCTURED_LAYOUT_MIN_DEVICES = 11;
+const DEVICE_RING_START_RADIUS = 120;
+const DEVICE_RING_STEP = 58;
+const DEVICE_RING_MIN_SPACING = 42;
+
+function getFleetAnchor(index: number, total: number): { x: number; y: number } {
+  if (total <= 1) return { x: 0, y: 0 };
+
+  const columns = Math.ceil(Math.sqrt(total));
+  const rows = Math.ceil(total / columns);
+  const col = index % columns;
+  const row = Math.floor(index / columns);
+
+  return {
+    x: (col - (columns - 1) / 2) * FLEET_SPACING,
+    y: (row - (rows - 1) / 2) * FLEET_SPACING,
+  };
+}
+
+function getRingPosition(
+  index: number,
+  total: number,
+  center: { x: number; y: number },
+): { x: number; y: number; radius: number } {
+  let remaining = index;
+  let ring = 0;
+
+  while (true) {
+    const radius = DEVICE_RING_START_RADIUS + ring * DEVICE_RING_STEP;
+    const capacity = Math.max(8, Math.floor((2 * Math.PI * radius) / DEVICE_RING_MIN_SPACING));
+
+    if (remaining < capacity) {
+      const devicesOnRing = Math.min(capacity, total - (index - remaining));
+      const angleStep = (2 * Math.PI) / devicesOnRing;
+      const angle = remaining * angleStep - Math.PI / 2 + (ring % 2 === 0 ? 0 : angleStep / 2);
+
+      return {
+        x: center.x + Math.cos(angle) * radius,
+        y: center.y + Math.sin(angle) * radius,
+        radius,
+      };
+    }
+
+    remaining -= capacity;
+    ring += 1;
+  }
 }
 
 export function buildForceGraphData(
@@ -58,10 +111,43 @@ export function buildForceGraphData(
     }
   }
 
+  const devicesByFleet = new Map<string, Device[]>();
+  for (const device of devices) {
+    const fleetNodeId = device.fleet_id != null ? `fleet-${device.fleet_id}` : 'fleet-unassigned';
+    const groupedDevices = devicesByFleet.get(fleetNodeId);
+    if (groupedDevices) {
+      groupedDevices.push(device);
+    } else {
+      devicesByFleet.set(fleetNodeId, [device]);
+    }
+  }
+
+  const fleetNodeIds = [
+    ...fleets.map((fleet) => `fleet-${fleet.id}`),
+    ...(devicesByFleet.has('fleet-unassigned') ? ['fleet-unassigned'] : []),
+  ];
+  const structuredFleetNodeIds = new Set(
+    fleetNodeIds.filter(
+      (nodeId) => (devicesByFleet.get(nodeId)?.length ?? 0) >= STRUCTURED_LAYOUT_MIN_DEVICES,
+    ),
+  );
+
+  const fleetAnchors = new Map<string, { x: number; y: number }>();
+  Array.from(structuredFleetNodeIds).forEach((nodeId, index) => {
+    const prev = prevNodeMap.get(nodeId);
+    const fallback = getFleetAnchor(index, structuredFleetNodeIds.size);
+    fleetAnchors.set(nodeId, {
+      x: prev?.layoutX ?? fallback.x,
+      y: prev?.layoutY ?? fallback.y,
+    });
+  });
+
   // Fleet hub nodes
   for (const fleet of fleets) {
     const nodeId = `fleet-${fleet.id}`;
     const prev = prevNodeMap.get(nodeId);
+    const anchor = fleetAnchors.get(nodeId);
+    const usesStructuredLayout = structuredFleetNodeIds.has(nodeId) && anchor != null;
     const node: GraphNode = {
       ...prev,
       id: nodeId,
@@ -72,10 +158,16 @@ export function buildForceGraphData(
       deviceCount: fleet.device_count,
       neighbors: [],
       links: [],
+      layoutX: usesStructuredLayout ? anchor.x : undefined,
+      layoutY: usesStructuredLayout ? anchor.y : undefined,
+      layoutRadius: usesStructuredLayout ? 0 : undefined,
     };
     if (prev) {
       node.x = prev.x;
       node.y = prev.y;
+    } else if (usesStructuredLayout) {
+      node.x = anchor.x;
+      node.y = anchor.y;
     }
     nodes.push(node);
     nodeMap.set(node.id, node);
@@ -86,6 +178,8 @@ export function buildForceGraphData(
   if (hasUnassigned) {
     const nodeId = 'fleet-unassigned';
     const prev = prevNodeMap.get(nodeId);
+    const anchor = fleetAnchors.get(nodeId);
+    const usesStructuredLayout = structuredFleetNodeIds.has(nodeId) && anchor != null;
     const node: GraphNode = {
       ...prev,
       id: nodeId,
@@ -96,13 +190,31 @@ export function buildForceGraphData(
       deviceCount: devices.filter((d) => d.fleet_id == null).length,
       neighbors: [],
       links: [],
+      layoutX: usesStructuredLayout ? anchor.x : undefined,
+      layoutY: usesStructuredLayout ? anchor.y : undefined,
+      layoutRadius: usesStructuredLayout ? 0 : undefined,
     };
     if (prev) {
       node.x = prev.x;
       node.y = prev.y;
+    } else if (usesStructuredLayout) {
+      node.x = anchor.x;
+      node.y = anchor.y;
     }
     nodes.push(node);
     nodeMap.set(node.id, node);
+  }
+
+  const deviceLayoutById = new Map<string, { x: number; y: number; radius: number }>();
+  for (const [fleetNodeId, groupedDevices] of devicesByFleet) {
+    if (!structuredFleetNodeIds.has(fleetNodeId)) continue;
+    const anchor = fleetAnchors.get(fleetNodeId);
+    if (!anchor) continue;
+
+    groupedDevices.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+    groupedDevices.forEach((device, index) => {
+      deviceLayoutById.set(device.id, getRingPosition(index, groupedDevices.length, anchor));
+    });
   }
 
   // Device nodes + links
@@ -113,6 +225,7 @@ export function buildForceGraphData(
     const prev = prevNodeMap.get(nodeId);
     const lastSeenTimestamp = device.last_seen_at ? new Date(device.last_seen_at).getTime() : NaN;
     const uptimeSeconds = device.uptime_seconds ?? 0;
+    const layout = deviceLayoutById.get(device.id);
 
     const node: GraphNode = {
       ...prev,
@@ -130,10 +243,16 @@ export function buildForceGraphData(
       uptimeArcAngle: getUptimeArcAngle(uptimeSeconds),
       neighbors: [],
       links: [],
+      layoutX: layout?.x,
+      layoutY: layout?.y,
+      layoutRadius: layout?.radius,
     };
     if (prev) {
       node.x = prev.x;
       node.y = prev.y;
+    } else if (layout) {
+      node.x = layout.x;
+      node.y = layout.y;
     }
     nodes.push(node);
     nodeMap.set(node.id, node);
