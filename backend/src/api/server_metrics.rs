@@ -161,9 +161,7 @@ pub(crate) async fn get_metrics_history(
     let since = parse_since(params.since.as_deref())?;
     let resolution = params.resolution.unwrap_or(10);
     if resolution < 10 {
-        return Err(AppError::BadRequest(
-            "resolution must be >= 10".into(),
-        ));
+        return Err(AppError::BadRequest("resolution must be >= 10".into()));
     }
 
     let response = run_db(&state.db_pool, move |conn| {
@@ -233,13 +231,10 @@ fn parse_since(since_str: Option<&str>) -> Result<NaiveDateTime, AppError> {
         Some(s) => {
             let dt = s
                 .parse::<NaiveDateTime>()
-                .or_else(|_| {
-                    chrono::DateTime::parse_from_rfc3339(s).map(|dt| dt.naive_utc())
-                })
+                .or_else(|_| chrono::DateTime::parse_from_rfc3339(s).map(|dt| dt.naive_utc()))
                 .map_err(|_| {
                     AppError::BadRequest(
-                        "Invalid date format, expected ISO 8601 (e.g. 2025-01-01T00:00:00)"
-                            .into(),
+                        "Invalid date format, expected ISO 8601 (e.g. 2025-01-01T00:00:00)".into(),
                     )
                 })?;
             Ok(dt)

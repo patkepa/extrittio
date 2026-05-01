@@ -13,7 +13,9 @@ pub fn get_config(
     device_id: &str,
 ) -> Result<Option<DeviceConfig>, AppError> {
     if !device_repo::device_exists(conn, device_id)? {
-        return Err(AppError::NotFound(format!("Device '{device_id}' not found")));
+        return Err(AppError::NotFound(format!(
+            "Device '{device_id}' not found"
+        )));
     }
     Ok(config_repo::find_config(conn, device_id)?)
 }
@@ -27,7 +29,9 @@ pub fn merge_and_update(
     patch: &Map<String, Value>,
 ) -> Result<DeviceConfig, AppError> {
     if !device_repo::device_exists(conn, device_id)? {
-        return Err(AppError::NotFound(format!("Device '{device_id}' not found")));
+        return Err(AppError::NotFound(format!(
+            "Device '{device_id}' not found"
+        )));
     }
 
     let existing = config_repo::find_config(conn, device_id)?;

@@ -50,7 +50,6 @@ pub fn router(max_firmware_size: usize) -> Router<Arc<AppState>> {
         .merge(server_metrics::router())
         .merge(zones::router())
         .merge(
-            SwaggerUi::new("/swagger-ui")
-                .url("/api-docs/openapi.json", openapi::ApiDoc::openapi()),
+            SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", openapi::ApiDoc::openapi()),
         )
 }

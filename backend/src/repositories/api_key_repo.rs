@@ -1,8 +1,8 @@
+use crate::db::models::{ApiKey, NewApiKey};
+use crate::db::schema::api_keys;
 use diesel::Connection;
 use diesel::PgConnection;
 use diesel::prelude::*;
-use crate::db::models::{ApiKey, NewApiKey};
-use crate::db::schema::api_keys;
 
 pub fn insert_api_key(
     conn: &mut PgConnection,
@@ -31,9 +31,7 @@ pub fn find_api_key_by_hash(
         .optional()
 }
 
-pub fn list_api_keys(
-    conn: &mut PgConnection,
-) -> Result<Vec<ApiKey>, diesel::result::Error> {
+pub fn list_api_keys(conn: &mut PgConnection) -> Result<Vec<ApiKey>, diesel::result::Error> {
     api_keys::table
         .order(api_keys::created_at.desc())
         .select(ApiKey::as_select())
@@ -44,8 +42,7 @@ pub fn delete_api_key(
     conn: &mut PgConnection,
     key_id: i32,
 ) -> Result<usize, diesel::result::Error> {
-    diesel::delete(api_keys::table.filter(api_keys::id.eq(key_id)))
-        .execute(conn)
+    diesel::delete(api_keys::table.filter(api_keys::id.eq(key_id))).execute(conn)
 }
 
 pub fn update_last_used(

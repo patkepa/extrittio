@@ -62,11 +62,31 @@ pub fn handle_telemetry(
         humidity: Some(telemetry_msg.humidity),
         battery_level: Some(telemetry_msg.battery_level),
         custom_json,
-        latitude: if has_location { Some(telemetry_msg.latitude) } else { None },
-        longitude: if has_location { Some(telemetry_msg.longitude) } else { None },
-        speed: if has_location { Some(telemetry_msg.speed) } else { None },
-        altitude: if has_location { Some(telemetry_msg.altitude) } else { None },
-        heading: if has_location { Some(telemetry_msg.heading) } else { None },
+        latitude: if has_location {
+            Some(telemetry_msg.latitude)
+        } else {
+            None
+        },
+        longitude: if has_location {
+            Some(telemetry_msg.longitude)
+        } else {
+            None
+        },
+        speed: if has_location {
+            Some(telemetry_msg.speed)
+        } else {
+            None
+        },
+        altitude: if has_location {
+            Some(telemetry_msg.altitude)
+        } else {
+            None
+        },
+        heading: if has_location {
+            Some(telemetry_msg.heading)
+        } else {
+            None
+        },
     };
 
     match telemetry_service::record(&mut conn, record) {

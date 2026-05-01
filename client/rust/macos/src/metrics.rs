@@ -20,7 +20,9 @@ impl MetricsCollector {
         let networks = Networks::new_with_refreshed_list();
 
         let battery_manager = battery::Manager::new()
-            .map_err(|e| tracing::warn!("Battery manager init failed, battery metrics disabled: {e}"))
+            .map_err(|e| {
+                tracing::warn!("Battery manager init failed, battery metrics disabled: {e}")
+            })
             .ok();
 
         Self {
@@ -89,7 +91,9 @@ impl MetricsCollector {
                 "battery_cycles".into(),
                 bat.cycle_count().unwrap_or(0).to_string(),
             );
-            let health = bat.state_of_health().get::<battery::units::ratio::percent>();
+            let health = bat
+                .state_of_health()
+                .get::<battery::units::ratio::percent>();
             m.insert("battery_health_percent".into(), format!("{health:.1}"));
         } else {
             // Desktop Macs (Mac Mini/Studio/Pro) — graceful degradation per spec
@@ -99,10 +103,7 @@ impl MetricsCollector {
         }
 
         // System info
-        m.insert(
-            "system_uptime_secs".into(),
-            System::uptime().to_string(),
-        );
+        m.insert("system_uptime_secs".into(), System::uptime().to_string());
         m.insert(
             "hostname".into(),
             System::host_name().unwrap_or_else(|| "unknown".into()),

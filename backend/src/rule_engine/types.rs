@@ -108,6 +108,12 @@ pub struct CachedZone {
 
 #[derive(Debug, Clone)]
 pub enum ZoneGeometry {
-    Circle { center_lat: f64, center_lon: f64, radius_meters: f64 },
-    Polygon { points: Vec<(f64, f64)> },
+    Circle {
+        center_lat: f64,
+        center_lon: f64,
+        radius_meters: f64,
+    },
+    Polygon {
+        points: Vec<(f64, f64)>,
+    },
 }

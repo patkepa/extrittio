@@ -126,10 +126,7 @@ pub fn list_commands(
 }
 
 /// Mark stale commands as timed out.
-pub fn timeout_stale(
-    conn: &mut PgConnection,
-    timeout_secs: u64,
-) -> Result<usize, AppError> {
+pub fn timeout_stale(conn: &mut PgConnection, timeout_secs: u64) -> Result<usize, AppError> {
     #[allow(clippy::cast_possible_wrap)]
     let cutoff = chrono::Utc::now().naive_utc() - chrono::TimeDelta::seconds(timeout_secs as i64);
     let now = chrono::Utc::now().naive_utc();

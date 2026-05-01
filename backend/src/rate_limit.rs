@@ -56,7 +56,9 @@ impl RateLimiter {
     pub fn cleanup(&self) {
         let now = Instant::now();
         self.state.retain(|_, timestamps| {
-            timestamps.back().is_some_and(|&t| now.duration_since(t) < self.window)
+            timestamps
+                .back()
+                .is_some_and(|&t| now.duration_since(t) < self.window)
         });
     }
 }
@@ -69,7 +71,10 @@ impl RateLimiter {
 /// the reverse proxy and it overwrites the header.
 fn extract_client_ip(request: &Request) -> IpAddr {
     // Prefer the real socket address injected by axum's ConnectInfo
-    if let Some(connect_info) = request.extensions().get::<axum::extract::ConnectInfo<std::net::SocketAddr>>() {
+    if let Some(connect_info) = request
+        .extensions()
+        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+    {
         return connect_info.0.ip();
     }
 

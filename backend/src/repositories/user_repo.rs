@@ -34,10 +34,7 @@ pub fn find_user_by_username(
         .first(conn)
 }
 
-pub fn insert_user(
-    conn: &mut PgConnection,
-    user: &NewUser,
-) -> Result<User, diesel::result::Error> {
+pub fn insert_user(conn: &mut PgConnection, user: &NewUser) -> Result<User, diesel::result::Error> {
     conn.transaction(|conn| {
         diesel::insert_into(users::table)
             .values(user)
@@ -66,9 +63,6 @@ pub fn update_password(
     Ok(())
 }
 
-pub fn find_user_by_id(
-    conn: &mut PgConnection,
-    id: i32,
-) -> Result<User, diesel::result::Error> {
+pub fn find_user_by_id(conn: &mut PgConnection, id: i32) -> Result<User, diesel::result::Error> {
     users::table.find(id).select(User::as_select()).first(conn)
 }

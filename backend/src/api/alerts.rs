@@ -75,13 +75,17 @@ fn to_alert_response(alert: crate::db::models::Alert) -> AlertResponse {
         status: alert.status,
         message: alert.message,
         triggered_value: alert.triggered_value,
-        resolved_at: alert
-            .resolved_at
-            .map(|dt| DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc).to_rfc3339()),
-        acknowledged_at: alert
-            .acknowledged_at
-            .map(|dt| DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc).to_rfc3339()),
-        created_at: DateTime::<chrono::Utc>::from_naive_utc_and_offset(alert.created_at, chrono::Utc).to_rfc3339(),
+        resolved_at: alert.resolved_at.map(|dt| {
+            DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc).to_rfc3339()
+        }),
+        acknowledged_at: alert.acknowledged_at.map(|dt| {
+            DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc).to_rfc3339()
+        }),
+        created_at: DateTime::<chrono::Utc>::from_naive_utc_and_offset(
+            alert.created_at,
+            chrono::Utc,
+        )
+        .to_rfc3339(),
     }
 }
 
@@ -96,7 +100,10 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/api/v1/alerts/{id}", get(get_alert))
         .route("/api/v1/alerts/{id}/acknowledge", put(acknowledge_alert))
         .route("/api/v1/alerts/{id}/resolve", put(resolve_alert_handler))
-        .route("/api/v1/alerts/{id}/reactivate", put(reactivate_alert_handler))
+        .route(
+            "/api/v1/alerts/{id}/reactivate",
+            put(reactivate_alert_handler),
+        )
         .route("/api/v1/alerts/bulk-acknowledge", put(bulk_acknowledge))
         .route("/api/v1/alerts/bulk-resolve", put(bulk_resolve))
         .route("/api/v1/alerts/bulk-reactivate", put(bulk_reactivate))
@@ -128,7 +135,9 @@ pub(crate) async fn list_alerts(
         )?;
 
         let data = alerts.into_iter().map(to_alert_response).collect();
-        Ok(pagination::PaginatedResponse::new(data, total, limit, offset))
+        Ok(pagination::PaginatedResponse::new(
+            data, total, limit, offset,
+        ))
     })
     .await?;
 
@@ -140,8 +149,16 @@ pub(crate) async fn get_summary(
 ) -> Result<Json<AlertSummary>, AppError> {
     let rows = run_db(&state.db_pool, move |conn| alert_service::summary(conn)).await?;
 
-    let mut active = AlertSeverityCounts { info: 0, warning: 0, critical: 0 };
-    let mut acknowledged = AlertSeverityCounts { info: 0, warning: 0, critical: 0 };
+    let mut active = AlertSeverityCounts {
+        info: 0,
+        warning: 0,
+        critical: 0,
+    };
+    let mut acknowledged = AlertSeverityCounts {
+        info: 0,
+        warning: 0,
+        critical: 0,
+    };
 
     for (status, severity, count) in &rows {
         match status.as_str() {
@@ -163,15 +180,21 @@ pub(crate) async fn get_summary(
 
     let total_active = active.info + active.warning + active.critical;
 
-    Ok(Json(AlertSummary { active, acknowledged, total_active }))
+    Ok(Json(AlertSummary {
+        active,
+        acknowledged,
+        total_active,
+    }))
 }
 
 pub(crate) async fn get_alert(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<AlertResponse>, AppError> {
-    let alert =
-        run_db(&state.db_pool, move |conn| alert_service::get_alert(conn, &id)).await?;
+    let alert = run_db(&state.db_pool, move |conn| {
+        alert_service::get_alert(conn, &id)
+    })
+    .await?;
     Ok(Json(to_alert_response(alert)))
 }
 
@@ -268,8 +291,12 @@ pub(crate) async fn bulk_resolve(
     if let Ok(mut guard) = state.rule_cache.write() {
         for a in &results {
             if let Some(rule_id) = &a.rule_id {
-                guard.active_alerts.remove(&(rule_id.clone(), a.device_id.clone()));
-                guard.cooldowns.insert((rule_id.clone(), a.device_id.clone()), now);
+                guard
+                    .active_alerts
+                    .remove(&(rule_id.clone(), a.device_id.clone()));
+                guard
+                    .cooldowns
+                    .insert((rule_id.clone(), a.device_id.clone()), now);
                 cooldown_entries.push((rule_id.clone(), a.device_id.clone()));
             }
         }
@@ -309,7 +336,9 @@ pub(crate) async fn reactivate_alert_handler(
             guard
                 .active_alerts
                 .insert((rule_id.clone(), alert.device_id.clone()), alert.id.clone());
-            guard.cooldowns.remove(&(rule_id.clone(), alert.device_id.clone()));
+            guard
+                .cooldowns
+                .remove(&(rule_id.clone(), alert.device_id.clone()));
         }
     }
 
@@ -339,7 +368,9 @@ pub(crate) async fn bulk_reactivate(
                 guard
                     .active_alerts
                     .insert((rule_id.clone(), a.device_id.clone()), a.id.clone());
-                guard.cooldowns.remove(&(rule_id.clone(), a.device_id.clone()));
+                guard
+                    .cooldowns
+                    .remove(&(rule_id.clone(), a.device_id.clone()));
             }
         }
     }

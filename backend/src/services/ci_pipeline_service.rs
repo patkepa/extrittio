@@ -29,21 +29,20 @@ pub fn ingest(
     params: CiIngestParams,
 ) -> Result<(i32, String, String), AppError> {
     // Look up API key
-    let api_key = api_key_repo::find_api_key_by_hash(conn, key_hash)?
-        .ok_or(AppError::Unauthorized)?;
+    let api_key =
+        api_key_repo::find_api_key_by_hash(conn, key_hash)?.ok_or(AppError::Unauthorized)?;
 
     // Update last_used_at
     let _ = api_key_repo::update_last_used(conn, api_key.id);
 
     // Resolve device type by name
-    let device_type =
-        device_type_repo::find_device_type_by_name(conn, &params.device_type_name)?
-            .ok_or_else(|| {
-                AppError::NotFound(format!(
-                    "Device type '{}' not found",
-                    params.device_type_name
-                ))
-            })?;
+    let device_type = device_type_repo::find_device_type_by_name(conn, &params.device_type_name)?
+        .ok_or_else(|| {
+        AppError::NotFound(format!(
+            "Device type '{}' not found",
+            params.device_type_name
+        ))
+    })?;
 
     // Check scope
     if let Some(scoped_id) = api_key.device_type_id {

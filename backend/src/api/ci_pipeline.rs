@@ -1,8 +1,8 @@
 use axum::{
+    Json, Router,
     extract::State,
     http::{HeaderMap, StatusCode},
     routing::post,
-    Json, Router,
 };
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
@@ -12,7 +12,7 @@ use utoipa::ToSchema;
 use crate::api_key_util;
 use crate::error::AppError;
 use crate::services::ci_pipeline_service::{self, CiIngestParams};
-use crate::state::{run_db, AppState};
+use crate::state::{AppState, run_db};
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CiIngestRequest {
@@ -45,9 +45,7 @@ fn extract_api_key(headers: &HeaderMap) -> Result<String, AppError> {
         .and_then(|v| v.to_str().ok())
         .ok_or(AppError::Unauthorized)?;
 
-    let key = auth
-        .strip_prefix("Bearer ")
-        .ok_or(AppError::Unauthorized)?;
+    let key = auth.strip_prefix("Bearer ").ok_or(AppError::Unauthorized)?;
 
     if !key.starts_with("extr_") {
         return Err(AppError::Unauthorized);
@@ -72,8 +70,7 @@ async fn ci_ingest(
 
     // 3. Validate required fields
     if body.artifact_url.is_empty()
-        || (!body.artifact_url.starts_with("http://")
-            && !body.artifact_url.starts_with("https://"))
+        || (!body.artifact_url.starts_with("http://") && !body.artifact_url.starts_with("https://"))
     {
         return Err(AppError::UnprocessableEntity(
             "artifact_url must be a valid http:// or https:// URL".into(),
@@ -87,13 +84,9 @@ async fn ci_ingest(
         .map(|ts| {
             NaiveDateTime::parse_from_str(ts, "%Y-%m-%dT%H:%M:%S")
                 .or_else(|_| NaiveDateTime::parse_from_str(ts, "%Y-%m-%dT%H:%M:%SZ"))
-                .or_else(|_| {
-                    chrono::DateTime::parse_from_rfc3339(ts).map(|dt| dt.naive_utc())
-                })
+                .or_else(|_| chrono::DateTime::parse_from_rfc3339(ts).map(|dt| dt.naive_utc()))
                 .map_err(|_| {
-                    AppError::UnprocessableEntity(
-                        "build_timestamp must be ISO 8601 format".into(),
-                    )
+                    AppError::UnprocessableEntity("build_timestamp must be ISO 8601 format".into())
                 })
         })
         .transpose()?;

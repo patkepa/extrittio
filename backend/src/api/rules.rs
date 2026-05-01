@@ -134,8 +134,16 @@ fn to_rule_response(details: rule_service::RuleWithDetails) -> Result<RuleRespon
         cooldown_seconds: rule.cooldown_seconds,
         conditions,
         actions,
-        created_at: DateTime::<chrono::Utc>::from_naive_utc_and_offset(rule.created_at, chrono::Utc).to_rfc3339(),
-        updated_at: DateTime::<chrono::Utc>::from_naive_utc_and_offset(rule.updated_at, chrono::Utc).to_rfc3339(),
+        created_at: DateTime::<chrono::Utc>::from_naive_utc_and_offset(
+            rule.created_at,
+            chrono::Utc,
+        )
+        .to_rfc3339(),
+        updated_at: DateTime::<chrono::Utc>::from_naive_utc_and_offset(
+            rule.updated_at,
+            chrono::Utc,
+        )
+        .to_rfc3339(),
     })
 }
 
@@ -172,7 +180,9 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/api/v1/rules", get(list_rules).post(create_rule))
         .route(
             "/api/v1/rules/{id}",
-            get(get_rule).put(update_rule_handler).delete(delete_rule_handler),
+            get(get_rule)
+                .put(update_rule_handler)
+                .delete(delete_rule_handler),
         )
         .route("/api/v1/rules/{id}/enabled", put(toggle_rule))
 }

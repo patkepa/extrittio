@@ -72,14 +72,21 @@ pub fn list(
     limit: i64,
     offset: i64,
 ) -> Result<(Vec<firmware_repo::FirmwareUpdateRow>, i64), AppError> {
-    Ok(firmware_repo::list_firmware_updates(conn, device_type_id, limit, offset)?)
+    Ok(firmware_repo::list_firmware_updates(
+        conn,
+        device_type_id,
+        limit,
+        offset,
+    )?)
 }
 
 /// Delete a firmware update by ID.
 pub fn delete(conn: &mut PgConnection, id: i32) -> Result<(), AppError> {
     let deleted = firmware_repo::delete_firmware_update(conn, id)?;
     if !deleted {
-        return Err(AppError::NotFound(format!("Firmware update {id} not found")));
+        return Err(AppError::NotFound(format!(
+            "Firmware update {id} not found"
+        )));
     }
     Ok(())
 }

@@ -93,8 +93,7 @@ pub fn install(device_id: Option<&str>, connect: Option<&str>) {
             .unwrap_or_else(|e| panic!("Failed to create {}: {e}", parent.display()));
     }
 
-    std::fs::write(&plist, &plist_content)
-        .unwrap_or_else(|e| panic!("Failed to write plist: {e}"));
+    std::fs::write(&plist, &plist_content).unwrap_or_else(|e| panic!("Failed to write plist: {e}"));
     println!("Plist written to {}", plist.display());
 
     // 4. Load the agent
@@ -133,15 +132,11 @@ pub fn uninstall() {
     }
 
     if plist.exists() {
-        std::fs::remove_file(&plist)
-            .unwrap_or_else(|e| eprintln!("Failed to remove plist: {e}"));
+        std::fs::remove_file(&plist).unwrap_or_else(|e| eprintln!("Failed to remove plist: {e}"));
         println!("Plist removed.");
     }
 
-    println!(
-        "Config preserved at {}",
-        Config::config_dir().display()
-    );
+    println!("Config preserved at {}", Config::config_dir().display());
 }
 
 #[cfg(test)]

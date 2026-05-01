@@ -67,10 +67,7 @@ pub fn list_alerts(
 // Single record lookup
 // ---------------------------------------------------------------------------
 
-pub fn find_alert(
-    conn: &mut PgConnection,
-    id: &str,
-) -> Result<Alert, diesel::result::Error> {
+pub fn find_alert(conn: &mut PgConnection, id: &str) -> Result<Alert, diesel::result::Error> {
     alerts::table
         .find(id)
         .select(Alert::as_select())
@@ -123,11 +120,13 @@ pub fn count_by_status_and_severity(
 /// Load all alerts whose status is "active" or "acknowledged".
 /// Both states represent alerts the rule engine should track to avoid creating
 /// duplicate alerts for the same rule+device pair.
-pub fn load_active_alerts(
-    conn: &mut PgConnection,
-) -> Result<Vec<Alert>, diesel::result::Error> {
+pub fn load_active_alerts(conn: &mut PgConnection) -> Result<Vec<Alert>, diesel::result::Error> {
     alerts::table
-        .filter(alerts::status.eq("active").or(alerts::status.eq("acknowledged")))
+        .filter(
+            alerts::status
+                .eq("active")
+                .or(alerts::status.eq("acknowledged")),
+        )
         .select(Alert::as_select())
         .load(conn)
 }

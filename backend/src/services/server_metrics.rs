@@ -6,10 +6,10 @@ use sysinfo::{Disks, Networks, System};
 use tokio::time::{Duration, interval};
 use tracing::{info, warn};
 
-use crate::db::models::{NewAppMetric, NewServerMetric};
-use crate::repositories::server_metrics_repo;
 use crate::db::models::{AppMetric, ServerMetric};
+use crate::db::models::{NewAppMetric, NewServerMetric};
 use crate::error::AppError;
+use crate::repositories::server_metrics_repo;
 use crate::repositories::server_metrics_repo::{DownsampledAppMetric, DownsampledServerMetric};
 use crate::state::{AppState, DbPool};
 
@@ -62,8 +62,16 @@ pub async fn run_system_metrics_collector(db_pool: DbPool) {
 
         let curr_rx: u64 = networks.iter().map(|(_, n)| n.total_received()).sum();
         let curr_tx: u64 = networks.iter().map(|(_, n)| n.total_transmitted()).sum();
-        let rx_delta = if first_sample { 0 } else { curr_rx.saturating_sub(prev_rx) };
-        let tx_delta = if first_sample { 0 } else { curr_tx.saturating_sub(prev_tx) };
+        let rx_delta = if first_sample {
+            0
+        } else {
+            curr_rx.saturating_sub(prev_rx)
+        };
+        let tx_delta = if first_sample {
+            0
+        } else {
+            curr_tx.saturating_sub(prev_tx)
+        };
         prev_rx = curr_rx;
         prev_tx = curr_tx;
         first_sample = false;
@@ -84,15 +92,13 @@ pub async fn run_system_metrics_collector(db_pool: DbPool) {
         };
 
         let pool = db_pool.clone();
-        let _ = tokio::task::spawn_blocking(move || {
-            match pool.get() {
-                Ok(mut conn) => {
-                    if let Err(e) = server_metrics_repo::insert_server_metric(&mut conn, &record) {
-                        warn!("Failed to insert server metric: {}", e);
-                    }
+        let _ = tokio::task::spawn_blocking(move || match pool.get() {
+            Ok(mut conn) => {
+                if let Err(e) = server_metrics_repo::insert_server_metric(&mut conn, &record) {
+                    warn!("Failed to insert server metric: {}", e);
                 }
-                Err(e) => warn!("Failed to get DB connection for server metrics: {}", e),
             }
+            Err(e) => warn!("Failed to get DB connection for server metrics: {}", e),
         })
         .await;
     }
@@ -104,8 +110,7 @@ pub async fn run_app_metrics_flusher(state: Arc<AppState>) {
     loop {
         tick.tick().await;
 
-        let (req_count, err_count, latency_sum_micros, samples) =
-            state.metrics_accumulator.drain();
+        let (req_count, err_count, latency_sum_micros, samples) = state.metrics_accumulator.drain();
 
         let zenoh_in = state.zenoh_metrics.messages_in.swap(0, Ordering::Relaxed);
         let zenoh_out = state.zenoh_metrics.messages_out.swap(0, Ordering::Relaxed);
@@ -134,15 +139,13 @@ pub async fn run_app_metrics_flusher(state: Arc<AppState>) {
         };
 
         let pool = state.db_pool.clone();
-        let _ = tokio::task::spawn_blocking(move || {
-            match pool.get() {
-                Ok(mut conn) => {
-                    if let Err(e) = server_metrics_repo::insert_app_metric(&mut conn, &record) {
-                        warn!("Failed to insert app metric: {}", e);
-                    }
+        let _ = tokio::task::spawn_blocking(move || match pool.get() {
+            Ok(mut conn) => {
+                if let Err(e) = server_metrics_repo::insert_app_metric(&mut conn, &record) {
+                    warn!("Failed to insert app metric: {}", e);
                 }
-                Err(e) => warn!("Failed to get DB connection for app metrics: {}", e),
             }
+            Err(e) => warn!("Failed to get DB connection for app metrics: {}", e),
         })
         .await;
     }
@@ -157,22 +160,20 @@ pub async fn run_metrics_retention(db_pool: DbPool) {
         let cutoff = Utc::now().naive_utc() - chrono::TimeDelta::hours(24);
 
         let pool = db_pool.clone();
-        let _ = tokio::task::spawn_blocking(move || {
-            match pool.get() {
-                Ok(mut conn) => {
-                    match server_metrics_repo::delete_old_server_metrics(&mut conn, cutoff) {
-                        Ok(n) if n > 0 => info!("Pruned {} old server_metrics rows", n),
-                        Err(e) => warn!("Failed to prune server_metrics: {}", e),
-                        _ => {}
-                    }
-                    match server_metrics_repo::delete_old_app_metrics(&mut conn, cutoff) {
-                        Ok(n) if n > 0 => info!("Pruned {} old app_metrics rows", n),
-                        Err(e) => warn!("Failed to prune app_metrics: {}", e),
-                        _ => {}
-                    }
+        let _ = tokio::task::spawn_blocking(move || match pool.get() {
+            Ok(mut conn) => {
+                match server_metrics_repo::delete_old_server_metrics(&mut conn, cutoff) {
+                    Ok(n) if n > 0 => info!("Pruned {} old server_metrics rows", n),
+                    Err(e) => warn!("Failed to prune server_metrics: {}", e),
+                    _ => {}
                 }
-                Err(e) => warn!("Failed to get DB connection for metrics retention: {}", e),
+                match server_metrics_repo::delete_old_app_metrics(&mut conn, cutoff) {
+                    Ok(n) if n > 0 => info!("Pruned {} old app_metrics rows", n),
+                    Err(e) => warn!("Failed to prune app_metrics: {}", e),
+                    _ => {}
+                }
             }
+            Err(e) => warn!("Failed to get DB connection for metrics retention: {}", e),
         })
         .await;
     }

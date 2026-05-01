@@ -47,10 +47,7 @@ pub fn insert_device_type(
         .first(conn)
 }
 
-pub fn delete_device_type(
-    conn: &mut PgConnection,
-    id: i32,
-) -> Result<bool, diesel::result::Error> {
+pub fn delete_device_type(conn: &mut PgConnection, id: i32) -> Result<bool, diesel::result::Error> {
     let rows = diesel::delete(device_types::table.find(id)).execute(conn)?;
     Ok(rows > 0)
 }

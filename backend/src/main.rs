@@ -62,8 +62,11 @@ async fn main() -> anyhow::Result<()> {
 
     // Rule cache — built from the current DB state
     let rule_cache = {
-        let mut conn = db_pool.get().context("Failed to get DB connection for rule cache")?;
-        services::rule_service::build_cache(&mut conn).context("Failed to build initial rule cache")?
+        let mut conn = db_pool
+            .get()
+            .context("Failed to get DB connection for rule cache")?;
+        services::rule_service::build_cache(&mut conn)
+            .context("Failed to build initial rule cache")?
     };
     let rule_cache = Arc::new(RwLock::new(rule_cache));
 
@@ -108,19 +111,29 @@ async fn main() -> anyhow::Result<()> {
     let sub_cache = state.rule_cache.clone();
     let sub_client = state.http_client.clone();
     tokio::spawn(async move {
-        if let Err(e) =
-            zenoh_handler::subscriber::run_subscriber(
-                subscriber_session, subscriber_pool, subscriber_metrics, sub_cache, sub_client
-            ).await
+        if let Err(e) = zenoh_handler::subscriber::run_subscriber(
+            subscriber_session,
+            subscriber_pool,
+            subscriber_metrics,
+            sub_cache,
+            sub_client,
+        )
+        .await
         {
             tracing::error!("Zenoh subscriber failed: {}. Shutting down.", e);
             std::process::exit(1);
         }
     });
 
-    tokio::spawn(services::server_metrics::run_system_metrics_collector(db_pool.clone()));
-    tokio::spawn(services::server_metrics::run_app_metrics_flusher(state.clone()));
-    tokio::spawn(services::server_metrics::run_metrics_retention(db_pool.clone()));
+    tokio::spawn(services::server_metrics::run_system_metrics_collector(
+        db_pool.clone(),
+    ));
+    tokio::spawn(services::server_metrics::run_app_metrics_flusher(
+        state.clone(),
+    ));
+    tokio::spawn(services::server_metrics::run_metrics_retention(
+        db_pool.clone(),
+    ));
 
     let checker_pool = db_pool.clone();
     let offline_timeout = config.offline_timeout_secs;
@@ -129,7 +142,15 @@ async fn main() -> anyhow::Result<()> {
     let checker_session = zenoh_session.clone();
     let checker_metrics = zenoh_metrics.clone();
     tokio::spawn(async move {
-        background::run_offline_checker(checker_pool, offline_timeout, checker_cache, checker_client, checker_session, checker_metrics).await;
+        background::run_offline_checker(
+            checker_pool,
+            offline_timeout,
+            checker_cache,
+            checker_client,
+            checker_session,
+            checker_metrics,
+        )
+        .await;
     });
 
     let retention_pool = db_pool.clone();
@@ -188,7 +209,9 @@ async fn main() -> anyhow::Result<()> {
     socket
         .set_reuse_address(true)
         .context("Failed to set SO_REUSEADDR")?;
-    socket.set_nodelay(true).context("Failed to set TCP_NODELAY")?;
+    socket
+        .set_nodelay(true)
+        .context("Failed to set TCP_NODELAY")?;
     socket.bind(&addr.into()).context("Failed to bind socket")?;
     socket.listen(1024).context("Failed to listen")?;
     socket

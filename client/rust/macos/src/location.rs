@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
-use objc2::{define_class, msg_send, AnyThread, DefinedClass};
+use objc2::{AnyThread, DefinedClass, define_class, msg_send};
 use objc2_core_location::{
     CLAuthorizationStatus, CLLocation, CLLocationManager, CLLocationManagerDelegate,
 };
@@ -189,9 +189,7 @@ fn run_location_loop(state: Arc<Mutex<Option<LocationData>>>) {
         manager.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
 
         let auth = manager.authorizationStatus();
-        if auth == CLAuthorizationStatus::Denied
-            || auth == CLAuthorizationStatus::Restricted
-        {
+        if auth == CLAuthorizationStatus::Denied || auth == CLAuthorizationStatus::Restricted {
             tracing::warn!(
                 "Location permission denied/restricted — falling back to simulated location"
             );

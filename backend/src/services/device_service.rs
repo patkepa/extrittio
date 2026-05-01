@@ -7,7 +7,9 @@ use tracing::{info, warn};
 
 use crate::db::models::{NewDevice, NewDeviceLog, NewDeviceShadow, NewOtaDeployment, UpdateDevice};
 use crate::error::AppError;
-use crate::repositories::{cert_repo, device_repo, device_type_repo, firmware_repo, log_repo, shadow_repo};
+use crate::repositories::{
+    cert_repo, device_repo, device_type_repo, firmware_repo, log_repo, shadow_repo,
+};
 use crate::services::{cert_service, shadow_service};
 use crate::state::{DbPool, ZenohMetrics, run_db};
 
@@ -102,7 +104,10 @@ pub fn auto_register_device(
         return None;
     }
 
-    info!("Auto-registered device {} as type '{}'", device_id, type_name);
+    info!(
+        "Auto-registered device {} as type '{}'",
+        device_id, type_name
+    );
 
     let _ = log_repo::insert_log(
         conn,
@@ -171,8 +176,14 @@ pub async fn trigger_ota(
     })
     .await?;
 
-    shadow_service::publish_delta_if_nonempty(zenoh_session, &d_id_for_publish, &delta, version, zenoh_metrics)
-        .await;
+    shadow_service::publish_delta_if_nonempty(
+        zenoh_session,
+        &d_id_for_publish,
+        &delta,
+        version,
+        zenoh_metrics,
+    )
+    .await;
 
     Ok(())
 }
@@ -186,7 +197,14 @@ pub fn list_devices(
     limit: i64,
     offset: i64,
 ) -> Result<(Vec<device_repo::DeviceWithJoins>, i64), AppError> {
-    Ok(device_repo::list_devices(conn, status_filter, search_filter, fleet_id_filter, limit, offset)?)
+    Ok(device_repo::list_devices(
+        conn,
+        status_filter,
+        search_filter,
+        fleet_id_filter,
+        limit,
+        offset,
+    )?)
 }
 
 /// Get a single device with joined type and fleet info.
@@ -212,7 +230,9 @@ pub fn update_device(
 pub fn delete_device(conn: &mut PgConnection, device_id: &str) -> Result<(), AppError> {
     let deleted = device_repo::delete_device(conn, device_id)?;
     if !deleted {
-        return Err(AppError::NotFound(format!("Device '{device_id}' not found")));
+        return Err(AppError::NotFound(format!(
+            "Device '{device_id}' not found"
+        )));
     }
     Ok(())
 }
@@ -276,9 +296,20 @@ pub fn list_ota_deployments(
     device_id: &str,
     limit: i64,
     offset: i64,
-) -> Result<(Vec<(crate::db::models::OtaDeployment, crate::db::models::FirmwareUpdate)>, i64), AppError> {
+) -> Result<
+    (
+        Vec<(
+            crate::db::models::OtaDeployment,
+            crate::db::models::FirmwareUpdate,
+        )>,
+        i64,
+    ),
+    AppError,
+> {
     device_repo::find_device(conn, device_id)?;
-    Ok(firmware_repo::list_ota_deployments(conn, device_id, limit, offset)?)
+    Ok(firmware_repo::list_ota_deployments(
+        conn, device_id, limit, offset,
+    )?)
 }
 
 /// Mark a pre-determined list of devices as offline and log the transition.
@@ -330,15 +361,14 @@ pub fn check_offline_devices(
     #[allow(clippy::cast_possible_wrap)]
     let cutoff = chrono::Utc::now().naive_utc() - chrono::TimeDelta::seconds(timeout_secs as i64);
 
-    let (going_offline, count) = conn
-        .transaction::<_, diesel::result::Error, _>(|conn| {
-            let going_offline = device_repo::find_devices_going_offline(conn, cutoff)?;
-            let count = going_offline.len();
-            if count > 0 {
-                device_repo::mark_devices_offline(conn, cutoff)?;
-            }
-            Ok((going_offline, count))
-        })?;
+    let (going_offline, count) = conn.transaction::<_, diesel::result::Error, _>(|conn| {
+        let going_offline = device_repo::find_devices_going_offline(conn, cutoff)?;
+        let count = going_offline.len();
+        if count > 0 {
+            device_repo::mark_devices_offline(conn, cutoff)?;
+        }
+        Ok((going_offline, count))
+    })?;
 
     for device_id in &going_offline {
         let message = format!("Device went offline (no heartbeat for {timeout_secs}s)");
@@ -374,7 +404,9 @@ pub fn update_from_heartbeat(
     } else {
         tracing::warn!(
             "Invalid status '{}' from device {}, defaulting to '{}'",
-            reported_status, device_id, device_status::ONLINE
+            reported_status,
+            device_id,
+            device_status::ONLINE
         );
         device_status::ONLINE.to_string()
     };
@@ -431,9 +463,15 @@ pub fn format_uptime(seconds: Option<i32>) -> Option<String> {
     let hours = (secs % 86400) / 3600;
     let minutes = (secs % 3600) / 60;
     let mut parts = Vec::new();
-    if days > 0 { parts.push(format!("{days}d")); }
-    if hours > 0 { parts.push(format!("{hours}h")); }
-    if minutes > 0 || parts.is_empty() { parts.push(format!("{minutes}m")); }
+    if days > 0 {
+        parts.push(format!("{days}d"));
+    }
+    if hours > 0 {
+        parts.push(format!("{hours}h"));
+    }
+    if minutes > 0 || parts.is_empty() {
+        parts.push(format!("{minutes}m"));
+    }
     Some(parts.join(" "))
 }
 
@@ -442,7 +480,9 @@ pub fn format_last_seen(last_seen: Option<chrono::NaiveDateTime>) -> Option<Stri
     let ts = last_seen?;
     let now = chrono::Utc::now().naive_utc();
     let secs = now.signed_duration_since(ts).num_seconds();
-    if secs < 0 { return Some("just now".to_string()); }
+    if secs < 0 {
+        return Some("just now".to_string());
+    }
     let result = if secs < 60 {
         format!("{secs} seconds ago")
     } else if secs < 3600 {

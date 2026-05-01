@@ -30,3 +30,10 @@ sha2 = { version = "0.10", default-features = false }
 
 [build-dependencies]
 embuild = "0.33"
+
+[patch.crates-io]
+pnet_datalink = { path = "vendor/pnet_datalink" }
+pnet_sys = { path = "vendor/pnet_sys" }
+stabby = { path = "vendor/stabby" }
+stabby-abi = { path = "vendor/stabby-abi" }
+zenoh-util = { path = "vendor/zenoh-util" }

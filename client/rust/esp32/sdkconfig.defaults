@@ -4,5 +4,9 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=32768
 # Use OTA-capable partition table with two app slots for firmware updates
 CONFIG_PARTITION_TABLE_TWO_OTA=y
 
+# ESP32-C6 dev modules are commonly 4 MB or larger. The two-OTA partition
+# table does not fit in ESP-IDF's default 2 MB flash setting.
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
 # Enable pthread support (required by Zenoh runtime)
 CONFIG_PTHREAD_TASK_STACK_SIZE_DEFAULT=8192

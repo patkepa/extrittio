@@ -40,7 +40,11 @@ mod tests {
 
     #[test]
     fn test_step_clamps_temperature() {
-        let mut s = SensorState { temperature: 30.0, humidity: 50.0, battery: 50.0 };
+        let mut s = SensorState {
+            temperature: 30.0,
+            humidity: 50.0,
+            battery: 50.0,
+        };
         s.step(1.0, 0.0, 0.0);
         assert_eq!(s.temperature, 30.0);
 
@@ -58,7 +62,11 @@ mod tests {
 
     #[test]
     fn test_battery_does_not_go_negative() {
-        let mut s = SensorState { temperature: 22.0, humidity: 45.0, battery: 0.01 };
+        let mut s = SensorState {
+            temperature: 22.0,
+            humidity: 45.0,
+            battery: 0.01,
+        };
         s.step(0.0, 0.0, 0.1);
         assert_eq!(s.battery, 0.0);
     }

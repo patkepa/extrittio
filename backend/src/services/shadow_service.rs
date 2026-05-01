@@ -8,8 +8,8 @@ use tracing::warn;
 use crate::db::models::{DeviceShadow, UpdateShadow};
 use crate::error::AppError;
 use crate::repositories::{firmware_repo, shadow_repo};
-use extrittio_common::shadow::{compute_delta as compute_shadow_delta, merge_json};
 use crate::state::{DbPool, ZenohMetrics, run_db};
+use extrittio_common::shadow::{compute_delta as compute_shadow_delta, merge_json};
 
 /// DB-only part of update_desired. Returns the new delta and version so the
 /// caller can publish via Zenoh after the transaction commits.
@@ -67,7 +67,8 @@ pub async fn update_desired(
 
     let (delta, version) = run_db(pool, move |conn| {
         conn.transaction(|conn| update_desired_db(conn, &d_id, &p))
-    }).await?;
+    })
+    .await?;
 
     publish_delta_if_nonempty(zenoh_session, device_id, &delta, version, zenoh_metrics).await;
     Ok(())
@@ -110,7 +111,6 @@ pub fn update_reported(
     })
 }
 
-
 /// Publish a ShadowDelta via Zenoh if the delta is non-empty.
 pub async fn publish_delta_if_nonempty(
     session: &Arc<zenoh::Session>,
@@ -143,18 +143,12 @@ pub async fn publish_delta_if_nonempty(
 }
 
 /// Get the full shadow state for a device.
-pub fn get_shadow(
-    conn: &mut PgConnection,
-    device_id: &str,
-) -> Result<DeviceShadow, AppError> {
+pub fn get_shadow(conn: &mut PgConnection, device_id: &str) -> Result<DeviceShadow, AppError> {
     Ok(shadow_repo::find_shadow(conn, device_id)?)
 }
 
 /// Reset a device's shadow to empty state.
-pub fn delete_shadow(
-    conn: &mut PgConnection,
-    device_id: &str,
-) -> Result<(), AppError> {
+pub fn delete_shadow(conn: &mut PgConnection, device_id: &str) -> Result<(), AppError> {
     let shadow = shadow_repo::find_shadow(conn, device_id)?;
     let now = chrono::Utc::now().naive_utc();
     let empty = Value::Object(serde_json::Map::default());
@@ -208,7 +202,11 @@ pub fn process_ota_from_report(
         };
 
         firmware_repo::update_ota_deployment_status(
-            conn, dep_id, &status, error_msg.as_deref(), completed_at,
+            conn,
+            dep_id,
+            &status,
+            error_msg.as_deref(),
+            completed_at,
         )?;
     }
 

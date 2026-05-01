@@ -75,14 +75,21 @@ pub fn handle_shadow_report(db_pool: &DbPool, payload: &[u8]) {
     );
 
     // Update OTA deployment status if reported state contains ota.status
-    if let Err(e) = shadow_service::process_ota_from_report(&mut conn, &report.device_id, &shadow.reported) {
+    if let Err(e) =
+        shadow_service::process_ota_from_report(&mut conn, &report.device_id, &shadow.reported)
+    {
         warn!("Failed to process OTA from shadow report: {}", e);
     }
 }
 
 /// Decode a `ShadowGet` protobuf message and publish the shadow delta back to
 /// the device if non-empty. DB access runs on a blocking thread.
-pub async fn handle_shadow_get(db_pool: &DbPool, session: &Arc<zenoh::Session>, payload: &[u8], zenoh_metrics: &ZenohMetrics) {
+pub async fn handle_shadow_get(
+    db_pool: &DbPool,
+    session: &Arc<zenoh::Session>,
+    payload: &[u8],
+    zenoh_metrics: &ZenohMetrics,
+) {
     let get_msg = match ShadowGet::decode(payload) {
         Ok(msg) => msg,
         Err(e) => {
@@ -125,8 +132,14 @@ pub async fn handle_shadow_get(db_pool: &DbPool, session: &Arc<zenoh::Session>, 
         return;
     }
 
-    shadow_service::publish_delta_if_nonempty(session, &get_msg.device_id, delta, shadow.version, zenoh_metrics)
-        .await;
+    shadow_service::publish_delta_if_nonempty(
+        session,
+        &get_msg.device_id,
+        delta,
+        shadow.version,
+        zenoh_metrics,
+    )
+    .await;
 
     info!("Shadow get from device {}: sent delta", get_msg.device_id);
 }

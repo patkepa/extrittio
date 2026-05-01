@@ -1,0 +1,63 @@
+#
+# Copyright (c) 2023 ZettaScale Technology
+#
+# This program and the accompanying materials are made available under the
+# terms of the Eclipse Public License 2.0 which is available at
+# http://www.eclipse.org/legal/epl-2.0, or the Apache License, Version 2.0
+# which is available at https://www.apache.org/licenses/LICENSE-2.0.
+#
+# SPDX-License-Identifier: EPL-2.0 OR Apache-2.0
+#
+# Contributors:
+#   Pierre Avital, <pierre.avital@me.com>
+#
+
+[package]
+name = "stabby-abi"
+version = { workspace = true }
+edition = "2021"
+authors = { workspace = true }
+license = { workspace = true }
+categories = { workspace = true }
+repository = { workspace = true }
+readme = { workspace = true }
+description = "stabby's core ABI, you shouldn't add this crate to your dependencies, only `stabby`."
+
+[lints]
+workspace = true
+
+[features]
+default = ["std"]
+std = ["alloc-rs"]
+alloc-rs = []
+experimental-ctypes = ["stabby-macros/experimental-ctypes"]
+libc = ["dep:libc"]
+test = []
+serde = ["dep:serde"]
+
+abi_stable = ["dep:abi_stable"]
+abi_stable-channels = ["abi_stable", "abi_stable/channels"]
+
+# Since there currently isn't any way to construct guaranteed ABI-stable wakers from `core::task::Waker`
+# `stabby::future::Future::poll` may need to allocate in order to provide stable wakers.
+# If you're confident enough that `core::task::Waker`'s ABI will not change between your targetted versions
+# of rustc, you may enable this feature to pass them across the FFI boundary directly.
+# stabby_unsafe_wakers = [] # stabby_unsafe_wakers is no longer a feature, but a compile option: you can enable them using `RUST_FLAGS='--cfg stabby_unsafe_wakers="true"'`
+
+[dependencies]
+stabby-macros.workspace = true
+
+abi_stable = { workspace = true, optional = true }
+libc = { workspace = true, optional = true }
+rustversion = { workspace = true }
+serde = { workspace = true, optional = true, features = ["derive"] }
+sha2-const-stable = { workspace = true }
+
+[dev-dependencies]
+rand = { workspace = true }
+
+[build-dependencies]
+rustc_version = "0.4.1"
+
+[package.metadata.docs.rs]
+rustc-args = ["--cfg", "docsrs"]

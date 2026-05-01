@@ -1,9 +1,4 @@
-use axum::{
-    extract::State,
-    http::StatusCode,
-    routing::get,
-    Extension, Json, Router,
-};
+use axum::{Extension, Json, Router, extract::State, http::StatusCode, routing::get};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -12,7 +7,7 @@ use crate::api_key_util;
 use crate::auth::Claims;
 use crate::error::AppError;
 use crate::services::api_key_service;
-use crate::state::{run_db, AppState};
+use crate::state::{AppState, run_db};
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateApiKeyRequest {

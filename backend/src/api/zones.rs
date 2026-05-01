@@ -110,8 +110,10 @@ pub(crate) async fn get_zone(
     State(state): State<Arc<AppState>>,
     Path(zone_id): Path<String>,
 ) -> Result<Json<ZoneResponse>, AppError> {
-    let zone =
-        run_db(&state.db_pool, move |conn| zone_service::get_zone(conn, &zone_id)).await?;
+    let zone = run_db(&state.db_pool, move |conn| {
+        zone_service::get_zone(conn, &zone_id)
+    })
+    .await?;
 
     Ok(Json(ZoneResponse::try_from(zone)?))
 }

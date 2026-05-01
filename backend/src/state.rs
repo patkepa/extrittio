@@ -47,7 +47,8 @@ impl MetricsAccumulator {
     /// Record a completed request. Called from the metrics middleware.
     pub fn record(&self, latency_micros: u64, is_error: bool) {
         self.request_count.fetch_add(1, Ordering::Relaxed);
-        self.latency_sum_micros.fetch_add(latency_micros, Ordering::Relaxed);
+        self.latency_sum_micros
+            .fetch_add(latency_micros, Ordering::Relaxed);
         if is_error {
             self.error_count.fetch_add(1, Ordering::Relaxed);
         }

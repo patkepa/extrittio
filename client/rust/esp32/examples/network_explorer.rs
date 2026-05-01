@@ -14,6 +14,7 @@ use extrittio_common::{device_status, topics};
 use log::info;
 use prost::Message;
 use serde_json::json;
+use zenoh::Wait;
 
 // Network explorer example for an ESP32-class board running as a WiFi station.
 //
@@ -23,8 +24,8 @@ use serde_json::json;
 // network-specific source for them. The emitted telemetry calls this out.
 
 const DEVICE_ID: &str = "esp32-network-explorer-001";
-const WIFI_SSID: &str = "your-wifi-ssid";
-const WIFI_PASS: &str = "your-wifi-password";
+const WIFI_SSID: &str = "YOUR_WIFI_SSID";
+const WIFI_PASS: &str = "YOUR_WIFI_PASSWORD";
 const FIRMWARE_VERSION: &str = "v1.0.0-network-explorer";
 
 const TELEMETRY_INTERVAL_SECS: u64 = 300;
@@ -116,10 +117,11 @@ fn main() {
     let mut zenoh_cfg = zenoh::Config::default();
     if !ZENOH_CONNECT.is_empty() {
         zenoh_cfg
-            .connect
-            .endpoints
-            .set(vec![ZENOH_CONNECT.parse().expect("Bad Zenoh endpoint")])
-            .expect("Failed to set Zenoh connect endpoints");
+            .insert_json5("connect/endpoints", &format!("[\"{ZENOH_CONNECT}\"]"))
+            .expect("Failed to set Zenoh connect endpoint");
+        zenoh_cfg
+            .insert_json5("scouting/multicast/enabled", "false")
+            .expect("Failed to disable multicast scouting");
     }
 
     let session = zenoh::open(zenoh_cfg)

@@ -9,7 +9,10 @@ pub type DeviceWithJoins = (Device, DeviceType, Option<Fleet>);
 
 type BoxedDeviceQuery<'a> = diesel::dsl::IntoBoxed<
     'a,
-    diesel::dsl::LeftJoin<diesel::dsl::InnerJoin<devices::table, device_types::table>, fleets::table>,
+    diesel::dsl::LeftJoin<
+        diesel::dsl::InnerJoin<devices::table, device_types::table>,
+        fleets::table,
+    >,
     diesel::pg::Pg,
 >;
 
@@ -75,9 +78,7 @@ pub fn resolve_device_ids(
     search_filter: Option<&str>,
     fleet_id_filter: Option<i32>,
 ) -> Result<Vec<String>, diesel::result::Error> {
-    let mut query = devices::table
-        .inner_join(device_types::table)
-        .into_boxed();
+    let mut query = devices::table.inner_join(device_types::table).into_boxed();
 
     if let Some(status) = status_filter {
         query = query.filter(devices::status.eq(status));
@@ -105,10 +106,7 @@ pub fn bulk_update_fleet(
     now: chrono::NaiveDateTime,
 ) -> Result<usize, diesel::result::Error> {
     diesel::update(devices::table.filter(devices::id.eq_any(ids)))
-        .set((
-            devices::fleet_id.eq(fleet_id),
-            devices::updated_at.eq(now),
-        ))
+        .set((devices::fleet_id.eq(fleet_id), devices::updated_at.eq(now)))
         .execute(conn)
 }
 
@@ -117,8 +115,7 @@ pub fn bulk_delete_devices(
     conn: &mut PgConnection,
     ids: &[String],
 ) -> Result<usize, diesel::result::Error> {
-    diesel::delete(devices::table.filter(devices::id.eq_any(ids)))
-        .execute(conn)
+    diesel::delete(devices::table.filter(devices::id.eq_any(ids))).execute(conn)
 }
 
 pub fn find_device_with_joins(
@@ -204,4 +201,3 @@ pub fn mark_devices_offline(
     .set(devices::status.eq("offline"))
     .execute(conn)
 }
-

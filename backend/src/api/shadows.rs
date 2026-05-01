@@ -119,7 +119,14 @@ pub(crate) async fn update_desired(
     Path(id): Path<String>,
     Json(body): Json<UpdateShadowRequest>,
 ) -> Result<Json<ShadowResponse>, AppError> {
-    shadow_service::update_desired(&state.db_pool, &state.zenoh_session, &id, &body.state, &state.zenoh_metrics).await?;
+    shadow_service::update_desired(
+        &state.db_pool,
+        &state.zenoh_session,
+        &id,
+        &body.state,
+        &state.zenoh_metrics,
+    )
+    .await?;
 
     let id_clone = id;
     let response = run_db(&state.db_pool, move |conn| {

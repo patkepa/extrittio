@@ -195,10 +195,7 @@ pub fn evaluate_telemetry(
             continue;
         }
 
-        let conditions_met = rule
-            .conditions
-            .iter()
-            .all(|c| evaluate_condition(c, data));
+        let conditions_met = rule.conditions.iter().all(|c| evaluate_condition(c, data));
 
         let alert_key = (rule.id.clone(), device_id.to_string());
         let existing_alert_id = cache.active_alerts.get(&alert_key).cloned();
@@ -266,8 +263,15 @@ pub fn evaluate_telemetry(
                                 },
                             });
                             let mut headers = std::collections::HashMap::new();
-                            headers.insert("X-Extrittio-Event".to_string(), "rule_triggered".to_string());
-                            actions.push(PendingAction::SendWebhook { url, headers, payload });
+                            headers.insert(
+                                "X-Extrittio-Event".to_string(),
+                                "rule_triggered".to_string(),
+                            );
+                            actions.push(PendingAction::SendWebhook {
+                                url,
+                                headers,
+                                payload,
+                            });
                         }
                         "command" => {
                             let config = &rule_action.config;
@@ -276,10 +280,7 @@ pub fn evaluate_telemetry(
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("")
                                 .to_string();
-                            let params = config
-                                .get("params")
-                                .cloned()
-                                .unwrap_or(Value::Null);
+                            let params = config.get("params").cloned().unwrap_or(Value::Null);
                             actions.push(PendingAction::SendCommand {
                                 device_id: device_id.to_string(),
                                 command,
@@ -402,8 +403,15 @@ pub fn evaluate_status_change(
                                 },
                             });
                             let mut headers = std::collections::HashMap::new();
-                            headers.insert("X-Extrittio-Event".to_string(), "rule_triggered".to_string());
-                            actions.push(PendingAction::SendWebhook { url, headers, payload });
+                            headers.insert(
+                                "X-Extrittio-Event".to_string(),
+                                "rule_triggered".to_string(),
+                            );
+                            actions.push(PendingAction::SendWebhook {
+                                url,
+                                headers,
+                                payload,
+                            });
                         }
                         "command" => {
                             let config = &rule_action.config;
@@ -412,10 +420,7 @@ pub fn evaluate_status_change(
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("")
                                 .to_string();
-                            let params = config
-                                .get("params")
-                                .cloned()
-                                .unwrap_or(Value::Null);
+                            let params = config.get("params").cloned().unwrap_or(Value::Null);
                             actions.push(PendingAction::SendCommand {
                                 device_id: device_id.to_string(),
                                 command,
@@ -453,12 +458,12 @@ pub fn evaluate_status_change(
 /// Checks whether `(lat, lon)` is inside a cached zone.
 fn point_in_zone(lat: f64, lon: f64, geometry: &ZoneGeometry) -> bool {
     match geometry {
-        ZoneGeometry::Circle { center_lat, center_lon, radius_meters } => {
-            point_in_circle(lat, lon, *center_lat, *center_lon, *radius_meters)
-        }
-        ZoneGeometry::Polygon { points } => {
-            point_in_polygon(lat, lon, points)
-        }
+        ZoneGeometry::Circle {
+            center_lat,
+            center_lon,
+            radius_meters,
+        } => point_in_circle(lat, lon, *center_lat, *center_lon, *radius_meters),
+        ZoneGeometry::Polygon { points } => point_in_polygon(lat, lon, points),
     }
 }
 
@@ -542,7 +547,9 @@ pub fn evaluate_geofence(
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("warning")
                                 .to_string();
-                            let zone_name = rule.conditions.first()
+                            let zone_name = rule
+                                .conditions
+                                .first()
                                 .and_then(|c| c.zone_id.as_ref())
                                 .and_then(|zid| cache.zones.get(zid))
                                 .map(|z| z.name.as_str())
@@ -556,7 +563,10 @@ pub fn evaluate_geofence(
                                 device_id: device_id.to_string(),
                                 severity,
                                 message,
-                                triggered_value: Some(format!("{},{}", data.latitude, data.longitude)),
+                                triggered_value: Some(format!(
+                                    "{},{}",
+                                    data.latitude, data.longitude
+                                )),
                             });
                         }
                         "webhook" => {
@@ -582,8 +592,15 @@ pub fn evaluate_geofence(
                                 },
                             });
                             let mut headers = std::collections::HashMap::new();
-                            headers.insert("X-Extrittio-Event".to_string(), "geofence_entered".to_string());
-                            actions.push(PendingAction::SendWebhook { url, headers, payload });
+                            headers.insert(
+                                "X-Extrittio-Event".to_string(),
+                                "geofence_entered".to_string(),
+                            );
+                            actions.push(PendingAction::SendWebhook {
+                                url,
+                                headers,
+                                payload,
+                            });
                         }
                         "command" => {
                             let config = &rule_action.config;
@@ -592,10 +609,7 @@ pub fn evaluate_geofence(
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("")
                                 .to_string();
-                            let params = config
-                                .get("params")
-                                .cloned()
-                                .unwrap_or(Value::Null);
+                            let params = config.get("params").cloned().unwrap_or(Value::Null);
                             actions.push(PendingAction::SendCommand {
                                 device_id: device_id.to_string(),
                                 command,
@@ -978,7 +992,10 @@ mod tests {
             make_condition("humidity", "gt", "85"),
         ];
         let msg = build_alert_message(&conditions, &data);
-        assert_eq!(msg, "temperature (85) exceeded 80 AND humidity (90) exceeded 85");
+        assert_eq!(
+            msg,
+            "temperature (85) exceeded 80 AND humidity (90) exceeded 85"
+        );
     }
 
     #[test]
@@ -1062,7 +1079,10 @@ mod tests {
         // temperature OK, humidity NOT → no fire
         let data_no_fire = make_telemetry(85.0, 70.0, 90.0);
         let actions = evaluate_telemetry("dev1", 1, None, &data_no_fire, &cache);
-        assert!(actions.is_empty(), "Should not fire when only one condition matches");
+        assert!(
+            actions.is_empty(),
+            "Should not fire when only one condition matches"
+        );
 
         // Both conditions met → fire
         let data_fire = make_telemetry(85.0, 90.0, 90.0);
@@ -1113,9 +1133,10 @@ mod tests {
         cache.insert_rule(rule);
 
         // Simulate an existing active alert.
-        cache
-            .active_alerts
-            .insert(("r1".to_string(), "dev1".to_string()), "alert-42".to_string());
+        cache.active_alerts.insert(
+            ("r1".to_string(), "dev1".to_string()),
+            "alert-42".to_string(),
+        );
 
         // Temperature now below threshold.
         let data = make_telemetry(70.0, 50.0, 90.0);
@@ -1142,9 +1163,10 @@ mod tests {
         cache.insert_rule(rule);
 
         // Active alert already exists.
-        cache
-            .active_alerts
-            .insert(("r1".to_string(), "dev1".to_string()), "alert-99".to_string());
+        cache.active_alerts.insert(
+            ("r1".to_string(), "dev1".to_string()),
+            "alert-99".to_string(),
+        );
 
         // Conditions still met (temperature still high).
         let data = make_telemetry(90.0, 50.0, 90.0);
@@ -1305,9 +1327,10 @@ mod tests {
         cache.insert_rule(rule);
 
         // Active alert for this rule+device.
-        cache
-            .active_alerts
-            .insert(("r2".to_string(), "dev1".to_string()), "alert-55".to_string());
+        cache.active_alerts.insert(
+            ("r2".to_string(), "dev1".to_string()),
+            "alert-55".to_string(),
+        );
 
         // Device comes back online — condition "eq offline" no longer met.
         let change = StatusChange {
@@ -1369,9 +1392,9 @@ mod tests {
         };
         let actions = evaluate_status_change("dev1", 1, None, &change, &cache);
 
-        let has_command = actions.iter().any(|a| {
-            matches!(a, PendingAction::SendCommand { command, .. } if command == "reboot")
-        });
+        let has_command = actions.iter().any(
+            |a| matches!(a, PendingAction::SendCommand { command, .. } if command == "reboot"),
+        );
         assert!(has_command, "Expected SendCommand for status change");
     }
 

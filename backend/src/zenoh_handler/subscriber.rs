@@ -39,25 +39,15 @@ pub async fn run_subscriber(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use extrittio_common::topics::patterns;
 
-    let telemetry_sub = session
-        .declare_subscriber(patterns::TELEMETRY)
-        .await?;
+    let telemetry_sub = session.declare_subscriber(patterns::TELEMETRY).await?;
 
-    let heartbeat_sub = session
-        .declare_subscriber(patterns::HEARTBEAT)
-        .await?;
+    let heartbeat_sub = session.declare_subscriber(patterns::HEARTBEAT).await?;
 
-    let shadow_report_sub = session
-        .declare_subscriber(patterns::SHADOW_REPORT)
-        .await?;
+    let shadow_report_sub = session.declare_subscriber(patterns::SHADOW_REPORT).await?;
 
-    let shadow_get_sub = session
-        .declare_subscriber(patterns::SHADOW_GET)
-        .await?;
+    let shadow_get_sub = session.declare_subscriber(patterns::SHADOW_GET).await?;
 
-    let log_sub = session
-        .declare_subscriber(patterns::LOGS)
-        .await?;
+    let log_sub = session.declare_subscriber(patterns::LOGS).await?;
 
     let cmd_response_sub = session
         .declare_subscriber(patterns::COMMANDS_RESPONSE)
@@ -88,7 +78,9 @@ pub async fn run_subscriber(
                         handlers::heartbeat::handle_heartbeat(&pool, &payload, &cache)
                     })
                     .await;
-                    heartbeat_metrics.messages_in.fetch_add(1, Ordering::Relaxed);
+                    heartbeat_metrics
+                        .messages_in
+                        .fetch_add(1, Ordering::Relaxed);
 
                     // Process pending actions from rule evaluation
                     if let Ok(actions) = result {
@@ -127,7 +119,9 @@ pub async fn run_subscriber(
                         handlers::shadow::handle_shadow_report(&pool, &payload);
                     })
                     .await;
-                    shadow_report_metrics.messages_in.fetch_add(1, Ordering::Relaxed);
+                    shadow_report_metrics
+                        .messages_in
+                        .fetch_add(1, Ordering::Relaxed);
                 }
                 Err(e) => {
                     warn!("Shadow report subscriber channel closed: {}", e);
@@ -153,7 +147,9 @@ pub async fn run_subscriber(
                         &shadow_get_metrics,
                     )
                     .await;
-                    shadow_get_metrics.messages_in.fetch_add(1, Ordering::Relaxed);
+                    shadow_get_metrics
+                        .messages_in
+                        .fetch_add(1, Ordering::Relaxed);
                 }
                 Err(e) => {
                     warn!("Shadow get subscriber channel closed: {}", e);
@@ -199,7 +195,9 @@ pub async fn run_subscriber(
                         handlers::command_response::handle_command_response(&pool, &payload);
                     })
                     .await;
-                    cmd_response_metrics.messages_in.fetch_add(1, Ordering::Relaxed);
+                    cmd_response_metrics
+                        .messages_in
+                        .fetch_add(1, Ordering::Relaxed);
                 }
                 Err(e) => {
                     warn!("Command response subscriber channel closed: {}", e);
@@ -368,24 +366,21 @@ pub async fn execute_action(
                 Err(e) => warn!("ResolveAlert task panicked: {}", e),
             }
         }
-        PendingAction::SendWebhook { url, headers, payload } => {
+        PendingAction::SendWebhook {
+            url,
+            headers,
+            payload,
+        } => {
             // .json() already sets Content-Type: application/json
             let mut req = http_client.post(&url).json(&payload);
             for (k, v) in &headers {
                 req = req.header(k, v);
             }
-            let result = req
-                .timeout(std::time::Duration::from_secs(10))
-                .send()
-                .await;
+            let result = req.timeout(std::time::Duration::from_secs(10)).send().await;
             match result {
                 Ok(resp) => {
                     if !resp.status().is_success() {
-                        warn!(
-                            "Webhook to {} returned status {}",
-                            url,
-                            resp.status()
-                        );
+                        warn!("Webhook to {} returned status {}", url, resp.status());
                     }
                 }
                 Err(e) => {
@@ -450,7 +445,9 @@ pub async fn execute_action(
                     let topic = extrittio_common::topics::commands(&device_id);
                     match session.put(&topic, payload).await {
                         Ok(()) => {
-                            metrics.messages_out.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            metrics
+                                .messages_out
+                                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                             info!("Rule-triggered command sent: {}", correlation_id);
                         }
                         Err(e) => {

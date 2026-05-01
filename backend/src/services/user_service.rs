@@ -13,11 +13,7 @@ pub fn list(
     Ok(user_repo::list_users(conn, limit, offset)?)
 }
 
-pub fn create(
-    conn: &mut PgConnection,
-    username: &str,
-    password: &str,
-) -> Result<User, AppError> {
+pub fn create(conn: &mut PgConnection, username: &str, password: &str) -> Result<User, AppError> {
     if username.trim().is_empty() {
         return Err(AppError::BadRequest("Username must not be empty".into()));
     }
@@ -55,8 +51,7 @@ pub fn change_password(
 
     user_repo::find_user_by_id(conn, user_id)?;
 
-    let password_hash =
-        hash_password(new_password).map_err(|e| AppError::Auth(e.to_string()))?;
+    let password_hash = hash_password(new_password).map_err(|e| AppError::Auth(e.to_string()))?;
     user_repo::update_password(conn, user_id, &password_hash)?;
     Ok(())
 }

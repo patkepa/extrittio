@@ -66,13 +66,11 @@ pub(crate) async fn get_config(
         let config = config_service::get_config(conn, &id)?;
 
         match config {
-            Some(c) => {
-                Ok(ConfigResponse {
-                    device_id: c.device_id,
-                    config: c.config,
-                    updated_at: c.updated_at.and_utc().to_rfc3339(),
-                })
-            }
+            Some(c) => Ok(ConfigResponse {
+                device_id: c.device_id,
+                config: c.config,
+                updated_at: c.updated_at.and_utc().to_rfc3339(),
+            }),
             None => {
                 // Return empty config if none exists yet
                 Ok(ConfigResponse {

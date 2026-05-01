@@ -80,7 +80,11 @@ pub struct BulkDeviceFilters {
 
 impl Default for BulkDeviceFilters {
     fn default() -> Self {
-        Self { status: None, search: None, fleet_id: None }
+        Self {
+            status: None,
+            search: None,
+            fleet_id: None,
+        }
     }
 }
 
@@ -153,10 +157,9 @@ pub struct BulkResultResponse {
 fn to_device_response(
     (device, device_type, fleet): device_service::DeviceWithJoins,
 ) -> DeviceResponse {
-    let last_seen_at = device.last_seen.map(|dt| {
-        DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc)
-            .to_rfc3339()
-    });
+    let last_seen_at = device
+        .last_seen
+        .map(|dt| DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc).to_rfc3339());
     DeviceResponse {
         id: device.id,
         name: device.name,
@@ -200,7 +203,10 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/api/v1/devices/bulk/delete", post(bulk_delete_devices))
         .route("/api/v1/devices/bulk/restart", post(bulk_restart_devices))
         .route("/api/v1/devices/bulk/ota", post(bulk_trigger_ota))
-        .route("/api/v1/devices/{id}/location/latest", get(get_device_latest_location))
+        .route(
+            "/api/v1/devices/{id}/location/latest",
+            get(get_device_latest_location),
+        )
 }
 
 // ---------------------------------------------------------------------------
@@ -234,10 +240,7 @@ pub(crate) async fn list_devices(
             offset,
         )?;
 
-        let data = results
-            .into_iter()
-            .map(to_device_response)
-            .collect();
+        let data = results.into_iter().map(to_device_response).collect();
 
         Ok(PaginatedResponse::new(data, total, limit, offset))
     })
@@ -311,7 +314,9 @@ pub(crate) async fn create_device(
         Ok(to_device_response(joined))
     })
     .await
-    .map_err(map_unique_violation("A device with this name already exists"))?;
+    .map_err(map_unique_violation(
+        "A device with this name already exists",
+    ))?;
 
     Ok((StatusCode::CREATED, Json(response)))
 }
@@ -357,7 +362,9 @@ pub(crate) async fn update_device(
         Ok(to_device_response(joined))
     })
     .await
-    .map_err(map_unique_violation("A device with this name already exists"))?;
+    .map_err(map_unique_violation(
+        "A device with this name already exists",
+    ))?;
 
     Ok(Json(response))
 }
@@ -463,7 +470,9 @@ pub(crate) async fn bulk_change_fleet(
             MAX_BULK_SIZE,
         )?;
         let affected = device_service::bulk_change_fleet(conn, &ids, target_fleet_id)?;
-        Ok(BulkAffectedResponse { affected: affected as i64 })
+        Ok(BulkAffectedResponse {
+            affected: affected as i64,
+        })
     })
     .await?;
 
@@ -486,7 +495,9 @@ pub(crate) async fn bulk_delete_devices(
             MAX_BULK_SIZE,
         )?;
         let deleted = device_service::bulk_delete(conn, &ids)?;
-        Ok(BulkAffectedResponse { affected: deleted as i64 })
+        Ok(BulkAffectedResponse {
+            affected: deleted as i64,
+        })
     })
     .await?;
 
@@ -537,7 +548,11 @@ pub(crate) async fn bulk_restart_devices(
         }
     }
 
-    Ok(Json(BulkResultResponse { succeeded, failed, errors }))
+    Ok(Json(BulkResultResponse {
+        succeeded,
+        failed,
+        errors,
+    }))
 }
 
 /// Bulk trigger OTA firmware update on multiple devices.
@@ -585,7 +600,11 @@ pub(crate) async fn bulk_trigger_ota(
         }
     }
 
-    Ok(Json(BulkResultResponse { succeeded, failed, errors }))
+    Ok(Json(BulkResultResponse {
+        succeeded,
+        failed,
+        errors,
+    }))
 }
 
 // ---------------------------------------------------------------------------

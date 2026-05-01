@@ -11,7 +11,9 @@ use crate::db::models::{
 use crate::error::AppError;
 use crate::repositories::{alert_repo, rule_repo, zone_repo};
 use crate::rule_engine::cache::RuleCache;
-use crate::rule_engine::types::{CachedAction, CachedCondition, CachedRule, CachedZone, ZoneGeometry};
+use crate::rule_engine::types::{
+    CachedAction, CachedCondition, CachedRule, CachedZone, ZoneGeometry,
+};
 
 // ---------------------------------------------------------------------------
 // Public composite type
@@ -178,7 +180,10 @@ fn validate_rule(
                 }
             }
             "command" => {
-                let cmd = config_val.get("command").and_then(|v| v.as_str()).unwrap_or("");
+                let cmd = config_val
+                    .get("command")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 if cmd.is_empty() {
                     return Err(AppError::BadRequest(
                         "command action config must have a non-empty 'command'".into(),
@@ -210,7 +215,12 @@ pub fn list_rules(
     trigger_type: Option<&str>,
     target_type: Option<&str>,
 ) -> Result<Vec<Rule>, AppError> {
-    Ok(rule_repo::list_rules(conn, enabled, trigger_type, target_type)?)
+    Ok(rule_repo::list_rules(
+        conn,
+        enabled,
+        trigger_type,
+        target_type,
+    )?)
 }
 
 /// Load filtered rules together with their conditions and actions in batch
@@ -235,9 +245,7 @@ pub fn list_rules_with_details(
 
 pub fn get_rule(conn: &mut PgConnection, id: &str) -> Result<RuleWithDetails, AppError> {
     let rule = rule_repo::find_rule(conn, id).map_err(|e| match e {
-        diesel::result::Error::NotFound => {
-            AppError::NotFound(format!("Rule '{id}' not found"))
-        }
+        diesel::result::Error::NotFound => AppError::NotFound(format!("Rule '{id}' not found")),
         other => AppError::Database(other),
     })?;
     let conditions = rule_repo::list_conditions(conn, id)?;
@@ -447,11 +455,7 @@ pub fn delete_rule(conn: &mut PgConnection, id: &str) -> Result<(), AppError> {
     Ok(())
 }
 
-pub fn toggle_rule(
-    conn: &mut PgConnection,
-    id: &str,
-    enabled: bool,
-) -> Result<(), AppError> {
+pub fn toggle_rule(conn: &mut PgConnection, id: &str, enabled: bool) -> Result<(), AppError> {
     let now = Utc::now().naive_utc();
     let changeset = UpdateRule {
         enabled: Some(enabled),
@@ -535,11 +539,14 @@ pub fn build_cache(conn: &mut PgConnection) -> Result<RuleCache, AppError> {
     let zones = zone_repo::list_zones(conn)?;
     for zone in zones {
         if let Ok(geometry) = parse_zone_geometry(&zone.geometry_type, &zone.geometry_json) {
-            cache.zones.insert(zone.id.clone(), CachedZone {
-                id: zone.id,
-                name: zone.name,
-                geometry,
-            });
+            cache.zones.insert(
+                zone.id.clone(),
+                CachedZone {
+                    id: zone.id,
+                    name: zone.name,
+                    geometry,
+                },
+            );
         }
     }
 
@@ -559,10 +566,13 @@ fn parse_zone_geometry(geometry_type: &str, geometry_json: &Value) -> Result<Zon
         "polygon" => {
             let points = geometry_json["points"].as_array().ok_or("Missing points")?;
             Ok(ZoneGeometry::Polygon {
-                points: points.iter().map(|p| {
-                    let a = p.as_array().unwrap();
-                    (a[0].as_f64().unwrap_or(0.0), a[1].as_f64().unwrap_or(0.0))
-                }).collect(),
+                points: points
+                    .iter()
+                    .map(|p| {
+                        let a = p.as_array().unwrap();
+                        (a[0].as_f64().unwrap_or(0.0), a[1].as_f64().unwrap_or(0.0))
+                    })
+                    .collect(),
             })
         }
         _ => Err(format!("Unknown geometry type: {}", geometry_type)),

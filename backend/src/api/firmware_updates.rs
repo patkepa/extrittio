@@ -115,8 +115,7 @@ pub(crate) async fn list_firmware_updates(
     let (limit, offset) = pagination::clamp(params.limit, params.offset);
 
     let response = run_db(&state.db_pool, move |conn| {
-        let (results, total) =
-            firmware_service::list(conn, params.device_type_id, limit, offset)?;
+        let (results, total) = firmware_service::list(conn, params.device_type_id, limit, offset)?;
 
         let data = results
             .into_iter()
@@ -136,7 +135,9 @@ pub(crate) async fn list_firmware_updates(
                     commit_sha: fw.commit_sha,
                     branch: fw.branch,
                     ci_run_url: fw.ci_run_url,
-                    build_timestamp: fw.build_timestamp.map(|ts| ts.format("%Y-%m-%dT%H:%M:%S").to_string()),
+                    build_timestamp: fw
+                        .build_timestamp
+                        .map(|ts| ts.format("%Y-%m-%dT%H:%M:%S").to_string()),
                     changelog: fw.changelog,
                     source: fw.source,
                 },
@@ -217,7 +218,9 @@ pub(crate) async fn create_firmware_update(
             commit_sha: created.commit_sha,
             branch: created.branch,
             ci_run_url: created.ci_run_url,
-            build_timestamp: created.build_timestamp.map(|ts| ts.format("%Y-%m-%dT%H:%M:%S").to_string()),
+            build_timestamp: created
+                .build_timestamp
+                .map(|ts| ts.format("%Y-%m-%dT%H:%M:%S").to_string()),
             changelog: created.changelog,
             source: created.source,
         })
@@ -383,7 +386,9 @@ pub(crate) async fn upload_firmware_update(
             commit_sha: updated.commit_sha,
             branch: updated.branch,
             ci_run_url: updated.ci_run_url,
-            build_timestamp: updated.build_timestamp.map(|ts| ts.format("%Y-%m-%dT%H:%M:%S").to_string()),
+            build_timestamp: updated
+                .build_timestamp
+                .map(|ts| ts.format("%Y-%m-%dT%H:%M:%S").to_string()),
             changelog: updated.changelog,
             source: updated.source,
         })
@@ -419,7 +424,9 @@ pub(crate) async fn download_firmware_blob(
     .await?;
 
     // Sanitize filename for Content-Disposition to prevent header injection
-    let safe_filename: String = blob.filename.chars()
+    let safe_filename: String = blob
+        .filename
+        .chars()
         .filter(|c| *c != '"' && *c != '\r' && *c != '\n' && *c != '\0')
         .collect();
     let content_disposition = format!("attachment; filename=\"{}\"", safe_filename);

@@ -162,8 +162,9 @@ pub fn get_device_certificate_bundle(
 ) -> Result<CertBundle, AppError> {
     device_repo::find_device(conn, device_id)?;
 
-    let cert = cert_repo::get_device_certificate(conn, device_id)?
-        .ok_or_else(|| AppError::NotFound(format!("No certificate found for device '{device_id}'")))?;
+    let cert = cert_repo::get_device_certificate(conn, device_id)?.ok_or_else(|| {
+        AppError::NotFound(format!("No certificate found for device '{device_id}'"))
+    })?;
 
     let ca = cert_repo::get_ca_certificate(conn)?
         .ok_or_else(|| AppError::Internal("CA certificate not found".into()))?;
@@ -192,9 +193,7 @@ pub fn get_device_certificate_status(
 }
 
 /// Get the CA certificate, if one has been initialized.
-pub fn get_ca_certificate(
-    conn: &mut PgConnection,
-) -> Result<Option<CaCertificate>, AppError> {
+pub fn get_ca_certificate(conn: &mut PgConnection) -> Result<Option<CaCertificate>, AppError> {
     Ok(cert_repo::get_ca_certificate(conn)?)
 }
 

@@ -1,10 +1,10 @@
 use std::time::Duration;
 
 use anyhow::Context;
+use diesel::PgConnection;
 use diesel::RunQueryDsl;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
-use diesel::PgConnection;
 use diesel_migrations::MigrationHarness;
 use tracing::info;
 
@@ -160,8 +160,8 @@ pub async fn open_zenoh_session(
     let mut zenoh_config = zenoh::Config::default();
 
     if tls_enabled {
-        let certs_path = std::fs::canonicalize(certs_dir)
-            .context("Failed to resolve certs directory path")?;
+        let certs_path =
+            std::fs::canonicalize(certs_dir).context("Failed to resolve certs directory path")?;
         let ca_path = certs_path.join("ca.pem");
         let server_cert_path = certs_path.join("server.pem");
         let server_key_path = certs_path.join("server-key.pem");

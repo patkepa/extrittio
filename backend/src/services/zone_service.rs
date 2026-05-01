@@ -1,7 +1,7 @@
 // Zone service — business logic for zone management
 
-use diesel::prelude::*;
 use diesel::PgConnection;
+use diesel::prelude::*;
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 

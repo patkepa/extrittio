@@ -152,10 +152,7 @@ pub(crate) async fn delete_fleet(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i32>,
 ) -> Result<StatusCode, AppError> {
-    run_db(&state.db_pool, move |conn| {
-        fleet_service::delete(conn, id)
-    })
-    .await?;
+    run_db(&state.db_pool, move |conn| fleet_service::delete(conn, id)).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

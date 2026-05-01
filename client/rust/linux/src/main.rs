@@ -117,7 +117,6 @@ struct Args {
     client_key: Option<String>,
 }
 
-
 #[tokio::main]
 #[allow(clippy::too_many_lines)]
 async fn main() {
@@ -769,4 +768,3 @@ async fn handle_ota(
     // Exit with code 0 — systemd Restart=always will relaunch the new binary
     std::process::exit(0);
 }
-

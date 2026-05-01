@@ -1,7 +1,7 @@
 use chrono::NaiveDateTime;
 use chrono::Utc;
-use diesel::PgConnection;
 use diesel::OptionalExtension;
+use diesel::PgConnection;
 
 use crate::db::models::{Device, NewTelemetryRecord, TelemetryRecord, UpdateDevice};
 use crate::error::AppError;
@@ -15,7 +15,9 @@ pub fn list(
     limit: i64,
 ) -> Result<Vec<TelemetryRecord>, AppError> {
     device_repo::find_device(conn, device_id)?;
-    Ok(telemetry_repo::list_telemetry(conn, device_id, since, before, limit)?)
+    Ok(telemetry_repo::list_telemetry(
+        conn, device_id, since, before, limit,
+    )?)
 }
 
 pub fn record(

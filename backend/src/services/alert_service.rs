@@ -4,10 +4,10 @@ use chrono::{NaiveDateTime, Utc};
 use diesel::PgConnection;
 use uuid::Uuid;
 
+use crate::db::models::RuleCooldown;
 use crate::db::models::{Alert, NewAlert, UpdateAlert};
 use crate::error::AppError;
 use crate::repositories::alert_repo;
-use crate::db::models::RuleCooldown;
 use crate::repositories::rule_repo;
 
 // ---------------------------------------------------------------------------
@@ -33,9 +33,7 @@ pub fn list_alerts(
 
 pub fn get_alert(conn: &mut PgConnection, id: &str) -> Result<Alert, AppError> {
     alert_repo::find_alert(conn, id).map_err(|e| match e {
-        diesel::result::Error::NotFound => {
-            AppError::NotFound(format!("Alert '{id}' not found"))
-        }
+        diesel::result::Error::NotFound => AppError::NotFound(format!("Alert '{id}' not found")),
         other => AppError::Database(other),
     })
 }
@@ -147,9 +145,7 @@ pub fn update_triggered_value(
 // Analytics
 // ---------------------------------------------------------------------------
 
-pub fn summary(
-    conn: &mut PgConnection,
-) -> Result<Vec<(String, String, i64)>, AppError> {
+pub fn summary(conn: &mut PgConnection) -> Result<Vec<(String, String, i64)>, AppError> {
     Ok(alert_repo::count_by_status_and_severity(conn)?)
 }
 

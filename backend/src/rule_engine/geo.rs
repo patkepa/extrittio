@@ -13,8 +13,8 @@ pub fn haversine_distance(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
     let lat1_rad = to_radians(lat1);
     let lat2_rad = to_radians(lat2);
 
-    let a = (d_lat / 2.0).sin().powi(2)
-        + lat1_rad.cos() * lat2_rad.cos() * (d_lon / 2.0).sin().powi(2);
+    let a =
+        (d_lat / 2.0).sin().powi(2) + lat1_rad.cos() * lat2_rad.cos() * (d_lon / 2.0).sin().powi(2);
     let c = 2.0 * a.sqrt().asin();
     EARTH_RADIUS_METERS * c
 }
@@ -81,23 +81,13 @@ mod tests {
 
     #[test]
     fn test_point_in_polygon_inside() {
-        let polygon = vec![
-            (52.0, 20.0),
-            (52.0, 22.0),
-            (53.0, 22.0),
-            (53.0, 20.0),
-        ];
+        let polygon = vec![(52.0, 20.0), (52.0, 22.0), (53.0, 22.0), (53.0, 20.0)];
         assert!(point_in_polygon(52.5, 21.0, &polygon));
     }
 
     #[test]
     fn test_point_in_polygon_outside() {
-        let polygon = vec![
-            (52.0, 20.0),
-            (52.0, 22.0),
-            (53.0, 22.0),
-            (53.0, 20.0),
-        ];
+        let polygon = vec![(52.0, 20.0), (52.0, 22.0), (53.0, 22.0), (53.0, 20.0)];
         assert!(!point_in_polygon(54.0, 21.0, &polygon));
     }
 

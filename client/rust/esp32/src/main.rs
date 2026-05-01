@@ -15,6 +15,7 @@ use log::info;
 use prost::Message;
 use rand::Rng;
 use sha2::{Digest, Sha256};
+use zenoh::Wait;
 
 // ── Configuration ───────────────────────────────────────────────────
 // Edit these constants or wire them to NVS / menuconfig for production.
@@ -28,7 +29,6 @@ const FIRMWARE_VERSION: &str = "v1.0.0-esp32";
 // Zenoh router endpoint — set to the IP of the machine running the backend.
 // Leave empty to use Zenoh multicast scouting (same LAN only).
 const ZENOH_CONNECT: &str = "tcp/192.0.2.100:7447";
-
 
 // ── Entry point ─────────────────────────────────────────────────────
 
@@ -66,7 +66,8 @@ fn main() {
 
     wifi.start().expect("Failed to start WiFi");
     wifi.connect().expect("Failed to connect to WiFi");
-    wifi.wait_netif_up().expect("Failed to bring up network interface");
+    wifi.wait_netif_up()
+        .expect("Failed to bring up network interface");
 
     info!("WiFi connected");
 
@@ -74,10 +75,11 @@ fn main() {
     let mut zenoh_cfg = zenoh::Config::default();
     if !ZENOH_CONNECT.is_empty() {
         zenoh_cfg
-            .connect
-            .endpoints
-            .set(vec![ZENOH_CONNECT.parse().expect("Bad Zenoh endpoint")])
-            .expect("Failed to set Zenoh connect endpoints");
+            .insert_json5("connect/endpoints", &format!("[\"{ZENOH_CONNECT}\"]"))
+            .expect("Failed to set Zenoh connect endpoint");
+        zenoh_cfg
+            .insert_json5("scouting/multicast/enabled", "false")
+            .expect("Failed to disable multicast scouting");
     }
 
     // .wait() is the blocking equivalent of .await for Zenoh builders.
@@ -98,14 +100,16 @@ fn main() {
     // Shared state
     let reported_state: Arc<Mutex<serde_json::Map<String, serde_json::Value>>> =
         Arc::new(Mutex::new(serde_json::Map::new()));
-    let firmware_version: Arc<Mutex<String>> =
-        Arc::new(Mutex::new(FIRMWARE_VERSION.to_string()));
+    let firmware_version: Arc<Mutex<String>> = Arc::new(Mutex::new(FIRMWARE_VERSION.to_string()));
 
     // ── Request pending shadow delta on startup ──────────────────────
     let shadow_get = ShadowGet {
         device_id: DEVICE_ID.to_string(),
     };
-    match session.put(&shadow_get_topic, shadow_get.encode_to_vec()).wait() {
+    match session
+        .put(&shadow_get_topic, shadow_get.encode_to_vec())
+        .wait()
+    {
         Ok(_) => info!("Shadow get request sent to '{shadow_get_topic}'"),
         Err(e) => log::warn!("Failed to send shadow get request: {e}"),
     }
@@ -329,8 +333,14 @@ fn handle_ota(
         if *current == format!("v{fw_version}") {
             info!("OTA: already running v{}, skipping", fw_version);
             report_ota_status(
-                reported_state, session, report_topic, shadow_version,
-                &fw_version, fw_update_id, "success", None,
+                reported_state,
+                session,
+                report_topic,
+                shadow_version,
+                &fw_version,
+                fw_update_id,
+                "success",
+                None,
             );
             return;
         }
@@ -339,8 +349,14 @@ fn handle_ota(
     // -- Report "downloading" --
     info!("OTA: downloading firmware v{} from {}", fw_version, fw_url);
     report_ota_status(
-        reported_state, session, report_topic, shadow_version,
-        &fw_version, fw_update_id, "downloading", None,
+        reported_state,
+        session,
+        report_topic,
+        shadow_version,
+        &fw_version,
+        fw_update_id,
+        "downloading",
+        None,
     );
 
     // -- Initialize ESP-IDF OTA --
@@ -350,8 +366,14 @@ fn handle_ota(
             let err = format!("OTA init error: {}", e);
             log::warn!("OTA: {}", err);
             report_ota_status(
-                reported_state, session, report_topic, shadow_version,
-                &fw_version, fw_update_id, "failed", Some(&err),
+                reported_state,
+                session,
+                report_topic,
+                shadow_version,
+                &fw_version,
+                fw_update_id,
+                "failed",
+                Some(&err),
             );
             return;
         }
@@ -363,8 +385,14 @@ fn handle_ota(
             let err = format!("OTA update init error: {}", e);
             log::warn!("OTA: {}", err);
             report_ota_status(
-                reported_state, session, report_topic, shadow_version,
-                &fw_version, fw_update_id, "failed", Some(&err),
+                reported_state,
+                session,
+                report_topic,
+                shadow_version,
+                &fw_version,
+                fw_update_id,
+                "failed",
+                Some(&err),
             );
             return;
         }
@@ -384,8 +412,14 @@ fn handle_ota(
             log::warn!("OTA: {}", err);
             let _ = ota_update.abort();
             report_ota_status(
-                reported_state, session, report_topic, shadow_version,
-                &fw_version, fw_update_id, "failed", Some(&err),
+                reported_state,
+                session,
+                report_topic,
+                shadow_version,
+                &fw_version,
+                fw_update_id,
+                "failed",
+                Some(&err),
             );
             return;
         }
@@ -401,8 +435,14 @@ fn handle_ota(
             log::warn!("OTA: {}", err);
             let _ = ota_update.abort();
             report_ota_status(
-                reported_state, session, report_topic, shadow_version,
-                &fw_version, fw_update_id, "failed", Some(&err),
+                reported_state,
+                session,
+                report_topic,
+                shadow_version,
+                &fw_version,
+                fw_update_id,
+                "failed",
+                Some(&err),
             );
             return;
         }
@@ -415,8 +455,14 @@ fn handle_ota(
             log::warn!("OTA: {}", err);
             let _ = ota_update.abort();
             report_ota_status(
-                reported_state, session, report_topic, shadow_version,
-                &fw_version, fw_update_id, "failed", Some(&err),
+                reported_state,
+                session,
+                report_topic,
+                shadow_version,
+                &fw_version,
+                fw_update_id,
+                "failed",
+                Some(&err),
             );
             return;
         }
@@ -428,8 +474,14 @@ fn handle_ota(
         log::warn!("OTA: download failed: {}", err);
         let _ = ota_update.abort();
         report_ota_status(
-            reported_state, session, report_topic, shadow_version,
-            &fw_version, fw_update_id, "failed", Some(&err),
+            reported_state,
+            session,
+            report_topic,
+            shadow_version,
+            &fw_version,
+            fw_update_id,
+            "failed",
+            Some(&err),
         );
         return;
     }
@@ -450,8 +502,14 @@ fn handle_ota(
                     log::warn!("OTA: {}", err);
                     let _ = ota_update.abort();
                     report_ota_status(
-                        reported_state, session, report_topic, shadow_version,
-                        &fw_version, fw_update_id, "failed", Some(&err),
+                        reported_state,
+                        session,
+                        report_topic,
+                        shadow_version,
+                        &fw_version,
+                        fw_update_id,
+                        "failed",
+                        Some(&err),
                     );
                     return;
                 }
@@ -462,21 +520,36 @@ fn handle_ota(
                 log::warn!("OTA: {}", err);
                 let _ = ota_update.abort();
                 report_ota_status(
-                    reported_state, session, report_topic, shadow_version,
-                    &fw_version, fw_update_id, "failed", Some(&err),
+                    reported_state,
+                    session,
+                    report_topic,
+                    shadow_version,
+                    &fw_version,
+                    fw_update_id,
+                    "failed",
+                    Some(&err),
                 );
                 return;
             }
         }
     }
 
-    info!("OTA: downloaded and wrote {} bytes to OTA partition", total_bytes);
+    info!(
+        "OTA: downloaded and wrote {} bytes to OTA partition",
+        total_bytes
+    );
 
     // -- Verify SHA-256 (if provided) --
     if let Some(ref expected) = expected_sha256 {
         report_ota_status(
-            reported_state, session, report_topic, shadow_version,
-            &fw_version, fw_update_id, "verifying", None,
+            reported_state,
+            session,
+            report_topic,
+            shadow_version,
+            &fw_version,
+            fw_update_id,
+            "verifying",
+            None,
         );
 
         let actual = format!("{:x}", hasher.finalize());
@@ -485,8 +558,14 @@ fn handle_ota(
             log::warn!("OTA: {}", err);
             let _ = ota_update.abort();
             report_ota_status(
-                reported_state, session, report_topic, shadow_version,
-                &fw_version, fw_update_id, "failed", Some(&err),
+                reported_state,
+                session,
+                report_topic,
+                shadow_version,
+                &fw_version,
+                fw_update_id,
+                "failed",
+                Some(&err),
             );
             return;
         }
@@ -495,8 +574,14 @@ fn handle_ota(
 
     // -- Report "installing" --
     report_ota_status(
-        reported_state, session, report_topic, shadow_version,
-        &fw_version, fw_update_id, "installing", None,
+        reported_state,
+        session,
+        report_topic,
+        shadow_version,
+        &fw_version,
+        fw_update_id,
+        "installing",
+        None,
     );
 
     // Complete OTA — marks the new partition as bootable
@@ -504,8 +589,14 @@ fn handle_ota(
         let err = format!("OTA complete error: {}", e);
         log::warn!("OTA: {}", err);
         report_ota_status(
-            reported_state, session, report_topic, shadow_version,
-            &fw_version, fw_update_id, "failed", Some(&err),
+            reported_state,
+            session,
+            report_topic,
+            shadow_version,
+            &fw_version,
+            fw_update_id,
+            "failed",
+            Some(&err),
         );
         return;
     }
@@ -519,8 +610,14 @@ fn handle_ota(
 
     // Report "success" BEFORE rebooting
     report_ota_status(
-        reported_state, session, report_topic, shadow_version,
-        &fw_version, fw_update_id, "success", None,
+        reported_state,
+        session,
+        report_topic,
+        shadow_version,
+        &fw_version,
+        fw_update_id,
+        "success",
+        None,
     );
     info!("OTA: firmware v{} installed, rebooting...", fw_version);
 

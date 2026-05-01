@@ -15,7 +15,9 @@ pub fn list(
     limit: i64,
 ) -> Result<Vec<DeviceLog>, AppError> {
     if !device_repo::device_exists(conn, device_id)? {
-        return Err(AppError::NotFound(format!("Device '{device_id}' not found")));
+        return Err(AppError::NotFound(format!(
+            "Device '{device_id}' not found"
+        )));
     }
     Ok(log_repo::list_logs(conn, device_id, level, since, limit)?)
 }

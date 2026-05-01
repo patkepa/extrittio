@@ -9,15 +9,16 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use clap::{Parser, Subcommand};
-use extrittio_common::extrittio::{
-    DeviceHeartbeat, DeviceTelemetry, ShadowDelta, ShadowGet,
-};
+use extrittio_common::extrittio::{DeviceHeartbeat, DeviceTelemetry, ShadowDelta, ShadowGet};
 use extrittio_common::{device_status, ota::fields as ota_fields, topics};
 use prost::Message;
 use tokio::sync::Mutex;
 
 #[derive(Parser)]
-#[command(name = "extrittio-macos", about = "macOS system telemetry client for Extrittio IoT Hub")]
+#[command(
+    name = "extrittio-macos",
+    about = "macOS system telemetry client for Extrittio IoT Hub"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -94,7 +95,8 @@ fn run(
         eprintln!(
             "Error: no device_id set.\n\
              Run: extrittio-macos install --device-id <ID>\n\
-             Or add device_id to {}", config::Config::config_path().display()
+             Or add device_id to {}",
+            config::Config::config_path().display()
         );
         std::process::exit(1);
     });
@@ -184,8 +186,7 @@ async fn run_async(cfg: config::Config, device_id: String) {
 
     let reported_state: Arc<Mutex<serde_json::Map<String, serde_json::Value>>> =
         Arc::new(Mutex::new(serde_json::Map::new()));
-    let firmware_version: Arc<Mutex<String>> =
-        Arc::new(Mutex::new(cfg.firmware_version.clone()));
+    let firmware_version: Arc<Mutex<String>> = Arc::new(Mutex::new(cfg.firmware_version.clone()));
     let ota_in_progress: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
 
     let start = Instant::now();
@@ -277,8 +278,10 @@ async fn run_async(cfg: config::Config, device_id: String) {
                                     if let Some(ota_val) = ota_payload {
                                         if shadow_ota_flag
                                             .compare_exchange(
-                                                false, true,
-                                                Ordering::SeqCst, Ordering::SeqCst,
+                                                false,
+                                                true,
+                                                Ordering::SeqCst,
+                                                Ordering::SeqCst,
                                             )
                                             .is_err()
                                         {

@@ -19,7 +19,9 @@ impl OtaPayload {
         Some(Self {
             firmware_version: value.get(fields::FIRMWARE_VERSION)?.as_str()?.to_string(),
             firmware_url: value.get(fields::FIRMWARE_URL)?.as_str()?.to_string(),
-            firmware_update_id: value.get(fields::FIRMWARE_UPDATE_ID).and_then(Value::as_i64),
+            firmware_update_id: value
+                .get(fields::FIRMWARE_UPDATE_ID)
+                .and_then(Value::as_i64),
             sha256: value
                 .get(fields::SHA256)
                 .and_then(Value::as_str)

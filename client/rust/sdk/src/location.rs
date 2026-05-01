@@ -9,7 +9,13 @@ pub struct LocationState {
 
 impl LocationState {
     pub fn new(center_lat: f64, center_lon: f64) -> Self {
-        Self { latitude: center_lat, longitude: center_lon, speed: 0.0, altitude: 100.0, heading: 0.0 }
+        Self {
+            latitude: center_lat,
+            longitude: center_lon,
+            speed: 0.0,
+            altitude: 100.0,
+            heading: 0.0,
+        }
     }
 
     pub fn step(&mut self, lat_offset: f64, lon_offset: f64, speed_offset: f32) {
@@ -23,7 +29,9 @@ impl LocationState {
 }
 
 impl Default for LocationState {
-    fn default() -> Self { Self::new(52.2297, 21.0122) }
+    fn default() -> Self {
+        Self::new(52.2297, 21.0122)
+    }
 }
 
 #[cfg(test)]

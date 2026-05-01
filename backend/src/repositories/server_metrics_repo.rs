@@ -1,9 +1,9 @@
 // Repository functions for server diagnostics metrics
 
 use chrono::NaiveDateTime;
-use diesel::sql_types::{BigInt, Float, Integer, Timestamptz};
 use diesel::PgConnection;
 use diesel::prelude::*;
+use diesel::sql_types::{BigInt, Float, Integer, Timestamptz};
 use serde::Serialize;
 
 use crate::db::models::{AppMetric, NewAppMetric, NewServerMetric, ServerMetric};
@@ -217,6 +217,5 @@ pub fn delete_old_app_metrics(
     conn: &mut PgConnection,
     older_than: NaiveDateTime,
 ) -> Result<usize, diesel::result::Error> {
-    diesel::delete(app_metrics::table.filter(app_metrics::recorded_at.lt(older_than)))
-        .execute(conn)
+    diesel::delete(app_metrics::table.filter(app_metrics::recorded_at.lt(older_than))).execute(conn)
 }

@@ -1,12 +1,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use axum::{
-    extract::State,
-    http::Request,
-    middleware::Next,
-    response::Response,
-};
+use axum::{extract::State, http::Request, middleware::Next, response::Response};
 
 use crate::state::AppState;
 

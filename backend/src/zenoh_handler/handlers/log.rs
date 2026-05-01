@@ -26,7 +26,12 @@ pub fn handle_device_log(db_pool: &DbPool, payload: &[u8]) {
         }
     };
 
-    match log_service::record(&mut conn, &log_msg.device_id, &log_msg.level, &log_msg.message) {
+    match log_service::record(
+        &mut conn,
+        &log_msg.device_id,
+        &log_msg.level,
+        &log_msg.message,
+    ) {
         Ok(false) => {
             warn!(
                 "Dropping log from unregistered device: {}",

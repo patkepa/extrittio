@@ -49,9 +49,8 @@ pub async fn run_offline_checker(
             #[allow(clippy::cast_possible_wrap)]
             let cutoff =
                 chrono::Utc::now().naive_utc() - chrono::TimeDelta::seconds(timeout_secs as i64);
-            let going_offline_ids =
-                device_repo::find_devices_going_offline(&mut conn, cutoff)
-                    .map_err(|e| e.to_string())?;
+            let going_offline_ids = device_repo::find_devices_going_offline(&mut conn, cutoff)
+                .map_err(|e| e.to_string())?;
             let count = device_service::mark_devices_offline(&mut conn, &going_offline_ids)
                 .map_err(|e| e.to_string())?;
 
@@ -113,7 +112,8 @@ pub async fn run_offline_checker(
                     tracing::error!(
                         "Offline checker: {} consecutive failures (next retry in {}s): {}",
                         consecutive_failures,
-                        backoff_duration(base_interval, consecutive_failures, max_backoff).as_secs(),
+                        backoff_duration(base_interval, consecutive_failures, max_backoff)
+                            .as_secs(),
                         msg,
                     );
                 } else {
@@ -126,7 +126,8 @@ pub async fn run_offline_checker(
                     tracing::error!(
                         "Offline checker: {} consecutive failures (next retry in {}s): task panicked: {}",
                         consecutive_failures,
-                        backoff_duration(base_interval, consecutive_failures, max_backoff).as_secs(),
+                        backoff_duration(base_interval, consecutive_failures, max_backoff)
+                            .as_secs(),
                         e,
                     );
                 } else {
@@ -157,8 +158,7 @@ pub async fn run_command_timeout_checker(db_pool: DbPool, timeout_secs: u64) {
         let pool = db_pool.clone();
         let result = tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().map_err(|e| e.to_string())?;
-            command_service::timeout_stale(&mut conn, timeout_secs)
-                .map_err(|e| e.to_string())
+            command_service::timeout_stale(&mut conn, timeout_secs).map_err(|e| e.to_string())
         })
         .await;
 
@@ -175,7 +175,8 @@ pub async fn run_command_timeout_checker(db_pool: DbPool, timeout_secs: u64) {
                     tracing::error!(
                         "Command timeout checker: {} consecutive failures (next retry in {}s): {}",
                         consecutive_failures,
-                        backoff_duration(base_interval, consecutive_failures, max_backoff).as_secs(),
+                        backoff_duration(base_interval, consecutive_failures, max_backoff)
+                            .as_secs(),
                         msg,
                     );
                 } else {
@@ -188,7 +189,8 @@ pub async fn run_command_timeout_checker(db_pool: DbPool, timeout_secs: u64) {
                     tracing::error!(
                         "Command timeout checker: {} consecutive failures (next retry in {}s): task panicked: {}",
                         consecutive_failures,
-                        backoff_duration(base_interval, consecutive_failures, max_backoff).as_secs(),
+                        backoff_duration(base_interval, consecutive_failures, max_backoff)
+                            .as_secs(),
                         e,
                     );
                 } else {
@@ -217,15 +219,14 @@ pub async fn run_alert_retention(db_pool: DbPool, retention_days: u64) {
         let result = tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().map_err(|e| e.to_string())?;
             #[allow(clippy::cast_possible_wrap)]
-            let cutoff = chrono::Utc::now().naive_utc()
-                - chrono::Duration::days(retention_days as i64);
+            let cutoff =
+                chrono::Utc::now().naive_utc() - chrono::Duration::days(retention_days as i64);
             let alert_count =
                 crate::services::alert_service::delete_resolved_older_than(&mut conn, cutoff)
                     .map_err(|e| e.to_string())?;
 
             // Prune stale cooldowns (older than max cooldown window of 24h)
-            let cooldown_cutoff =
-                chrono::Utc::now().naive_utc() - chrono::Duration::seconds(86400);
+            let cooldown_cutoff = chrono::Utc::now().naive_utc() - chrono::Duration::seconds(86400);
             let cooldown_count =
                 crate::services::rule_service::delete_stale_cooldowns(&mut conn, cooldown_cutoff)
                     .map_err(|e| e.to_string())?;
@@ -241,7 +242,10 @@ pub async fn run_alert_retention(db_pool: DbPool, retention_days: u64) {
                     info!("Alert retention: deleted {} resolved alerts", alert_count);
                 }
                 if cooldown_count > 0 {
-                    info!("Cooldown pruning: deleted {} stale cooldowns", cooldown_count);
+                    info!(
+                        "Cooldown pruning: deleted {} stale cooldowns",
+                        cooldown_count
+                    );
                 }
             }
             Ok(Err(msg)) => {
@@ -250,7 +254,8 @@ pub async fn run_alert_retention(db_pool: DbPool, retention_days: u64) {
                     tracing::error!(
                         "Alert retention: {} consecutive failures (next retry in {}s): {}",
                         consecutive_failures,
-                        backoff_duration(base_interval, consecutive_failures, max_backoff).as_secs(),
+                        backoff_duration(base_interval, consecutive_failures, max_backoff)
+                            .as_secs(),
                         msg,
                     );
                 } else {
@@ -263,7 +268,8 @@ pub async fn run_alert_retention(db_pool: DbPool, retention_days: u64) {
                     tracing::error!(
                         "Alert retention: {} consecutive failures (next retry in {}s): task panicked: {}",
                         consecutive_failures,
-                        backoff_duration(base_interval, consecutive_failures, max_backoff).as_secs(),
+                        backoff_duration(base_interval, consecutive_failures, max_backoff)
+                            .as_secs(),
                         e,
                     );
                 } else {

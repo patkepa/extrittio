@@ -38,14 +38,8 @@ pub fn list_rules(
         .load(conn)
 }
 
-pub fn find_rule(
-    conn: &mut PgConnection,
-    id: &str,
-) -> Result<Rule, diesel::result::Error> {
-    rules::table
-        .find(id)
-        .select(Rule::as_select())
-        .first(conn)
+pub fn find_rule(conn: &mut PgConnection, id: &str) -> Result<Rule, diesel::result::Error> {
+    rules::table.find(id).select(Rule::as_select()).first(conn)
 }
 
 pub fn insert_rule(
@@ -68,10 +62,7 @@ pub fn update_rule(
         .execute(conn)
 }
 
-pub fn delete_rule(
-    conn: &mut PgConnection,
-    id: &str,
-) -> Result<usize, diesel::result::Error> {
+pub fn delete_rule(conn: &mut PgConnection, id: &str) -> Result<usize, diesel::result::Error> {
     diesel::delete(rules::table.find(id)).execute(conn)
 }
 

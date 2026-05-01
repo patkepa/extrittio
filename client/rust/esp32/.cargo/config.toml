@@ -1,7 +1,7 @@
 [build]
-target = "riscv32imc-esp-espidf"
+target = "riscv32imac-esp-espidf"
 
-[target.riscv32imc-esp-espidf]
+[target.riscv32imac-esp-espidf]
 linker = "ldproxy"
 rustflags = ["--cfg", "espidf_time64"]
 
@@ -9,5 +9,5 @@ rustflags = ["--cfg", "espidf_time64"]
 build-std = ["std", "panic_abort"]
 
 [env]
-MCU = "esp32c3"
+MCU = "esp32c6"
 ESP_IDF_VERSION = "v5.3"
