@@ -3,6 +3,8 @@ name = "extrittio-client-esp32"
 version = "0.1.0"
 edition = "2021"
 
+[workspace]
+
 # NOTE: This crate is NOT a workspace member — it cross-compiles to
 # riscv32imc-esp-espidf and must be built independently:
 #   cd client/rust/esp32

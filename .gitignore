@@ -2,6 +2,7 @@
 # Rust / Cargo
 # ========================
 /target
+client/rust/esp32/target/
 debug
 **/*.rs.bk
 *.pdb

@@ -238,6 +238,11 @@ fn main() {
             humidity: sensor.humidity,
             battery_level: sensor.battery,
             metadata: Default::default(),
+            latitude: 0.0,
+            longitude: 0.0,
+            speed: 0.0,
+            altitude: 0.0,
+            heading: 0.0,
         };
 
         let payload = telemetry.encode_to_vec();
@@ -525,4 +530,3 @@ fn handle_ota(
     // Reboot into the new firmware
     esp_idf_svc::hal::reset::restart();
 }
-
