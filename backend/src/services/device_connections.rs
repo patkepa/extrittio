@@ -1,8 +1,18 @@
+use chrono::{DateTime, NaiveDateTime, Utc};
 use serde_json::{Map, Value};
 use std::collections::HashMap;
 use tracing::warn;
 
 const MAX_DECLARED_CONNECTIONS: usize = 256;
+
+#[derive(Debug, Clone)]
+pub struct ObservedNetworkHost {
+    pub host_key: String,
+    pub label: String,
+    pub address: Option<String>,
+    pub device_type: Option<String>,
+    pub source: Option<String>,
+}
 
 fn string_field(value: &Value, keys: &[&str]) -> Option<String> {
     keys.iter()
@@ -76,53 +86,112 @@ fn normalize_connection_array(value: &Value) -> Option<Value> {
     Some(Value::Array(normalized))
 }
 
-pub fn network_analyzer_connections(snapshot_json: &str) -> Option<Value> {
+pub fn network_analyzer_hosts(snapshot_json: &str) -> Option<Vec<ObservedNetworkHost>> {
     let snapshot: Value = serde_json::from_str(snapshot_json).ok()?;
     let hosts = snapshot.get("hosts")?.as_array()?;
 
+    Some(
+        hosts
+            .iter()
+            .take(MAX_DECLARED_CONNECTIONS)
+            .filter_map(|host| {
+                let ip = string_field(host, &["ip"]);
+                let mac = string_field(host, &["mac"]);
+                let hostname = string_field(host, &["hostname"]);
+                let host_key = mac
+                    .clone()
+                    .filter(|m| m != "00:00:00:00:00:00")
+                    .or_else(|| ip.clone())?;
+                let label = hostname
+                    .clone()
+                    .or_else(|| ip.clone())
+                    .unwrap_or_else(|| host_key.clone());
+
+                Some(ObservedNetworkHost {
+                    host_key,
+                    label,
+                    address: ip,
+                    device_type: string_field(host, &["device_type", "classification"]),
+                    source: string_field(host, &["source"]),
+                })
+            })
+            .collect(),
+    )
+}
+
+pub fn network_host_connection(
+    host: &ObservedNetworkHost,
+    status: &str,
+    first_seen_at: Option<NaiveDateTime>,
+    last_seen_at: Option<NaiveDateTime>,
+) -> Value {
+    let mut connection = Map::new();
+    connection.insert(
+        "id".to_string(),
+        Value::String(format!("network-host:{}", host.host_key)),
+    );
+    connection.insert("label".to_string(), Value::String(host.label.clone()));
+    connection.insert(
+        "connection_type".to_string(),
+        Value::String("network_host".to_string()),
+    );
+    connection.insert(
+        "external_id".to_string(),
+        Value::String(host.host_key.clone()),
+    );
+    if let Some(address) = &host.address {
+        connection.insert("address".to_string(), Value::String(address.clone()));
+    }
+    if let Some(device_type) = &host.device_type {
+        connection.insert(
+            "device_type".to_string(),
+            Value::String(device_type.clone()),
+        );
+    }
+    connection.insert("status".to_string(), Value::String(status.to_string()));
+    if let Some(source) = &host.source {
+        connection.insert("source".to_string(), Value::String(source.clone()));
+    }
+    if let Some(first_seen_at) = first_seen_at {
+        connection.insert(
+            "first_seen_at".to_string(),
+            Value::String(
+                DateTime::<Utc>::from_naive_utc_and_offset(first_seen_at, Utc).to_rfc3339(),
+            ),
+        );
+    }
+    if let Some(last_seen_at) = last_seen_at {
+        connection.insert(
+            "last_seen_at".to_string(),
+            Value::String(
+                DateTime::<Utc>::from_naive_utc_and_offset(last_seen_at, Utc).to_rfc3339(),
+            ),
+        );
+    }
+    Value::Object(connection)
+}
+
+pub fn network_analyzer_connections(snapshot_json: &str) -> Option<Value> {
+    let hosts = network_analyzer_hosts(snapshot_json)?;
+
     let connections: Vec<Value> = hosts
         .iter()
-        .take(MAX_DECLARED_CONNECTIONS)
-        .filter_map(|host| {
-            let ip = string_field(host, &["ip"]);
-            let mac = string_field(host, &["mac"]);
-            let hostname = string_field(host, &["hostname"]);
-            let id = mac
-                .clone()
-                .filter(|m| m != "00:00:00:00:00:00")
-                .or_else(|| ip.clone())?;
-            let label = hostname
-                .clone()
-                .or_else(|| ip.clone())
-                .unwrap_or(id.clone());
-
-            let mut connection = Map::new();
-            connection.insert(
-                "id".to_string(),
-                Value::String(format!("network-host:{id}")),
-            );
-            connection.insert("label".to_string(), Value::String(label));
-            connection.insert(
-                "connection_type".to_string(),
-                Value::String("network_host".to_string()),
-            );
-            connection.insert("external_id".to_string(), Value::String(id));
-            if let Some(ip) = ip {
-                connection.insert("address".to_string(), Value::String(ip));
-            }
-            if let Some(device_type) = string_field(host, &["device_type", "classification"]) {
-                connection.insert("device_type".to_string(), Value::String(device_type));
-            }
-            connection.insert("status".to_string(), Value::String("reachable".to_string()));
-            if let Some(source) = string_field(host, &["source"]) {
-                connection.insert("source".to_string(), Value::String(source));
-            }
-
-            Some(Value::Object(connection))
-        })
+        .map(|host| network_host_connection(host, "active", None, None))
         .collect();
 
     Some(Value::Array(connections))
+}
+
+pub fn network_analyzer_hosts_from_metadata(
+    metadata: &HashMap<String, String>,
+) -> Option<Vec<ObservedNetworkHost>> {
+    if metadata.get("kind").map(String::as_str) == Some("network_analyzer_scan") {
+        if let Some(snapshot_json) = metadata.get("snapshot_json") {
+            return network_analyzer_hosts(snapshot_json);
+        }
+    }
+
+    None
 }
 
 pub fn declared_connections_from_metadata(metadata: &HashMap<String, String>) -> Option<Value> {

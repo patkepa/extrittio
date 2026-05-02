@@ -6,8 +6,8 @@ use serde_json::Value as JsonValue;
 use super::schema::{
     alerts, api_keys, app_metrics, ca_certificates, command_history, device_certificates,
     device_configs, device_logs, device_shadows, device_types, devices, firmware_blobs,
-    firmware_updates, fleets, ota_deployments, rule_actions, rule_conditions, rule_cooldowns,
-    rules, server_config, server_metrics, telemetry, users, zones,
+    firmware_updates, fleets, network_observed_hosts, ota_deployments, rule_actions,
+    rule_conditions, rule_cooldowns, rules, server_config, server_metrics, telemetry, users, zones,
 };
 
 // ---------------------------------------------------------------------------
@@ -227,6 +227,43 @@ pub struct UpdateDevice {
     pub uptime_seconds: Option<i32>,
     pub updated_at: Option<NaiveDateTime>,
     pub declared_connections: Option<JsonValue>,
+}
+
+// ---------------------------------------------------------------------------
+// Network Observed Hosts
+// ---------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug, Clone)]
+#[diesel(table_name = network_observed_hosts)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct NetworkObservedHost {
+    pub id: i64,
+    pub analyzer_device_id: String,
+    pub host_key: String,
+    pub label: String,
+    pub address: Option<String>,
+    pub device_type: Option<String>,
+    pub source: Option<String>,
+    pub status: String,
+    pub first_seen_at: NaiveDateTime,
+    pub last_seen_at: NaiveDateTime,
+    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = network_observed_hosts)]
+pub struct NewNetworkObservedHost {
+    pub analyzer_device_id: String,
+    pub host_key: String,
+    pub label: String,
+    pub address: Option<String>,
+    pub device_type: Option<String>,
+    pub source: Option<String>,
+    pub status: String,
+    pub first_seen_at: NaiveDateTime,
+    pub last_seen_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
 }
 
 // ---------------------------------------------------------------------------

@@ -32,6 +32,8 @@ pub struct DeviceConnectionResponse {
     pub device_type: Option<String>,
     pub status: Option<String>,
     pub source: Option<String>,
+    pub first_seen_at: Option<String>,
+    pub last_seen_at: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

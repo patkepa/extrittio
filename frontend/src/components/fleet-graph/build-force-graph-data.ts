@@ -309,7 +309,7 @@ export function buildForceGraphData(
             name: getConnectionLabel(connection),
             type: 'external',
             val: 2,
-            color: EXTERNAL_COLOR,
+            color: STATUS_COLORS[connection.status ?? ''] ?? EXTERNAL_COLOR,
             connection,
             status: connection.status ?? 'external',
             deviceTypeName: connection.device_type ?? connection.connection_type,

@@ -59,6 +59,13 @@ function escapeHtml(value: string): string {
     .replaceAll("'", '&#39;');
 }
 
+function formatTimestamp(value?: string | null): string | undefined {
+  if (!value) return undefined;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
+}
+
 function formatExternalTooltip(node: GraphNode): string {
   const connection = node.connection;
   if (!connection) return '';
@@ -68,6 +75,8 @@ function formatExternalTooltip(node: GraphNode): string {
     ['Connection', connection.connection_type],
     ['Status', connection.status],
     ['Address', connection.address],
+    ['Last seen', formatTimestamp(connection.last_seen_at)],
+    ['First seen', formatTimestamp(connection.first_seen_at)],
     ['External ID', connection.external_id],
     ['Source', connection.source],
     ['Device ID', connection.device_id],

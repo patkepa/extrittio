@@ -6,7 +6,6 @@
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
-#include "sdkconfig.h"
 
 static const char *TAG = "wifi";
 static EventGroupHandle_t s_wifi_event_group;
@@ -37,7 +36,7 @@ static void event_handler(void *arg, esp_event_base_t event_base,
     }
 }
 
-esp_err_t wifi_init_sta(void) {
+esp_err_t wifi_init_sta(const char *ssid, const char *password) {
     s_wifi_event_group = xEventGroupCreate();
 
     ESP_ERROR_CHECK(esp_netif_init());
@@ -60,9 +59,9 @@ esp_err_t wifi_init_sta(void) {
             .sae_pwe_h2e = WPA3_SAE_PWE_BOTH,
         },
     };
-    strncpy((char *)wifi_config.sta.ssid, CONFIG_EXTRITTIO_WIFI_SSID,
+    strncpy((char *)wifi_config.sta.ssid, ssid,
             sizeof(wifi_config.sta.ssid) - 1);
-    strncpy((char *)wifi_config.sta.password, CONFIG_EXTRITTIO_WIFI_PASSWORD,
+    strncpy((char *)wifi_config.sta.password, password,
             sizeof(wifi_config.sta.password) - 1);
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
@@ -74,7 +73,7 @@ esp_err_t wifi_init_sta(void) {
         portMAX_DELAY);
 
     if (bits & WIFI_CONNECTED_BIT) {
-        ESP_LOGI(TAG, "Connected to %s", CONFIG_EXTRITTIO_WIFI_SSID);
+        ESP_LOGI(TAG, "Connected to %s", ssid);
         return ESP_OK;
     }
 

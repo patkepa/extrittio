@@ -30,6 +30,7 @@
 #define EXTRITTIO_HAVE_ARP_LOOKUP 0
 #endif
 
+#include "extrittio_config.h"
 #include "wifi.h"
 
 #include "extrittio/extrittio.h"

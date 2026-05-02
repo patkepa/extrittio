@@ -55,6 +55,8 @@ pub fn handle_telemetry(
 
     let has_location = telemetry_msg.latitude != 0.0 || telemetry_msg.longitude != 0.0;
 
+    let observed_network_hosts =
+        device_connections::network_analyzer_hosts_from_metadata(&telemetry_msg.metadata);
     let declared_connections =
         device_connections::declared_connections_from_metadata(&telemetry_msg.metadata);
 
@@ -92,7 +94,12 @@ pub fn handle_telemetry(
         },
     };
 
-    match telemetry_service::record(&mut conn, record, declared_connections) {
+    match telemetry_service::record(
+        &mut conn,
+        record,
+        declared_connections,
+        observed_network_hosts,
+    ) {
         Ok(None) => {
             warn!(
                 "Dropping telemetry from unregistered device: {}",

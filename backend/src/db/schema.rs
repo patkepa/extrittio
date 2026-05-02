@@ -167,6 +167,23 @@ diesel::table! {
 }
 
 diesel::table! {
+    network_observed_hosts (id) {
+        id -> Int8,
+        analyzer_device_id -> Text,
+        host_key -> Text,
+        label -> Text,
+        address -> Nullable<Text>,
+        device_type -> Nullable<Text>,
+        source -> Nullable<Text>,
+        status -> Text,
+        first_seen_at -> Timestamptz,
+        last_seen_at -> Timestamptz,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     ota_deployments (id) {
         id -> Int4,
         device_id -> Text,
@@ -299,6 +316,7 @@ diesel::joinable!(devices -> device_types (device_type_id));
 diesel::joinable!(devices -> fleets (fleet_id));
 diesel::joinable!(firmware_blobs -> firmware_updates (firmware_update_id));
 diesel::joinable!(firmware_updates -> device_types (device_type_id));
+diesel::joinable!(network_observed_hosts -> devices (analyzer_device_id));
 diesel::joinable!(ota_deployments -> devices (device_id));
 diesel::joinable!(ota_deployments -> firmware_updates (firmware_update_id));
 diesel::joinable!(rule_actions -> rules (rule_id));
@@ -323,6 +341,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     firmware_blobs,
     firmware_updates,
     fleets,
+    network_observed_hosts,
     ota_deployments,
     rule_actions,
     rule_conditions,

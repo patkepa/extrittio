@@ -9,6 +9,7 @@ pub mod device_type_repo;
 pub mod firmware_repo;
 pub mod fleet_repo;
 pub mod log_repo;
+pub mod network_observed_host_repo;
 pub mod rule_repo;
 pub mod server_metrics_repo;
 pub mod shadow_repo;

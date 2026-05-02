@@ -10,12 +10,16 @@ use tracing::{info, warn};
 use crate::db::models::{NewDevice, NewDeviceLog, NewDeviceShadow, NewOtaDeployment, UpdateDevice};
 use crate::error::AppError;
 use crate::repositories::{
-    cert_repo, device_repo, device_type_repo, firmware_repo, log_repo, shadow_repo, telemetry_repo,
+    cert_repo, device_repo, device_type_repo, firmware_repo, log_repo, network_observed_host_repo,
+    shadow_repo, telemetry_repo,
 };
 use crate::services::{cert_service, device_connections, shadow_service};
 use crate::state::{DbPool, ZenohMetrics, run_db};
 
 pub use crate::repositories::device_repo::DeviceWithJoins;
+
+const NETWORK_ANALYZER_DEVICE_TYPE: &str = "network-analyzer";
+const NETWORK_OBSERVED_HOST_RETENTION_DAYS: i64 = 30;
 
 fn has_no_declared_connections(value: &JsonValue) -> bool {
     value.as_array().is_none_or(Vec::is_empty)
@@ -55,6 +59,58 @@ fn hydrate_declared_connections_from_telemetry(
         }
         if let Some(connections) = connections_by_device.get(&device.id) {
             device.declared_connections = connections.clone();
+        }
+    }
+
+    Ok(())
+}
+
+fn hydrate_network_observed_hosts(
+    conn: &mut PgConnection,
+    devices: &mut [device_repo::DeviceWithJoins],
+) -> Result<(), AppError> {
+    let analyzer_ids: Vec<String> = devices
+        .iter()
+        .filter_map(|(device, device_type, _)| {
+            (device_type.name == NETWORK_ANALYZER_DEVICE_TYPE).then(|| device.id.clone())
+        })
+        .collect();
+
+    if analyzer_ids.is_empty() {
+        return Ok(());
+    }
+
+    let cutoff = chrono::Utc::now().naive_utc()
+        - chrono::Duration::days(NETWORK_OBSERVED_HOST_RETENTION_DAYS);
+    let observed_hosts =
+        network_observed_host_repo::list_recent_for_analyzers(conn, &analyzer_ids, cutoff)?;
+
+    let mut connections_by_analyzer: HashMap<String, Vec<JsonValue>> = HashMap::new();
+    for host in observed_hosts {
+        let observed = device_connections::ObservedNetworkHost {
+            host_key: host.host_key,
+            label: host.label,
+            address: host.address,
+            device_type: host.device_type,
+            source: host.source,
+        };
+        connections_by_analyzer
+            .entry(host.analyzer_device_id)
+            .or_default()
+            .push(device_connections::network_host_connection(
+                &observed,
+                &host.status,
+                Some(host.first_seen_at),
+                Some(host.last_seen_at),
+            ));
+    }
+
+    for (device, device_type, _) in devices {
+        if device_type.name != NETWORK_ANALYZER_DEVICE_TYPE {
+            continue;
+        }
+        if let Some(connections) = connections_by_analyzer.remove(&device.id) {
+            device.declared_connections = JsonValue::Array(connections);
         }
     }
 
@@ -254,6 +310,7 @@ pub fn list_devices(
         offset,
     )?;
     hydrate_declared_connections_from_telemetry(conn, &mut devices)?;
+    hydrate_network_observed_hosts(conn, &mut devices)?;
     Ok((devices, total))
 }
 
@@ -265,6 +322,7 @@ pub fn get_device(
     let device = device_repo::find_device_with_joins(conn, device_id)?;
     let mut devices = vec![device];
     hydrate_declared_connections_from_telemetry(conn, &mut devices)?;
+    hydrate_network_observed_hosts(conn, &mut devices)?;
     Ok(devices.remove(0))
 }
 

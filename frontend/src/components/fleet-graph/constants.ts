@@ -3,6 +3,8 @@ export const STATUS_COLORS: Record<string, string> = {
   online: '#0F9960',
   offline: '#E76A6E',
   warning: '#D9822B',
+  active: '#0F9960',
+  inactive: '#5C7080',
 };
 
 export const FLEET_COLOR = '#2D72D2';

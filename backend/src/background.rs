@@ -3,7 +3,7 @@ use std::sync::RwLock;
 use std::time::Duration;
 use tracing::{info, warn};
 
-use crate::repositories::device_repo;
+use crate::repositories::{device_repo, network_observed_host_repo};
 use crate::rule_engine::cache::RuleCache;
 use crate::rule_engine::evaluate::evaluate_status_change;
 use crate::rule_engine::types::{PendingAction, StatusChange};
@@ -231,12 +231,17 @@ pub async fn run_alert_retention(db_pool: DbPool, retention_days: u64) {
                 crate::services::rule_service::delete_stale_cooldowns(&mut conn, cooldown_cutoff)
                     .map_err(|e| e.to_string())?;
 
-            Ok::<(usize, usize), String>((alert_count, cooldown_count))
+            let observed_host_cutoff = chrono::Utc::now().naive_utc() - chrono::Duration::days(30);
+            let observed_host_count =
+                network_observed_host_repo::delete_older_than(&mut conn, observed_host_cutoff)
+                    .map_err(|e| e.to_string())?;
+
+            Ok::<(usize, usize, usize), String>((alert_count, cooldown_count, observed_host_count))
         })
         .await;
 
         match result {
-            Ok(Ok((alert_count, cooldown_count))) => {
+            Ok(Ok((alert_count, cooldown_count, observed_host_count))) => {
                 consecutive_failures = 0;
                 if alert_count > 0 {
                     info!("Alert retention: deleted {} resolved alerts", alert_count);
@@ -245,6 +250,12 @@ pub async fn run_alert_retention(db_pool: DbPool, retention_days: u64) {
                     info!(
                         "Cooldown pruning: deleted {} stale cooldowns",
                         cooldown_count
+                    );
+                }
+                if observed_host_count > 0 {
+                    info!(
+                        "Network observed host retention: deleted {} stale hosts",
+                        observed_host_count
                     );
                 }
             }

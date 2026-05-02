@@ -647,8 +647,10 @@ export interface components {
             device_id?: string | null;
             device_type?: string | null;
             external_id?: string | null;
+            first_seen_at?: string | null;
             id: string;
             label: string;
+            last_seen_at?: string | null;
             source?: string | null;
             status?: string | null;
         };

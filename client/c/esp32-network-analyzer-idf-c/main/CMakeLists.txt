@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "main.c" "wifi.c"
+    SRCS "main.c" "wifi.c" "extrittio_config.c"
     INCLUDE_DIRS "."
     REQUIRES
         sdk-c
