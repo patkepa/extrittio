@@ -12,12 +12,10 @@
 #include "esp_timer.h"
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "lwip/inet.h"
 #include "lwip/ip_addr.h"
 #include "nvs_flash.h"
-#include "ping/ping_sock.h"
 #include "sdkconfig.h"
 
 #if __has_include("esp_netif_net_stack.h")
@@ -40,6 +38,7 @@ typedef struct {
     char ip[16];
     char mac[18];
     uint32_t rtt_ms;
+    const char *source;
 } host_record_t;
 
 typedef struct {
@@ -57,12 +56,6 @@ typedef struct {
     size_t len;
     bool failed;
 } json_writer_t;
-
-typedef struct {
-    SemaphoreHandle_t done;
-    bool reachable;
-    uint32_t elapsed_ms;
-} ping_result_t;
 
 static bool jw_append(json_writer_t *w, const char *fmt, ...) {
     if (w->failed || w->len >= w->cap) {
@@ -161,67 +154,6 @@ static const char *authmode_to_string(wifi_auth_mode_t mode) {
     }
 }
 
-static void ping_success(esp_ping_handle_t hdl, void *args) {
-    ping_result_t *result = (ping_result_t *)args;
-    uint32_t elapsed = 0;
-    esp_ping_get_profile(hdl, ESP_PING_PROF_TIMEGAP, &elapsed, sizeof(elapsed));
-    result->reachable = true;
-    result->elapsed_ms = elapsed;
-}
-
-static void ping_end(esp_ping_handle_t hdl, void *args) {
-    ping_result_t *result = (ping_result_t *)args;
-    xSemaphoreGive(result->done);
-}
-
-static bool ping_host(uint32_t host_addr, uint32_t *rtt_ms) {
-    ping_result_t result = {
-        .done = xSemaphoreCreateBinary(),
-        .reachable = false,
-        .elapsed_ms = 0,
-    };
-    if (result.done == NULL) {
-        return false;
-    }
-
-    ip_addr_t target_addr;
-    IP_ADDR4(&target_addr,
-             (host_addr >> 24) & 0xff,
-             (host_addr >> 16) & 0xff,
-             (host_addr >> 8) & 0xff,
-             host_addr & 0xff);
-
-    esp_ping_config_t ping_config = ESP_PING_DEFAULT_CONFIG();
-    ping_config.target_addr = target_addr;
-    ping_config.count = 1;
-    ping_config.interval_ms = 10;
-    ping_config.timeout_ms = CONFIG_EXTRITTIO_ANALYZER_PING_TIMEOUT_MS;
-
-    esp_ping_callbacks_t callbacks = {
-        .cb_args = &result,
-        .on_ping_success = ping_success,
-        .on_ping_end = ping_end,
-    };
-
-    esp_ping_handle_t ping = NULL;
-    esp_err_t err = esp_ping_new_session(&ping_config, &callbacks, &ping);
-    if (err != ESP_OK) {
-        vSemaphoreDelete(result.done);
-        return false;
-    }
-
-    esp_ping_start(ping);
-    xSemaphoreTake(result.done,
-                   pdMS_TO_TICKS(CONFIG_EXTRITTIO_ANALYZER_PING_TIMEOUT_MS + 1000));
-    esp_ping_delete_session(ping);
-    vSemaphoreDelete(result.done);
-
-    if (result.reachable && rtt_ms != NULL) {
-        *rtt_ms = result.elapsed_ms;
-    }
-    return result.reachable;
-}
-
 static bool lookup_arp_mac(esp_netif_t *esp_netif, uint32_t host_addr, char *out, size_t len) {
 #if EXTRITTIO_HAVE_ARP_LOOKUP
     struct netif *lwip_netif = (struct netif *)esp_netif_get_netif_impl(esp_netif);
@@ -250,6 +182,51 @@ static bool lookup_arp_mac(esp_netif_t *esp_netif, uint32_t host_addr, char *out
 #endif
 }
 
+static bool arp_probe_host(esp_netif_t *esp_netif, uint32_t host_addr,
+                           char *mac, size_t mac_len, uint32_t *elapsed_ms) {
+#if EXTRITTIO_HAVE_ARP_LOOKUP
+    struct netif *lwip_netif = (struct netif *)esp_netif_get_netif_impl(esp_netif);
+    if (lwip_netif == NULL) {
+        return false;
+    }
+
+    int64_t started_us = esp_timer_get_time();
+    if (lookup_arp_mac(esp_netif, host_addr, mac, mac_len)) {
+        if (elapsed_ms != NULL) {
+            *elapsed_ms = 0;
+        }
+        return true;
+    }
+
+    ip4_addr_t ipaddr;
+    ipaddr.addr = htonl(host_addr);
+    if (etharp_request(lwip_netif, &ipaddr) != ERR_OK) {
+        return false;
+    }
+
+    int64_t deadline_us =
+        started_us + (int64_t)CONFIG_EXTRITTIO_ANALYZER_PING_TIMEOUT_MS * 1000;
+    do {
+        vTaskDelay(pdMS_TO_TICKS(10));
+        if (lookup_arp_mac(esp_netif, host_addr, mac, mac_len)) {
+            if (elapsed_ms != NULL) {
+                *elapsed_ms = (uint32_t)((esp_timer_get_time() - started_us) / 1000);
+            }
+            return true;
+        }
+    } while (esp_timer_get_time() < deadline_us);
+
+    return false;
+#else
+    (void)esp_netif;
+    (void)host_addr;
+    (void)mac;
+    (void)mac_len;
+    (void)elapsed_ms;
+    return false;
+#endif
+}
+
 static void run_scan(esp_netif_t *netif, scan_result_t *scan) {
     memset(scan, 0, sizeof(*scan));
 
@@ -260,13 +237,12 @@ static void run_scan(esp_netif_t *netif, scan_result_t *scan) {
     }
 
     uint32_t local_ip = ntohl(ip_info.ip.addr);
-    uint32_t gateway = ntohl(ip_info.gw.addr);
     uint32_t network = ntohl(ip_info.ip.addr & ip_info.netmask.addr);
     uint32_t broadcast = network | ~ntohl(ip_info.netmask.addr);
     uint32_t max_targets = CONFIG_EXTRITTIO_ANALYZER_MAX_SCAN_TARGETS;
 
     for (uint32_t addr = network + 1; addr < broadcast; addr++) {
-        if (addr == local_ip || addr == gateway) {
+        if (addr == local_ip) {
             continue;
         }
         if (scan->targets_scanned >= max_targets) {
@@ -275,8 +251,9 @@ static void run_scan(esp_netif_t *netif, scan_result_t *scan) {
         }
 
         scan->targets_scanned++;
-        uint32_t rtt_ms = 0;
-        if (!ping_host(addr, &rtt_ms)) {
+        char mac[18] = {0};
+        uint32_t elapsed_ms = 0;
+        if (!arp_probe_host(netif, addr, mac, sizeof(mac), &elapsed_ms)) {
             continue;
         }
 
@@ -287,10 +264,9 @@ static void run_scan(esp_netif_t *netif, scan_result_t *scan) {
 
         host_record_t *host = &scan->hosts[scan->host_count++];
         ipv4_to_string(addr, host->ip, sizeof(host->ip));
-        host->rtt_ms = rtt_ms;
-        if (!lookup_arp_mac(netif, addr, host->mac, sizeof(host->mac))) {
-            strncpy(host->mac, "unknown", sizeof(host->mac) - 1);
-        }
+        strncpy(host->mac, mac, sizeof(host->mac) - 1);
+        host->rtt_ms = elapsed_ms;
+        host->source = "arp";
     }
 
 }
@@ -350,9 +326,9 @@ static void build_snapshot_json(const scan_result_t *scan, char *buf, size_t len
         }
         const host_record_t *host = &scan->hosts[i];
         jw_append(&w, "%s{\"ip\":\"%s\",\"mac\":\"%s\",\"hostname\":null,"
-                      "\"reachable\":true,\"rtt_ms\":%lu,\"source\":\"icmp_arp\"}",
+                      "\"reachable\":true,\"rtt_ms\":%lu,\"source\":\"%s\"}",
                   emitted_any ? "," : "", host->ip, host->mac,
-                  (unsigned long)host->rtt_ms);
+                  (unsigned long)host->rtt_ms, host->source);
         emitted_any = true;
     }
 
