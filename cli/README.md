@@ -65,3 +65,16 @@ EXTRITTIO_TOKEN=<jwt>
 ```
 
 Use `--output json` for scripts.
+
+## Internal Structure
+
+The CLI is split into layers so new command families can be added without
+expanding the binary entrypoint:
+
+- `args.rs` owns the public command shape and clap flags.
+- `commands/` owns domain command execution.
+- `api.rs` owns authenticated HTTP transport and API error handling.
+- `models.rs` owns backend response DTOs.
+- `output.rs` owns table/JSON rendering.
+- `config.rs` owns local CLI state.
+- `esp32.rs` owns provisioning support for ESP-IDF targets.

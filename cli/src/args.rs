@@ -1,0 +1,311 @@
+use std::path::PathBuf;
+
+use clap::{Args, Parser, Subcommand};
+
+use crate::{
+    defaults::{
+        DEFAULT_ESP32_BAUD, DEFAULT_ESP32_CHIP, DEFAULT_ESP32_NVS_OFFSET, DEFAULT_ESP32_NVS_SIZE,
+        DEFAULT_ZENOH_CONNECT,
+    },
+    output::OutputFormat,
+};
+
+#[derive(Debug, Parser)]
+#[command(name = "extrittio")]
+#[command(about = "Command line tooling for Extrittio IoT Hub")]
+pub(crate) struct Cli {
+    /// Extrittio backend URL.
+    #[arg(long, env = "EXTRITTIO_URL", global = true)]
+    pub(crate) url: Option<String>,
+
+    /// JWT token. Defaults to EXTRITTIO_TOKEN or the saved CLI config.
+    #[arg(long, env = "EXTRITTIO_TOKEN", global = true)]
+    pub(crate) token: Option<String>,
+
+    /// CLI config file path.
+    #[arg(long, env = "EXTRITTIO_CLI_CONFIG", global = true)]
+    pub(crate) config: Option<PathBuf>,
+
+    /// Output format.
+    #[arg(short, long, value_enum, default_value_t = OutputFormat::Table, global = true)]
+    pub(crate) output: OutputFormat,
+
+    #[command(subcommand)]
+    pub(crate) command: Command,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum Command {
+    /// Authenticate and manage the local CLI session.
+    Auth(AuthCommand),
+    /// Show or update local CLI configuration.
+    Config(ConfigCommand),
+    /// Check backend health.
+    Health,
+    /// Manage devices.
+    Devices(DevicesCommand),
+    /// Manage device types.
+    DeviceTypes(DeviceTypesCommand),
+    /// Manage fleets.
+    Fleets(FleetsCommand),
+    /// Manage API keys for CI and automation.
+    ApiKeys(ApiKeysCommand),
+    /// Download or regenerate device certificates.
+    Certs(CertsCommand),
+    /// Create a device and emit client provisioning material.
+    Provision(ProvisionArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct AuthCommand {
+    #[command(subcommand)]
+    pub(crate) command: AuthSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum AuthSubcommand {
+    /// Login and save the returned JWT token.
+    Login(LoginArgs),
+    /// Show the current authenticated user.
+    Me,
+    /// Remove the saved JWT token from the CLI config.
+    Logout,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct LoginArgs {
+    #[arg(short, long)]
+    pub(crate) username: String,
+
+    #[arg(short, long, env = "EXTRITTIO_PASSWORD")]
+    pub(crate) password: Option<String>,
+
+    /// Do not save the token to the CLI config file.
+    #[arg(long)]
+    pub(crate) no_save: bool,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct ConfigCommand {
+    #[command(subcommand)]
+    pub(crate) command: ConfigSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum ConfigSubcommand {
+    /// Print the active CLI configuration.
+    Show,
+    /// Save a default backend URL.
+    SetUrl { url: String },
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DevicesCommand {
+    #[command(subcommand)]
+    pub(crate) command: DevicesSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum DevicesSubcommand {
+    /// List devices.
+    List(ListDevicesArgs),
+    /// Get one device.
+    Get { id: String },
+    /// Create a device.
+    Create(CreateDeviceArgs),
+    /// Delete a device.
+    Delete { id: String },
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct ListDevicesArgs {
+    #[arg(long)]
+    pub(crate) status: Option<String>,
+    #[arg(long)]
+    pub(crate) search: Option<String>,
+    #[arg(long)]
+    pub(crate) fleet_id: Option<i32>,
+    #[arg(long, default_value_t = 50)]
+    pub(crate) limit: i64,
+    #[arg(long, default_value_t = 0)]
+    pub(crate) offset: i64,
+}
+
+#[derive(Debug, Args, Clone)]
+pub(crate) struct CreateDeviceArgs {
+    #[arg(short, long)]
+    pub(crate) name: String,
+
+    #[arg(long)]
+    pub(crate) device_type_id: Option<i32>,
+
+    #[arg(long, value_name = "NAME")]
+    pub(crate) device_type: Option<String>,
+
+    #[arg(long)]
+    pub(crate) fleet_id: Option<i32>,
+
+    #[arg(long)]
+    pub(crate) firmware: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DeviceTypesCommand {
+    #[command(subcommand)]
+    pub(crate) command: DeviceTypesSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum DeviceTypesSubcommand {
+    /// List device types.
+    List(PageArgs),
+    /// Create a device type.
+    Create { name: String },
+    /// Delete a device type.
+    Delete { id: i32 },
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct FleetsCommand {
+    #[command(subcommand)]
+    pub(crate) command: FleetsSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum FleetsSubcommand {
+    /// List fleets.
+    List(PageArgs),
+    /// Create a fleet.
+    Create { name: String },
+    /// Delete a fleet.
+    Delete { id: i32 },
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct ApiKeysCommand {
+    #[command(subcommand)]
+    pub(crate) command: ApiKeysSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum ApiKeysSubcommand {
+    /// List API keys.
+    List,
+    /// Create an API key. The plaintext key is returned once.
+    Create {
+        name: String,
+        #[arg(long)]
+        device_type_id: Option<i32>,
+    },
+    /// Delete an API key.
+    Delete { id: i32 },
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct CertsCommand {
+    #[command(subcommand)]
+    pub(crate) command: CertsSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum CertsSubcommand {
+    /// Print the root CA certificate.
+    Ca,
+    /// Download a device certificate bundle.
+    Download(CertDownloadArgs),
+    /// Regenerate and download a device certificate bundle.
+    Regenerate(CertDownloadArgs),
+    /// Show device certificate status.
+    Status { device_id: String },
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct CertDownloadArgs {
+    pub(crate) device_id: String,
+
+    /// Directory where ca.pem, device.pem, and device-key.pem will be written.
+    #[arg(long)]
+    pub(crate) out_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub(crate) struct PageArgs {
+    #[arg(long, default_value_t = 50)]
+    pub(crate) limit: i64,
+    #[arg(long, default_value_t = 0)]
+    pub(crate) offset: i64,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct ProvisionArgs {
+    #[command(flatten)]
+    pub(crate) device: CreateDeviceArgs,
+
+    /// Zenoh endpoint to include in generated client config.
+    #[arg(long, default_value = DEFAULT_ZENOH_CONNECT)]
+    pub(crate) zenoh_connect: String,
+
+    /// Download and write the device certificate bundle into this directory.
+    #[arg(long)]
+    pub(crate) cert_dir: Option<PathBuf>,
+
+    /// Regenerate the device certificate before downloading it.
+    #[arg(long)]
+    pub(crate) regenerate_cert: bool,
+
+    /// Generate and flash an ESP-IDF NVS image with this device's runtime config.
+    #[arg(long)]
+    pub(crate) flash_esp32_nvs: bool,
+
+    /// ESP serial port. Auto-detected when omitted and exactly one USB serial device exists.
+    #[arg(long)]
+    pub(crate) port: Option<PathBuf>,
+
+    /// ESP chip passed to esptool.py.
+    #[arg(long, default_value = DEFAULT_ESP32_CHIP)]
+    pub(crate) chip: String,
+
+    /// ESP serial baud rate passed to esptool.py.
+    #[arg(long, default_value_t = DEFAULT_ESP32_BAUD)]
+    pub(crate) baud: u32,
+
+    /// NVS partition offset for the target firmware partition table.
+    #[arg(long, default_value = DEFAULT_ESP32_NVS_OFFSET)]
+    pub(crate) nvs_offset: String,
+
+    /// NVS partition size for the generated image.
+    #[arg(long, default_value = DEFAULT_ESP32_NVS_SIZE)]
+    pub(crate) nvs_size: String,
+
+    /// Wi-Fi SSID to write into ESP NVS. Defaults to EXTRITTIO_WIFI_SSID.
+    #[arg(long, env = "EXTRITTIO_WIFI_SSID")]
+    pub(crate) wifi_ssid: Option<String>,
+
+    /// Wi-Fi password to write into ESP NVS. Defaults to EXTRITTIO_WIFI_PASSWORD.
+    #[arg(long, env = "EXTRITTIO_WIFI_PASSWORD")]
+    pub(crate) wifi_password: Option<String>,
+
+    /// Firmware version to write into ESP NVS. Defaults to the created device firmware.
+    #[arg(long)]
+    pub(crate) esp32_firmware_version: Option<String>,
+
+    /// ESP-IDF path used to locate nvs_partition_gen.py and esptool.py.
+    #[arg(long, env = "IDF_PATH")]
+    pub(crate) idf_path: Option<PathBuf>,
+
+    /// Python interpreter for ESP-IDF Python tools.
+    #[arg(long, env = "EXTRITTIO_IDF_PYTHON")]
+    pub(crate) idf_python: Option<PathBuf>,
+
+    /// Override path to nvs_partition_gen.py.
+    #[arg(long, env = "EXTRITTIO_NVS_PARTITION_GEN")]
+    pub(crate) nvs_partition_gen: Option<PathBuf>,
+
+    /// Override path to esptool.py.
+    #[arg(long, env = "EXTRITTIO_ESPTOOL")]
+    pub(crate) esptool: Option<PathBuf>,
+
+    /// Keep generated NVS CSV and binary files for inspection.
+    #[arg(long)]
+    pub(crate) keep_nvs_artifacts: bool,
+}
