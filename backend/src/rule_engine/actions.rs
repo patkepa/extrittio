@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use diesel::PgConnection;
 use prost::Message;
+use sha2::{Digest, Sha256};
 use tokio::time::sleep;
 use tracing::{info, warn};
 
@@ -11,7 +12,6 @@ use super::types::PendingAction;
 use crate::db::models::{NewRuleActionOutboxEvent, RuleActionOutboxEvent};
 use crate::repositories::rule_action_outbox_repo;
 use crate::state::{DbPool, ZenohMetrics};
-use crate::tenancy::DEFAULT_TENANT_ID;
 
 const OUTBOX_BATCH_SIZE: i64 = 32;
 
@@ -30,11 +30,12 @@ pub fn enqueue_pending_actions(
             event_type: event_type_for_action(action).to_string(),
             aggregate_type: aggregate_type_for_action(action).to_string(),
             aggregate_id: aggregate_id_for_action(action),
+            idempotency_key: Some(idempotency_key_for_action(action)),
             payload,
         };
-        rule_action_outbox_repo::insert_event(conn, &event)
+        let affected = rule_action_outbox_repo::insert_event(conn, &event)
             .map_err(|e| format!("failed to insert rule action outbox event: {e}"))?;
-        inserted += 1;
+        inserted += affected;
     }
 
     Ok(inserted)
@@ -210,6 +211,7 @@ pub async fn execute_action(
             }
         }
         PendingAction::UpdateAlertValue {
+            tenant_id: _,
             alert_id,
             triggered_value,
         } => {
@@ -226,15 +228,16 @@ pub async fn execute_action(
             .await
             .map_err(|e| e.to_string())?
         }
-        PendingAction::ResolveAlert { alert_id } => {
+        PendingAction::ResolveAlert {
+            tenant_id,
+            alert_id,
+        } => {
             let cache = rule_cache.clone();
             let pool = db_pool.clone();
             let result = tokio::task::spawn_blocking(move || {
                 let mut conn = pool.get().map_err(|e| e.to_string())?;
                 crate::services::alert_service::resolve_alert_for_tenant(
-                    &mut conn,
-                    DEFAULT_TENANT_ID,
-                    &alert_id,
+                    &mut conn, &tenant_id, &alert_id,
                 )
                 .map_err(|e| e.to_string())
             })
@@ -258,6 +261,7 @@ pub async fn execute_action(
             }
         }
         PendingAction::SendWebhook {
+            tenant_id: _,
             url,
             headers,
             payload,
@@ -403,12 +407,12 @@ pub async fn execute_action(
 fn tenant_id_for_action(action: &PendingAction) -> &str {
     match action {
         PendingAction::CreateAlert { tenant_id, .. }
+        | PendingAction::UpdateAlertValue { tenant_id, .. }
+        | PendingAction::ResolveAlert { tenant_id, .. }
+        | PendingAction::SendWebhook { tenant_id, .. }
         | PendingAction::SendCommand { tenant_id, .. }
         | PendingAction::UpdateCooldown { tenant_id, .. }
         | PendingAction::UpdateZoneEntry { tenant_id, .. } => tenant_id,
-        PendingAction::UpdateAlertValue { .. }
-        | PendingAction::ResolveAlert { .. }
-        | PendingAction::SendWebhook { .. } => DEFAULT_TENANT_ID,
     }
 }
 
@@ -448,10 +452,65 @@ fn aggregate_id_for_action(action: &PendingAction) -> String {
             rule_id, device_id, ..
         } => format!("{rule_id}:{device_id}"),
         PendingAction::UpdateAlertValue { alert_id, .. }
-        | PendingAction::ResolveAlert { alert_id } => alert_id.clone(),
+        | PendingAction::ResolveAlert { alert_id, .. } => alert_id.clone(),
         PendingAction::SendWebhook { url, .. } => url.clone(),
         PendingAction::SendCommand {
             device_id, command, ..
         } => format!("{device_id}:{command}"),
     }
+}
+
+fn idempotency_key_for_action(action: &PendingAction) -> String {
+    match action {
+        PendingAction::CreateAlert {
+            rule_id, device_id, ..
+        } => format!("create-alert:{rule_id}:{device_id}"),
+        PendingAction::UpdateAlertValue {
+            alert_id,
+            triggered_value,
+            ..
+        } => format!(
+            "update-alert-value:{alert_id}:{}",
+            stable_hash(triggered_value.as_bytes())
+        ),
+        PendingAction::ResolveAlert { alert_id, .. } => format!("resolve-alert:{alert_id}"),
+        PendingAction::SendWebhook {
+            url,
+            headers,
+            payload,
+            ..
+        } => format!(
+            "webhook:{url}:{}:{}",
+            stable_json_hash(headers),
+            stable_json_hash(payload)
+        ),
+        PendingAction::SendCommand {
+            device_id,
+            command,
+            params,
+            ..
+        } => format!(
+            "send-command:{device_id}:{command}:{}",
+            stable_json_hash(params)
+        ),
+        PendingAction::UpdateCooldown {
+            rule_id, device_id, ..
+        } => format!("update-cooldown:{rule_id}:{device_id}"),
+        PendingAction::UpdateZoneEntry {
+            rule_id, device_id, ..
+        } => format!("update-zone-entry:{rule_id}:{device_id}"),
+    }
+}
+
+fn stable_json_hash<T>(value: &T) -> String
+where
+    T: serde::Serialize,
+{
+    let bytes = serde_json::to_vec(value).unwrap_or_default();
+    stable_hash(&bytes)
+}
+
+fn stable_hash(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    format!("{digest:x}")
 }

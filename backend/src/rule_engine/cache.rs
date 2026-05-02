@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use chrono::NaiveDateTime;
 
+use super::compiler::compile_target_type;
+use super::model::RuleTargetType;
 use super::types::{CachedRule, CachedZone};
 use crate::tenancy::DEFAULT_TENANT_ID;
 
@@ -88,12 +90,12 @@ impl RuleCache {
     /// Inserts a rule into the appropriate bucket based on its `target_type`.
     /// Replaces an existing rule with the same id if present; otherwise appends.
     pub fn insert_rule(&mut self, rule: CachedRule) {
-        let bucket: &mut Vec<CachedRule> = match rule.target_type.as_str() {
-            "global" => &mut self.global_rules,
-            "device_type" => &mut self.by_device_type,
-            "fleet" => &mut self.by_fleet,
-            "device" => &mut self.by_device,
-            _ => return,
+        let bucket: &mut Vec<CachedRule> = match compile_target_type(&rule.target_type) {
+            Some(RuleTargetType::Global) => &mut self.global_rules,
+            Some(RuleTargetType::DeviceType) => &mut self.by_device_type,
+            Some(RuleTargetType::Fleet) => &mut self.by_fleet,
+            Some(RuleTargetType::Device) => &mut self.by_device,
+            None => return,
         };
 
         if let Some(existing) = bucket

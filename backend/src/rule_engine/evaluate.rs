@@ -2,7 +2,13 @@ use chrono::Utc;
 use serde_json::{Value, json};
 
 use super::cache::RuleCache;
+use super::compiler::{
+    compile_action, compile_condition, compile_operator, compile_telemetry_field, compile_trigger,
+};
 use super::geo::{point_in_circle, point_in_polygon};
+use super::model::{
+    ConditionField, ConditionOperator, RuleActionKind, RuleTrigger, TelemetryField,
+};
 use super::types::{CachedCondition, PendingAction, StatusChange, TelemetryData, ZoneGeometry};
 use crate::tenancy::DEFAULT_TENANT_ID;
 
@@ -13,16 +19,19 @@ use crate::tenancy::DEFAULT_TENANT_ID;
 /// Maps a field name string to the corresponding value in `TelemetryData`.
 /// Returns `None` for unknown field names.
 pub fn get_field_value(field: &str, data: &TelemetryData) -> Option<f64> {
+    compile_telemetry_field(field).map(|field| get_telemetry_field_value(field, data))
+}
+
+fn get_telemetry_field_value(field: TelemetryField, data: &TelemetryData) -> f64 {
     match field {
-        "temperature" => Some(data.temperature as f64),
-        "humidity" => Some(data.humidity as f64),
-        "battery_level" => Some(data.battery_level as f64),
-        "latitude" => Some(data.latitude),
-        "longitude" => Some(data.longitude),
-        "speed" => Some(data.speed as f64),
-        "altitude" => Some(data.altitude as f64),
-        "heading" => Some(data.heading as f64),
-        _ => None,
+        TelemetryField::Temperature => data.temperature as f64,
+        TelemetryField::Humidity => data.humidity as f64,
+        TelemetryField::BatteryLevel => data.battery_level as f64,
+        TelemetryField::Latitude => data.latitude,
+        TelemetryField::Longitude => data.longitude,
+        TelemetryField::Speed => data.speed as f64,
+        TelemetryField::Altitude => data.altitude as f64,
+        TelemetryField::Heading => data.heading as f64,
     }
 }
 
@@ -34,34 +43,47 @@ pub fn get_field_value(field: &str, data: &TelemetryData) -> Option<f64> {
 /// Returns `false` if the field is unknown or the threshold value cannot be
 /// parsed as f64.
 pub fn evaluate_condition(condition: &CachedCondition, data: &TelemetryData) -> bool {
-    let field_val = match get_field_value(&condition.field, data) {
-        Some(v) => v,
-        None => return false,
+    let Some(condition) = compile_condition(condition) else {
+        return false;
+    };
+    let ConditionField::Telemetry(field) = condition.field else {
+        return false;
+    };
+    let Some(threshold) = condition.numeric_value else {
+        return false;
     };
 
-    let threshold: f64 = match condition.value.parse() {
-        Ok(v) => v,
-        Err(_) => return false,
-    };
-
-    match condition.operator.as_str() {
-        "gt" => field_val > threshold,
-        "gte" => field_val >= threshold,
-        "lt" => field_val < threshold,
-        "lte" => field_val <= threshold,
-        "eq" => (field_val - threshold).abs() < f64::EPSILON,
-        "neq" => (field_val - threshold).abs() >= f64::EPSILON,
-        _ => false,
-    }
+    compare_f64(
+        get_telemetry_field_value(field, data),
+        threshold,
+        condition.operator,
+    )
 }
 
 /// Evaluates a single condition against a status string.
 /// Only `eq` and `neq` operators are meaningful for status comparisons.
 pub fn evaluate_status_condition(condition: &CachedCondition, new_status: &str) -> bool {
-    match condition.operator.as_str() {
-        "eq" => condition.value == new_status,
-        "neq" => condition.value != new_status,
+    let Some(condition) = compile_condition(condition) else {
+        return false;
+    };
+    if condition.field != ConditionField::Status {
+        return false;
+    }
+    match condition.operator {
+        ConditionOperator::Eq => condition.value == new_status,
+        ConditionOperator::Neq => condition.value != new_status,
         _ => false,
+    }
+}
+
+fn compare_f64(left: f64, right: f64, operator: ConditionOperator) -> bool {
+    match operator {
+        ConditionOperator::Gt => left > right,
+        ConditionOperator::Gte => left >= right,
+        ConditionOperator::Lt => left < right,
+        ConditionOperator::Lte => left <= right,
+        ConditionOperator::Eq => (left - right).abs() < f64::EPSILON,
+        ConditionOperator::Neq => (left - right).abs() >= f64::EPSILON,
     }
 }
 
@@ -135,12 +157,12 @@ pub fn format_value(val: f64) -> String {
 
 /// Converts an operator string to a human-readable verb phrase.
 fn operator_phrase(operator: &str) -> &'static str {
-    match operator {
-        "gt" | "gte" => "exceeded",
-        "lt" | "lte" => "dropped below",
-        "eq" => "equals",
-        "neq" => "is not",
-        _ => "triggered",
+    match compile_operator(operator) {
+        Some(ConditionOperator::Gt | ConditionOperator::Gte) => "exceeded",
+        Some(ConditionOperator::Lt | ConditionOperator::Lte) => "dropped below",
+        Some(ConditionOperator::Eq) => "equals",
+        Some(ConditionOperator::Neq) => "is not",
+        None => "triggered",
     }
 }
 
@@ -230,7 +252,7 @@ pub fn evaluate_telemetry_for_tenant(
 
     for rule in rules {
         // Only handle telemetry-triggered rules here.
-        if rule.trigger_type != "telemetry" {
+        if compile_trigger(&rule.trigger_type) != Some(RuleTrigger::Telemetry) {
             continue;
         }
 
@@ -250,6 +272,7 @@ pub fn evaluate_telemetry_for_tenant(
                 // Skip empty-string sentinel (reservation in-flight).
                 if !alert_id.is_empty() {
                     actions.push(PendingAction::UpdateAlertValue {
+                        tenant_id: rule.tenant_id.clone(),
                         alert_id: alert_id.clone(),
                         triggered_value: triggered_value_for(&rule.conditions, data)
                             .unwrap_or_default(),
@@ -269,8 +292,11 @@ pub fn evaluate_telemetry_for_tenant(
 
                 // Produce one action per rule action entry.
                 for rule_action in &rule.actions {
-                    match rule_action.action_type.as_str() {
-                        "alert" => {
+                    let Some(rule_action) = compile_action(rule_action) else {
+                        continue;
+                    };
+                    match rule_action.kind {
+                        RuleActionKind::Alert => {
                             let config = &rule_action.config;
                             let severity = config
                                 .get("severity")
@@ -288,7 +314,7 @@ pub fn evaluate_telemetry_for_tenant(
                                 triggered_value,
                             });
                         }
-                        "webhook" => {
+                        RuleActionKind::Webhook => {
                             let config = &rule_action.config;
                             let url = config
                                 .get("url")
@@ -318,12 +344,13 @@ pub fn evaluate_telemetry_for_tenant(
                                 "rule_triggered".to_string(),
                             );
                             actions.push(PendingAction::SendWebhook {
+                                tenant_id: rule.tenant_id.clone(),
                                 url,
                                 headers,
                                 payload,
                             });
                         }
-                        "command" => {
+                        RuleActionKind::Command => {
                             let config = &rule_action.config;
                             let command = config
                                 .get("command")
@@ -338,7 +365,6 @@ pub fn evaluate_telemetry_for_tenant(
                                 params,
                             });
                         }
-                        _ => {}
                     }
                 }
 
@@ -355,7 +381,10 @@ pub fn evaluate_telemetry_for_tenant(
             // Skip empty-string sentinels (reservation in-flight).
             if let Some(alert_id) = existing_alert_id {
                 if !alert_id.is_empty() {
-                    actions.push(PendingAction::ResolveAlert { alert_id });
+                    actions.push(PendingAction::ResolveAlert {
+                        tenant_id: rule.tenant_id.clone(),
+                        alert_id,
+                    });
                 }
             }
         }
@@ -405,7 +434,7 @@ pub fn evaluate_status_change_for_tenant(
 
     for rule in rules {
         // Only handle status-triggered rules here.
-        if rule.trigger_type != "device_status" {
+        if compile_trigger(&rule.trigger_type) != Some(RuleTrigger::DeviceStatus) {
             continue;
         }
 
@@ -426,6 +455,7 @@ pub fn evaluate_status_change_for_tenant(
                 // Skip empty-string sentinel (reservation in-flight).
                 if !alert_id.is_empty() {
                     actions.push(PendingAction::UpdateAlertValue {
+                        tenant_id: rule.tenant_id.clone(),
                         alert_id: alert_id.clone(),
                         triggered_value: change.new_status.clone(),
                     });
@@ -443,8 +473,11 @@ pub fn evaluate_status_change_for_tenant(
                 }
 
                 for rule_action in &rule.actions {
-                    match rule_action.action_type.as_str() {
-                        "alert" => {
+                    let Some(rule_action) = compile_action(rule_action) else {
+                        continue;
+                    };
+                    match rule_action.kind {
+                        RuleActionKind::Alert => {
                             let config = &rule_action.config;
                             let severity = config
                                 .get("severity")
@@ -461,7 +494,7 @@ pub fn evaluate_status_change_for_tenant(
                                 triggered_value: Some(change.new_status.clone()),
                             });
                         }
-                        "webhook" => {
+                        RuleActionKind::Webhook => {
                             let config = &rule_action.config;
                             let url = config
                                 .get("url")
@@ -489,12 +522,13 @@ pub fn evaluate_status_change_for_tenant(
                                 "rule_triggered".to_string(),
                             );
                             actions.push(PendingAction::SendWebhook {
+                                tenant_id: rule.tenant_id.clone(),
                                 url,
                                 headers,
                                 payload,
                             });
                         }
-                        "command" => {
+                        RuleActionKind::Command => {
                             let config = &rule_action.config;
                             let command = config
                                 .get("command")
@@ -509,7 +543,6 @@ pub fn evaluate_status_change_for_tenant(
                                 params,
                             });
                         }
-                        _ => {}
                     }
                 }
 
@@ -525,7 +558,10 @@ pub fn evaluate_status_change_for_tenant(
             // Skip empty-string sentinels (reservation in-flight).
             if let Some(alert_id) = existing_alert_id {
                 if !alert_id.is_empty() {
-                    actions.push(PendingAction::ResolveAlert { alert_id });
+                    actions.push(PendingAction::ResolveAlert {
+                        tenant_id: rule.tenant_id.clone(),
+                        alert_id,
+                    });
                 }
             }
         }
@@ -595,7 +631,7 @@ pub fn evaluate_geofence_for_tenant(
     let mut actions: Vec<PendingAction> = Vec::new();
 
     for rule in rules {
-        if rule.trigger_type != "geofence" {
+        if compile_trigger(&rule.trigger_type) != Some(RuleTrigger::Geofence) {
             continue;
         }
 
@@ -639,6 +675,7 @@ pub fn evaluate_geofence_for_tenant(
                 // Skip empty-string sentinel (reservation in-flight).
                 if !alert_id.is_empty() {
                     actions.push(PendingAction::UpdateAlertValue {
+                        tenant_id: rule.tenant_id.clone(),
                         alert_id: alert_id.clone(),
                         triggered_value: format!("{},{}", data.latitude, data.longitude),
                     });
@@ -655,8 +692,11 @@ pub fn evaluate_geofence_for_tenant(
                 }
 
                 for rule_action in &rule.actions {
-                    match rule_action.action_type.as_str() {
-                        "alert" => {
+                    let Some(rule_action) = compile_action(rule_action) else {
+                        continue;
+                    };
+                    match rule_action.kind {
+                        RuleActionKind::Alert => {
                             let config = &rule_action.config;
                             let severity = config
                                 .get("severity")
@@ -686,7 +726,7 @@ pub fn evaluate_geofence_for_tenant(
                                 )),
                             });
                         }
-                        "webhook" => {
+                        RuleActionKind::Webhook => {
                             let config = &rule_action.config;
                             let url = config
                                 .get("url")
@@ -714,12 +754,13 @@ pub fn evaluate_geofence_for_tenant(
                                 "geofence_entered".to_string(),
                             );
                             actions.push(PendingAction::SendWebhook {
+                                tenant_id: rule.tenant_id.clone(),
                                 url,
                                 headers,
                                 payload,
                             });
                         }
-                        "command" => {
+                        RuleActionKind::Command => {
                             let config = &rule_action.config;
                             let command = config
                                 .get("command")
@@ -734,7 +775,6 @@ pub fn evaluate_geofence_for_tenant(
                                 params,
                             });
                         }
-                        _ => {}
                     }
                 }
 
@@ -761,7 +801,10 @@ pub fn evaluate_geofence_for_tenant(
             // Skip empty-string sentinels (reservation in-flight).
             if let Some(alert_id) = existing_alert_id {
                 if !alert_id.is_empty() {
-                    actions.push(PendingAction::ResolveAlert { alert_id });
+                    actions.push(PendingAction::ResolveAlert {
+                        tenant_id: rule.tenant_id.clone(),
+                        alert_id,
+                    });
                 }
             }
         }
@@ -1311,7 +1354,7 @@ mod tests {
 
         assert_eq!(actions.len(), 1);
         assert!(matches!(&actions[0],
-            PendingAction::ResolveAlert { alert_id } if alert_id == "alert-42"
+            PendingAction::ResolveAlert { alert_id, .. } if alert_id == "alert-42"
         ));
     }
 
@@ -1345,7 +1388,7 @@ mod tests {
 
         assert_eq!(actions.len(), 1);
         assert!(matches!(&actions[0],
-            PendingAction::UpdateAlertValue { alert_id, triggered_value }
+            PendingAction::UpdateAlertValue { alert_id, triggered_value, .. }
                 if alert_id == "alert-99" && triggered_value == "90"
         ));
     }
@@ -1552,7 +1595,7 @@ mod tests {
 
         assert_eq!(actions.len(), 1);
         assert!(matches!(&actions[0],
-            PendingAction::ResolveAlert { alert_id } if alert_id == "alert-55"
+            PendingAction::ResolveAlert { alert_id, .. } if alert_id == "alert-55"
         ));
     }
 

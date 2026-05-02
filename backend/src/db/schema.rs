@@ -227,6 +227,7 @@ diesel::table! {
         event_type -> Text,
         aggregate_type -> Text,
         aggregate_id -> Text,
+        idempotency_key -> Nullable<Text>,
         payload -> Jsonb,
         status -> Text,
         attempts -> Int4,

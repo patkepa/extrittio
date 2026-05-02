@@ -13,6 +13,7 @@ pub mod fleets;
 pub mod health;
 pub mod logs;
 pub mod openapi;
+pub mod outbox;
 pub mod rules;
 pub mod server_metrics;
 pub mod shadows;
@@ -48,6 +49,7 @@ pub fn router(max_firmware_size: usize) -> Router<Arc<AppState>> {
         .merge(alerts::router())
         .merge(health::router())
         .merge(server_metrics::router())
+        .merge(outbox::router())
         .merge(zones::router())
         .merge(
             SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", openapi::ApiDoc::openapi()),

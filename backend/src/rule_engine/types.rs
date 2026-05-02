@@ -48,13 +48,16 @@ pub enum PendingAction {
         triggered_value: Option<String>,
     },
     UpdateAlertValue {
+        tenant_id: String,
         alert_id: String,
         triggered_value: String,
     },
     ResolveAlert {
+        tenant_id: String,
         alert_id: String,
     },
     SendWebhook {
+        tenant_id: String,
         url: String,
         headers: std::collections::HashMap<String, String>,
         payload: Value,

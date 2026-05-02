@@ -24,6 +24,7 @@ pub struct RuleActionOutboxEvent {
     pub event_type: String,
     pub aggregate_type: String,
     pub aggregate_id: String,
+    pub idempotency_key: Option<String>,
     pub payload: JsonValue,
     pub status: String,
     pub attempts: i32,
@@ -44,6 +45,7 @@ pub struct NewRuleActionOutboxEvent {
     pub event_type: String,
     pub aggregate_type: String,
     pub aggregate_id: String,
+    pub idempotency_key: Option<String>,
     pub payload: JsonValue,
 }
 

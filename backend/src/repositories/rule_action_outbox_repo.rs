@@ -1,9 +1,28 @@
 use chrono::{Duration, Utc};
 use diesel::PgConnection;
 use diesel::prelude::*;
+use diesel::sql_types::{BigInt, Nullable, Text, Timestamptz};
 
 use crate::db::models::{NewRuleActionOutboxEvent, RuleActionOutboxEvent};
 use crate::db::schema::rule_action_outbox;
+
+#[derive(Debug, QueryableByName)]
+pub struct RuleActionOutboxSummary {
+    #[diesel(sql_type = BigInt)]
+    pub pending_count: i64,
+    #[diesel(sql_type = BigInt)]
+    pub processing_count: i64,
+    #[diesel(sql_type = BigInt)]
+    pub failed_count: i64,
+    #[diesel(sql_type = BigInt)]
+    pub dead_letter_count: i64,
+    #[diesel(sql_type = BigInt)]
+    pub succeeded_count: i64,
+    #[diesel(sql_type = Nullable<Timestamptz>)]
+    pub oldest_pending_at: Option<chrono::NaiveDateTime>,
+    #[diesel(sql_type = Nullable<BigInt>)]
+    pub oldest_pending_age_seconds: Option<i64>,
+}
 
 pub fn insert_event(
     conn: &mut PgConnection,
@@ -11,6 +30,7 @@ pub fn insert_event(
 ) -> QueryResult<usize> {
     diesel::insert_into(rule_action_outbox::table)
         .values(event)
+        .on_conflict_do_nothing()
         .execute(conn)
 }
 
@@ -99,4 +119,28 @@ pub fn mark_failed(
 fn retry_delay_seconds(attempts: i32) -> i64 {
     let exponent = attempts.clamp(1, 8) as u32;
     2_i64.pow(exponent).min(300)
+}
+
+pub fn summarize_for_tenant(
+    conn: &mut PgConnection,
+    tenant_id: &str,
+) -> QueryResult<RuleActionOutboxSummary> {
+    diesel::sql_query(
+        r#"
+        SELECT
+            count(*) FILTER (WHERE status = 'pending')::bigint AS pending_count,
+            count(*) FILTER (WHERE status = 'processing')::bigint AS processing_count,
+            count(*) FILTER (WHERE status = 'failed')::bigint AS failed_count,
+            count(*) FILTER (WHERE status = 'dead_letter')::bigint AS dead_letter_count,
+            count(*) FILTER (WHERE status = 'succeeded')::bigint AS succeeded_count,
+            min(created_at) FILTER (WHERE status IN ('pending', 'failed')) AS oldest_pending_at,
+            extract(epoch FROM (
+                now() - min(created_at) FILTER (WHERE status IN ('pending', 'failed'))
+            ))::bigint AS oldest_pending_age_seconds
+        FROM rule_action_outbox
+        WHERE tenant_id = $1
+        "#,
+    )
+    .bind::<Text, _>(tenant_id)
+    .get_result(conn)
 }

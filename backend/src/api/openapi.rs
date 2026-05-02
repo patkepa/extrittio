@@ -69,6 +69,8 @@ use utoipa::{Modify, OpenApi};
         super::certificates::get_device_certificate,
         super::certificates::regenerate_device_certificate,
         super::certificates::get_device_certificate_status,
+        // Outbox
+        super::outbox::get_summary,
     ),
     components(schemas(
         // Pagination
@@ -121,6 +123,8 @@ use utoipa::{Modify, OpenApi};
         // Health
         super::health::HealthResponse,
         super::health::ReadyResponse,
+        // Outbox
+        super::outbox::RuleActionOutboxSummaryResponse,
     )),
     modifiers(&SecurityAddon),
     tags(
@@ -138,6 +142,7 @@ use utoipa::{Modify, OpenApi};
         (name = "logs", description = "Device logs"),
         (name = "config", description = "Device configuration"),
         (name = "certificates", description = "TLS certificates"),
+        (name = "server-metrics", description = "Server metrics and operational queues"),
     ),
 )]
 pub struct ApiDoc;
