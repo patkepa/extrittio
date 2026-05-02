@@ -55,8 +55,8 @@ if(ESP_PLATFORM)
     idf_component_register(
         SRCS ${SDK_SOURCES}
         INCLUDE_DIRS include generated
-        REQUIRES cjson
-        PRIV_REQUIRES zenohpico nanopb
+        REQUIRES zenohpico
+        PRIV_REQUIRES nanopb json
     )
 else()
     add_library(extrittio_sdk_c ${SDK_SOURCES})

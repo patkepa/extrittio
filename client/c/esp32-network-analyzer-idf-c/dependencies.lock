@@ -1,0 +1,21 @@
+dependencies:
+  idf:
+    source:
+      type: idf
+    version: 5.5.3
+  nikas-belogolov/nanopb:
+    component_hash: f87bec16ffb47d5ceb557b7f13acb83cad95046ab155d1af33e488d1b048fddc
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.0.0
+direct_dependencies:
+- idf
+- nikas-belogolov/nanopb
+manifest_hash: 71f7c604edc9525e67f4ac9c86b93658ff244d0057f89a8e44e8b30ea43dabd0
+target: esp32c6
+version: 2.0.0

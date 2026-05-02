@@ -6,4 +6,4 @@ set(EXTRA_COMPONENT_DIRS
 )
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(extrittio-esp32-c)
+project(extrittio-esp32-network-analyzer-c)

@@ -70,4 +70,8 @@ Thumbs.db
 # C / CMake (sdk-c)
 # ========================
 client/c/sdk-c/build/
+client/c/*/build/
+client/c/*/managed_components/
+client/c/*/sdkconfig
+client/c/*/sdkconfig.old
 client/rust/esp32/.embuild/espressif/

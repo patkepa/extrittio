@@ -3545,6 +3545,7 @@ checksum = "a71103cfe96a851ef5ff781d64dda95c70e70208f74e186d6d294ba21e89cc64"
 dependencies = [
  "zenoh-config",
  "zenoh-link-commons",
+ "zenoh-link-tcp",
  "zenoh-protocol",
  "zenoh-result",
 ]
@@ -3571,6 +3572,22 @@ dependencies = [
  "zenoh-result",
  "zenoh-runtime",
  "zenoh-util",
+]
+
+[[package]]
+name = "zenoh-link-tcp"
+version = "1.9.0"
+dependencies = [
+ "async-trait",
+ "socket2 0.5.10",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "zenoh-config",
+ "zenoh-core",
+ "zenoh-link-commons",
+ "zenoh-protocol",
+ "zenoh-result",
 ]
 
 [[package]]
@@ -3631,8 +3648,6 @@ dependencies = [
 [[package]]
 name = "zenoh-runtime"
 version = "1.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd3d0c1558f909c9a74bde5e398c5733f81eb954818451baac2a6c09f48d6a5e"
 dependencies = [
  "lazy_static",
  "ron",

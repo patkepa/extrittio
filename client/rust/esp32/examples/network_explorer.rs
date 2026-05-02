@@ -87,6 +87,8 @@ struct NetworkSnapshot {
 fn main() {
     esp_idf_svc::sys::link_patches();
     esp_idf_svc::log::EspLogger::initialize_default();
+    let _mounted_eventfs =
+        esp_idf_svc::io::vfs::MountedEventfs::mount(5).expect("Failed to mount eventfd VFS");
 
     info!("Extrittio ESP32 network explorer starting as '{DEVICE_ID}'");
 
@@ -123,6 +125,7 @@ fn main() {
             .insert_json5("scouting/multicast/enabled", "false")
             .expect("Failed to disable multicast scouting");
     }
+    tune_zenoh_for_esp32(&mut zenoh_cfg);
 
     let session = zenoh::open(zenoh_cfg)
         .wait()
@@ -194,6 +197,19 @@ fn main() {
             ),
             Err(e) => log::warn!("Failed to send telemetry: {e}"),
         }
+    }
+}
+
+fn tune_zenoh_for_esp32(config: &mut zenoh::Config) {
+    for (key, value) in [
+        ("transport/unicast/qos/enabled", "false"),
+        ("transport/link/tx/batch_size", "4096"),
+        ("transport/link/rx/buffer_size", "4096"),
+        ("transport/link/rx/max_message_size", "65536"),
+    ] {
+        config
+            .insert_json5(key, value)
+            .expect("Failed to tune Zenoh for ESP32");
     }
 }
 

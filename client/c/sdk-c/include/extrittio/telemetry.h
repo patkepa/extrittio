@@ -5,9 +5,16 @@
 #include <stdint.h>
 #include <zenoh-pico.h>
 
+#define EXTRITTIO_TELEMETRY_METADATA_MAX 8
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef struct {
+    const char *key;
+    const char *value;
+} extrittio_metadata_entry_t;
 
 typedef struct {
     const char *device_id;
@@ -20,6 +27,8 @@ typedef struct {
     float speed;
     float altitude;
     float heading;
+    size_t metadata_count;
+    const extrittio_metadata_entry_t *metadata;
 } extrittio_telemetry_t;
 
 int extrittio_telemetry_encode(const extrittio_telemetry_t *t,

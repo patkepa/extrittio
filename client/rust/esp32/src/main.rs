@@ -36,6 +36,8 @@ fn main() {
     // Bind the ESP-IDF patches and initialise the default logger.
     esp_idf_svc::sys::link_patches();
     esp_idf_svc::log::EspLogger::initialize_default();
+    let _mounted_eventfs =
+        esp_idf_svc::io::vfs::MountedEventfs::mount(5).expect("Failed to mount eventfd VFS");
 
     // Mark the current OTA app as valid (prevents rollback on next boot).
     // This is a no-op if we booted from the factory partition.
@@ -81,6 +83,7 @@ fn main() {
             .insert_json5("scouting/multicast/enabled", "false")
             .expect("Failed to disable multicast scouting");
     }
+    tune_zenoh_for_esp32(&mut zenoh_cfg);
 
     // .wait() is the blocking equivalent of .await for Zenoh builders.
     let session = zenoh::open(zenoh_cfg)
@@ -261,6 +264,19 @@ fn main() {
 }
 
 // ── Shadow helpers ──────────────────────────────────────────────────
+
+fn tune_zenoh_for_esp32(config: &mut zenoh::Config) {
+    for (key, value) in [
+        ("transport/unicast/qos/enabled", "false"),
+        ("transport/link/tx/batch_size", "4096"),
+        ("transport/link/rx/buffer_size", "4096"),
+        ("transport/link/rx/max_message_size", "65536"),
+    ] {
+        config
+            .insert_json5(key, value)
+            .expect("Failed to tune Zenoh for ESP32");
+    }
+}
 
 fn send_shadow_report(
     session: &zenoh::Session,

@@ -21,7 +21,7 @@ extrittio-common = { path = "../../../common", default-features = false, feature
 extrittio-sdk = { path = "../sdk", default-features = false, features = ["std"] }
 embedded-svc = "0.28"
 prost = "0.13"
-zenoh = { version = "1", default-features = false }
+zenoh = { version = "1", default-features = false, features = ["transport_tcp"] }
 esp-idf-svc = { version = "0.50", features = ["binstart"] }
 log = "0.4"
 rand = { version = "0.8", default-features = false, features = ["std"] }
@@ -31,9 +31,18 @@ sha2 = { version = "0.10", default-features = false }
 [build-dependencies]
 embuild = "0.33"
 
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+
 [patch.crates-io]
 pnet_datalink = { path = "vendor/pnet_datalink" }
 pnet_sys = { path = "vendor/pnet_sys" }
 stabby = { path = "vendor/stabby" }
 stabby-abi = { path = "vendor/stabby-abi" }
 zenoh-util = { path = "vendor/zenoh-util" }
+zenoh-runtime = { path = "vendor/zenoh-runtime" }
+zenoh-link-tcp = { path = "vendor/zenoh-link-tcp" }
