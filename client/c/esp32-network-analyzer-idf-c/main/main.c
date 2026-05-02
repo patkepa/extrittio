@@ -42,10 +42,25 @@ static z_loaned_session_t *g_session = NULL;
 static char g_device_id[64];
 static char g_firmware_version[64];
 
+typedef struct {
+    char *state_json;
+    int64_t version;
+} shadow_report_task_arg_t;
+
 static void ota_task(void *arg) {
     extrittio_ota_payload_t *ota = (extrittio_ota_payload_t *)arg;
     ota_handle(g_session, g_device_id, g_firmware_version, ota);
     free(ota);
+    vTaskDelete(NULL);
+}
+
+static void shadow_report_task(void *arg) {
+    shadow_report_task_arg_t *report = (shadow_report_task_arg_t *)arg;
+    extrittio_shadow_report_publish(g_session, g_device_id,
+                                    extrittio_now_millis(),
+                                    report->state_json, report->version);
+    free(report->state_json);
+    free(report);
     vTaskDelete(NULL);
 }
 
@@ -70,10 +85,29 @@ static void shadow_delta_callback(const char *device_id,
             free(ota_arg);
             return;
         }
+        return;
     }
 
-    extrittio_shadow_report_publish(g_session, g_device_id,
-                                    extrittio_now_millis(), delta_json, version);
+    shadow_report_task_arg_t *report_arg = malloc(sizeof(*report_arg));
+    if (report_arg == NULL) {
+        ESP_LOGE(TAG, "Failed to allocate shadow report task payload");
+        return;
+    }
+
+    report_arg->state_json = malloc(strlen(delta_json) + 1);
+    if (report_arg->state_json == NULL) {
+        ESP_LOGE(TAG, "Failed to allocate shadow report JSON");
+        free(report_arg);
+        return;
+    }
+    strcpy(report_arg->state_json, delta_json);
+    report_arg->version = version;
+
+    if (xTaskCreate(shadow_report_task, "shadow_report", 4096, report_arg, 5, NULL) != pdPASS) {
+        ESP_LOGE(TAG, "Failed to start shadow report task");
+        free(report_arg->state_json);
+        free(report_arg);
+    }
 }
 
 typedef struct {
