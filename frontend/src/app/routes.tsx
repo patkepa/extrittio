@@ -4,6 +4,7 @@ import type { NavGroup, NavItem } from '../types/navigation';
 
 const Dashboard = lazy(() => import('../pages/dashboard').then((m) => ({ default: m.Dashboard })));
 const Devices = lazy(() => import('../pages/devices').then((m) => ({ default: m.Devices })));
+const Updates = lazy(() => import('../pages/updates').then((m) => ({ default: m.Updates })));
 const DeviceDetail = lazy(() =>
   import('../pages/device-detail').then((m) => ({ default: m.DeviceDetail })),
 );
@@ -88,6 +89,15 @@ export const appRoutes: AppRoute[] = [
     icon: 'map',
     path: '/map',
     element: <MapPage />,
+    navGroup: 'General',
+    showInCommandPalette: true,
+  },
+  {
+    id: 'updates',
+    label: 'Updates',
+    icon: 'updated',
+    path: '/updates',
+    element: <Updates />,
     navGroup: 'General',
     showInCommandPalette: true,
   },

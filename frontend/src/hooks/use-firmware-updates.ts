@@ -2,10 +2,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type {
   CreateFirmwareUpdateRequest,
   FirmwareUpdatesParams,
+  OtaDeploymentsParams,
   TriggerOtaRequest,
 } from '../types/api';
 import {
   getFirmwareUpdates,
+  getAllOtaDeployments,
   createFirmwareUpdate,
   deleteFirmwareUpdate,
   getNextVersion,
@@ -39,6 +41,15 @@ export function useOtaDeployments(deviceId: string | null) {
     queryFn: () => getOtaDeployments(deviceId!),
     enabled: !!deviceId,
     staleTime: 10_000,
+  });
+}
+
+export function useAllOtaDeployments(params?: OtaDeploymentsParams) {
+  return useQuery({
+    queryKey: queryKeys.firmware.allDeployments(params),
+    queryFn: () => getAllOtaDeployments(params),
+    staleTime: 5_000,
+    refetchInterval: params?.status === 'in_progress' ? 10_000 : false,
   });
 }
 

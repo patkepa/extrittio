@@ -53,6 +53,7 @@ use utoipa::{Modify, OpenApi};
         super::commands::list_commands,
         // Firmware
         super::firmware_updates::list_firmware_updates,
+        super::firmware_updates::list_ota_deployments,
         super::firmware_updates::create_firmware_update,
         super::firmware_updates::upload_firmware_update,
         super::firmware_updates::download_firmware_blob,
@@ -108,6 +109,7 @@ use utoipa::{Modify, OpenApi};
         super::firmware_updates::FirmwareUpdateResponse,
         super::firmware_updates::NewFirmwareUpdateRequest,
         super::firmware_updates::NextVersionResponse,
+        super::firmware_updates::GlobalOtaDeploymentResponse,
         // Logs
         super::logs::LogResponse,
         // Config

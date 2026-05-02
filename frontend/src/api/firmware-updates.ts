@@ -1,10 +1,13 @@
 import client from './client';
 import type {
   FirmwareUpdate,
+  GlobalOtaDeployment,
   CreateFirmwareUpdateRequest,
   FirmwareUpdatesParams,
   NextVersionResponse,
   OtaDeployment,
+  OtaDeploymentsParams,
+  PaginatedResponse,
   TriggerOtaRequest,
 } from '../types/api';
 
@@ -64,4 +67,13 @@ export async function getOtaDeployments(deviceId: string): Promise<OtaDeployment
     `/devices/${deviceId}/ota-deployments`,
   );
   return data.data;
+}
+
+export async function getAllOtaDeployments(
+  params?: OtaDeploymentsParams,
+): Promise<PaginatedResponse<GlobalOtaDeployment>> {
+  const { data } = await client.get<PaginatedResponse<GlobalOtaDeployment>>('/ota-deployments', {
+    params,
+  });
+  return data;
 }

@@ -4,12 +4,21 @@ use diesel::PgConnection;
 use diesel::prelude::*;
 
 use crate::db::models::{
-    DeviceType, FirmwareBlob, FirmwareUpdate, NewFirmwareBlob, NewFirmwareUpdate, NewOtaDeployment,
-    OtaDeployment,
+    Device, DeviceType, FirmwareBlob, FirmwareUpdate, Fleet, NewFirmwareBlob, NewFirmwareUpdate,
+    NewOtaDeployment, OtaDeployment,
 };
-use crate::db::schema::{device_types, firmware_blobs, firmware_updates, ota_deployments};
+use crate::db::schema::{
+    device_types, devices, firmware_blobs, firmware_updates, fleets, ota_deployments,
+};
 
 pub type FirmwareUpdateRow = (FirmwareUpdate, DeviceType, Option<i32>, Option<String>);
+pub type OtaDeploymentGlobalRow = (
+    OtaDeployment,
+    FirmwareUpdate,
+    Device,
+    DeviceType,
+    Option<Fleet>,
+);
 
 pub fn list_firmware_updates(
     conn: &mut PgConnection,
@@ -147,6 +156,67 @@ pub fn list_ota_deployments(
         .inner_join(firmware_updates::table)
         .filter(ota_deployments::device_id.eq(device_id))
         .select((OtaDeployment::as_select(), FirmwareUpdate::as_select()))
+        .order(ota_deployments::initiated_at.desc())
+        .limit(limit)
+        .offset(offset)
+        .load(conn)?;
+
+    Ok((results, total))
+}
+
+pub fn list_all_ota_deployments(
+    conn: &mut PgConnection,
+    status_filter: Option<&str>,
+    limit: i64,
+    offset: i64,
+) -> Result<(Vec<OtaDeploymentGlobalRow>, i64), diesel::result::Error> {
+    let mut count_query = ota_deployments::table.into_boxed();
+    let mut query = ota_deployments::table
+        .inner_join(firmware_updates::table)
+        .inner_join(
+            devices::table
+                .inner_join(device_types::table)
+                .left_join(fleets::table),
+        )
+        .select((
+            OtaDeployment::as_select(),
+            FirmwareUpdate::as_select(),
+            Device::as_select(),
+            DeviceType::as_select(),
+            Option::<Fleet>::as_select(),
+        ))
+        .into_boxed();
+
+    match status_filter {
+        Some("in_progress" | "active") => {
+            count_query = count_query
+                .filter(ota_deployments::status.ne("success"))
+                .filter(ota_deployments::status.ne("failed"));
+            query = query
+                .filter(ota_deployments::status.ne("success"))
+                .filter(ota_deployments::status.ne("failed"));
+        }
+        Some("completed" | "terminal") => {
+            count_query = count_query.filter(
+                ota_deployments::status
+                    .eq("success")
+                    .or(ota_deployments::status.eq("failed")),
+            );
+            query = query.filter(
+                ota_deployments::status
+                    .eq("success")
+                    .or(ota_deployments::status.eq("failed")),
+            );
+        }
+        Some(status) if !status.is_empty() && status != "all" => {
+            count_query = count_query.filter(ota_deployments::status.eq(status));
+            query = query.filter(ota_deployments::status.eq(status));
+        }
+        _ => {}
+    }
+
+    let total: i64 = count_query.count().get_result(conn)?;
+    let results = query
         .order(ota_deployments::initiated_at.desc())
         .limit(limit)
         .offset(offset)

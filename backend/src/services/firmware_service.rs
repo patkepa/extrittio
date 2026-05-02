@@ -80,6 +80,18 @@ pub fn list(
     )?)
 }
 
+/// List OTA deployments across all devices with optional status filtering.
+pub fn list_all_ota_deployments(
+    conn: &mut PgConnection,
+    status: Option<&str>,
+    limit: i64,
+    offset: i64,
+) -> Result<(Vec<firmware_repo::OtaDeploymentGlobalRow>, i64), AppError> {
+    Ok(firmware_repo::list_all_ota_deployments(
+        conn, status, limit, offset,
+    )?)
+}
+
 /// Delete a firmware update by ID.
 pub fn delete(conn: &mut PgConnection, id: i32) -> Result<(), AppError> {
     let deleted = firmware_repo::delete_firmware_update(conn, id)?;

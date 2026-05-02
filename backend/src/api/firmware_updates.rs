@@ -64,12 +64,40 @@ pub struct NextVersionResponse {
     pub next_version: String,
 }
 
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct ListOtaDeploymentsQuery {
+    /// Filter by status: all, in_progress, completed, pending, downloading, verifying, installing, success, failed.
+    pub status: Option<String>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct GlobalOtaDeploymentResponse {
+    pub id: i32,
+    pub device_id: String,
+    pub device_name: String,
+    pub device_status: String,
+    pub current_firmware: String,
+    pub device_type_id: i32,
+    pub device_type_name: String,
+    pub fleet_id: Option<i32>,
+    pub fleet_name: Option<String>,
+    pub firmware_update_id: i32,
+    pub firmware_version: String,
+    pub status: String,
+    pub error_message: Option<String>,
+    pub initiated_at: String,
+    pub completed_at: Option<String>,
+}
+
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
 pub fn router(max_firmware_size: usize) -> Router<Arc<AppState>> {
     Router::new()
+        .route("/api/v1/ota-deployments", get(list_ota_deployments))
         .route(
             "/api/v1/firmware-updates",
             get(list_firmware_updates).post(create_firmware_update),
@@ -142,6 +170,59 @@ pub(crate) async fn list_firmware_updates(
                     source: fw.source,
                 },
             )
+            .collect();
+
+        Ok(PaginatedResponse::new(data, total, limit, offset))
+    })
+    .await?;
+
+    Ok(Json(response))
+}
+
+/// List OTA deployments across all devices.
+#[utoipa::path(
+    get,
+    path = "/api/v1/ota-deployments",
+    tag = "firmware",
+    security(("bearer_auth" = [])),
+    params(ListOtaDeploymentsQuery),
+    responses(
+        (status = 200, description = "Paginated list of OTA deployments", body = PaginatedResponse<GlobalOtaDeploymentResponse>),
+    ),
+)]
+pub(crate) async fn list_ota_deployments(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<ListOtaDeploymentsQuery>,
+) -> Result<Json<PaginatedResponse<GlobalOtaDeploymentResponse>>, AppError> {
+    let (limit, offset) = pagination::clamp(params.limit, params.offset);
+
+    let response = run_db(&state.db_pool, move |conn| {
+        let (results, total) = firmware_service::list_all_ota_deployments(
+            conn,
+            params.status.as_deref(),
+            limit,
+            offset,
+        )?;
+
+        let data = results
+            .into_iter()
+            .map(|(dep, fw, device, dt, fleet)| GlobalOtaDeploymentResponse {
+                id: dep.id,
+                device_id: dep.device_id,
+                device_name: device.name,
+                device_status: device.status,
+                current_firmware: device.firmware,
+                device_type_id: dt.id,
+                device_type_name: dt.name,
+                fleet_id: fleet.as_ref().map(|f| f.id),
+                fleet_name: fleet.map(|f| f.name),
+                firmware_update_id: dep.firmware_update_id,
+                firmware_version: fw.version,
+                status: dep.status,
+                error_message: dep.error_message,
+                initiated_at: dep.initiated_at.to_string(),
+                completed_at: dep.completed_at.map(|t| t.to_string()),
+            })
             .collect();
 
         Ok(PaginatedResponse::new(data, total, limit, offset))

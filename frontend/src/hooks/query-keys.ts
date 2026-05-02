@@ -31,6 +31,7 @@ export const queryKeys = {
     nextVersionAll: ['firmware-next-version'] as const,
     nextVersion: (deviceTypeId: number) => ['firmware-next-version', deviceTypeId] as const,
     deployments: (deviceId: string) => ['ota-deployments', deviceId] as const,
+    allDeployments: (params?: unknown) => ['ota-deployments', params] as const,
   },
   fleets: {
     all: ['fleets'] as const,

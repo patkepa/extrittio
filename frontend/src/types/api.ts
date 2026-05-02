@@ -136,6 +136,29 @@ export type CreateFirmwareUpdateRequest = components['schemas']['NewFirmwareUpda
 export type NextVersionResponse = components['schemas']['NextVersionResponse'];
 export type TriggerOtaRequest = components['schemas']['TriggerOtaRequest'];
 export type OtaDeployment = components['schemas']['OtaDeploymentResponse'];
+export interface GlobalOtaDeployment {
+  id: number;
+  device_id: string;
+  device_name: string;
+  device_status: string;
+  current_firmware: string;
+  device_type_id: number;
+  device_type_name: string;
+  fleet_id: number | null;
+  fleet_name: string | null;
+  firmware_update_id: number;
+  firmware_version: string;
+  status: string;
+  error_message: string | null;
+  initiated_at: string;
+  completed_at: string | null;
+}
+
+export interface OtaDeploymentsParams {
+  status?: string;
+  limit?: number;
+  offset?: number;
+}
 
 export type FirmwareUpdatesParams = NonNullable<
   operations['list_firmware_updates']['parameters']['query']
