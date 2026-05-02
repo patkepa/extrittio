@@ -1,5 +1,5 @@
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     body::Body,
     extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     http::{StatusCode, header},
@@ -11,6 +11,7 @@ use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
+use crate::auth::context::RequestContext;
 use crate::db::models::{NewFirmwareBlob, NewFirmwareUpdate};
 use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse};
@@ -138,12 +139,14 @@ pub fn router(max_firmware_size: usize) -> Router<Arc<AppState>> {
 )]
 pub(crate) async fn list_firmware_updates(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Query(params): Query<ListFirmwareUpdatesQuery>,
 ) -> Result<Json<PaginatedResponse<FirmwareUpdateResponse>>, AppError> {
     let (limit, offset) = pagination::clamp(params.limit, params.offset);
 
     let response = run_db(&state.db_pool, move |conn| {
-        let (results, total) = firmware_service::list(conn, params.device_type_id, limit, offset)?;
+        let (results, total) =
+            firmware_service::list(&ctx, conn, params.device_type_id, limit, offset)?;
 
         let data = results
             .into_iter()
@@ -192,12 +195,14 @@ pub(crate) async fn list_firmware_updates(
 )]
 pub(crate) async fn list_ota_deployments(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Query(params): Query<ListOtaDeploymentsQuery>,
 ) -> Result<Json<PaginatedResponse<GlobalOtaDeploymentResponse>>, AppError> {
     let (limit, offset) = pagination::clamp(params.limit, params.offset);
 
     let response = run_db(&state.db_pool, move |conn| {
         let (results, total) = firmware_service::list_all_ota_deployments(
+            &ctx,
             conn,
             params.status.as_deref(),
             limit,
@@ -248,6 +253,7 @@ pub(crate) async fn list_ota_deployments(
 )]
 pub(crate) async fn create_firmware_update(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Json(body): Json<NewFirmwareUpdateRequest>,
 ) -> Result<(StatusCode, Json<FirmwareUpdateResponse>), AppError> {
     if body.url.trim().is_empty() {
@@ -263,7 +269,7 @@ pub(crate) async fn create_firmware_update(
         // Auto-generate version if not provided
         let version = match body.version {
             Some(v) if !v.trim().is_empty() => v.trim().to_string(),
-            _ => firmware_service::next_version_for_type(conn, body.device_type_id)?,
+            _ => firmware_service::next_version_for_type(&ctx, conn, body.device_type_id)?,
         };
 
         let new_fw = NewFirmwareUpdate {
@@ -280,7 +286,7 @@ pub(crate) async fn create_firmware_update(
             source: None,
         };
 
-        let created = firmware_service::register_firmware(conn, &new_fw).map_err(
+        let created = firmware_service::register_firmware(&ctx, conn, &new_fw).map_err(
             map_unique_violation("Firmware version already exists for this device type"),
         )?;
 
@@ -328,6 +334,7 @@ pub(crate) async fn create_firmware_update(
 #[allow(clippy::too_many_lines)]
 pub(crate) async fn upload_firmware_update(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<FirmwareUpdateResponse>), AppError> {
     let mut device_type_id: Option<i32> = None;
@@ -423,7 +430,7 @@ pub(crate) async fn upload_firmware_update(
         // Auto-generate version if not provided
         let version = match version {
             Some(v) => v,
-            None => firmware_service::next_version_for_type(conn, device_type_id)?,
+            None => firmware_service::next_version_for_type(&ctx, conn, device_type_id)?,
         };
 
         // Insert firmware update (with placeholder URL) and blob via service
@@ -448,7 +455,7 @@ pub(crate) async fn upload_firmware_update(
             filename,
         };
 
-        let updated = firmware_service::upload_firmware(conn, &new_fw, blob).map_err(
+        let updated = firmware_service::upload_firmware(&ctx, conn, &new_fw, blob).map_err(
             map_unique_violation("Firmware version already exists for this device type"),
         )?;
 
@@ -534,10 +541,11 @@ pub(crate) async fn download_firmware_blob(
 )]
 pub(crate) async fn delete_firmware_update(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Path(id): Path<i32>,
 ) -> Result<StatusCode, AppError> {
     run_db(&state.db_pool, move |conn| {
-        firmware_service::delete(conn, id)
+        firmware_service::delete(&ctx, conn, id)
     })
     .await?;
 
@@ -557,10 +565,11 @@ pub(crate) async fn delete_firmware_update(
 )]
 pub(crate) async fn get_next_version(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Path(device_type_id): Path<i32>,
 ) -> Result<Json<NextVersionResponse>, AppError> {
     let version = run_db(&state.db_pool, move |conn| {
-        firmware_service::next_version_for_type(conn, device_type_id)
+        firmware_service::next_version_for_type(&ctx, conn, device_type_id)
     })
     .await?;
 

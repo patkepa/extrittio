@@ -23,6 +23,7 @@ pub mod repositories;
 pub mod rule_engine;
 pub mod services;
 pub mod state;
+pub mod tenancy;
 pub mod util;
 pub mod zenoh_handler;
 

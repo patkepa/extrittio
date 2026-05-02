@@ -8,6 +8,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
+use crate::auth::context::RequestContext;
 use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse, PaginationParams};
 use crate::services::user_service;
@@ -49,12 +50,13 @@ pub fn router() -> Router<Arc<AppState>> {
 )]
 pub(crate) async fn list_users(
     State(state): State<Arc<AppState>>,
+    axum::Extension(ctx): axum::Extension<RequestContext>,
     Query(params): Query<PaginationParams>,
 ) -> Result<Json<PaginatedResponse<UserResponse>>, AppError> {
     let (limit, offset) = pagination::clamp(params.limit, params.offset);
 
     let response = run_db(&state.db_pool, move |conn| {
-        let (results, total) = user_service::list(conn, limit, offset)?;
+        let (results, total) = user_service::list(&ctx, conn, limit, offset)?;
         let data = results
             .into_iter()
             .map(|u| UserResponse {
@@ -85,10 +87,11 @@ pub(crate) async fn list_users(
 )]
 pub(crate) async fn create_user(
     State(state): State<Arc<AppState>>,
+    axum::Extension(ctx): axum::Extension<RequestContext>,
     Json(body): Json<CreateUserRequest>,
 ) -> Result<(StatusCode, Json<UserResponse>), AppError> {
     let user = run_db(&state.db_pool, move |conn| {
-        user_service::create(conn, &body.username, &body.password)
+        user_service::create(&ctx, conn, &body.username, &body.password)
     })
     .await?;
 
@@ -116,9 +119,13 @@ pub(crate) async fn create_user(
 )]
 pub(crate) async fn delete_user(
     State(state): State<Arc<AppState>>,
+    axum::Extension(ctx): axum::Extension<RequestContext>,
     Path(id): Path<i32>,
 ) -> Result<StatusCode, AppError> {
-    run_db(&state.db_pool, move |conn| user_service::delete(conn, id)).await?;
+    run_db(&state.db_pool, move |conn| {
+        user_service::delete(&ctx, conn, id)
+    })
+    .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -139,11 +146,12 @@ pub(crate) async fn delete_user(
 )]
 pub(crate) async fn change_password(
     State(state): State<Arc<AppState>>,
+    axum::Extension(ctx): axum::Extension<RequestContext>,
     Path(id): Path<i32>,
     Json(body): Json<ChangePasswordRequest>,
 ) -> Result<StatusCode, AppError> {
     run_db(&state.db_pool, move |conn| {
-        user_service::change_password(conn, id, &body.password)
+        user_service::change_password(&ctx, conn, id, &body.password)
     })
     .await?;
 

@@ -1,4 +1,5 @@
 use super::Claims;
+use crate::tenancy::TenantId;
 
 /// Authenticated request metadata used by application services and policy
 /// checks. Tenant data is optional until the schema becomes tenant-aware.
@@ -7,7 +8,7 @@ pub struct RequestContext {
     pub user_id: i32,
     pub username: String,
     pub role: String,
-    pub tenant_id: Option<String>,
+    pub tenant_id: Option<TenantId>,
     pub scopes: Vec<String>,
 }
 

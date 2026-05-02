@@ -1,19 +1,30 @@
 use diesel::PgConnection;
 
+use crate::auth::context::RequestContext;
+use crate::auth::policy::{self, Permission};
 use crate::auth::{hash_password, verify_password};
 use crate::db::models::{NewUser, User};
 use crate::error::AppError;
 use crate::repositories::user_repo;
 
 pub fn list(
+    ctx: &RequestContext,
     conn: &mut PgConnection,
     limit: i64,
     offset: i64,
 ) -> Result<(Vec<User>, i64), AppError> {
+    policy::require(ctx, Permission::ReadUsers)?;
     Ok(user_repo::list_users(conn, limit, offset)?)
 }
 
-pub fn create(conn: &mut PgConnection, username: &str, password: &str) -> Result<User, AppError> {
+pub fn create(
+    ctx: &RequestContext,
+    conn: &mut PgConnection,
+    username: &str,
+    password: &str,
+) -> Result<User, AppError> {
+    policy::require(ctx, Permission::ManageUsers)?;
+
     if username.trim().is_empty() {
         return Err(AppError::BadRequest("Username must not be empty".into()));
     }
@@ -39,10 +50,13 @@ pub fn create(conn: &mut PgConnection, username: &str, password: &str) -> Result
 }
 
 pub fn change_password(
+    ctx: &RequestContext,
     conn: &mut PgConnection,
     user_id: i32,
     new_password: &str,
 ) -> Result<(), AppError> {
+    policy::require(ctx, Permission::ManageUsers)?;
+
     if new_password.len() < 4 {
         return Err(AppError::BadRequest(
             "Password must be at least 4 characters".into(),
@@ -56,7 +70,9 @@ pub fn change_password(
     Ok(())
 }
 
-pub fn delete(conn: &mut PgConnection, id: i32) -> Result<(), AppError> {
+pub fn delete(ctx: &RequestContext, conn: &mut PgConnection, id: i32) -> Result<(), AppError> {
+    policy::require(ctx, Permission::ManageUsers)?;
+
     let deleted = user_repo::delete_user(conn, id)?;
     if !deleted {
         return Err(AppError::NotFound(format!("User {id} not found")));
