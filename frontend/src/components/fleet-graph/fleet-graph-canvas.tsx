@@ -28,6 +28,7 @@ export interface DeviceAlertBadge {
 // --- Constants ---
 const FLEET_RADIUS = 14;
 const DEVICE_RADIUS = 11;
+const EXTERNAL_RADIUS = 8;
 const HOVER_SCALE = 1.3;
 const DIM_OPACITY = 0.15;
 const FLEET_LABEL_FONT = 'bold 10px -apple-system, BlinkMacSystemFont, sans-serif';
@@ -351,7 +352,7 @@ export const FleetGraphCanvas = memo(
         } else {
           // Device nodes — use hover-expanded radius so the click area
           // always covers the visual, even mid-expansion.
-          const radius = DEVICE_RADIUS * HOVER_SCALE;
+          const radius = (node.type === 'external' ? EXTERNAL_RADIUS : DEVICE_RADIUS) * HOVER_SCALE;
           const side = radius * 2;
 
           ctx.fillStyle = color;
@@ -365,7 +366,8 @@ export const FleetGraphCanvas = memo(
     const paintNode = useCallback(
       (node: GraphNode, ctx: CanvasRenderingContext2D, globalScale: number) => {
         const isFleet = node.type === 'fleet';
-        const baseRadius = isFleet ? FLEET_RADIUS : DEVICE_RADIUS;
+        const isExternal = node.type === 'external';
+        const baseRadius = isFleet ? FLEET_RADIUS : isExternal ? EXTERNAL_RADIUS : DEVICE_RADIUS;
         const isHovered = node === activeHoverNode;
         const isHighlighted = hoverHighlight.nodes.has(node);
         const shouldDim = activeHoverNode && !isHighlighted;
@@ -449,6 +451,33 @@ export const FleetGraphCanvas = memo(
               node.x!,
               node.y! + rectH / 2 + 10,
             );
+          }
+        } else if (isExternal) {
+          ctx.shadowBlur = 0;
+          const side = radius * 2;
+          ctx.save();
+          ctx.translate(node.x!, node.y!);
+          ctx.rotate(Math.PI / 4);
+          ctx.setLineDash([3, 3]);
+          ctx.strokeStyle = shouldDim ? `rgba(123,139,154,${DIM_OPACITY})` : node.color;
+          ctx.lineWidth = isHovered ? 2 : 1.5;
+          ctx.strokeRect(-side / 2, -side / 2, side, side);
+          ctx.setLineDash([]);
+          ctx.fillStyle = shouldDim
+            ? `rgba(123,139,154,${DIM_OPACITY * 0.35})`
+            : 'rgba(123,139,154,0.16)';
+          ctx.fillRect(-side / 2, -side / 2, side, side);
+          ctx.restore();
+
+          if (showDeviceLabels) {
+            const fontSize = Math.max(9, 11 / globalScale);
+            ctx.font = `${fontSize}px -apple-system, sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = shouldDim
+              ? `rgba(190,200,210,${DIM_OPACITY})`
+              : 'rgba(190,200,210,0.8)';
+            ctx.fillText(node.name, node.x!, node.y! + radius + fontSize + 2);
           }
         } else {
           ctx.shadowBlur = 0;
@@ -569,6 +598,31 @@ export const FleetGraphCanvas = memo(
         const source = link.source as any as GraphNode;
         const target = link.target as any as GraphNode;
         if (source.x == null || target.x == null) return;
+
+        if (link.kind === 'declared') {
+          ctx.beginPath();
+          ctx.setLineDash([2, 5]);
+          ctx.moveTo(source.x!, source.y!);
+          ctx.lineTo(target.x!, target.y!);
+          if (isHighlighted) {
+            ctx.strokeStyle = 'rgba(138, 187, 255, 0.95)';
+            ctx.lineWidth = 1.6;
+            ctx.shadowColor = 'rgba(138, 187, 255, 0.35)';
+            ctx.shadowBlur = 6;
+          } else if (shouldDim) {
+            ctx.strokeStyle = `rgba(138, 187, 255, ${DIM_OPACITY * 0.65})`;
+            ctx.lineWidth = 0.7;
+            ctx.shadowBlur = 0;
+          } else {
+            ctx.strokeStyle = 'rgba(138, 187, 255, 0.55)';
+            ctx.lineWidth = 0.9;
+            ctx.shadowBlur = 0;
+          }
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.shadowBlur = 0;
+          return;
+        }
 
         const deviceNode =
           source.type === 'device' ? source : target.type === 'device' ? target : null;

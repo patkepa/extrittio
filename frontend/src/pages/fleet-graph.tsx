@@ -10,7 +10,15 @@ import type {
   DeviceAlertBadge,
   GraphActions,
 } from '../components/fleet-graph/fleet-graph-canvas';
-import { HealthPanel } from '../components/fleet-graph/health-panel';
+import {
+  HealthPanel,
+  type HealthStatusCounts,
+  type HealthStatusVisibility,
+} from '../components/fleet-graph/health-panel';
+import {
+  getHealthStatusFilter,
+  type HealthStatusFilter,
+} from '../components/fleet-graph/health-utils';
 import {
   FleetGraphContextMenu,
   type ContextMenuState,
@@ -21,10 +29,16 @@ import type { FleetGraphDisplayOptions } from '../components/fleet-graph/fleet-g
 import { FleetGraphToolbar } from '../components/fleet-graph/fleet-graph-toolbar';
 import { useSelectionStore } from '../stores/selection-store';
 import { showSuccessToast, showErrorToast } from '../utils/toaster';
-import type { GraphNode } from '../components/fleet-graph/build-force-graph-data';
+import type { GraphLink, GraphNode } from '../components/fleet-graph/build-force-graph-data';
 import type { ViewportInfo } from '../components/fleet-graph/fleet-graph-minimap';
 import type { Device } from '../types/api';
 import './fleet-graph.css';
+
+function getDeviceHealthStatus(device: Device): HealthStatusFilter {
+  const lastSeenTimestamp = device.last_seen_at ? new Date(device.last_seen_at).getTime() : NaN;
+  const stalenessMs = lastSeenTimestamp ? Date.now() - lastSeenTimestamp : NaN;
+  return getHealthStatusFilter(stalenessMs, device.status);
+}
 
 export const FleetGraph = () => {
   const devicesQuery = useDevices({ limit: 10000 }, { refetchInterval: 30_000 });
@@ -40,7 +54,11 @@ export const FleetGraph = () => {
     labels: true,
     alerts: true,
     fleets: true,
+  });
+  const [healthStatusVisibility, setHealthStatusVisibility] = useState<HealthStatusVisibility>({
+    connected: true,
     offline: true,
+    never: true,
   });
   const bulkFleetMutation = useBulkChangeFleet();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -53,10 +71,21 @@ export const FleetGraph = () => {
   const graphActionsRef = useRef<GraphActions | null>(null);
 
   const visibleDevices = useMemo(
-    () =>
-      displayOptions.offline ? devices : devices.filter((device) => device.status !== 'offline'),
-    [devices, displayOptions.offline],
+    () => devices.filter((device) => healthStatusVisibility[getDeviceHealthStatus(device)]),
+    [devices, healthStatusVisibility],
   );
+
+  const healthStatusCounts = useMemo<HealthStatusCounts>(() => {
+    const counts: HealthStatusCounts = { connected: 0, offline: 0, never: 0 };
+    for (const device of devices) {
+      counts[getDeviceHealthStatus(device)]++;
+    }
+    return counts;
+  }, [devices]);
+
+  const handleHealthStatusToggle = useCallback((status: HealthStatusFilter) => {
+    setHealthStatusVisibility((current) => ({ ...current, [status]: !current[status] }));
+  }, []);
 
   const isLoading = devicesLoading || fleetsLoading;
   const error = devicesError || fleetsError;
@@ -110,12 +139,30 @@ export const FleetGraph = () => {
     if (!graphState.data) return null;
     if (displayOptions.fleets) return graphState.data;
 
-    return {
-      nodes: graphState.data.nodes
-        .filter((node) => node.type === 'device')
-        .map((node) => ({ ...node, neighbors: [], links: [] })),
-      links: [],
-    };
+    const nodes: GraphNode[] = graphState.data.nodes
+      .filter((node) => node.type !== 'fleet')
+      .map((node) => ({ ...node, neighbors: [] as GraphNode[], links: [] as GraphLink[] }));
+    const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+    const links: GraphLink[] = graphState.data.links
+      .filter((link) => link.kind === 'declared')
+      .map((link) => {
+        const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
+        const targetId = typeof link.target === 'string' ? link.target : link.target.id;
+        return { ...link, source: sourceId, target: targetId };
+      })
+      .filter((link) => nodeMap.has(link.source as string) && nodeMap.has(link.target as string));
+
+    for (const link of links) {
+      const source = nodeMap.get(link.source as string);
+      const target = nodeMap.get(link.target as string);
+      if (!source || !target) continue;
+      source.neighbors.push(target);
+      target.neighbors.push(source);
+      source.links.push(link);
+      target.links.push(link);
+    }
+
+    return { nodes, links };
   }, [displayOptions.fleets, graphState.data]);
 
   const sidebarGraphData = graphState.data;
@@ -158,6 +205,7 @@ export const FleetGraph = () => {
 
   const handleNodeRightClick = useCallback((node: GraphNode, event: MouseEvent) => {
     event.preventDefault();
+    if (node.type === 'external') return;
     setContextMenu({
       position: { x: event.clientX, y: event.clientY },
       target: { type: node.type, node },
@@ -309,7 +357,7 @@ export const FleetGraph = () => {
             <div className="fleet-graph-empty">
               <Icon icon="offline" size={48} />
               <H4>No visible devices</H4>
-              <p>Show offline devices to bring them back into the graph</p>
+              <p>Use the health filters to bring devices back into the graph</p>
             </div>
           ) : graphData && dimensions.width > 0 ? (
             <FleetGraphCanvas
@@ -352,10 +400,10 @@ export const FleetGraph = () => {
         />
       </div>
 
-      {sidebarGraphData && (
+      {devices.length > 0 && (
         <HealthPanel
-          nodes={sidebarGraphData.nodes}
-          links={sidebarGraphData.links}
+          nodes={sidebarGraphData?.nodes ?? []}
+          links={sidebarGraphData?.links ?? []}
           onDeviceClick={handlePanelDeviceClick}
           onDeviceHover={setHoveredNodeId}
           selectedNodeId={selectedNodeId}
@@ -366,6 +414,9 @@ export const FleetGraph = () => {
           canvasWidth={dimensions.width}
           canvasHeight={dimensions.height}
           collapsed={!healthPanelOpen}
+          statusVisibility={healthStatusVisibility}
+          statusCounts={healthStatusCounts}
+          onStatusToggle={handleHealthStatusToggle}
         />
       )}
     </div>

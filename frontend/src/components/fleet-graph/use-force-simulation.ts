@@ -6,6 +6,7 @@ import type { ForceGraphApi } from './force-graph-types';
 
 const FLEET_RADIUS = 14;
 const DEVICE_RADIUS = 11;
+const EXTERNAL_RADIUS = 8;
 const LEGACY_LINK_DISTANCE = 80;
 const LEGACY_CHARGE_STRENGTH = -30;
 
@@ -32,13 +33,16 @@ export function useForceSimulation(
 
     fg.d3Force('charge')?.strength?.((node: GraphNode) => {
       if (node.layoutX == null || node.layoutY == null) return LEGACY_CHARGE_STRENGTH;
+      if (node.type === 'external') return -20;
       return node.type === 'fleet' ? -120 : -55;
     });
     fg.d3Force('link')?.distance?.((link: GraphLink) => {
+      if (link.kind === 'declared') return 96;
       const device = getLinkDevice(link);
       return device?.layoutRadius ?? LEGACY_LINK_DISTANCE;
     });
     fg.d3Force('link')?.strength?.((link: GraphLink) => {
+      if (link.kind === 'declared') return 0.35;
       const device = getLinkDevice(link);
       return device?.layoutRadius == null ? 1 : 0.12;
     });
@@ -46,10 +50,14 @@ export function useForceSimulation(
       'collide',
       forceCollide((node: GraphNode) => {
         if (node.layoutX == null || node.layoutY == null) {
-          return node.type === 'fleet' ? FLEET_RADIUS + 6 : DEVICE_RADIUS + 4;
+          if (node.type === 'fleet') return FLEET_RADIUS + 6;
+          if (node.type === 'external') return EXTERNAL_RADIUS + 7;
+          return DEVICE_RADIUS + 4;
         }
 
-        return node.type === 'fleet' ? FLEET_RADIUS + 12 : DEVICE_RADIUS + 12;
+        if (node.type === 'fleet') return FLEET_RADIUS + 12;
+        if (node.type === 'external') return EXTERNAL_RADIUS + 8;
+        return DEVICE_RADIUS + 12;
       }).iterations(2),
     );
     fg.d3Force(

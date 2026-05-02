@@ -2,6 +2,7 @@ use chrono::NaiveDateTime;
 use chrono::Utc;
 use diesel::OptionalExtension;
 use diesel::PgConnection;
+use serde_json::Value as JsonValue;
 
 use crate::db::models::{Device, NewTelemetryRecord, TelemetryRecord, UpdateDevice};
 use crate::error::AppError;
@@ -23,6 +24,7 @@ pub fn list(
 pub fn record(
     conn: &mut PgConnection,
     record: NewTelemetryRecord,
+    declared_connections: Option<JsonValue>,
 ) -> Result<Option<Device>, AppError> {
     let device: Option<Device> = device_repo::find_device(conn, &record.device_id)
         .optional()
@@ -40,6 +42,7 @@ pub fn record(
     let changeset = UpdateDevice {
         last_seen: Some(now),
         updated_at: Some(now),
+        declared_connections,
         ..Default::default()
     };
     device_repo::update_device(conn, &device_id, &changeset)?;

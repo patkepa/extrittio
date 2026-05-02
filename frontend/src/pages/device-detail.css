@@ -191,6 +191,69 @@
   min-height: 400px;
 }
 
+.connection-list {
+  margin-top: 8px;
+  border: 1px solid hsla(0, 0%, 100%, 0.06);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.connection-row {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 12px;
+  border-bottom: 1px solid hsla(0, 0%, 100%, 0.06);
+  background: hsla(0, 0%, 100%, 0.03);
+}
+
+.connection-row:last-child {
+  border-bottom: none;
+}
+
+.connection-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.connection-name {
+  color: hsl(var(--foreground));
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.connection-meta {
+  color: hsl(var(--muted));
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.connection-tags {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.connection-tag {
+  border: 1px solid hsla(0, 0%, 100%, 0.12);
+  background: hsla(0, 0%, 100%, 0.05);
+  color: hsl(var(--muted));
+  font-size: 11px;
+  line-height: 1;
+  padding: 4px 6px;
+}
+
 /* ── Shadow two-column layout ── */
 .shadow-panes-horizontal {
   display: grid;

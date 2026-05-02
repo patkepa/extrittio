@@ -125,6 +125,7 @@ diesel::table! {
         uptime_seconds -> Int4,
         latest_latitude -> Nullable<Float8>,
         latest_longitude -> Nullable<Float8>,
+        declared_connections -> Jsonb,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
     }

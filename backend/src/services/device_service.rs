@@ -2,18 +2,64 @@
 
 use diesel::Connection;
 use diesel::PgConnection;
+use serde_json::Value as JsonValue;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::{info, warn};
 
 use crate::db::models::{NewDevice, NewDeviceLog, NewDeviceShadow, NewOtaDeployment, UpdateDevice};
 use crate::error::AppError;
 use crate::repositories::{
-    cert_repo, device_repo, device_type_repo, firmware_repo, log_repo, shadow_repo,
+    cert_repo, device_repo, device_type_repo, firmware_repo, log_repo, shadow_repo, telemetry_repo,
 };
-use crate::services::{cert_service, shadow_service};
+use crate::services::{cert_service, device_connections, shadow_service};
 use crate::state::{DbPool, ZenohMetrics, run_db};
 
 pub use crate::repositories::device_repo::DeviceWithJoins;
+
+fn has_no_declared_connections(value: &JsonValue) -> bool {
+    value.as_array().is_none_or(Vec::is_empty)
+}
+
+fn hydrate_declared_connections_from_telemetry(
+    conn: &mut PgConnection,
+    devices: &mut [device_repo::DeviceWithJoins],
+) -> Result<(), AppError> {
+    let candidate_ids: Vec<String> = devices
+        .iter()
+        .filter_map(|(device, _, _)| {
+            has_no_declared_connections(&device.declared_connections).then(|| device.id.clone())
+        })
+        .collect();
+
+    if candidate_ids.is_empty() {
+        return Ok(());
+    }
+
+    let sources = telemetry_repo::latest_connection_sources_for_devices(conn, &candidate_ids)?;
+    let connections_by_device: HashMap<String, JsonValue> = sources
+        .into_iter()
+        .filter_map(|source| {
+            device_connections::declared_connections_from_custom_json(&source.custom_json)
+                .map(|connections| (source.device_id, connections))
+        })
+        .collect();
+
+    if connections_by_device.is_empty() {
+        return Ok(());
+    }
+
+    for (device, _, _) in devices {
+        if !has_no_declared_connections(&device.declared_connections) {
+            continue;
+        }
+        if let Some(connections) = connections_by_device.get(&device.id) {
+            device.declared_connections = connections.clone();
+        }
+    }
+
+    Ok(())
+}
 
 /// Create a device and its associated shadow record atomically.
 pub fn create_device(conn: &mut PgConnection, new_device: &NewDevice) -> Result<(), AppError> {
@@ -36,7 +82,9 @@ pub fn create_device(conn: &mut PgConnection, new_device: &NewDevice) -> Result<
 
 /// Infer the device type name from the firmware version string.
 fn infer_device_type(firmware: &str) -> &'static str {
-    if firmware.contains("macos") {
+    if firmware.contains("network-analyzer") || firmware.contains("network_analyzer") {
+        "network-analyzer"
+    } else if firmware.contains("macos") {
         "mac-device"
     } else {
         "default"
@@ -197,14 +245,16 @@ pub fn list_devices(
     limit: i64,
     offset: i64,
 ) -> Result<(Vec<device_repo::DeviceWithJoins>, i64), AppError> {
-    Ok(device_repo::list_devices(
+    let (mut devices, total) = device_repo::list_devices(
         conn,
         status_filter,
         search_filter,
         fleet_id_filter,
         limit,
         offset,
-    )?)
+    )?;
+    hydrate_declared_connections_from_telemetry(conn, &mut devices)?;
+    Ok((devices, total))
 }
 
 /// Get a single device with joined type and fleet info.
@@ -212,7 +262,10 @@ pub fn get_device(
     conn: &mut PgConnection,
     device_id: &str,
 ) -> Result<device_repo::DeviceWithJoins, AppError> {
-    Ok(device_repo::find_device_with_joins(conn, device_id)?)
+    let device = device_repo::find_device_with_joins(conn, device_id)?;
+    let mut devices = vec![device];
+    hydrate_declared_connections_from_telemetry(conn, &mut devices)?;
+    Ok(devices.remove(0))
 }
 
 /// Update a device. Returns the updated device with joins.

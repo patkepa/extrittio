@@ -5,6 +5,7 @@ pub mod ci_pipeline_service;
 pub mod command_service;
 pub mod config_service;
 pub mod dashboard_service;
+pub mod device_connections;
 pub mod device_service;
 pub mod device_type_service;
 pub mod firmware_service;

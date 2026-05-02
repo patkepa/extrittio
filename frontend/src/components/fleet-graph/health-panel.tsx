@@ -1,10 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { List } from 'react-window';
 import type { GraphNode, GraphLink } from './build-force-graph-data';
-import { getHealthTier, getStalenessColor, formatStaleness } from './health-utils';
+import {
+  getHealthTier,
+  getStalenessColor,
+  formatStaleness,
+  type HealthStatusFilter,
+} from './health-utils';
 import { TIER_COLORS, type HealthTier } from './constants';
 import { FleetGraphMinimap, type ViewportInfo } from './fleet-graph-minimap';
 import { RightSidebar } from '../layout/right-sidebar';
+
+export type HealthStatusVisibility = Record<HealthStatusFilter, boolean>;
+export type HealthStatusCounts = Record<HealthStatusFilter, number>;
 
 interface DeviceEntry {
   node: GraphNode;
@@ -25,6 +33,9 @@ interface HealthPanelProps {
   canvasWidth: number;
   canvasHeight: number;
   collapsed?: boolean;
+  statusVisibility: HealthStatusVisibility;
+  statusCounts: HealthStatusCounts;
+  onStatusToggle: (status: HealthStatusFilter) => void;
 }
 
 interface RowExtraProps {
@@ -37,8 +48,18 @@ interface RowExtraProps {
 
 const HEADER_HEIGHT = 48;
 const MINIMAP_SECTION_HEIGHT = 112;
-const FOOTER_HEIGHT = 32;
+const FOOTER_HEIGHT = 40;
 const ROW_HEIGHT = 48;
+
+const statusFilterConfig: Array<{
+  key: HealthStatusFilter;
+  label: string;
+  color: string;
+}> = [
+  { key: 'connected', label: 'Connected', color: TIER_COLORS.fresh },
+  { key: 'offline', label: 'Offline', color: TIER_COLORS.dead },
+  { key: 'never', label: 'Never', color: TIER_COLORS.never },
+];
 
 function HealthRow({
   index,
@@ -106,6 +127,9 @@ export const HealthPanel = ({
   canvasWidth,
   canvasHeight,
   collapsed,
+  statusVisibility,
+  statusCounts,
+  onStatusToggle,
 }: HealthPanelProps) => {
   // Tick every 5s so staleness labels and sort order stay reasonably fresh
   const [tick, setTick] = useState(0);
@@ -195,13 +219,24 @@ export const HealthPanel = ({
       )}
 
       <div className="health-panel-footer right-sidebar-footer">
-        <span style={{ color: TIER_COLORS.fresh }}>
-          {tierCounts.fresh + tierCounts.warm + tierCounts.stale} healthy
-        </span>
-        <span style={{ color: TIER_COLORS.dead }}>{tierCounts.dead} disconnected</span>
-        {tierCounts.never > 0 && (
-          <span style={{ color: TIER_COLORS.never }}>{tierCounts.never} never connected</span>
-        )}
+        {statusFilterConfig.map((filter) => {
+          const isActive = statusVisibility[filter.key];
+          const count = statusCounts[filter.key];
+          return (
+            <button
+              key={filter.key}
+              type="button"
+              className={`health-panel-filter${isActive ? '' : ' health-panel-filter--off'}`}
+              onClick={() => onStatusToggle(filter.key)}
+              aria-pressed={isActive}
+              disabled={count === 0}
+              style={{ '--health-panel-filter-color': filter.color } as React.CSSProperties}
+            >
+              <span className="health-panel-filter-count">{count.toLocaleString()}</span>
+              <span className="health-panel-filter-label">{filter.label}</span>
+            </button>
+          );
+        })}
       </div>
 
       <div className="health-panel-minimap">

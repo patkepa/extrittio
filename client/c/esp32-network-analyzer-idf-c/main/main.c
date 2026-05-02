@@ -300,6 +300,96 @@ static const char *vendor_from_oui(const uint8_t mac[6]) {
         return "Espressif";
     }
 
+    if (oui_is(mac, 0x00, 0x09, 0xbf) || oui_is(mac, 0x00, 0x17, 0xab) ||
+        oui_is(mac, 0x00, 0x19, 0x1d) || oui_is(mac, 0x00, 0x1a, 0xe9) ||
+        oui_is(mac, 0x00, 0x1b, 0xea) || oui_is(mac, 0x00, 0x1c, 0xbe) ||
+        oui_is(mac, 0x00, 0x1e, 0x35) || oui_is(mac, 0x00, 0x1f, 0x32) ||
+        oui_is(mac, 0x00, 0x21, 0x47) || oui_is(mac, 0x00, 0x22, 0xaa) ||
+        oui_is(mac, 0x00, 0x23, 0xcc) || oui_is(mac, 0x00, 0x24, 0x44) ||
+        oui_is(mac, 0x00, 0x24, 0xf3) || oui_is(mac, 0x00, 0x25, 0xa0) ||
+        oui_is(mac, 0x00, 0x2b, 0xd1) || oui_is(mac, 0x04, 0x03, 0xd6) ||
+        oui_is(mac, 0x10, 0x27, 0xf5) || oui_is(mac, 0x40, 0xf4, 0x07) ||
+        oui_is(mac, 0x58, 0xbd, 0xa3) || oui_is(mac, 0x78, 0xa2, 0xa0) ||
+        oui_is(mac, 0x7c, 0xbb, 0x8a) || oui_is(mac, 0x98, 0xb6, 0xe9) ||
+        oui_is(mac, 0xb8, 0xae, 0x6e) || oui_is(mac, 0xd8, 0x6b, 0xf7) ||
+        oui_is(mac, 0xe0, 0xe7, 0x51)) {
+        return "Nintendo";
+    }
+
+    if (oui_is(mac, 0x18, 0x74, 0x2e) || oui_is(mac, 0x1c, 0x12, 0xb0) ||
+        oui_is(mac, 0x34, 0xd2, 0x70) || oui_is(mac, 0x44, 0x65, 0x0d) ||
+        oui_is(mac, 0x68, 0x37, 0xe9) || oui_is(mac, 0x74, 0x75, 0x48) ||
+        oui_is(mac, 0x84, 0xd6, 0xd0) || oui_is(mac, 0xa4, 0x08, 0xf5) ||
+        oui_is(mac, 0xbc, 0xff, 0x4d) || oui_is(mac, 0xcc, 0x9e, 0xa2) ||
+        oui_is(mac, 0xf0, 0x27, 0x2d) || oui_is(mac, 0xf0, 0x81, 0x73) ||
+        oui_is(mac, 0xfc, 0xa1, 0x83)) {
+        return "Amazon";
+    }
+
+    if (oui_is(mac, 0x00, 0x04, 0x1f) || oui_is(mac, 0x00, 0x15, 0xc1) ||
+        oui_is(mac, 0x00, 0x19, 0xc5) || oui_is(mac, 0x00, 0x1a, 0x8a) ||
+        oui_is(mac, 0x00, 0x1d, 0x0d) || oui_is(mac, 0x00, 0x24, 0x8d) ||
+        oui_is(mac, 0x00, 0xd9, 0xd1) || oui_is(mac, 0x10, 0xb3, 0xd5) ||
+        oui_is(mac, 0x28, 0x37, 0x37) || oui_is(mac, 0x70, 0x9e, 0x29) ||
+        oui_is(mac, 0xa8, 0xe3, 0xee) || oui_is(mac, 0xbc, 0x60, 0xa7) ||
+        oui_is(mac, 0xf0, 0xb0, 0x52) || oui_is(mac, 0xf8, 0x46, 0x1c)) {
+        return "Sony";
+    }
+
+    if (oui_is(mac, 0x00, 0x17, 0xfa) || oui_is(mac, 0x00, 0x50, 0xf2) ||
+        oui_is(mac, 0x28, 0x18, 0x78) || oui_is(mac, 0x30, 0x59, 0xb7) ||
+        oui_is(mac, 0x60, 0x45, 0xcb) || oui_is(mac, 0x7c, 0xed, 0x8d) ||
+        oui_is(mac, 0x98, 0x5f, 0xd3) || oui_is(mac, 0xd8, 0xb4, 0x2a)) {
+        return "Microsoft";
+    }
+
+    if (oui_is(mac, 0x00, 0x0d, 0x4b) || oui_is(mac, 0x08, 0x05, 0x81) ||
+        oui_is(mac, 0xb0, 0xa7, 0x37) || oui_is(mac, 0xcc, 0x6d, 0xa0) ||
+        oui_is(mac, 0xd4, 0xe2, 0x2e)) {
+        return "Roku";
+    }
+
+    if (oui_is(mac, 0x00, 0x19, 0xa1) || oui_is(mac, 0x00, 0x1e, 0x75) ||
+        oui_is(mac, 0x18, 0x3d, 0xa2) || oui_is(mac, 0x1c, 0x08, 0xc7) ||
+        oui_is(mac, 0x28, 0xb2, 0xbd) || oui_is(mac, 0x30, 0xcd, 0xa7) ||
+        oui_is(mac, 0x3c, 0xbd, 0x3e) || oui_is(mac, 0x88, 0xc9, 0xd0) ||
+        oui_is(mac, 0x9c, 0x3a, 0xaf) || oui_is(mac, 0xa8, 0x23, 0xfe)) {
+        return "LG";
+    }
+
+    if (oui_is(mac, 0x00, 0x9e, 0xc8) || oui_is(mac, 0x10, 0x2a, 0xb3) ||
+        oui_is(mac, 0x18, 0x59, 0x36) || oui_is(mac, 0x34, 0xce, 0x00) ||
+        oui_is(mac, 0x38, 0xa4, 0xed) || oui_is(mac, 0x50, 0x64, 0x2b) ||
+        oui_is(mac, 0x58, 0x44, 0x98) || oui_is(mac, 0x64, 0x09, 0x80) ||
+        oui_is(mac, 0x74, 0x23, 0x44) || oui_is(mac, 0x8c, 0xbe, 0xbe) ||
+        oui_is(mac, 0xac, 0xc1, 0xee) || oui_is(mac, 0xf4, 0x8e, 0x38) ||
+        oui_is(mac, 0xfc, 0x64, 0xba)) {
+        return "Xiaomi";
+    }
+
+    if (oui_is(mac, 0x00, 0xe0, 0xfc) || oui_is(mac, 0x04, 0xbd, 0x70) ||
+        oui_is(mac, 0x1c, 0x8e, 0x5c) || oui_is(mac, 0x24, 0xdf, 0x6a) ||
+        oui_is(mac, 0x30, 0x74, 0x96) || oui_is(mac, 0x38, 0x37, 0x8b) ||
+        oui_is(mac, 0x48, 0x00, 0x31) || oui_is(mac, 0x54, 0x51, 0x1b) ||
+        oui_is(mac, 0x5c, 0xc3, 0x07) || oui_is(mac, 0x78, 0x1d, 0xba)) {
+        return "Huawei";
+    }
+
+    if (oui_is(mac, 0x10, 0xfe, 0xed) || oui_is(mac, 0x14, 0xcc, 0x20) ||
+        oui_is(mac, 0x18, 0xa6, 0xf7) || oui_is(mac, 0x30, 0xb5, 0xc2) ||
+        oui_is(mac, 0x50, 0xc7, 0xbf) || oui_is(mac, 0x54, 0xaf, 0x97) ||
+        oui_is(mac, 0x64, 0x70, 0x02) || oui_is(mac, 0x9c, 0xa6, 0x15) ||
+        oui_is(mac, 0xc4, 0x6e, 0x1f) || oui_is(mac, 0xec, 0x08, 0x6b)) {
+        return "TP-Link";
+    }
+
+    if (oui_is(mac, 0x00, 0x14, 0x6c) || oui_is(mac, 0x20, 0x4e, 0x7f) ||
+        oui_is(mac, 0x28, 0xc6, 0x8e) || oui_is(mac, 0x2c, 0xb0, 0x5d) ||
+        oui_is(mac, 0x44, 0x94, 0xfc) || oui_is(mac, 0x84, 0x1b, 0x5e) ||
+        oui_is(mac, 0xc0, 0x3f, 0x0e)) {
+        return "Netgear";
+    }
+
     return "Unknown";
 }
 
@@ -339,6 +429,36 @@ static void classify_host(host_record_t *host, uint32_t host_addr, uint32_t gate
         host->classification = "vendor_oui";
     } else if (strcmp(host->vendor, "Router/Network Gear") == 0) {
         host->device_type = "network_device";
+        host->classification = "vendor_oui";
+    } else if (strcmp(host->vendor, "Nintendo") == 0) {
+        host->device_type = "nintendo_switch";
+        host->classification = "vendor_oui";
+    } else if (strcmp(host->vendor, "Amazon") == 0) {
+        host->device_type = "amazon_device";
+        host->classification = "vendor_oui";
+    } else if (strcmp(host->vendor, "Sony") == 0) {
+        host->device_type = "sony_playstation";
+        host->classification = "vendor_oui";
+    } else if (strcmp(host->vendor, "Microsoft") == 0) {
+        host->device_type = "xbox_or_surface";
+        host->classification = "vendor_oui";
+    } else if (strcmp(host->vendor, "Roku") == 0) {
+        host->device_type = "roku";
+        host->classification = "vendor_oui";
+    } else if (strcmp(host->vendor, "LG") == 0) {
+        host->device_type = "lg_device";
+        host->classification = "vendor_oui";
+    } else if (strcmp(host->vendor, "Xiaomi") == 0) {
+        host->device_type = "xiaomi_device";
+        host->classification = "vendor_oui";
+    } else if (strcmp(host->vendor, "Huawei") == 0) {
+        host->device_type = "huawei_device";
+        host->classification = "vendor_oui";
+    } else if (strcmp(host->vendor, "TP-Link") == 0) {
+        host->device_type = "tp_link_device";
+        host->classification = "vendor_oui";
+    } else if (strcmp(host->vendor, "Netgear") == 0) {
+        host->device_type = "netgear_device";
         host->classification = "vendor_oui";
     }
 }
@@ -581,6 +701,57 @@ static bool tcp_port_open(uint32_t host_addr, uint16_t port, uint32_t timeout_ms
     return err == 0;
 }
 
+static void apply_hostname_heuristics(host_record_t *host) {
+    if (host->hostname[0] == '\0') {
+        return;
+    }
+
+    char lower[32];
+    size_t len = strnlen(host->hostname, sizeof(host->hostname) - 1);
+    for (size_t i = 0; i < len; i++) {
+        lower[i] = ascii_lower_char(host->hostname[i]);
+    }
+    lower[len] = '\0';
+
+    if (strstr(lower, "xbox")) {
+        refine_host_identity(host, "Microsoft", "xbox", "netbios_name");
+    } else if (strstr(lower, "macbook")) {
+        refine_host_identity(host, "Apple", "macbook", "netbios_name");
+    } else if (strstr(lower, "imac")) {
+        refine_host_identity(host, "Apple", "mac", "netbios_name");
+    } else if (strstr(lower, "iphone")) {
+        refine_host_identity(host, "Apple", "iphone", "netbios_name");
+    } else if (strstr(lower, "ipad")) {
+        refine_host_identity(host, "Apple", "ipad", "netbios_name");
+    } else if (strstr(lower, "galaxy") ||
+               (lower[0] == 's' && lower[1] == 'm' && lower[2] == '-')) {
+        refine_host_identity(host, "Samsung", "samsung_phone", "netbios_name");
+    } else if (strstr(lower, "pixel")) {
+        refine_host_identity(host, "Google", "google_pixel", "netbios_name");
+    } else if (strstr(lower, "echo") || strstr(lower, "alexa")) {
+        refine_host_identity(host, "Amazon", "amazon_echo", "netbios_name");
+    } else if (strstr(lower, "firetv") || strstr(lower, "fire-tv") ||
+               strstr(lower, "fire_tv")) {
+        refine_host_identity(host, "Amazon", "amazon_fire_tv", "netbios_name");
+    } else if (strstr(lower, "roku")) {
+        refine_host_identity(host, "Roku", "roku", "netbios_name");
+    } else if (strstr(lower, "sonos")) {
+        refine_host_identity(host, "Sonos", "sonos_speaker", "netbios_name");
+    } else if (strstr(lower, "ring")) {
+        refine_host_identity(host, "Ring", "ring_doorbell", "netbios_name");
+    } else if (strstr(lower, "nest")) {
+        refine_host_identity(host, "Google", "nest_device", "netbios_name");
+    } else if (strstr(lower, "shield")) {
+        refine_host_identity(host, "NVIDIA", "nvidia_shield", "netbios_name");
+    } else if (strstr(lower, "playstation") || strstr(lower, "ps4") ||
+               strstr(lower, "ps5")) {
+        refine_host_identity(host, "Sony", "playstation", "netbios_name");
+    } else if (strstr(lower, "nintendo") ||
+               (strcmp(host->vendor, "Nintendo") == 0 && strstr(lower, "switch"))) {
+        refine_host_identity(host, "Nintendo", "nintendo_switch", "netbios_name");
+    }
+}
+
 static void apply_tcp_fingerprint(host_record_t *host) {
     const uint32_t timeout_ms = CONFIG_EXTRITTIO_ANALYZER_PING_TIMEOUT_MS / 2;
 
@@ -615,6 +786,39 @@ static void apply_tcp_fingerprint(host_record_t *host) {
         } else {
             refine_host_identity(host, NULL, "windows_or_smb_device", "tcp_service");
         }
+        return;
+    }
+    if (tcp_port_open(host->addr, 8001, timeout_ms)) {
+        if (strcmp(host->vendor, "Samsung") == 0 ||
+            strcmp(host->vendor, "Unknown") == 0 ||
+            strcmp(host->vendor, "Private/Randomized") == 0) {
+            refine_host_identity(host, "Samsung", "samsung_smart_tv", "tcp_service");
+        }
+        return;
+    }
+    if (tcp_port_open(host->addr, 1400, timeout_ms)) {
+        refine_host_identity(host, "Sonos", "sonos_speaker", "tcp_service");
+        return;
+    }
+    if (tcp_port_open(host->addr, 1925, timeout_ms)) {
+        refine_host_identity(host, "Philips", "philips_tv", "tcp_service");
+        return;
+    }
+    if (tcp_port_open(host->addr, 3689, timeout_ms)) {
+        refine_host_identity(host, "Apple", "apple_device", "tcp_service");
+        return;
+    }
+    if (tcp_port_open(host->addr, 9295, timeout_ms)) {
+        refine_host_identity(host, "Sony", "playstation", "tcp_service");
+        return;
+    }
+    if (tcp_port_open(host->addr, 8008, timeout_ms) ||
+        tcp_port_open(host->addr, 8443, timeout_ms)) {
+        if (strcmp(host->vendor, "Google") == 0 ||
+            strcmp(host->vendor, "Unknown") == 0 ||
+            strcmp(host->vendor, "Private/Randomized") == 0) {
+            refine_host_identity(host, "Google", "chromecast_or_google_home", "tcp_service");
+        }
     }
 }
 
@@ -633,14 +837,54 @@ static void apply_service_fingerprint(host_record_t *host, const uint8_t *data,
         refine_host_identity(host, "Apple", "apple_tv", "mdns_model");
     } else if (bytes_contains_ci(data, len, "model=HomePod")) {
         refine_host_identity(host, "Apple", "homepod", "mdns_model");
+    } else if (bytes_contains_ci(data, len, "model=AppleWatch") ||
+               bytes_contains_ci(data, len, "model=Watch")) {
+        refine_host_identity(host, "Apple", "apple_watch", "mdns_model");
+    } else if (bytes_contains_ci(data, len, "model=iPod")) {
+        refine_host_identity(host, "Apple", "ipod_touch", "mdns_model");
     } else if (bytes_contains_ci(data, len, "_googlecast") ||
                bytes_contains_ci(data, len, "chromecast")) {
-        refine_host_identity(host, "Google", "chromecast_or_google_home", classification);
+        if (bytes_contains_ci(data, len, "Google Home") ||
+            bytes_contains_ci(data, len, "Google-Home") ||
+            bytes_contains_ci(data, len, "googlehome") ||
+            bytes_contains_ci(data, len, "Nest")) {
+            refine_host_identity(host, "Google", "google_home_or_nest", classification);
+        } else {
+            refine_host_identity(host, "Google", "chromecast", classification);
+        }
     } else if (bytes_contains_ci(data, len, "_airplay") ||
                bytes_contains_ci(data, len, "_raop") ||
                bytes_contains_ci(data, len, "_companion-link") ||
                bytes_contains_ci(data, len, "_apple-mobdev2")) {
         refine_host_identity(host, "Apple", "apple_device", classification);
+    } else if (bytes_contains_ci(data, len, "_pscontrol") ||
+               bytes_contains_ci(data, len, "playstation") ||
+               bytes_contains_ci(data, len, "PS4") ||
+               bytes_contains_ci(data, len, "PS5")) {
+        refine_host_identity(host, "Sony", "playstation", classification);
+    } else if (bytes_contains_ci(data, len, "_xbox-smartglass") ||
+               bytes_contains_ci(data, len, "xbox")) {
+        refine_host_identity(host, "Microsoft", "xbox", classification);
+    } else if (bytes_contains_ci(data, len, "nintendo") ||
+               bytes_contains_ci(data, len, "_nintendo")) {
+        refine_host_identity(host, "Nintendo", "nintendo_switch", classification);
+    } else if (bytes_contains_ci(data, len, "_nvstream") ||
+               (bytes_contains_ci(data, len, "nvidia") &&
+                bytes_contains_ci(data, len, "shield"))) {
+        refine_host_identity(host, "NVIDIA", "nvidia_shield", classification);
+    } else if (bytes_contains_ci(data, len, "_androidtvremote") ||
+               bytes_contains_ci(data, len, "androidtv") ||
+               bytes_contains_ci(data, len, "android_tv")) {
+        refine_host_identity(host, NULL, "android_tv", classification);
+    } else if (bytes_contains_ci(data, len, "_amzn-wplay") ||
+               bytes_contains_ci(data, len, "amazon") ||
+               bytes_contains_ci(data, len, "alexa")) {
+        if (bytes_contains_ci(data, len, "fire tv") ||
+            bytes_contains_ci(data, len, "firetv")) {
+            refine_host_identity(host, "Amazon", "amazon_fire_tv", classification);
+        } else {
+            refine_host_identity(host, "Amazon", "amazon_device", classification);
+        }
     } else if (bytes_contains_ci(data, len, "_ipp") ||
                bytes_contains_ci(data, len, "_printer") ||
                bytes_contains_ci(data, len, "printer")) {
@@ -649,15 +893,35 @@ static void apply_service_fingerprint(host_record_t *host, const uint8_t *data,
                bytes_contains_ci(data, len, "wanipconnection")) {
         refine_host_identity(host, NULL, "router", classification);
     } else if (bytes_contains_ci(data, len, "synology") ||
-               bytes_contains_ci(data, len, "qnap")) {
+               bytes_contains_ci(data, len, "qnap") ||
+               bytes_contains_ci(data, len, "diskstation") ||
+               bytes_contains_ci(data, len, "nas")) {
         refine_host_identity(host, NULL, "nas", classification);
     } else if (bytes_contains_ci(data, len, "samsung") &&
+               (bytes_contains_ci(data, len, "tv") ||
+                bytes_contains_ci(data, len, "SmartTV"))) {
+        refine_host_identity(host, "Samsung", "samsung_smart_tv", classification);
+    } else if (bytes_contains_ci(data, len, "webos") ||
+               (bytes_contains_ci(data, len, "lg") &&
+                bytes_contains_ci(data, len, "tv"))) {
+        refine_host_identity(host, "LG", "lg_smart_tv", classification);
+    } else if (bytes_contains_ci(data, len, "philips") &&
                bytes_contains_ci(data, len, "tv")) {
-        refine_host_identity(host, "Samsung", "samsung_tv", classification);
+        refine_host_identity(host, "Philips", "philips_tv", classification);
+    } else if (bytes_contains_ci(data, len, "philips-hue") ||
+               bytes_contains_ci(data, len, "philipshue")) {
+        refine_host_identity(host, "Philips", "philips_hue_bridge", classification);
     } else if (bytes_contains_ci(data, len, "roku")) {
-        refine_host_identity(host, "Roku", "media_streamer", classification);
-    } else if (bytes_contains_ci(data, len, "sonos")) {
-        refine_host_identity(host, "Sonos", "speaker", classification);
+        refine_host_identity(host, "Roku", "roku", classification);
+    } else if (bytes_contains_ci(data, len, "sonos") ||
+               bytes_contains_ci(data, len, "_sonos")) {
+        refine_host_identity(host, "Sonos", "sonos_speaker", classification);
+    } else if (bytes_contains_ci(data, len, "_spotify-connect")) {
+        refine_host_identity(host, NULL, "spotify_connect_speaker", classification);
+    } else if (bytes_contains_ci(data, len, "_wemo")) {
+        refine_host_identity(host, "Belkin", "wemo_device", classification);
+    } else if (bytes_contains_ci(data, len, "ring")) {
+        refine_host_identity(host, "Ring", "ring_doorbell", classification);
     } else if (bytes_contains_ci(data, len, "_smb")) {
         refine_host_identity(host, NULL, "windows_or_smb_device", classification);
     } else if (bytes_contains_ci(data, len, "_hap") ||
@@ -798,6 +1062,17 @@ static void apply_mdns_discovery(scan_result_t *scan) {
         "_workstation._tcp.local",
         "_hap._tcp.local",
         "_matter._tcp.local",
+        "_pscontrol._tcp.local",
+        "_xbox-smartglass-devicerelay._tcp.local",
+        "_nintendo._tcp.local",
+        "_nvstream._tcp.local",
+        "_androidtvremote._tcp.local",
+        "_androidtvremote2._tcp.local",
+        "_amzn-wplay._tcp.local",
+        "_sonos._tcp.local",
+        "_spotify-connect._tcp.local",
+        "_dacp._tcp.local",
+        "_wemo._tcp.local",
     };
 
     uint8_t packet[128];
@@ -948,6 +1223,7 @@ static void run_scan(esp_netif_t *netif, scan_result_t *scan) {
         classify_host(host, addr, gateway);
         if (nbns_probe_hostname(addr, host->hostname, sizeof(host->hostname))) {
             refine_host_identity(host, NULL, "windows_or_smb_device", "netbios_name");
+            apply_hostname_heuristics(host);
         }
     }
 

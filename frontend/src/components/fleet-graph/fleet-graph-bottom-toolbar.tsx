@@ -29,7 +29,7 @@ interface FleetGraphBottomToolbarProps {
   onDisplayOptionsChange: (options: FleetGraphDisplayOptions) => void;
 }
 
-export type DisplayToggleKey = 'labels' | 'alerts' | 'fleets' | 'offline';
+export type DisplayToggleKey = 'labels' | 'alerts' | 'fleets';
 
 export type FleetGraphDisplayOptions = Record<DisplayToggleKey, boolean>;
 
@@ -84,7 +84,7 @@ const actionConfig = [
 
 const displayToggleConfig: Array<{
   key: DisplayToggleKey;
-  icon: 'tag' | 'notifications' | 'flows' | 'offline';
+  icon: 'tag' | 'notifications' | 'flows';
   label: string;
   description: string;
 }> = [
@@ -105,12 +105,6 @@ const displayToggleConfig: Array<{
     icon: 'flows',
     label: 'Fleet groups',
     description: 'Show fleet grouping hints in the topology.',
-  },
-  {
-    key: 'offline',
-    icon: 'offline',
-    label: 'Offline devices',
-    description: 'Include offline devices in the graph view.',
   },
 ];
 

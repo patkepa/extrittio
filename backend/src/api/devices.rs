@@ -21,6 +21,19 @@ use crate::state::{AppState, run_db};
 // Request / Response types
 // ---------------------------------------------------------------------------
 
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
+pub struct DeviceConnectionResponse {
+    pub id: String,
+    pub label: String,
+    pub connection_type: String,
+    pub device_id: Option<String>,
+    pub external_id: Option<String>,
+    pub address: Option<String>,
+    pub device_type: Option<String>,
+    pub status: Option<String>,
+    pub source: Option<String>,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct DeviceResponse {
     pub id: String,
@@ -37,6 +50,7 @@ pub struct DeviceResponse {
     pub uptime_seconds: i32,
     pub latest_latitude: Option<f64>,
     pub latest_longitude: Option<f64>,
+    pub declared_connections: Vec<DeviceConnectionResponse>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -160,6 +174,9 @@ fn to_device_response(
     let last_seen_at = device
         .last_seen
         .map(|dt| DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc).to_rfc3339());
+    let declared_connections =
+        serde_json::from_value(device.declared_connections.clone()).unwrap_or_default();
+
     DeviceResponse {
         id: device.id,
         name: device.name,
@@ -177,6 +194,7 @@ fn to_device_response(
         uptime_seconds: device.uptime_seconds,
         latest_latitude: device.latest_latitude,
         latest_longitude: device.latest_longitude,
+        declared_connections,
     }
 }
 

@@ -202,6 +202,7 @@ pub struct Device {
     pub updated_at: NaiveDateTime,
     pub latest_latitude: Option<f64>,
     pub latest_longitude: Option<f64>,
+    pub declared_connections: JsonValue,
 }
 
 #[derive(Insertable, Debug)]
@@ -225,6 +226,7 @@ pub struct UpdateDevice {
     pub last_seen: Option<NaiveDateTime>,
     pub uptime_seconds: Option<i32>,
     pub updated_at: Option<NaiveDateTime>,
+    pub declared_connections: Option<JsonValue>,
 }
 
 // ---------------------------------------------------------------------------

@@ -6,7 +6,7 @@ use crate::db::models::NewTelemetryRecord;
 use crate::rule_engine::cache::RuleCache;
 use crate::rule_engine::evaluate::{evaluate_geofence, evaluate_telemetry};
 use crate::rule_engine::types::{PendingAction, TelemetryData};
-use crate::services::telemetry_service;
+use crate::services::{device_connections, telemetry_service};
 use crate::state::DbPool;
 
 use extrittio_common::extrittio::DeviceTelemetry;
@@ -55,6 +55,9 @@ pub fn handle_telemetry(
 
     let has_location = telemetry_msg.latitude != 0.0 || telemetry_msg.longitude != 0.0;
 
+    let declared_connections =
+        device_connections::declared_connections_from_metadata(&telemetry_msg.metadata);
+
     let record = NewTelemetryRecord {
         device_id: telemetry_msg.device_id.clone(),
         payload: payload.to_vec(),
@@ -89,7 +92,7 @@ pub fn handle_telemetry(
         },
     };
 
-    match telemetry_service::record(&mut conn, record) {
+    match telemetry_service::record(&mut conn, record, declared_connections) {
         Ok(None) => {
             warn!(
                 "Dropping telemetry from unregistered device: {}",

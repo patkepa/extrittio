@@ -4,9 +4,19 @@ use chrono::NaiveDateTime;
 use diesel::OptionalExtension;
 use diesel::PgConnection;
 use diesel::prelude::*;
+use diesel::sql_types::{Array, Jsonb, Text};
+use serde_json::Value as JsonValue;
 
 use crate::db::models::{NewTelemetryRecord, TelemetryRecord};
 use crate::db::schema::telemetry;
+
+#[derive(QueryableByName)]
+pub struct LatestTelemetryCustomJson {
+    #[diesel(sql_type = Text)]
+    pub device_id: String,
+    #[diesel(sql_type = Jsonb)]
+    pub custom_json: JsonValue,
+}
 
 pub fn list_telemetry(
     conn: &mut PgConnection,
@@ -57,4 +67,26 @@ pub fn insert_telemetry(
         .values(record)
         .execute(conn)?;
     Ok(())
+}
+
+pub fn latest_connection_sources_for_devices(
+    conn: &mut PgConnection,
+    device_ids: &[String],
+) -> Result<Vec<LatestTelemetryCustomJson>, diesel::result::Error> {
+    if device_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    diesel::sql_query(
+        r#"
+        SELECT DISTINCT ON (device_id) device_id, custom_json
+        FROM telemetry
+        WHERE device_id = ANY($1)
+          AND custom_json->>'kind' = 'network_analyzer_scan'
+          AND custom_json ? 'snapshot_json'
+        ORDER BY device_id, received_at DESC
+        "#,
+    )
+    .bind::<Array<Text>, _>(device_ids)
+    .load(conn)
 }

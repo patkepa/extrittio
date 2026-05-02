@@ -276,10 +276,70 @@
 /* Counts footer — styled like sidebar footer */
 .health-panel-footer {
   font-size: 11px;
+  gap: 4px;
+  padding: 6px 8px;
 }
 
 .health-panel-dot {
   color: var(--sidebar-muted-foreground);
+}
+
+.health-panel-filter {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--health-panel-filter-color) 44%, transparent);
+  border-radius: 3px;
+  color: var(--sidebar-foreground);
+  background: color-mix(in srgb, var(--health-panel-filter-color) 18%, transparent);
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease,
+    opacity 0.12s ease;
+}
+
+.health-panel-filter:hover:not(:disabled),
+.health-panel-filter:focus-visible {
+  background: color-mix(in srgb, var(--health-panel-filter-color) 26%, transparent);
+  border-color: color-mix(in srgb, var(--health-panel-filter-color) 70%, transparent);
+  outline: none;
+}
+
+.health-panel-filter:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--health-panel-filter-color) 45%, transparent);
+}
+
+.health-panel-filter--off {
+  color: var(--sidebar-muted-foreground);
+  background: transparent;
+  border-color: var(--sidebar-border);
+  opacity: 0.62;
+}
+
+.health-panel-filter:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.health-panel-filter-count {
+  color: var(--health-panel-filter-color);
+  font-variant-numeric: tabular-nums;
+}
+
+.health-panel-filter-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Fleet Graph Bulk Action Bar — styled to match app sidebar */

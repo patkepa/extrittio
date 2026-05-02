@@ -6,6 +6,8 @@ import {
   type HealthTier,
 } from './constants';
 
+export type HealthStatusFilter = 'connected' | 'offline' | 'never';
+
 /**
  * Determine health tier from staleness in milliseconds.
  * When staleness is unavailable (NaN), falls back to device status.
@@ -22,6 +24,16 @@ export function getHealthTier(stalenessMs: number, status?: string): HealthTier 
   if (status === 'warning') return 'warm';
   if (status === 'offline') return 'never';
   return 'dead';
+}
+
+export function getHealthStatusFilter(
+  stalenessMs: number,
+  status?: string,
+): HealthStatusFilter {
+  if (status === 'offline') {
+    return Number.isNaN(stalenessMs) || stalenessMs < 0 ? 'never' : 'offline';
+  }
+  return 'connected';
 }
 
 /**

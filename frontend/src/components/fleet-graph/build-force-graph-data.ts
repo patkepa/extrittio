@@ -10,11 +10,12 @@ function getTypeAbbrev(deviceTypeName: string): string {
 export interface GraphNode {
   id: string;
   name: string;
-  type: 'fleet' | 'device';
+  type: 'fleet' | 'device' | 'external';
   val: number;
   color: string;
   deviceCount?: number;
   device?: Device;
+  connection?: NonNullable<Device['declared_connections']>[number];
   status?: string;
   deviceTypeName?: string;
   typeAbbrev?: string;
@@ -39,6 +40,8 @@ export interface GraphNode {
 export interface GraphLink {
   source: string | GraphNode;
   target: string | GraphNode;
+  kind?: 'fleet' | 'declared';
+  connection?: NonNullable<Device['declared_connections']>[number];
 }
 
 export interface GraphData {
@@ -51,6 +54,21 @@ const STRUCTURED_LAYOUT_MIN_DEVICES = 11;
 const DEVICE_RING_START_RADIUS = 120;
 const DEVICE_RING_STEP = 58;
 const DEVICE_RING_MIN_SPACING = 42;
+const EXTERNAL_COLOR = '#7B8B9A';
+
+function connectionNodeId(sourceDeviceId: string, connectionId: string): string {
+  return `connection-${sourceDeviceId}-${encodeURIComponent(connectionId)}`;
+}
+
+function getConnectionLabel(connection: NonNullable<Device['declared_connections']>[number]) {
+  return (
+    connection.label ||
+    connection.device_id ||
+    connection.external_id ||
+    connection.address ||
+    'External'
+  );
+}
 
 function getFleetAnchor(index: number, total: number): { x: number; y: number } {
   if (total <= 1) return { x: 0, y: 0 };
@@ -103,6 +121,7 @@ export function buildForceGraphData(
   const nodes: GraphNode[] = [];
   const links: GraphLink[] = [];
   const nodeMap = new Map<string, GraphNode>();
+  const deviceNodeIdByDeviceId = new Map<string, string>();
 
   const prevNodeMap = new Map<string, GraphNode>();
   if (prevNodes) {
@@ -256,9 +275,73 @@ export function buildForceGraphData(
     }
     nodes.push(node);
     nodeMap.set(node.id, node);
+    deviceNodeIdByDeviceId.set(device.id, node.id);
 
-    const link: GraphLink = { source: fleetNodeId, target: node.id };
+    const link: GraphLink = { source: fleetNodeId, target: node.id, kind: 'fleet' };
     links.push(link);
+  }
+
+  const declaredLinkKeys = new Set<string>();
+  for (const device of devices) {
+    const sourceNodeId = deviceNodeIdByDeviceId.get(device.id);
+    if (!sourceNodeId) continue;
+
+    for (const connection of device.declared_connections ?? []) {
+      let targetNodeId = connection.device_id
+        ? deviceNodeIdByDeviceId.get(connection.device_id)
+        : undefined;
+      if (targetNodeId === sourceNodeId) continue;
+
+      if (!targetNodeId) {
+        const externalId =
+          connection.id ||
+          connection.external_id ||
+          connection.address ||
+          getConnectionLabel(connection);
+        targetNodeId = connectionNodeId(device.id, externalId);
+
+        if (!nodeMap.has(targetNodeId)) {
+          const prev = prevNodeMap.get(targetNodeId);
+          const sourceLayout = deviceLayoutById.get(device.id);
+          const node: GraphNode = {
+            ...prev,
+            id: targetNodeId,
+            name: getConnectionLabel(connection),
+            type: 'external',
+            val: 2,
+            color: EXTERNAL_COLOR,
+            connection,
+            status: connection.status ?? 'external',
+            deviceTypeName: connection.device_type ?? connection.connection_type,
+            typeAbbrev: '?',
+            neighbors: [],
+            links: [],
+            layoutX: sourceLayout ? sourceLayout.x + 72 : undefined,
+            layoutY: sourceLayout ? sourceLayout.y + 72 : undefined,
+            layoutRadius: sourceLayout ? sourceLayout.radius + 72 : undefined,
+          };
+          if (prev) {
+            node.x = prev.x;
+            node.y = prev.y;
+          } else if (sourceLayout) {
+            node.x = sourceLayout.x + 72;
+            node.y = sourceLayout.y + 72;
+          }
+          nodes.push(node);
+          nodeMap.set(node.id, node);
+        }
+      }
+
+      const linkKey = `${sourceNodeId}->${targetNodeId}`;
+      if (declaredLinkKeys.has(linkKey)) continue;
+      declaredLinkKeys.add(linkKey);
+      links.push({
+        source: sourceNodeId,
+        target: targetNodeId,
+        kind: 'declared',
+        connection,
+      });
+    }
   }
 
   // Cross-link neighbors (from the library's official highlight example)

@@ -641,7 +641,19 @@ export interface components {
             expires_at: string;
             fingerprint: string;
         };
+        DeviceConnectionResponse: {
+            address?: string | null;
+            connection_type: string;
+            device_id?: string | null;
+            device_type?: string | null;
+            external_id?: string | null;
+            id: string;
+            label: string;
+            source?: string | null;
+            status?: string | null;
+        };
         DeviceResponse: {
+            declared_connections: components["schemas"]["DeviceConnectionResponse"][];
             /** Format: int32 */
             device_type_id: number;
             device_type_name: string;
@@ -652,6 +664,8 @@ export interface components {
             id: string;
             last_seen: string;
             last_seen_at?: string | null;
+            latest_latitude?: number | null;
+            latest_longitude?: number | null;
             name: string;
             status: string;
             uptime: string;

@@ -12,6 +12,7 @@ interface OverviewTabProps {
 export const OverviewTab = ({ device }: OverviewTabProps) => {
   const restartDeviceMutation = useRestartDevice();
   const [, setSearchParams] = useSearchParams();
+  const declaredConnections = device.declared_connections ?? [];
 
   const navigateToTab = (tab: string) => setSearchParams({ tab });
 
@@ -51,6 +52,36 @@ export const OverviewTab = ({ device }: OverviewTabProps) => {
       </div>
 
       <Divider className="tab-divider" />
+
+      {declaredConnections.length > 0 && (
+        <>
+          <span className="section-label">Declared Connections</span>
+          <div className="connection-list">
+            {declaredConnections.map((connection) => (
+              <div className="connection-row" key={connection.id}>
+                <div className="connection-main">
+                  <span className="connection-name">{connection.label}</span>
+                  <span className="connection-meta mono-data">
+                    {connection.device_id ??
+                      connection.external_id ??
+                      connection.address ??
+                      'external'}
+                  </span>
+                </div>
+                <div className="connection-tags">
+                  <span className="connection-tag">{connection.connection_type}</span>
+                  {connection.device_type && (
+                    <span className="connection-tag">{connection.device_type}</span>
+                  )}
+                  {connection.status && <span className="connection-tag">{connection.status}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <Divider className="tab-divider" />
+        </>
+      )}
 
       <QrCodeCard deviceId={device.id} />
 
