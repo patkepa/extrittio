@@ -254,6 +254,58 @@
             "bearer_auth": []
           }
         ]
+      },
+      "patch": {
+        "tags": [
+          "device-types"
+        ],
+        "summary": "Update a device type.",
+        "operationId": "update_device_type",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device type ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDeviceTypeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Device type updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceTypeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "404": {
+            "description": "Device type not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
       }
     },
     "/api/v1/devices": {
@@ -370,6 +422,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "409": {
+            "description": "Device name already exists"
           }
         },
         "security": [
@@ -461,6 +516,9 @@
           },
           "404": {
             "description": "Device not found"
+          },
+          "409": {
+            "description": "Device name already exists"
           }
         },
         "security": [
@@ -1689,6 +1747,58 @@
             "bearer_auth": []
           }
         ]
+      },
+      "patch": {
+        "tags": [
+          "fleets"
+        ],
+        "summary": "Update a fleet (rename).",
+        "operationId": "update_fleet",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Fleet ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateFleetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Fleet updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "404": {
+            "description": "Fleet not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
       }
     },
     "/api/v1/users": {
@@ -2113,6 +2223,73 @@
           }
         }
       },
+      "DeviceConnectionResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "connection_type"
+        ],
+        "properties": {
+          "address": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "connection_type": {
+            "type": "string"
+          },
+          "device_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "device_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "external_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "first_seen_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "last_seen_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "DeviceResponse": {
         "type": "object",
         "required": [
@@ -2120,13 +2297,28 @@
           "name",
           "device_type_id",
           "device_type_name",
+          "device_type_icon",
+          "device_type_color_hex",
           "status",
           "last_seen",
           "firmware",
           "uptime",
-          "uptime_seconds"
+          "uptime_seconds",
+          "declared_connections"
         ],
         "properties": {
+          "declared_connections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeviceConnectionResponse"
+            }
+          },
+          "device_type_color_hex": {
+            "type": "string"
+          },
+          "device_type_icon": {
+            "type": "string"
+          },
           "device_type_id": {
             "type": "integer",
             "format": "int32"
@@ -2162,6 +2354,20 @@
               "null"
             ]
           },
+          "latest_latitude": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "latest_longitude": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
           "name": {
             "type": "string"
           },
@@ -2181,9 +2387,17 @@
         "type": "object",
         "required": [
           "id",
-          "name"
+          "name",
+          "icon",
+          "color_hex"
         ],
         "properties": {
+          "color_hex": {
+            "type": "string"
+          },
+          "icon": {
+            "type": "string"
+          },
           "id": {
             "type": "integer",
             "format": "int32"
@@ -2351,7 +2565,7 @@
           },
           "id": {
             "type": "integer",
-            "format": "int32"
+            "format": "int64"
           },
           "level": {
             "type": "string"
@@ -2426,6 +2640,18 @@
           "name"
         ],
         "properties": {
+          "color_hex": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "name": {
             "type": "string"
           }
@@ -2550,13 +2776,28 @@
                 "name",
                 "device_type_id",
                 "device_type_name",
+                "device_type_icon",
+                "device_type_color_hex",
                 "status",
                 "last_seen",
                 "firmware",
                 "uptime",
-                "uptime_seconds"
+                "uptime_seconds",
+                "declared_connections"
               ],
               "properties": {
+                "declared_connections": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DeviceConnectionResponse"
+                  }
+                },
+                "device_type_color_hex": {
+                  "type": "string"
+                },
+                "device_type_icon": {
+                  "type": "string"
+                },
                 "device_type_id": {
                   "type": "integer",
                   "format": "int32"
@@ -2591,6 +2832,20 @@
                     "string",
                     "null"
                   ]
+                },
+                "latest_latitude": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "format": "double"
+                },
+                "latest_longitude": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "format": "double"
                 },
                 "name": {
                   "type": "string"
@@ -2637,9 +2892,17 @@
               "type": "object",
               "required": [
                 "id",
-                "name"
+                "name",
+                "icon",
+                "color_hex"
               ],
               "properties": {
+                "color_hex": {
+                  "type": "string"
+                },
+                "icon": {
+                  "type": "string"
+                },
                 "id": {
                   "type": "integer",
                   "format": "int32"
@@ -3059,6 +3322,13 @@
           "received_at"
         ],
         "properties": {
+          "altitude": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
           "battery_level": {
             "type": [
               "number",
@@ -3068,12 +3338,19 @@
           },
           "custom_json": {
             "type": [
-              "string",
+              "object",
               "null"
             ]
           },
           "device_id": {
             "type": "string"
+          },
+          "heading": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
           },
           "humidity": {
             "type": [
@@ -3084,10 +3361,31 @@
           },
           "id": {
             "type": "integer",
-            "format": "int32"
+            "format": "int64"
+          },
+          "latitude": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "longitude": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
           },
           "received_at": {
             "type": "string"
+          },
+          "speed": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
           },
           "temperature": {
             "type": [
@@ -3138,6 +3436,40 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "UpdateDeviceTypeRequest": {
+        "type": "object",
+        "properties": {
+          "color_hex": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "UpdateFleetRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
           }
         }
       },

@@ -38,12 +38,18 @@ pub fn run_migrations(conn: &mut PgConnection) -> anyhow::Result<()> {
 /// Ensure built-in device types exist even if a dev/test database was reseeded
 /// after migrations had already run.
 pub fn seed_default_device_types(conn: &mut PgConnection) -> anyhow::Result<()> {
-    const BUILT_IN_DEVICE_TYPES: &[&str] = &["default", "mac-device", "network-analyzer"];
+    const BUILT_IN_DEVICE_TYPES: &[(&str, &str, &str)] = &[
+        ("default", "cube", "#8ABBFF"),
+        ("mac-device", "desktop", "#F7C948"),
+        ("network-analyzer", "antenna", "#36CFC9"),
+    ];
 
     let rows: Vec<NewDeviceType> = BUILT_IN_DEVICE_TYPES
         .iter()
-        .map(|name| NewDeviceType {
+        .map(|(name, icon, color_hex)| NewDeviceType {
             name: (*name).to_string(),
+            icon: (*icon).to_string(),
+            color_hex: (*color_hex).to_string(),
         })
         .collect();
 

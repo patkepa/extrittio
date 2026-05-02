@@ -95,7 +95,7 @@
 }
 
 .settings-table .actions-column {
-  width: 100px;
+  width: 112px;
   text-align: right;
 }
 
@@ -123,4 +123,60 @@
 
 .fleet-row:hover {
   background-color: hsla(0, 0%, 100%, 0.03);
+}
+
+.device-type-name-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.device-type-icon-grid {
+  display: grid !important;
+  grid-template-columns: repeat(8, 32px);
+  gap: 6px;
+}
+
+.device-type-icon-grid .bp6-button {
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+}
+
+.device-type-color-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 24px);
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.device-type-color-swatch {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid hsla(0, 0%, 100%, 0.28);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.device-type-color-swatch.active {
+  outline: 2px solid hsl(var(--foreground));
+  outline-offset: 2px;
+}
+
+.device-type-color-inputs {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.device-type-color-inputs input[type='color'] {
+  width: 44px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 2px;
+  background: transparent;
 }

@@ -1,6 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import type { CreateDeviceTypeRequest } from '../types/api';
-import { getDeviceTypes, createDeviceType, deleteDeviceType } from '../api/device-types';
+import type { CreateDeviceTypeRequest, UpdateDeviceTypeRequest } from '../types/api';
+import {
+  getDeviceTypes,
+  createDeviceType,
+  updateDeviceType,
+  deleteDeviceType,
+} from '../api/device-types';
 import { queryKeys } from './query-keys';
 
 export function useDeviceTypes() {
@@ -17,6 +22,18 @@ export function useCreateDeviceType() {
     mutationFn: (body: CreateDeviceTypeRequest) => createDeviceType(body),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.deviceTypes.all });
+    },
+  });
+}
+
+export function useUpdateDeviceType() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: number; body: UpdateDeviceTypeRequest }) =>
+      updateDeviceType(id, body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.deviceTypes.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.devices.all });
     },
   });
 }

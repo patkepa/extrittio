@@ -2,7 +2,7 @@ use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
-    routing::get,
+    routing::{get, patch},
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -18,6 +18,8 @@ use crate::state::{AppState, run_db};
 pub struct DeviceTypeResponse {
     pub id: i32,
     pub name: String,
+    pub icon: String,
+    pub color_hex: String,
 }
 
 impl From<DeviceType> for DeviceTypeResponse {
@@ -25,6 +27,8 @@ impl From<DeviceType> for DeviceTypeResponse {
         Self {
             id: dt.id,
             name: dt.name,
+            icon: dt.icon,
+            color_hex: dt.color_hex,
         }
     }
 }
@@ -32,6 +36,15 @@ impl From<DeviceType> for DeviceTypeResponse {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct NewDeviceTypeRequest {
     pub name: String,
+    pub icon: Option<String>,
+    pub color_hex: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UpdateDeviceTypeRequest {
+    pub name: Option<String>,
+    pub icon: Option<String>,
+    pub color_hex: Option<String>,
 }
 
 pub fn router() -> Router<Arc<AppState>> {
@@ -42,7 +55,7 @@ pub fn router() -> Router<Arc<AppState>> {
         )
         .route(
             "/api/v1/device-types/{id}",
-            axum::routing::delete(delete_device_type),
+            patch(update_device_type).delete(delete_device_type),
         )
 }
 
@@ -90,12 +103,51 @@ pub(crate) async fn create_device_type(
     Json(body): Json<NewDeviceTypeRequest>,
 ) -> Result<(StatusCode, Json<DeviceTypeResponse>), AppError> {
     let response = run_db(&state.db_pool, move |conn| {
-        let created = device_type_service::create(conn, &body.name)?;
+        let created = device_type_service::create(
+            conn,
+            &body.name,
+            body.icon.as_deref(),
+            body.color_hex.as_deref(),
+        )?;
         Ok(DeviceTypeResponse::from(created))
     })
     .await?;
 
     Ok((StatusCode::CREATED, Json(response)))
+}
+
+/// Update a device type.
+#[utoipa::path(
+    patch,
+    path = "/api/v1/device-types/{id}",
+    tag = "device-types",
+    security(("bearer_auth" = [])),
+    params(("id" = i32, Path, description = "Device type ID")),
+    request_body = UpdateDeviceTypeRequest,
+    responses(
+        (status = 200, description = "Device type updated", body = DeviceTypeResponse),
+        (status = 400, description = "Invalid input"),
+        (status = 404, description = "Device type not found"),
+    ),
+)]
+pub(crate) async fn update_device_type(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i32>,
+    Json(body): Json<UpdateDeviceTypeRequest>,
+) -> Result<Json<DeviceTypeResponse>, AppError> {
+    let response = run_db(&state.db_pool, move |conn| {
+        let updated = device_type_service::update(
+            conn,
+            id,
+            body.name.as_deref(),
+            body.icon.as_deref(),
+            body.color_hex.as_deref(),
+        )?;
+        Ok(DeviceTypeResponse::from(updated))
+    })
+    .await?;
+
+    Ok(Json(response))
 }
 
 /// Delete a device type by ID.

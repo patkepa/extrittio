@@ -3,7 +3,7 @@
 use diesel::PgConnection;
 use diesel::prelude::*;
 
-use crate::db::models::{DeviceType, NewDeviceType};
+use crate::db::models::{DeviceType, NewDeviceType, UpdateDeviceType};
 use crate::db::schema::{device_types, devices};
 
 pub fn list_device_types(
@@ -43,6 +43,21 @@ pub fn insert_device_type(
 
     device_types::table
         .order(device_types::id.desc())
+        .select(DeviceType::as_select())
+        .first(conn)
+}
+
+pub fn update_device_type(
+    conn: &mut PgConnection,
+    id: i32,
+    dt: &UpdateDeviceType,
+) -> Result<DeviceType, diesel::result::Error> {
+    diesel::update(device_types::table.find(id))
+        .set(dt)
+        .execute(conn)?;
+
+    device_types::table
+        .find(id)
         .select(DeviceType::as_select())
         .first(conn)
 }

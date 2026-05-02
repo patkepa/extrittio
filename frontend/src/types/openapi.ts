@@ -104,7 +104,8 @@ export interface paths {
         delete: operations["delete_device_type"];
         options?: never;
         head?: never;
-        patch?: never;
+        /** Update a device type. */
+        patch: operations["update_device_type"];
         trace?: never;
     };
     "/api/v1/devices": {
@@ -492,7 +493,8 @@ export interface paths {
         delete: operations["delete_fleet"];
         options?: never;
         head?: never;
-        patch?: never;
+        /** Update a fleet (rename). */
+        patch: operations["update_fleet"];
         trace?: never;
     };
     "/api/v1/users": {
@@ -656,6 +658,8 @@ export interface components {
         };
         DeviceResponse: {
             declared_connections: components["schemas"]["DeviceConnectionResponse"][];
+            device_type_color_hex: string;
+            device_type_icon: string;
             /** Format: int32 */
             device_type_id: number;
             device_type_name: string;
@@ -666,7 +670,9 @@ export interface components {
             id: string;
             last_seen: string;
             last_seen_at?: string | null;
+            /** Format: double */
             latest_latitude?: number | null;
+            /** Format: double */
             latest_longitude?: number | null;
             name: string;
             status: string;
@@ -675,6 +681,8 @@ export interface components {
             uptime_seconds: number;
         };
         DeviceTypeResponse: {
+            color_hex: string;
+            icon: string;
             /** Format: int32 */
             id: number;
             name: string;
@@ -718,7 +726,7 @@ export interface components {
         LogResponse: {
             created_at: string;
             device_id: string;
-            /** Format: int32 */
+            /** Format: int64 */
             id: number;
             level: string;
             message: string;
@@ -740,6 +748,8 @@ export interface components {
             name: string;
         };
         NewDeviceTypeRequest: {
+            color_hex?: string | null;
+            icon?: string | null;
             name: string;
         };
         NewFirmwareUpdateRequest: {
@@ -770,6 +780,9 @@ export interface components {
         };
         PaginatedResponse_DeviceResponse: {
             data: {
+                declared_connections: components["schemas"]["DeviceConnectionResponse"][];
+                device_type_color_hex: string;
+                device_type_icon: string;
                 /** Format: int32 */
                 device_type_id: number;
                 device_type_name: string;
@@ -780,6 +793,10 @@ export interface components {
                 id: string;
                 last_seen: string;
                 last_seen_at?: string | null;
+                /** Format: double */
+                latest_latitude?: number | null;
+                /** Format: double */
+                latest_longitude?: number | null;
                 name: string;
                 status: string;
                 uptime: string;
@@ -795,6 +812,8 @@ export interface components {
         };
         PaginatedResponse_DeviceTypeResponse: {
             data: {
+                color_hex: string;
+                icon: string;
                 /** Format: int32 */
                 id: number;
                 name: string;
@@ -918,14 +937,24 @@ export interface components {
         };
         TelemetryResponse: {
             /** Format: float */
+            altitude?: number | null;
+            /** Format: float */
             battery_level?: number | null;
-            custom_json?: string | null;
+            custom_json?: Record<string, never> | null;
             device_id: string;
             /** Format: float */
+            heading?: number | null;
+            /** Format: float */
             humidity?: number | null;
-            /** Format: int32 */
+            /** Format: int64 */
             id: number;
+            /** Format: double */
+            latitude?: number | null;
+            /** Format: double */
+            longitude?: number | null;
             received_at: string;
+            /** Format: float */
+            speed?: number | null;
             /** Format: float */
             temperature?: number | null;
         };
@@ -940,6 +969,14 @@ export interface components {
             /** Format: int32 */
             fleet_id?: number | null;
             name?: string | null;
+        };
+        UpdateDeviceTypeRequest: {
+            color_hex?: string | null;
+            icon?: string | null;
+            name?: string | null;
+        };
+        UpdateFleetRequest: {
+            name: string;
         };
         UserResponse: {
             /** Format: int32 */
@@ -1157,6 +1194,47 @@ export interface operations {
             };
         };
     };
+    update_device_type: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device type ID */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDeviceTypeRequest"];
+            };
+        };
+        responses: {
+            /** @description Device type updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceTypeResponse"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Device type not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     list_devices: {
         parameters: {
             query?: {
@@ -1207,6 +1285,13 @@ export interface operations {
             };
             /** @description Invalid input */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Device name already exists */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1278,6 +1363,13 @@ export interface operations {
             };
             /** @description Device not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Device name already exists */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2108,6 +2200,47 @@ export interface operations {
         responses: {
             /** @description Fleet deleted */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Fleet not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    update_fleet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Fleet ID */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateFleetRequest"];
+            };
+        };
+        responses: {
+            /** @description Fleet updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetResponse"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

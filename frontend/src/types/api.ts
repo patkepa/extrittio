@@ -86,6 +86,7 @@ export interface PaginatedResponse<T> {
 
 export type DeviceType = components['schemas']['DeviceTypeResponse'];
 export type CreateDeviceTypeRequest = components['schemas']['NewDeviceTypeRequest'];
+export type UpdateDeviceTypeRequest = components['schemas']['UpdateDeviceTypeRequest'];
 
 // ---------------------------------------------------------------------------
 // Fleets

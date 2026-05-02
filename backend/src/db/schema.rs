@@ -109,6 +109,8 @@ diesel::table! {
     device_types (id) {
         id -> Int4,
         name -> Text,
+        icon -> Text,
+        color_hex -> Text,
         created_at -> Timestamptz,
     }
 }

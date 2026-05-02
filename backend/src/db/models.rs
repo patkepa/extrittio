@@ -68,6 +68,8 @@ pub struct NewDeviceCertificate {
 pub struct DeviceType {
     pub id: i32,
     pub name: String,
+    pub icon: String,
+    pub color_hex: String,
     pub created_at: NaiveDateTime,
 }
 
@@ -75,6 +77,16 @@ pub struct DeviceType {
 #[diesel(table_name = device_types)]
 pub struct NewDeviceType {
     pub name: String,
+    pub icon: String,
+    pub color_hex: String,
+}
+
+#[derive(AsChangeset, Debug)]
+#[diesel(table_name = device_types)]
+pub struct UpdateDeviceType {
+    pub name: Option<String>,
+    pub icon: Option<String>,
+    pub color_hex: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

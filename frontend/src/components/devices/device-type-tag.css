@@ -1,0 +1,23 @@
+.device-type-tag {
+  --device-type-color: #8abbff;
+  --device-type-bg: rgba(138, 187, 255, 0.14);
+  --device-type-border: rgba(138, 187, 255, 0.35);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  background-color: var(--device-type-bg) !important;
+  border: 1px solid var(--device-type-border);
+  color: hsl(var(--foreground)) !important;
+}
+
+.device-type-tag .bp6-icon {
+  color: var(--device-type-color);
+  flex: 0 0 auto;
+}
+
+.device-type-tag__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

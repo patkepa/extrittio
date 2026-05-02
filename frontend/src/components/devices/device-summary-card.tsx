@@ -1,5 +1,6 @@
 import { Tag } from '@blueprintjs/core';
 import type { Device } from '../../types/api';
+import { DeviceTypeTag } from './device-type-tag';
 
 interface DeviceSummaryCardProps {
   device: Device;
@@ -12,7 +13,11 @@ export const DeviceSummaryCard = ({ device }: DeviceSummaryCardProps) => (
       <strong>{device.name}</strong>
     </div>
     <div className="summary-details">
-      <Tag minimal>{device.device_type_name}</Tag>
+      <DeviceTypeTag
+        name={device.device_type_name}
+        icon={device.device_type_icon}
+        colorHex={device.device_type_color_hex}
+      />
       {device.fleet_name && (
         <Tag minimal intent="primary">
           {device.fleet_name}

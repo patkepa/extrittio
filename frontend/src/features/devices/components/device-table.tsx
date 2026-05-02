@@ -3,6 +3,7 @@ import { List } from 'react-window';
 import { Card, Checkbox, Elevation, H4, Icon, Tag } from '@blueprintjs/core';
 import type { Device } from '../../../types/api';
 import type { DeviceSortDir, DeviceSortField } from '../hooks/use-device-list-state';
+import { DeviceTypeTag } from '../../../components/devices/device-type-tag';
 
 interface DeviceTableProps {
   devices: Device[];
@@ -165,7 +166,11 @@ function DeviceRow({
         </div>
       </div>
       <div role="cell" className="devices-grid-cell">
-        <Tag minimal>{device.device_type_name}</Tag>
+        <DeviceTypeTag
+          name={device.device_type_name}
+          icon={device.device_type_icon}
+          colorHex={device.device_type_color_hex}
+        />
       </div>
       <div role="cell" className="devices-grid-cell">
         {device.fleet_name ? (

@@ -34,6 +34,7 @@ use utoipa::{Modify, OpenApi};
         // Device types
         super::device_types::list_device_types,
         super::device_types::create_device_type,
+        super::device_types::update_device_type,
         super::device_types::delete_device_type,
         // Fleets
         super::fleets::list_fleets,
@@ -91,6 +92,7 @@ use utoipa::{Modify, OpenApi};
         // Device types
         super::device_types::DeviceTypeResponse,
         super::device_types::NewDeviceTypeRequest,
+        super::device_types::UpdateDeviceTypeRequest,
         // Fleets
         super::fleets::FleetResponse,
         super::fleets::NewFleetRequest,

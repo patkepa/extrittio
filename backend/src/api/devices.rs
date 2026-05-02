@@ -42,6 +42,8 @@ pub struct DeviceResponse {
     pub name: String,
     pub device_type_id: i32,
     pub device_type_name: String,
+    pub device_type_icon: String,
+    pub device_type_color_hex: String,
     pub fleet_id: Option<i32>,
     pub fleet_name: Option<String>,
     pub status: String,
@@ -184,6 +186,8 @@ fn to_device_response(
         name: device.name,
         device_type_id: device_type.id,
         device_type_name: device_type.name,
+        device_type_icon: device_type.icon,
+        device_type_color_hex: device_type.color_hex,
         fleet_id: fleet.as_ref().map(|f| f.id),
         fleet_name: fleet.map(|f| f.name),
         status: device.status,
@@ -464,6 +468,7 @@ pub(crate) async fn trigger_ota(
         &state.zenoh_session,
         &id,
         body.firmware_update_id,
+        &state.public_url,
         &state.zenoh_metrics,
     )
     .await?;
@@ -605,6 +610,7 @@ pub(crate) async fn bulk_trigger_ota(
             &state.zenoh_session,
             device_id,
             firmware_update_id,
+            &state.public_url,
             &state.zenoh_metrics,
         )
         .await
