@@ -3,6 +3,9 @@ use std::collections::HashMap;
 use chrono::NaiveDateTime;
 
 use super::types::{CachedRule, CachedZone};
+use crate::tenancy::DEFAULT_TENANT_ID;
+
+pub type RuleDeviceKey = (String, String, String);
 
 // ---------------------------------------------------------------------------
 // RuleCache — in-memory rule index for fast evaluation
@@ -18,14 +21,14 @@ pub struct RuleCache {
     pub by_fleet: Vec<CachedRule>,
     /// Rules scoped to a specific device (target_type = 'device')
     pub by_device: Vec<CachedRule>,
-    /// Active alerts keyed by (rule_id, device_id) → alert_id
-    pub active_alerts: HashMap<(String, String), String>,
-    /// Cooldown timestamps keyed by (rule_id, device_id) → last_fired_at
-    pub cooldowns: HashMap<(String, String), NaiveDateTime>,
+    /// Active alerts keyed by (tenant_id, rule_id, device_id) → alert_id
+    pub active_alerts: HashMap<RuleDeviceKey, String>,
+    /// Cooldown timestamps keyed by (tenant_id, rule_id, device_id) → last_fired_at
+    pub cooldowns: HashMap<RuleDeviceKey, NaiveDateTime>,
     /// Zone definitions keyed by zone_id
     pub zones: HashMap<String, CachedZone>,
-    /// Zone entry timestamps keyed by (rule_id, device_id) → entered_at
-    pub zone_entry_times: HashMap<(String, String), chrono::NaiveDateTime>,
+    /// Zone entry timestamps keyed by (tenant_id, rule_id, device_id) → entered_at
+    pub zone_entry_times: HashMap<RuleDeviceKey, chrono::NaiveDateTime>,
     /// Monotonically increasing version bumped on every cache mutation
     pub version: u64,
 }
@@ -40,28 +43,41 @@ impl RuleCache {
         device_type_id: &str,
         fleet_id: Option<&str>,
     ) -> Vec<&CachedRule> {
+        self.rules_for_tenant_device(DEFAULT_TENANT_ID, device_id, device_type_id, fleet_id)
+    }
+
+    /// Returns all rules that could apply to the given tenant/device.
+    pub fn rules_for_tenant_device(
+        &self,
+        tenant_id: &str,
+        device_id: &str,
+        device_type_id: &str,
+        fleet_id: Option<&str>,
+    ) -> Vec<&CachedRule> {
         let mut applicable: Vec<&CachedRule> = Vec::new();
 
         for rule in &self.global_rules {
-            applicable.push(rule);
+            if rule.tenant_id == tenant_id {
+                applicable.push(rule);
+            }
         }
 
         for rule in &self.by_device_type {
-            if rule.target_id.as_deref() == Some(device_type_id) {
+            if rule.tenant_id == tenant_id && rule.target_id.as_deref() == Some(device_type_id) {
                 applicable.push(rule);
             }
         }
 
         if let Some(fid) = fleet_id {
             for rule in &self.by_fleet {
-                if rule.target_id.as_deref() == Some(fid) {
+                if rule.tenant_id == tenant_id && rule.target_id.as_deref() == Some(fid) {
                     applicable.push(rule);
                 }
             }
         }
 
         for rule in &self.by_device {
-            if rule.target_id.as_deref() == Some(device_id) {
+            if rule.tenant_id == tenant_id && rule.target_id.as_deref() == Some(device_id) {
                 applicable.push(rule);
             }
         }
@@ -80,7 +96,10 @@ impl RuleCache {
             _ => return,
         };
 
-        if let Some(existing) = bucket.iter_mut().find(|r| r.id == rule.id) {
+        if let Some(existing) = bucket
+            .iter_mut()
+            .find(|r| r.tenant_id == rule.tenant_id && r.id == rule.id)
+        {
             *existing = rule;
         } else {
             bucket.push(rule);

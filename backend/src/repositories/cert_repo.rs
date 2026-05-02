@@ -3,6 +3,7 @@ use diesel::prelude::*;
 
 use crate::db::models::{CaCertificate, DeviceCertificate, NewCaCertificate, NewDeviceCertificate};
 use crate::db::schema::{ca_certificates, device_certificates};
+use crate::tenancy::DEFAULT_TENANT_ID;
 
 pub fn get_ca_certificate(
     conn: &mut PgConnection,
@@ -32,7 +33,16 @@ pub fn get_device_certificate(
     conn: &mut PgConnection,
     device_id: &str,
 ) -> Result<Option<DeviceCertificate>, diesel::result::Error> {
+    get_device_certificate_for_tenant(conn, DEFAULT_TENANT_ID, device_id)
+}
+
+pub fn get_device_certificate_for_tenant(
+    conn: &mut PgConnection,
+    tenant_id: &str,
+    device_id: &str,
+) -> Result<Option<DeviceCertificate>, diesel::result::Error> {
     device_certificates::table
+        .filter(device_certificates::tenant_id.eq(tenant_id))
         .filter(device_certificates::device_id.eq(device_id))
         .select(DeviceCertificate::as_select())
         .order(device_certificates::id.desc())
@@ -49,6 +59,7 @@ pub fn insert_device_certificate(
         .execute(conn)?;
 
     device_certificates::table
+        .filter(device_certificates::tenant_id.eq(&cert.tenant_id))
         .filter(device_certificates::device_id.eq(&cert.device_id))
         .select(DeviceCertificate::as_select())
         .order(device_certificates::id.desc())
@@ -59,9 +70,21 @@ pub fn clear_device_private_key(
     conn: &mut PgConnection,
     cert_id: i32,
 ) -> Result<(), diesel::result::Error> {
-    diesel::update(device_certificates::table.find(cert_id))
-        .set(device_certificates::private_key_pem.eq(""))
-        .execute(conn)?;
+    clear_device_private_key_for_tenant(conn, DEFAULT_TENANT_ID, cert_id)
+}
+
+pub fn clear_device_private_key_for_tenant(
+    conn: &mut PgConnection,
+    tenant_id: &str,
+    cert_id: i32,
+) -> Result<(), diesel::result::Error> {
+    diesel::update(
+        device_certificates::table
+            .filter(device_certificates::tenant_id.eq(tenant_id))
+            .filter(device_certificates::id.eq(cert_id)),
+    )
+    .set(device_certificates::private_key_pem.eq(""))
+    .execute(conn)?;
     Ok(())
 }
 
@@ -69,6 +92,18 @@ pub fn delete_device_certificates(
     conn: &mut PgConnection,
     device_id: &str,
 ) -> Result<usize, diesel::result::Error> {
-    diesel::delete(device_certificates::table.filter(device_certificates::device_id.eq(device_id)))
-        .execute(conn)
+    delete_device_certificates_for_tenant(conn, DEFAULT_TENANT_ID, device_id)
+}
+
+pub fn delete_device_certificates_for_tenant(
+    conn: &mut PgConnection,
+    tenant_id: &str,
+    device_id: &str,
+) -> Result<usize, diesel::result::Error> {
+    diesel::delete(
+        device_certificates::table
+            .filter(device_certificates::tenant_id.eq(tenant_id))
+            .filter(device_certificates::device_id.eq(device_id)),
+    )
+    .execute(conn)
 }

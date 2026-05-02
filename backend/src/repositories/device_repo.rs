@@ -161,6 +161,18 @@ pub fn find_device(conn: &mut PgConnection, id: &str) -> Result<Device, diesel::
         .first(conn)
 }
 
+pub fn find_device_for_tenant(
+    conn: &mut PgConnection,
+    tenant_id: &str,
+    id: &str,
+) -> Result<Device, diesel::result::Error> {
+    devices::table
+        .filter(devices::tenant_id.eq(tenant_id))
+        .filter(devices::id.eq(id))
+        .select(Device::as_select())
+        .first(conn)
+}
+
 pub fn device_exists(conn: &mut PgConnection, id: &str) -> Result<bool, diesel::result::Error> {
     devices::table
         .find(id)

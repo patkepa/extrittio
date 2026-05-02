@@ -8,6 +8,7 @@ use crate::services::device_connections::ObservedNetworkHost;
 
 pub fn list_recent_for_analyzers(
     conn: &mut PgConnection,
+    tenant_id: &str,
     analyzer_device_ids: &[String],
     cutoff: NaiveDateTime,
 ) -> Result<Vec<NetworkObservedHost>, diesel::result::Error> {
@@ -16,6 +17,7 @@ pub fn list_recent_for_analyzers(
     }
 
     network_observed_hosts::table
+        .filter(network_observed_hosts::tenant_id.eq(tenant_id))
         .filter(network_observed_hosts::analyzer_device_id.eq_any(analyzer_device_ids))
         .filter(network_observed_hosts::last_seen_at.ge(cutoff))
         .order((
@@ -29,6 +31,7 @@ pub fn list_recent_for_analyzers(
 
 pub fn replace_active_scan(
     conn: &mut PgConnection,
+    tenant_id: &str,
     analyzer_device_id: &str,
     hosts: &[ObservedNetworkHost],
     seen_at: NaiveDateTime,
@@ -37,6 +40,7 @@ pub fn replace_active_scan(
 
     for host in hosts {
         let new_host = NewNetworkObservedHost {
+            tenant_id: tenant_id.to_string(),
             analyzer_device_id: analyzer_device_id.to_string(),
             host_key: host.host_key.clone(),
             label: host.label.clone(),
@@ -71,6 +75,7 @@ pub fn replace_active_scan(
     if active_host_keys.is_empty() {
         diesel::update(
             network_observed_hosts::table
+                .filter(network_observed_hosts::tenant_id.eq(tenant_id))
                 .filter(network_observed_hosts::analyzer_device_id.eq(analyzer_device_id))
                 .filter(network_observed_hosts::status.ne("inactive")),
         )
@@ -82,6 +87,7 @@ pub fn replace_active_scan(
     } else {
         diesel::update(
             network_observed_hosts::table
+                .filter(network_observed_hosts::tenant_id.eq(tenant_id))
                 .filter(network_observed_hosts::analyzer_device_id.eq(analyzer_device_id))
                 .filter(network_observed_hosts::status.ne("inactive"))
                 .filter(network_observed_hosts::host_key.ne_all(active_host_keys)),

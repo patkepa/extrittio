@@ -1,5 +1,5 @@
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Path, State},
     http::StatusCode,
     routing::get,
@@ -8,6 +8,7 @@ use serde::Serialize;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
+use crate::auth::context::RequestContext;
 use crate::error::AppError;
 use crate::services::cert_service;
 use crate::state::{AppState, run_db};
@@ -65,10 +66,11 @@ pub fn router() -> Router<Arc<AppState>> {
     ),
 )]
 pub(crate) async fn get_ca_certificate(
+    Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<CaCertificateResponse>, AppError> {
     let response = run_db(&state.db_pool, move |conn| {
-        let ca = cert_service::get_ca_certificate(conn)?
+        let ca = cert_service::get_ca_certificate_for_request(&ctx, conn)?
             .ok_or_else(|| AppError::NotFound("CA certificate not initialized".into()))?;
 
         let fingerprint = cert_service::fingerprint_from_pem(&ca.certificate_pem)?;
@@ -103,11 +105,12 @@ pub(crate) async fn get_ca_certificate(
     ),
 )]
 pub(crate) async fn get_device_certificate(
+    Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<DeviceCertificateResponse>, AppError> {
     let response = run_db(&state.db_pool, move |conn| {
-        let bundle = cert_service::get_device_certificate_bundle(conn, &id)?;
+        let bundle = cert_service::get_device_certificate_bundle(&ctx, conn, &id)?;
 
         let private_key_pem = bundle.private_key_pem.ok_or_else(|| {
             AppError::BadRequest(
@@ -143,11 +146,12 @@ pub(crate) async fn get_device_certificate(
     ),
 )]
 pub(crate) async fn regenerate_device_certificate(
+    Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<(StatusCode, Json<DeviceCertificateResponse>), AppError> {
     let response = run_db(&state.db_pool, move |conn| {
-        let cert = cert_service::regenerate_device_certificate(conn, &id)?;
+        let cert = cert_service::regenerate_device_certificate(&ctx, conn, &id)?;
 
         let ca = cert_service::get_ca_certificate(conn)?
             .ok_or_else(|| AppError::Internal("CA certificate not initialized".into()))?;
@@ -179,11 +183,12 @@ pub(crate) async fn regenerate_device_certificate(
     ),
 )]
 pub(crate) async fn get_device_certificate_status(
+    Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<Option<DeviceCertificateStatusResponse>>, AppError> {
     let response = run_db(&state.db_pool, move |conn| {
-        let cert = cert_service::get_device_certificate_status(conn, &id)?;
+        let cert = cert_service::get_device_certificate_status(&ctx, conn, &id)?;
 
         Ok(cert.map(|c| DeviceCertificateStatusResponse {
             fingerprint: c.fingerprint,

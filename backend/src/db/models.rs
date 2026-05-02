@@ -40,6 +40,7 @@ pub struct NewCaCertificate {
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct DeviceCertificate {
     pub id: i32,
+    pub tenant_id: String,
     pub device_id: String,
     pub private_key_pem: String,
     pub certificate_pem: String,
@@ -51,6 +52,7 @@ pub struct DeviceCertificate {
 #[derive(Insertable, Debug)]
 #[diesel(table_name = device_certificates)]
 pub struct NewDeviceCertificate {
+    pub tenant_id: String,
     pub device_id: String,
     pub private_key_pem: String,
     pub certificate_pem: String,
@@ -140,6 +142,7 @@ pub struct NewFirmwareUpdate {
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct FirmwareBlob {
     pub firmware_update_id: i32,
+    pub tenant_id: String,
     pub data: Vec<u8>,
     pub size: i32,
     pub filename: String,
@@ -210,6 +213,7 @@ pub struct NewFleet {
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Device {
     pub id: String,
+    pub tenant_id: String,
     pub name: String,
     pub device_type_id: i32,
     pub fleet_id: Option<i32>,
@@ -258,6 +262,7 @@ pub struct UpdateDevice {
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct NetworkObservedHost {
     pub id: i64,
+    pub tenant_id: String,
     pub analyzer_device_id: String,
     pub host_key: String,
     pub label: String,
@@ -274,6 +279,7 @@ pub struct NetworkObservedHost {
 #[derive(Insertable, Debug)]
 #[diesel(table_name = network_observed_hosts)]
 pub struct NewNetworkObservedHost {
+    pub tenant_id: String,
     pub analyzer_device_id: String,
     pub host_key: String,
     pub label: String,
@@ -437,6 +443,7 @@ pub struct NewDeviceLog {
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct DeviceConfig {
     pub device_id: String,
+    pub tenant_id: String,
     pub config: JsonValue,
     pub updated_at: NaiveDateTime,
 }
@@ -445,6 +452,7 @@ pub struct DeviceConfig {
 #[diesel(table_name = device_configs)]
 pub struct NewDeviceConfig {
     pub device_id: String,
+    pub tenant_id: String,
     pub config: JsonValue,
 }
 

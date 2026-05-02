@@ -1,5 +1,5 @@
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Query, State},
     routing::get,
 };
@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
+use crate::auth::context::RequestContext;
 use crate::db::models::{AppMetric, ServerMetric};
 use crate::error::AppError;
 use crate::services::server_metrics;
@@ -128,10 +129,11 @@ pub fn router() -> Router<Arc<AppState>> {
     ),
 )]
 pub(crate) async fn get_current_metrics(
+    Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<CurrentMetricsResponse>, AppError> {
     let response = run_db(&state.db_pool, move |conn| {
-        let (system, app) = server_metrics::get_current_metrics(conn)?;
+        let (system, app) = server_metrics::get_current_metrics(&ctx, conn)?;
 
         Ok(CurrentMetricsResponse {
             system: system.map(SystemMetricsSnapshot::from),
@@ -155,6 +157,7 @@ pub(crate) async fn get_current_metrics(
     ),
 )]
 pub(crate) async fn get_metrics_history(
+    Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
     Query(params): Query<HistoryParams>,
 ) -> Result<Json<MetricsHistoryResponse>, AppError> {
@@ -165,7 +168,7 @@ pub(crate) async fn get_metrics_history(
     }
 
     let response = run_db(&state.db_pool, move |conn| {
-        let data = server_metrics::get_metrics_history(conn, since, resolution)?;
+        let data = server_metrics::get_metrics_history(&ctx, conn, since, resolution)?;
 
         let system = if let Some(raw) = data.system_raw {
             raw.into_iter().map(SystemMetricsSnapshot::from).collect()

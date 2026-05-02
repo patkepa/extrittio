@@ -6,9 +6,12 @@ use sha2::{Digest, Sha256};
 
 use diesel::PgConnection;
 
+use crate::auth::context::RequestContext;
+use crate::auth::policy::{self, Permission};
 use crate::db::models::{CaCertificate, DeviceCertificate, NewCaCertificate, NewDeviceCertificate};
 use crate::error::AppError;
 use crate::repositories::{cert_repo, device_repo};
+use crate::tenancy::DEFAULT_TENANT_ID;
 
 /// Generate a self-signed root CA certificate (Ed25519, 10-year validity).
 pub fn generate_ca_certificate() -> Result<NewCaCertificate, AppError> {
@@ -45,6 +48,16 @@ pub fn generate_ca_certificate() -> Result<NewCaCertificate, AppError> {
 /// Generate a device certificate signed by the CA (Ed25519, 1-year validity).
 /// CN is set to the device ID.
 pub fn generate_device_certificate(
+    device_id: &str,
+    ca: &CaCertificate,
+) -> Result<NewDeviceCertificate, AppError> {
+    generate_device_certificate_for_tenant(DEFAULT_TENANT_ID, device_id, ca)
+}
+
+/// Generate a tenant-owned device certificate signed by the CA.
+/// CN is set to the device ID.
+pub fn generate_device_certificate_for_tenant(
+    tenant_id: &str,
     device_id: &str,
     ca: &CaCertificate,
 ) -> Result<NewDeviceCertificate, AppError> {
@@ -89,6 +102,7 @@ pub fn generate_device_certificate(
     let expires_at: NaiveDateTime = (Utc::now() + Duration::days(365)).naive_utc();
 
     Ok(NewDeviceCertificate {
+        tenant_id: tenant_id.to_string(),
         device_id: device_id.to_string(),
         private_key_pem: device_key_pair.serialize_pem(),
         certificate_pem: cert_pem,
@@ -157,20 +171,24 @@ pub struct CertBundle {
 
 /// Get the device certificate bundle. One-time private key download.
 pub fn get_device_certificate_bundle(
+    ctx: &RequestContext,
     conn: &mut PgConnection,
     device_id: &str,
 ) -> Result<CertBundle, AppError> {
-    device_repo::find_device(conn, device_id)?;
+    policy::require(ctx, Permission::ManageDevices)?;
 
-    let cert = cert_repo::get_device_certificate(conn, device_id)?.ok_or_else(|| {
-        AppError::NotFound(format!("No certificate found for device '{device_id}'"))
-    })?;
+    device_repo::find_device_for_tenant(conn, ctx.tenant_id_str(), device_id)?;
+
+    let cert = cert_repo::get_device_certificate_for_tenant(conn, ctx.tenant_id_str(), device_id)?
+        .ok_or_else(|| {
+            AppError::NotFound(format!("No certificate found for device '{device_id}'"))
+        })?;
 
     let ca = cert_repo::get_ca_certificate(conn)?
         .ok_or_else(|| AppError::Internal("CA certificate not found".into()))?;
 
     let private_key = if !cert.private_key_pem.is_empty() {
-        cert_repo::clear_device_private_key(conn, cert.id)?;
+        cert_repo::clear_device_private_key_for_tenant(conn, ctx.tenant_id_str(), cert.id)?;
         Some(cert.private_key_pem.clone())
     } else {
         None
@@ -185,11 +203,18 @@ pub fn get_device_certificate_bundle(
 
 /// Get certificate status (metadata only, no private key).
 pub fn get_device_certificate_status(
+    ctx: &RequestContext,
     conn: &mut PgConnection,
     device_id: &str,
 ) -> Result<Option<DeviceCertificate>, AppError> {
-    device_repo::find_device(conn, device_id)?;
-    Ok(cert_repo::get_device_certificate(conn, device_id)?)
+    policy::require(ctx, Permission::ReadDevices)?;
+
+    device_repo::find_device_for_tenant(conn, ctx.tenant_id_str(), device_id)?;
+    Ok(cert_repo::get_device_certificate_for_tenant(
+        conn,
+        ctx.tenant_id_str(),
+        device_id,
+    )?)
 }
 
 /// Get the CA certificate, if one has been initialized.
@@ -197,17 +222,29 @@ pub fn get_ca_certificate(conn: &mut PgConnection) -> Result<Option<CaCertificat
     Ok(cert_repo::get_ca_certificate(conn)?)
 }
 
+/// Get the CA certificate for an authenticated request.
+pub fn get_ca_certificate_for_request(
+    ctx: &RequestContext,
+    conn: &mut PgConnection,
+) -> Result<Option<CaCertificate>, AppError> {
+    policy::require(ctx, Permission::ReadDevices)?;
+    get_ca_certificate(conn)
+}
+
 /// Delete old certificates and generate a new one.
 pub fn regenerate_device_certificate(
+    ctx: &RequestContext,
     conn: &mut PgConnection,
     device_id: &str,
 ) -> Result<DeviceCertificate, AppError> {
-    device_repo::find_device(conn, device_id)?;
+    policy::require(ctx, Permission::ManageDevices)?;
+
+    device_repo::find_device_for_tenant(conn, ctx.tenant_id_str(), device_id)?;
 
     let ca = cert_repo::get_ca_certificate(conn)?
         .ok_or_else(|| AppError::Internal("CA certificate not found".into()))?;
 
-    cert_repo::delete_device_certificates(conn, device_id)?;
-    let new_cert = generate_device_certificate(device_id, &ca)?;
+    cert_repo::delete_device_certificates_for_tenant(conn, ctx.tenant_id_str(), device_id)?;
+    let new_cert = generate_device_certificate_for_tenant(ctx.tenant_id_str(), device_id, &ca)?;
     Ok(cert_repo::insert_device_certificate(conn, &new_cert)?)
 }

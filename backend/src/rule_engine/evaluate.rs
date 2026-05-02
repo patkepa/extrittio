@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 use super::cache::RuleCache;
 use super::geo::{point_in_circle, point_in_polygon};
 use super::types::{CachedCondition, PendingAction, StatusChange, TelemetryData, ZoneGeometry};
+use crate::tenancy::DEFAULT_TENANT_ID;
 
 // ---------------------------------------------------------------------------
 // Field extraction
@@ -77,11 +78,31 @@ pub fn is_in_cooldown(
     device_id: &str,
     cooldown_seconds: i32,
 ) -> bool {
+    is_in_cooldown_for_tenant(
+        cache,
+        DEFAULT_TENANT_ID,
+        rule_id,
+        device_id,
+        cooldown_seconds,
+    )
+}
+
+pub fn is_in_cooldown_for_tenant(
+    cache: &RuleCache,
+    tenant_id: &str,
+    rule_id: &str,
+    device_id: &str,
+    cooldown_seconds: i32,
+) -> bool {
     if cooldown_seconds <= 0 {
         return false;
     }
 
-    let key = (rule_id.to_string(), device_id.to_string());
+    let key = (
+        tenant_id.to_string(),
+        rule_id.to_string(),
+        device_id.to_string(),
+    );
     if let Some(last_fired) = cache.cooldowns.get(&key) {
         let now = Utc::now().naive_utc();
         let elapsed = now.signed_duration_since(*last_fired);
@@ -181,11 +202,29 @@ pub fn evaluate_telemetry(
     data: &TelemetryData,
     cache: &RuleCache,
 ) -> Vec<PendingAction> {
+    evaluate_telemetry_for_tenant(
+        DEFAULT_TENANT_ID,
+        device_id,
+        device_type_id,
+        fleet_id,
+        data,
+        cache,
+    )
+}
+
+pub fn evaluate_telemetry_for_tenant(
+    tenant_id: &str,
+    device_id: &str,
+    device_type_id: i32,
+    fleet_id: Option<i32>,
+    data: &TelemetryData,
+    cache: &RuleCache,
+) -> Vec<PendingAction> {
     let device_type_str = device_type_id.to_string();
     let fleet_str = fleet_id.map(|f| f.to_string());
     let fleet_ref = fleet_str.as_deref();
 
-    let rules = cache.rules_for_device(device_id, &device_type_str, fleet_ref);
+    let rules = cache.rules_for_tenant_device(tenant_id, device_id, &device_type_str, fleet_ref);
 
     let mut actions: Vec<PendingAction> = Vec::new();
 
@@ -197,7 +236,11 @@ pub fn evaluate_telemetry(
 
         let conditions_met = rule.conditions.iter().all(|c| evaluate_condition(c, data));
 
-        let alert_key = (rule.id.clone(), device_id.to_string());
+        let alert_key = (
+            rule.tenant_id.clone(),
+            rule.id.clone(),
+            device_id.to_string(),
+        );
         let existing_alert_id = cache.active_alerts.get(&alert_key).cloned();
 
         if conditions_met {
@@ -214,7 +257,13 @@ pub fn evaluate_telemetry(
                 }
             } else {
                 // Not yet active. Respect cooldown before creating.
-                if is_in_cooldown(cache, &rule.id, device_id, rule.cooldown_seconds) {
+                if is_in_cooldown_for_tenant(
+                    cache,
+                    &rule.tenant_id,
+                    &rule.id,
+                    device_id,
+                    rule.cooldown_seconds,
+                ) {
                     continue;
                 }
 
@@ -231,6 +280,7 @@ pub fn evaluate_telemetry(
                             let message = build_alert_message(&rule.conditions, data);
                             let triggered_value = triggered_value_for(&rule.conditions, data);
                             actions.push(PendingAction::CreateAlert {
+                                tenant_id: rule.tenant_id.clone(),
                                 rule_id: rule.id.clone(),
                                 device_id: device_id.to_string(),
                                 severity,
@@ -282,6 +332,7 @@ pub fn evaluate_telemetry(
                                 .to_string();
                             let params = config.get("params").cloned().unwrap_or(Value::Null);
                             actions.push(PendingAction::SendCommand {
+                                tenant_id: rule.tenant_id.clone(),
                                 device_id: device_id.to_string(),
                                 command,
                                 params,
@@ -293,6 +344,7 @@ pub fn evaluate_telemetry(
 
                 // Record cooldown update.
                 actions.push(PendingAction::UpdateCooldown {
+                    tenant_id: rule.tenant_id.clone(),
                     rule_id: rule.id.clone(),
                     device_id: device_id.to_string(),
                     fired_at: Utc::now().naive_utc(),
@@ -325,11 +377,29 @@ pub fn evaluate_status_change(
     change: &StatusChange,
     cache: &RuleCache,
 ) -> Vec<PendingAction> {
+    evaluate_status_change_for_tenant(
+        DEFAULT_TENANT_ID,
+        device_id,
+        device_type_id,
+        fleet_id,
+        change,
+        cache,
+    )
+}
+
+pub fn evaluate_status_change_for_tenant(
+    tenant_id: &str,
+    device_id: &str,
+    device_type_id: i32,
+    fleet_id: Option<i32>,
+    change: &StatusChange,
+    cache: &RuleCache,
+) -> Vec<PendingAction> {
     let device_type_str = device_type_id.to_string();
     let fleet_str = fleet_id.map(|f| f.to_string());
     let fleet_ref = fleet_str.as_deref();
 
-    let rules = cache.rules_for_device(device_id, &device_type_str, fleet_ref);
+    let rules = cache.rules_for_tenant_device(tenant_id, device_id, &device_type_str, fleet_ref);
 
     let mut actions: Vec<PendingAction> = Vec::new();
 
@@ -344,7 +414,11 @@ pub fn evaluate_status_change(
             .iter()
             .all(|c| evaluate_status_condition(c, &change.new_status));
 
-        let alert_key = (rule.id.clone(), device_id.to_string());
+        let alert_key = (
+            rule.tenant_id.clone(),
+            rule.id.clone(),
+            device_id.to_string(),
+        );
         let existing_alert_id = cache.active_alerts.get(&alert_key).cloned();
 
         if conditions_met {
@@ -358,7 +432,13 @@ pub fn evaluate_status_change(
                 }
             } else {
                 // Respect cooldown.
-                if is_in_cooldown(cache, &rule.id, device_id, rule.cooldown_seconds) {
+                if is_in_cooldown_for_tenant(
+                    cache,
+                    &rule.tenant_id,
+                    &rule.id,
+                    device_id,
+                    rule.cooldown_seconds,
+                ) {
                     continue;
                 }
 
@@ -373,6 +453,7 @@ pub fn evaluate_status_change(
                                 .to_string();
                             let message = build_status_alert_message(&change.new_status);
                             actions.push(PendingAction::CreateAlert {
+                                tenant_id: rule.tenant_id.clone(),
                                 rule_id: rule.id.clone(),
                                 device_id: device_id.to_string(),
                                 severity,
@@ -422,6 +503,7 @@ pub fn evaluate_status_change(
                                 .to_string();
                             let params = config.get("params").cloned().unwrap_or(Value::Null);
                             actions.push(PendingAction::SendCommand {
+                                tenant_id: rule.tenant_id.clone(),
                                 device_id: device_id.to_string(),
                                 command,
                                 params,
@@ -432,6 +514,7 @@ pub fn evaluate_status_change(
                 }
 
                 actions.push(PendingAction::UpdateCooldown {
+                    tenant_id: rule.tenant_id.clone(),
                     rule_id: rule.id.clone(),
                     device_id: device_id.to_string(),
                     fired_at: Utc::now().naive_utc(),
@@ -480,6 +563,24 @@ pub fn evaluate_geofence(
     data: &TelemetryData,
     cache: &RuleCache,
 ) -> Vec<PendingAction> {
+    evaluate_geofence_for_tenant(
+        DEFAULT_TENANT_ID,
+        device_id,
+        device_type_id,
+        fleet_id,
+        data,
+        cache,
+    )
+}
+
+pub fn evaluate_geofence_for_tenant(
+    tenant_id: &str,
+    device_id: &str,
+    device_type_id: i32,
+    fleet_id: Option<i32>,
+    data: &TelemetryData,
+    cache: &RuleCache,
+) -> Vec<PendingAction> {
     // Skip evaluation if no location data provided.
     if data.latitude == 0.0 && data.longitude == 0.0 {
         return Vec::new();
@@ -489,7 +590,7 @@ pub fn evaluate_geofence(
     let fleet_str = fleet_id.map(|f| f.to_string());
     let fleet_ref = fleet_str.as_deref();
 
-    let rules = cache.rules_for_device(device_id, &device_type_str, fleet_ref);
+    let rules = cache.rules_for_tenant_device(tenant_id, device_id, &device_type_str, fleet_ref);
 
     let mut actions: Vec<PendingAction> = Vec::new();
 
@@ -509,9 +610,17 @@ pub fn evaluate_geofence(
             false
         });
 
-        let alert_key = (rule.id.clone(), device_id.to_string());
+        let alert_key = (
+            rule.tenant_id.clone(),
+            rule.id.clone(),
+            device_id.to_string(),
+        );
         let existing_alert_id = cache.active_alerts.get(&alert_key).cloned();
-        let zone_key = (rule.id.clone(), device_id.to_string());
+        let zone_key = (
+            rule.tenant_id.clone(),
+            rule.id.clone(),
+            device_id.to_string(),
+        );
         let was_inside = cache.zone_entry_times.contains_key(&zone_key);
 
         if conditions_met {
@@ -519,6 +628,7 @@ pub fn evaluate_geofence(
             if !was_inside {
                 // Just entered — record entry time.
                 actions.push(PendingAction::UpdateZoneEntry {
+                    tenant_id: rule.tenant_id.clone(),
                     rule_id: rule.id.clone(),
                     device_id: device_id.to_string(),
                     entered_at: Some(Utc::now().naive_utc()),
@@ -534,7 +644,13 @@ pub fn evaluate_geofence(
                     });
                 }
             } else {
-                if is_in_cooldown(cache, &rule.id, device_id, rule.cooldown_seconds) {
+                if is_in_cooldown_for_tenant(
+                    cache,
+                    &rule.tenant_id,
+                    &rule.id,
+                    device_id,
+                    rule.cooldown_seconds,
+                ) {
                     continue;
                 }
 
@@ -559,6 +675,7 @@ pub fn evaluate_geofence(
                                 zone_name, data.latitude, data.longitude
                             );
                             actions.push(PendingAction::CreateAlert {
+                                tenant_id: rule.tenant_id.clone(),
                                 rule_id: rule.id.clone(),
                                 device_id: device_id.to_string(),
                                 severity,
@@ -611,6 +728,7 @@ pub fn evaluate_geofence(
                                 .to_string();
                             let params = config.get("params").cloned().unwrap_or(Value::Null);
                             actions.push(PendingAction::SendCommand {
+                                tenant_id: rule.tenant_id.clone(),
                                 device_id: device_id.to_string(),
                                 command,
                                 params,
@@ -621,6 +739,7 @@ pub fn evaluate_geofence(
                 }
 
                 actions.push(PendingAction::UpdateCooldown {
+                    tenant_id: rule.tenant_id.clone(),
                     rule_id: rule.id.clone(),
                     device_id: device_id.to_string(),
                     fired_at: Utc::now().naive_utc(),
@@ -631,6 +750,7 @@ pub fn evaluate_geofence(
             if was_inside {
                 // Just exited — clear entry time.
                 actions.push(PendingAction::UpdateZoneEntry {
+                    tenant_id: rule.tenant_id.clone(),
                     rule_id: rule.id.clone(),
                     device_id: device_id.to_string(),
                     entered_at: None,
@@ -721,6 +841,7 @@ mod tests {
         actions: Vec<CachedAction>,
     ) -> CachedRule {
         CachedRule {
+            tenant_id: DEFAULT_TENANT_ID.to_string(),
             id: id.to_string(),
             name: format!("Rule {}", id),
             trigger_type: trigger_type.to_string(),
@@ -908,9 +1029,14 @@ mod tests {
     fn test_is_in_cooldown_recent_entry_true() {
         let mut cache = empty_cache();
         let recent = Utc::now().naive_utc() - Duration::seconds(10);
-        cache
-            .cooldowns
-            .insert(("rule1".to_string(), "dev1".to_string()), recent);
+        cache.cooldowns.insert(
+            (
+                DEFAULT_TENANT_ID.to_string(),
+                "rule1".to_string(),
+                "dev1".to_string(),
+            ),
+            recent,
+        );
         // 60-second cooldown, only 10s elapsed → still in cooldown
         assert!(is_in_cooldown(&cache, "rule1", "dev1", 60));
     }
@@ -919,9 +1045,14 @@ mod tests {
     fn test_is_in_cooldown_expired_entry_false() {
         let mut cache = empty_cache();
         let old = Utc::now().naive_utc() - Duration::seconds(120);
-        cache
-            .cooldowns
-            .insert(("rule1".to_string(), "dev1".to_string()), old);
+        cache.cooldowns.insert(
+            (
+                DEFAULT_TENANT_ID.to_string(),
+                "rule1".to_string(),
+                "dev1".to_string(),
+            ),
+            old,
+        );
         // 60-second cooldown, 120s elapsed → no longer in cooldown
         assert!(!is_in_cooldown(&cache, "rule1", "dev1", 60));
     }
@@ -930,9 +1061,14 @@ mod tests {
     fn test_is_in_cooldown_zero_cooldown_always_false() {
         let mut cache = empty_cache();
         let recent = Utc::now().naive_utc() - Duration::seconds(1);
-        cache
-            .cooldowns
-            .insert(("rule1".to_string(), "dev1".to_string()), recent);
+        cache.cooldowns.insert(
+            (
+                DEFAULT_TENANT_ID.to_string(),
+                "rule1".to_string(),
+                "dev1".to_string(),
+            ),
+            recent,
+        );
         // cooldown_seconds = 0 → never in cooldown
         assert!(!is_in_cooldown(&cache, "rule1", "dev1", 0));
     }
@@ -1106,9 +1242,14 @@ mod tests {
 
         // Plant a recent cooldown entry so the rule is blocked.
         let recent = Utc::now().naive_utc() - Duration::seconds(10);
-        cache
-            .cooldowns
-            .insert(("r1".to_string(), "dev1".to_string()), recent);
+        cache.cooldowns.insert(
+            (
+                DEFAULT_TENANT_ID.to_string(),
+                "r1".to_string(),
+                "dev1".to_string(),
+            ),
+            recent,
+        );
 
         let data = make_telemetry(85.0, 50.0, 90.0);
         let actions = evaluate_telemetry("dev1", 1, None, &data, &cache);
@@ -1134,7 +1275,11 @@ mod tests {
 
         // Simulate an existing active alert.
         cache.active_alerts.insert(
-            ("r1".to_string(), "dev1".to_string()),
+            (
+                DEFAULT_TENANT_ID.to_string(),
+                "r1".to_string(),
+                "dev1".to_string(),
+            ),
             "alert-42".to_string(),
         );
 
@@ -1164,7 +1309,11 @@ mod tests {
 
         // Active alert already exists.
         cache.active_alerts.insert(
-            ("r1".to_string(), "dev1".to_string()),
+            (
+                DEFAULT_TENANT_ID.to_string(),
+                "r1".to_string(),
+                "dev1".to_string(),
+            ),
             "alert-99".to_string(),
         );
 
@@ -1328,7 +1477,11 @@ mod tests {
 
         // Active alert for this rule+device.
         cache.active_alerts.insert(
-            ("r2".to_string(), "dev1".to_string()),
+            (
+                DEFAULT_TENANT_ID.to_string(),
+                "r2".to_string(),
+                "dev1".to_string(),
+            ),
             "alert-55".to_string(),
         );
 

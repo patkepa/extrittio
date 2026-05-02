@@ -10,10 +10,12 @@ use crate::db::schema::device_configs;
 
 pub fn find_config(
     conn: &mut PgConnection,
+    tenant_id: &str,
     device_id: &str,
 ) -> Result<Option<DeviceConfig>, diesel::result::Error> {
     device_configs::table
-        .find(device_id)
+        .filter(device_configs::tenant_id.eq(tenant_id))
+        .filter(device_configs::device_id.eq(device_id))
         .select(DeviceConfig::as_select())
         .first(conn)
         .optional()
@@ -21,6 +23,7 @@ pub fn find_config(
 
 pub fn upsert_config(
     conn: &mut PgConnection,
+    tenant_id: &str,
     device_id: &str,
     config: &JsonValue,
     now: NaiveDateTime,
@@ -28,6 +31,7 @@ pub fn upsert_config(
     diesel::insert_into(device_configs::table)
         .values(&NewDeviceConfig {
             device_id: device_id.to_string(),
+            tenant_id: tenant_id.to_string(),
             config: config.clone(),
         })
         .on_conflict(device_configs::device_id)
@@ -39,7 +43,8 @@ pub fn upsert_config(
         .execute(conn)?;
 
     device_configs::table
-        .find(device_id)
+        .filter(device_configs::tenant_id.eq(tenant_id))
+        .filter(device_configs::device_id.eq(device_id))
         .select(DeviceConfig::as_select())
         .first(conn)
 }

@@ -7,6 +7,7 @@ use serde_json::Value;
 
 #[derive(Debug, Clone)]
 pub struct CachedRule {
+    pub tenant_id: String,
     pub id: String,
     pub name: String,
     pub trigger_type: String,
@@ -38,6 +39,7 @@ pub struct CachedAction {
 #[derive(Debug)]
 pub enum PendingAction {
     CreateAlert {
+        tenant_id: String,
         rule_id: String,
         device_id: String,
         severity: String,
@@ -57,16 +59,19 @@ pub enum PendingAction {
         payload: Value,
     },
     SendCommand {
+        tenant_id: String,
         device_id: String,
         command: String,
         params: Value,
     },
     UpdateCooldown {
+        tenant_id: String,
         rule_id: String,
         device_id: String,
         fired_at: NaiveDateTime,
     },
     UpdateZoneEntry {
+        tenant_id: String,
         rule_id: String,
         device_id: String,
         entered_at: Option<chrono::NaiveDateTime>,

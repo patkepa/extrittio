@@ -124,10 +124,12 @@ pub fn insert_firmware_blob(
 
 pub fn find_firmware_blob(
     conn: &mut PgConnection,
+    tenant_id: &str,
     firmware_update_id: i32,
 ) -> Result<FirmwareBlob, diesel::result::Error> {
     firmware_blobs::table
-        .find(firmware_update_id)
+        .filter(firmware_blobs::tenant_id.eq(tenant_id))
+        .filter(firmware_blobs::firmware_update_id.eq(firmware_update_id))
         .select(FirmwareBlob::as_select())
         .first(conn)
 }

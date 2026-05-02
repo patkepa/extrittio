@@ -6,6 +6,8 @@ use sysinfo::{Disks, Networks, System};
 use tokio::time::{Duration, interval};
 use tracing::{info, warn};
 
+use crate::auth::context::RequestContext;
+use crate::auth::policy::{self, Permission};
 use crate::db::models::{AppMetric, ServerMetric};
 use crate::db::models::{NewAppMetric, NewServerMetric};
 use crate::error::AppError;
@@ -181,8 +183,11 @@ pub async fn run_metrics_retention(db_pool: DbPool) {
 
 /// Get the latest system and application metrics snapshot.
 pub fn get_current_metrics(
+    ctx: &RequestContext,
     conn: &mut diesel::PgConnection,
 ) -> Result<(Option<ServerMetric>, Option<AppMetric>), AppError> {
+    policy::require(ctx, Permission::ReadServerMetrics)?;
+
     let system = server_metrics_repo::get_latest_server_metric(conn)?;
     let app = server_metrics_repo::get_latest_app_metric(conn)?;
     Ok((system, app))
@@ -192,10 +197,13 @@ pub fn get_current_metrics(
 /// When `resolution_secs > 10`, returns downsampled data.
 /// Otherwise returns raw data (limited to 10,000 rows per table).
 pub fn get_metrics_history(
+    ctx: &RequestContext,
     conn: &mut diesel::PgConnection,
     since: chrono::NaiveDateTime,
     resolution_secs: i64,
 ) -> Result<MetricsHistoryData, AppError> {
+    policy::require(ctx, Permission::ReadServerMetrics)?;
+
     if resolution_secs > 10 {
         let system_downsampled =
             server_metrics_repo::list_server_metrics_downsampled(conn, since, resolution_secs)?;

@@ -5,16 +5,32 @@ use diesel::prelude::*;
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
+use crate::auth::context::RequestContext;
+use crate::auth::policy::{self, Permission};
 use crate::db::models::{NewZone, Zone};
 use crate::error::AppError;
 use crate::repositories::zone_repo;
 
-pub fn list_zones(conn: &mut PgConnection) -> Result<Vec<Zone>, AppError> {
-    Ok(zone_repo::list_zones(conn)?)
+pub fn list_zones(ctx: &RequestContext, conn: &mut PgConnection) -> Result<Vec<Zone>, AppError> {
+    policy::require(ctx, Permission::ReadZones)?;
+    Ok(zone_repo::list_zones(conn, ctx.tenant_id_str())?)
 }
 
-pub fn get_zone(conn: &mut PgConnection, zone_id: &str) -> Result<Zone, AppError> {
-    zone_repo::get_zone(conn, zone_id).map_err(|e| match e {
+pub fn get_zone(
+    ctx: &RequestContext,
+    conn: &mut PgConnection,
+    zone_id: &str,
+) -> Result<Zone, AppError> {
+    policy::require(ctx, Permission::ReadZones)?;
+    get_zone_for_tenant(conn, ctx.tenant_id_str(), zone_id)
+}
+
+fn get_zone_for_tenant(
+    conn: &mut PgConnection,
+    tenant_id: &str,
+    zone_id: &str,
+) -> Result<Zone, AppError> {
+    zone_repo::get_zone(conn, tenant_id, zone_id).map_err(|e| match e {
         diesel::result::Error::NotFound => {
             AppError::NotFound(format!("Zone '{zone_id}' not found"))
         }
@@ -23,6 +39,7 @@ pub fn get_zone(conn: &mut PgConnection, zone_id: &str) -> Result<Zone, AppError
 }
 
 pub fn create_zone(
+    ctx: &RequestContext,
     conn: &mut PgConnection,
     name: String,
     description: String,
@@ -30,10 +47,13 @@ pub fn create_zone(
     geometry_json: JsonValue,
     color: String,
 ) -> Result<Zone, AppError> {
+    policy::require(ctx, Permission::ManageZones)?;
+
     let zone_id = Uuid::new_v4().to_string();
 
     let new_zone = NewZone {
         id: zone_id,
+        tenant_id: ctx.tenant_id_str().to_string(),
         name,
         description,
         geometry_type,
@@ -41,10 +61,15 @@ pub fn create_zone(
         color,
     };
 
-    Ok(zone_repo::insert_zone(conn, &new_zone)?)
+    Ok(zone_repo::insert_zone(
+        conn,
+        ctx.tenant_id_str(),
+        &new_zone,
+    )?)
 }
 
 pub fn update_zone(
+    ctx: &RequestContext,
     conn: &mut PgConnection,
     zone_id: &str,
     name: Option<String>,
@@ -53,16 +78,14 @@ pub fn update_zone(
     geometry_json: Option<JsonValue>,
     color: Option<String>,
 ) -> Result<Zone, AppError> {
+    policy::require(ctx, Permission::ManageZones)?;
+
     // Verify zone exists first
-    zone_repo::get_zone(conn, zone_id).map_err(|e| match e {
-        diesel::result::Error::NotFound => {
-            AppError::NotFound(format!("Zone '{zone_id}' not found"))
-        }
-        other => AppError::Database(other),
-    })?;
+    get_zone_for_tenant(conn, ctx.tenant_id_str(), zone_id)?;
 
     Ok(zone_repo::update_zone(
         conn,
+        ctx.tenant_id_str(),
         zone_id,
         name,
         description,
@@ -72,18 +95,20 @@ pub fn update_zone(
     )?)
 }
 
-pub fn delete_zone(conn: &mut PgConnection, zone_id: &str) -> Result<(), AppError> {
+pub fn delete_zone(
+    ctx: &RequestContext,
+    conn: &mut PgConnection,
+    zone_id: &str,
+) -> Result<(), AppError> {
+    policy::require(ctx, Permission::ManageZones)?;
+
     // Verify zone exists first
-    zone_repo::get_zone(conn, zone_id).map_err(|e| match e {
-        diesel::result::Error::NotFound => {
-            AppError::NotFound(format!("Zone '{zone_id}' not found"))
-        }
-        other => AppError::Database(other),
-    })?;
+    get_zone_for_tenant(conn, ctx.tenant_id_str(), zone_id)?;
 
     // Check if any rule_conditions reference this zone
     use crate::db::schema::rule_conditions;
     let count: i64 = rule_conditions::table
+        .filter(rule_conditions::tenant_id.eq(ctx.tenant_id_str()))
         .filter(rule_conditions::zone_id.eq(zone_id))
         .count()
         .get_result(conn)?;
@@ -93,7 +118,7 @@ pub fn delete_zone(conn: &mut PgConnection, zone_id: &str) -> Result<(), AppErro
         ));
     }
 
-    let rows = zone_repo::delete_zone(conn, zone_id)?;
+    let rows = zone_repo::delete_zone(conn, ctx.tenant_id_str(), zone_id)?;
     if rows == 0 {
         return Err(AppError::NotFound(format!("Zone '{zone_id}' not found")));
     }

@@ -93,10 +93,10 @@ async fn send_command_for_tenant(
 
     // Verify device exists and persist the command record
     run_db(pool, move |conn| {
-        device_repo::find_device(conn, &d_id)?;
+        device_repo::find_device_for_tenant(conn, &tenant_id, &d_id)?;
         let new_record = NewCommandRecord {
             id: corr_id,
-            tenant_id,
+            tenant_id: tenant_id.clone(),
             device_id: d_id,
             command: cmd,
             params: params_json,
@@ -178,7 +178,7 @@ pub fn list_commands(
 ) -> Result<Vec<CommandRecord>, AppError> {
     policy::require(ctx, Permission::ReadCommands)?;
 
-    device_repo::find_device(conn, device_id)?;
+    device_repo::find_device_for_tenant(conn, ctx.tenant_id_str(), device_id)?;
     Ok(command_repo::list_commands(
         conn,
         ctx.tenant_id_str(),

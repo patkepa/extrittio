@@ -314,7 +314,7 @@ pub(crate) async fn update_rule_handler(
             let keys_to_remove: Vec<_> = guard
                 .active_alerts
                 .keys()
-                .filter(|(rid, _)| rid == &rule_id)
+                .filter(|(_, rid, _)| rid == &rule_id)
                 .cloned()
                 .collect();
             for key in keys_to_remove {

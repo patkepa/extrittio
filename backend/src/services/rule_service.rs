@@ -547,6 +547,7 @@ pub fn build_cache(conn: &mut PgConnection) -> Result<RuleCache, AppError> {
 
     for (rule, conditions, actions) in enabled_rules {
         let cached = CachedRule {
+            tenant_id: rule.tenant_id,
             id: rule.id,
             name: rule.name,
             trigger_type: rule.trigger_type,
@@ -575,7 +576,7 @@ pub fn build_cache(conn: &mut PgConnection) -> Result<RuleCache, AppError> {
 
     for cooldown in cooldowns {
         cache.cooldowns.insert(
-            (cooldown.rule_id, cooldown.device_id),
+            (cooldown.tenant_id, cooldown.rule_id, cooldown.device_id),
             cooldown.last_fired_at,
         );
     }
@@ -584,11 +585,11 @@ pub fn build_cache(conn: &mut PgConnection) -> Result<RuleCache, AppError> {
         if let Some(rule_id) = alert.rule_id {
             cache
                 .active_alerts
-                .insert((rule_id, alert.device_id), alert.id);
+                .insert((alert.tenant_id, rule_id, alert.device_id), alert.id);
         }
     }
 
-    let zones = zone_repo::list_zones(conn)?;
+    let zones = zone_repo::list_all_zones(conn)?;
     for zone in zones {
         if let Ok(geometry) = parse_zone_geometry(&zone.geometry_type, &zone.geometry_json) {
             cache.zones.insert(

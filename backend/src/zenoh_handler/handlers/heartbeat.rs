@@ -3,7 +3,7 @@ use tracing::{info, warn};
 
 use crate::repositories::device_repo;
 use crate::rule_engine::cache::RuleCache;
-use crate::rule_engine::evaluate::evaluate_status_change;
+use crate::rule_engine::evaluate::evaluate_status_change_for_tenant;
 use crate::rule_engine::types::PendingAction;
 use crate::services::device_service;
 use crate::state::DbPool;
@@ -92,7 +92,8 @@ pub fn handle_heartbeat(
             }
         };
 
-        evaluate_status_change(
+        evaluate_status_change_for_tenant(
+            &device.tenant_id,
             &heartbeat_msg.device_id,
             device.device_type_id,
             device.fleet_id,

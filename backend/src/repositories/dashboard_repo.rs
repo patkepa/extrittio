@@ -2,29 +2,44 @@
 
 use diesel::PgConnection;
 use diesel::prelude::*;
-use diesel::sql_types::BigInt;
 
-#[derive(QueryableByName, Debug)]
+use crate::db::schema::{devices, telemetry};
+
+#[derive(Debug)]
 pub struct DashboardCounts {
-    #[diesel(sql_type = BigInt)]
     pub total_devices: i64,
-    #[diesel(sql_type = BigInt)]
     pub online_devices: i64,
-    #[diesel(sql_type = BigInt)]
     pub offline_devices: i64,
-    #[diesel(sql_type = BigInt)]
     pub total_messages: i64,
 }
 
 pub fn get_dashboard_counts(
     conn: &mut PgConnection,
+    tenant_id: &str,
 ) -> Result<DashboardCounts, diesel::result::Error> {
-    diesel::sql_query(
-        "SELECT \
-            (SELECT COUNT(*) FROM devices) AS total_devices, \
-            (SELECT COUNT(*) FROM devices WHERE status = 'online') AS online_devices, \
-            (SELECT COUNT(*) FROM devices WHERE status = 'offline') AS offline_devices, \
-            (SELECT COUNT(*) FROM telemetry) AS total_messages",
-    )
-    .get_result(conn)
+    let total_devices = devices::table
+        .filter(devices::tenant_id.eq(tenant_id))
+        .count()
+        .get_result(conn)?;
+    let online_devices = devices::table
+        .filter(devices::tenant_id.eq(tenant_id))
+        .filter(devices::status.eq("online"))
+        .count()
+        .get_result(conn)?;
+    let offline_devices = devices::table
+        .filter(devices::tenant_id.eq(tenant_id))
+        .filter(devices::status.eq("offline"))
+        .count()
+        .get_result(conn)?;
+    let total_messages = telemetry::table
+        .filter(telemetry::tenant_id.eq(tenant_id))
+        .count()
+        .get_result(conn)?;
+
+    Ok(DashboardCounts {
+        total_devices,
+        online_devices,
+        offline_devices,
+        total_messages,
+    })
 }

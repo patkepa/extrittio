@@ -506,11 +506,12 @@ pub(crate) async fn upload_firmware_update(
     ),
 )]
 pub(crate) async fn download_firmware_blob(
+    Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
     Path(id): Path<i32>,
 ) -> Result<Response, AppError> {
     let blob = run_db(&state.db_pool, move |conn| {
-        firmware_service::download_blob(conn, id)
+        firmware_service::download_blob(&ctx, conn, id)
     })
     .await?;
 

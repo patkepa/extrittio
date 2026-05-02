@@ -252,10 +252,20 @@ pub fn persist_cooldown(
     device_id: &str,
     last_fired_at: NaiveDateTime,
 ) -> Result<(), AppError> {
+    persist_cooldown_for_tenant(conn, DEFAULT_TENANT_ID, rule_id, device_id, last_fired_at)
+}
+
+pub fn persist_cooldown_for_tenant(
+    conn: &mut PgConnection,
+    tenant_id: &str,
+    rule_id: &str,
+    device_id: &str,
+    last_fired_at: NaiveDateTime,
+) -> Result<(), AppError> {
     rule_repo::upsert_cooldown(
         conn,
         &RuleCooldown {
-            tenant_id: DEFAULT_TENANT_ID.to_string(),
+            tenant_id: tenant_id.to_string(),
             rule_id: rule_id.to_string(),
             device_id: device_id.to_string(),
             last_fired_at,

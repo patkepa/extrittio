@@ -129,8 +129,14 @@ pub fn delete(ctx: &RequestContext, conn: &mut PgConnection, id: i32) -> Result<
 
 /// Download a firmware blob by firmware update ID.
 pub fn download_blob(
+    ctx: &RequestContext,
     conn: &mut PgConnection,
     firmware_update_id: i32,
 ) -> Result<FirmwareBlob, AppError> {
-    Ok(firmware_repo::find_firmware_blob(conn, firmware_update_id)?)
+    policy::require(ctx, Permission::ReadFirmware)?;
+    Ok(firmware_repo::find_firmware_blob(
+        conn,
+        ctx.tenant_id_str(),
+        firmware_update_id,
+    )?)
 }

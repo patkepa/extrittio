@@ -264,6 +264,7 @@ pub async fn execute_action(
 ) {
     match action {
         PendingAction::CreateAlert {
+            tenant_id,
             rule_id,
             device_id,
             severity,
@@ -272,13 +273,14 @@ pub async fn execute_action(
         } => {
             let pool = db_pool.clone();
             let cache = rule_cache.clone();
+            let tid = tenant_id.clone();
             let rid = rule_id.clone();
             let did = device_id.clone();
 
             // Atomically check-and-reserve to prevent duplicate alerts from
             // concurrent telemetry messages triggering the same rule+device.
             if let Ok(mut guard) = cache.write() {
-                let key = (rid.clone(), did.clone());
+                let key = (tid.clone(), rid.clone(), did.clone());
                 if guard.active_alerts.contains_key(&key) {
                     return;
                 }
@@ -291,8 +293,9 @@ pub async fn execute_action(
 
             let result = tokio::task::spawn_blocking(move || {
                 let mut conn = pool.get().map_err(|e| e.to_string())?;
-                crate::services::alert_service::create_alert(
+                crate::services::alert_service::create_alert_for_tenant(
                     &mut conn,
+                    &tenant_id,
                     Some(rule_id),
                     device_id,
                     severity,
@@ -305,19 +308,19 @@ pub async fn execute_action(
             match result {
                 Ok(Ok(alert)) => {
                     if let Ok(mut c) = cache.write() {
-                        c.active_alerts.insert((rid, did), alert.id);
+                        c.active_alerts.insert((tid, rid, did), alert.id);
                     }
                 }
                 Ok(Err(msg)) => {
                     // Roll back the reservation
                     if let Ok(mut c) = cache.write() {
-                        c.active_alerts.remove(&(rid, did));
+                        c.active_alerts.remove(&(tid, rid, did));
                     }
                     warn!("Failed to create alert: {}", msg);
                 }
                 Err(e) => {
                     if let Ok(mut c) = cache.write() {
-                        c.active_alerts.remove(&(rid, did));
+                        c.active_alerts.remove(&(tid, rid, did));
                     }
                     warn!("CreateAlert task panicked: {}", e);
                 }
@@ -361,8 +364,11 @@ pub async fn execute_action(
                 Ok(Ok(alert)) => {
                     if let Ok(mut c) = cache.write() {
                         if let Some(rule_id) = &alert.rule_id {
-                            c.active_alerts
-                                .remove(&(rule_id.clone(), alert.device_id.clone()));
+                            c.active_alerts.remove(&(
+                                alert.tenant_id.clone(),
+                                rule_id.clone(),
+                                alert.device_id.clone(),
+                            ));
                         }
                     }
                 }
@@ -393,6 +399,7 @@ pub async fn execute_action(
             }
         }
         PendingAction::SendCommand {
+            tenant_id,
             device_id,
             command,
             params,
@@ -429,7 +436,7 @@ pub async fn execute_action(
                     &mut conn,
                     &crate::db::models::NewCommandRecord {
                         id: cid_clone,
-                        tenant_id: crate::tenancy::DEFAULT_TENANT_ID.to_string(),
+                        tenant_id,
                         device_id: did_clone,
                         command: cmd_clone,
                         params: params_json,
@@ -465,18 +472,20 @@ pub async fn execute_action(
             }
         }
         PendingAction::UpdateCooldown {
+            tenant_id,
             rule_id,
             device_id,
             fired_at,
         } => {
             let pool = db_pool.clone();
             let cache = rule_cache.clone();
+            let tid = tenant_id.clone();
             let rid = rule_id.clone();
             let did = device_id.clone();
             let result = tokio::task::spawn_blocking(move || {
                 let mut conn = pool.get().map_err(|e| e.to_string())?;
                 let cooldown = crate::db::models::RuleCooldown {
-                    tenant_id: crate::tenancy::DEFAULT_TENANT_ID.to_string(),
+                    tenant_id,
                     rule_id,
                     device_id,
                     last_fired_at: fired_at,
@@ -489,7 +498,7 @@ pub async fn execute_action(
                 Ok(Ok(())) => {
                     // Update cooldowns in the cache
                     if let Ok(mut c) = cache.write() {
-                        c.cooldowns.insert((rid, did), fired_at);
+                        c.cooldowns.insert((tid, rid, did), fired_at);
                     }
                 }
                 Ok(Err(msg)) => warn!("Failed to upsert cooldown: {}", msg),
@@ -497,12 +506,13 @@ pub async fn execute_action(
             }
         }
         PendingAction::UpdateZoneEntry {
+            tenant_id,
             rule_id,
             device_id,
             entered_at,
         } => {
             let cache = rule_cache.clone();
-            let key = (rule_id, device_id);
+            let key = (tenant_id, rule_id, device_id);
             if let Ok(mut c) = cache.write() {
                 match entered_at {
                     Some(ts) => {

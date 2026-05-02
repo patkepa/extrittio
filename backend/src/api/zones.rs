@@ -1,5 +1,5 @@
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Path, State},
     http::StatusCode,
     routing::get,
@@ -8,6 +8,7 @@ use chrono::DateTime;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+use crate::auth::context::RequestContext;
 use crate::db::models::Zone;
 use crate::error::AppError;
 use crate::services::zone_service;
@@ -94,9 +95,13 @@ pub fn router() -> Router<Arc<AppState>> {
 // ---------------------------------------------------------------------------
 
 pub(crate) async fn list_zones(
+    Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<ZoneResponse>>, AppError> {
-    let zones = run_db(&state.db_pool, move |conn| zone_service::list_zones(conn)).await?;
+    let zones = run_db(&state.db_pool, move |conn| {
+        zone_service::list_zones(&ctx, conn)
+    })
+    .await?;
 
     let responses = zones
         .into_iter()
@@ -107,11 +112,12 @@ pub(crate) async fn list_zones(
 }
 
 pub(crate) async fn get_zone(
+    Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
     Path(zone_id): Path<String>,
 ) -> Result<Json<ZoneResponse>, AppError> {
     let zone = run_db(&state.db_pool, move |conn| {
-        zone_service::get_zone(conn, &zone_id)
+        zone_service::get_zone(&ctx, conn, &zone_id)
     })
     .await?;
 
@@ -119,6 +125,7 @@ pub(crate) async fn get_zone(
 }
 
 pub(crate) async fn create_zone(
+    Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreateZoneRequest>,
 ) -> Result<(StatusCode, Json<ZoneResponse>), AppError> {
@@ -127,6 +134,7 @@ pub(crate) async fn create_zone(
 
     let zone = run_db(&state.db_pool, move |conn| {
         zone_service::create_zone(
+            &ctx,
             conn,
             body.name,
             description,
@@ -141,12 +149,14 @@ pub(crate) async fn create_zone(
 }
 
 pub(crate) async fn update_zone(
+    Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
     Path(zone_id): Path<String>,
     Json(body): Json<UpdateZoneRequest>,
 ) -> Result<Json<ZoneResponse>, AppError> {
     let zone = run_db(&state.db_pool, move |conn| {
         zone_service::update_zone(
+            &ctx,
             conn,
             &zone_id,
             body.name,
@@ -162,11 +172,12 @@ pub(crate) async fn update_zone(
 }
 
 pub(crate) async fn delete_zone(
+    Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
     Path(zone_id): Path<String>,
 ) -> Result<StatusCode, AppError> {
     run_db(&state.db_pool, move |conn| {
-        zone_service::delete_zone(conn, &zone_id)
+        zone_service::delete_zone(&ctx, conn, &zone_id)
     })
     .await?;
 

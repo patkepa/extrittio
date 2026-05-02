@@ -4,7 +4,7 @@ use tracing::{info, warn};
 
 use crate::db::models::NewTelemetryRecord;
 use crate::rule_engine::cache::RuleCache;
-use crate::rule_engine::evaluate::{evaluate_geofence, evaluate_telemetry};
+use crate::rule_engine::evaluate::{evaluate_geofence_for_tenant, evaluate_telemetry_for_tenant};
 use crate::rule_engine::types::{PendingAction, TelemetryData};
 use crate::services::{device_connections, telemetry_service};
 use crate::state::DbPool;
@@ -149,7 +149,8 @@ pub fn handle_telemetry(
                 }
             };
 
-            let mut actions = evaluate_telemetry(
+            let mut actions = evaluate_telemetry_for_tenant(
+                &device.tenant_id,
                 &telemetry_msg.device_id,
                 device.device_type_id,
                 device.fleet_id,
@@ -157,7 +158,8 @@ pub fn handle_telemetry(
                 &cache,
             );
 
-            let geofence_actions = evaluate_geofence(
+            let geofence_actions = evaluate_geofence_for_tenant(
+                &device.tenant_id,
                 &telemetry_msg.device_id,
                 device.device_type_id,
                 device.fleet_id,

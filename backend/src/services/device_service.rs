@@ -81,6 +81,7 @@ fn hydrate_declared_connections_from_telemetry(
 
 fn hydrate_network_observed_hosts(
     conn: &mut PgConnection,
+    tenant_id: &str,
     devices: &mut [device_repo::DeviceWithJoins],
 ) -> Result<(), AppError> {
     let analyzer_ids: Vec<String> = devices
@@ -96,8 +97,12 @@ fn hydrate_network_observed_hosts(
 
     let cutoff = chrono::Utc::now().naive_utc()
         - chrono::Duration::days(NETWORK_OBSERVED_HOST_RETENTION_DAYS);
-    let observed_hosts =
-        network_observed_host_repo::list_recent_for_analyzers(conn, &analyzer_ids, cutoff)?;
+    let observed_hosts = network_observed_host_repo::list_recent_for_analyzers(
+        conn,
+        tenant_id,
+        &analyzer_ids,
+        cutoff,
+    )?;
 
     let mut connections_by_analyzer: HashMap<String, Vec<JsonValue>> = HashMap::new();
     for host in observed_hosts {
@@ -149,7 +154,11 @@ pub fn create_device(
 
         // Generate device certificate if CA exists
         if let Some(ca) = cert_repo::get_ca_certificate(conn)? {
-            let new_cert = cert_service::generate_device_certificate(&new_device.id, &ca)?;
+            let new_cert = cert_service::generate_device_certificate_for_tenant(
+                ctx.tenant_id_str(),
+                &new_device.id,
+                &ca,
+            )?;
             cert_repo::insert_device_certificate(conn, &new_cert)?;
         }
 
@@ -274,7 +283,7 @@ pub async fn trigger_ota(
 
     let (delta, version) = run_db(pool, move |conn| {
         conn.transaction(|conn| {
-            let device = device_repo::find_device(conn, &d_id)?;
+            let device = device_repo::find_device_for_tenant(conn, &tenant_id, &d_id)?;
             let fw = firmware_repo::find_firmware_update(conn, &tenant_id, firmware_update_id)?;
 
             if fw.device_type_id != device.device_type_id {
@@ -363,7 +372,7 @@ pub fn list_devices(
         offset,
     )?;
     hydrate_declared_connections_from_telemetry(conn, &mut devices)?;
-    hydrate_network_observed_hosts(conn, &mut devices)?;
+    hydrate_network_observed_hosts(conn, ctx.tenant_id_str(), &mut devices)?;
     Ok((devices, total))
 }
 
@@ -378,7 +387,7 @@ pub fn get_device(
     let device = device_repo::find_device_with_joins(conn, ctx.tenant_id_str(), device_id)?;
     let mut devices = vec![device];
     hydrate_declared_connections_from_telemetry(conn, &mut devices)?;
-    hydrate_network_observed_hosts(conn, &mut devices)?;
+    hydrate_network_observed_hosts(conn, ctx.tenant_id_str(), &mut devices)?;
     Ok(devices.remove(0))
 }
 
@@ -391,7 +400,7 @@ pub fn update_device(
 ) -> Result<device_repo::DeviceWithJoins, AppError> {
     policy::require(ctx, Permission::ManageDevices)?;
 
-    device_repo::find_device(conn, device_id)?;
+    device_repo::find_device_for_tenant(conn, ctx.tenant_id_str(), device_id)?;
     device_repo::update_device(conn, ctx.tenant_id_str(), device_id, changeset)?;
     Ok(device_repo::find_device_with_joins(
         conn,
@@ -517,7 +526,7 @@ pub fn list_ota_deployments(
 > {
     policy::require(ctx, Permission::ReadDevices)?;
 
-    device_repo::find_device(conn, device_id)?;
+    device_repo::find_device_for_tenant(conn, ctx.tenant_id_str(), device_id)?;
     Ok(firmware_repo::list_ota_deployments(
         conn,
         ctx.tenant_id_str(),

@@ -1,5 +1,5 @@
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Path, State},
     routing::get,
 };
@@ -9,6 +9,7 @@ use serde_json::Value;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
+use crate::auth::context::RequestContext;
 use crate::error::AppError;
 use crate::services::config_service;
 use crate::state::{AppState, run_db};
@@ -59,11 +60,12 @@ pub fn router() -> Router<Arc<AppState>> {
     ),
 )]
 pub(crate) async fn get_config(
+    Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<ConfigResponse>, AppError> {
     let response = run_db(&state.db_pool, move |conn| {
-        let config = config_service::get_config(conn, &id)?;
+        let config = config_service::get_config(&ctx, conn, &id)?;
 
         match config {
             Some(c) => Ok(ConfigResponse {
@@ -100,12 +102,13 @@ pub(crate) async fn get_config(
     ),
 )]
 pub(crate) async fn update_config(
+    Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(body): Json<UpdateConfigRequest>,
 ) -> Result<Json<ConfigResponse>, AppError> {
     let response = run_db(&state.db_pool, move |conn| {
-        let updated = config_service::merge_and_update(conn, &id, &body.entries)?;
+        let updated = config_service::merge_and_update(&ctx, conn, &id, &body.entries)?;
 
         Ok(ConfigResponse {
             device_id: updated.device_id,

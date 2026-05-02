@@ -19,11 +19,14 @@ pub fn list(
 ) -> Result<Vec<DeviceLog>, AppError> {
     policy::require(ctx, Permission::ReadLogs)?;
 
-    if !device_repo::device_exists(conn, device_id)? {
-        return Err(AppError::NotFound(format!(
-            "Device '{device_id}' not found"
-        )));
-    }
+    device_repo::find_device_for_tenant(conn, ctx.tenant_id_str(), device_id).map_err(
+        |e| match e {
+            diesel::result::Error::NotFound => {
+                AppError::NotFound(format!("Device '{device_id}' not found"))
+            }
+            other => AppError::Database(other),
+        },
+    )?;
     Ok(log_repo::list_logs(
         conn,
         ctx.tenant_id_str(),
@@ -40,8 +43,10 @@ pub fn record(
     level: &str,
     message: &str,
 ) -> Result<bool, AppError> {
-    if !device_repo::device_exists(conn, device_id)? {
-        return Ok(false);
+    match device_repo::find_device_for_tenant(conn, crate::tenancy::DEFAULT_TENANT_ID, device_id) {
+        Ok(_) => {}
+        Err(diesel::result::Error::NotFound) => return Ok(false),
+        Err(e) => return Err(AppError::Database(e)),
     }
 
     let normalized_level = level.to_uppercase();

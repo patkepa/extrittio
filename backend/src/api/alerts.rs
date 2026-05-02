@@ -238,14 +238,19 @@ pub(crate) async fn resolve_alert_handler(
         let did = alert.device_id.clone();
         let now = chrono::Utc::now().naive_utc();
         if let Ok(mut guard) = state.rule_cache.write() {
-            guard.active_alerts.remove(&(rid.clone(), did.clone()));
-            guard.cooldowns.insert((rid.clone(), did.clone()), now);
+            guard
+                .active_alerts
+                .remove(&(alert.tenant_id.clone(), rid.clone(), did.clone()));
+            guard
+                .cooldowns
+                .insert((alert.tenant_id.clone(), rid.clone(), did.clone()), now);
         }
         let pool = state.db_pool.clone();
+        let tenant_id = alert.tenant_id.clone();
         tokio::spawn(async move {
             let _ = tokio::task::spawn_blocking(move || {
                 let mut conn = pool.get().map_err(|e| e.to_string())?;
-                alert_service::persist_cooldown(&mut conn, &rid, &did, now)
+                alert_service::persist_cooldown_for_tenant(&mut conn, &tenant_id, &rid, &did, now)
                     .map_err(|e| e.to_string())
             })
             .await;
@@ -303,13 +308,16 @@ pub(crate) async fn bulk_resolve(
     if let Ok(mut guard) = state.rule_cache.write() {
         for a in &results {
             if let Some(rule_id) = &a.rule_id {
-                guard
-                    .active_alerts
-                    .remove(&(rule_id.clone(), a.device_id.clone()));
-                guard
-                    .cooldowns
-                    .insert((rule_id.clone(), a.device_id.clone()), now);
-                cooldown_entries.push((rule_id.clone(), a.device_id.clone()));
+                guard.active_alerts.remove(&(
+                    a.tenant_id.clone(),
+                    rule_id.clone(),
+                    a.device_id.clone(),
+                ));
+                guard.cooldowns.insert(
+                    (a.tenant_id.clone(), rule_id.clone(), a.device_id.clone()),
+                    now,
+                );
+                cooldown_entries.push((a.tenant_id.clone(), rule_id.clone(), a.device_id.clone()));
             }
         }
     }
@@ -318,8 +326,10 @@ pub(crate) async fn bulk_resolve(
         tokio::spawn(async move {
             let _ = tokio::task::spawn_blocking(move || {
                 let mut conn = pool.get().map_err(|e| e.to_string())?;
-                for (rid, did) in cooldown_entries {
-                    if let Err(e) = alert_service::persist_cooldown(&mut conn, &rid, &did, now) {
+                for (tenant_id, rid, did) in cooldown_entries {
+                    if let Err(e) = alert_service::persist_cooldown_for_tenant(
+                        &mut conn, &tenant_id, &rid, &did, now,
+                    ) {
                         tracing::warn!("Failed to persist cooldown on bulk resolve: {}", e);
                     }
                 }
@@ -346,12 +356,19 @@ pub(crate) async fn reactivate_alert_handler(
     // engine can resume tracking this alert immediately.
     if let Ok(mut guard) = state.rule_cache.write() {
         if let Some(rule_id) = &alert.rule_id {
-            guard
-                .active_alerts
-                .insert((rule_id.clone(), alert.device_id.clone()), alert.id.clone());
-            guard
-                .cooldowns
-                .remove(&(rule_id.clone(), alert.device_id.clone()));
+            guard.active_alerts.insert(
+                (
+                    alert.tenant_id.clone(),
+                    rule_id.clone(),
+                    alert.device_id.clone(),
+                ),
+                alert.id.clone(),
+            );
+            guard.cooldowns.remove(&(
+                alert.tenant_id.clone(),
+                rule_id.clone(),
+                alert.device_id.clone(),
+            ));
         }
     }
 
@@ -379,12 +396,15 @@ pub(crate) async fn bulk_reactivate(
     if let Ok(mut guard) = state.rule_cache.write() {
         for a in &results {
             if let Some(rule_id) = &a.rule_id {
-                guard
-                    .active_alerts
-                    .insert((rule_id.clone(), a.device_id.clone()), a.id.clone());
-                guard
-                    .cooldowns
-                    .remove(&(rule_id.clone(), a.device_id.clone()));
+                guard.active_alerts.insert(
+                    (a.tenant_id.clone(), rule_id.clone(), a.device_id.clone()),
+                    a.id.clone(),
+                );
+                guard.cooldowns.remove(&(
+                    a.tenant_id.clone(),
+                    rule_id.clone(),
+                    a.device_id.clone(),
+                ));
             }
         }
     }
