@@ -48,6 +48,7 @@ pub fn insert_user(conn: &mut PgConnection, user: &NewUser) -> Result<User, dies
             .execute(conn)?;
 
         users::table
+            .filter(users::tenant_id.eq(&user.tenant_id))
             .filter(users::username.eq(&user.username))
             .select(User::as_select())
             .first(conn)

@@ -85,3 +85,10 @@ cargo run -p extrittio-cli -- provision \
 The CLI stores its backend URL and JWT token in `~/.config/extrittio/cli.json`
 by default. Override the active connection with `--url`, `--token`,
 `EXTRITTIO_URL`, or `EXTRITTIO_TOKEN`.
+
+## Documentation
+
+- [External Integration Opportunities](docs/INTEGRATIONS.md) - potential services and
+  open-source projects to plug into Extrittio around MQTT, observability, SSO,
+  analytics, object storage, automation, streaming, OTA, industrial gateways, and
+  cloud IoT interop.

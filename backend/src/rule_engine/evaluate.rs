@@ -840,8 +840,30 @@ mod tests {
         conditions: Vec<CachedCondition>,
         actions: Vec<CachedAction>,
     ) -> CachedRule {
+        make_rule_for_tenant(
+            DEFAULT_TENANT_ID,
+            id,
+            trigger_type,
+            target_type,
+            target_id,
+            cooldown_seconds,
+            conditions,
+            actions,
+        )
+    }
+
+    fn make_rule_for_tenant(
+        tenant_id: &str,
+        id: &str,
+        trigger_type: &str,
+        target_type: &str,
+        target_id: Option<&str>,
+        cooldown_seconds: i32,
+        conditions: Vec<CachedCondition>,
+        actions: Vec<CachedAction>,
+    ) -> CachedRule {
         CachedRule {
-            tenant_id: DEFAULT_TENANT_ID.to_string(),
+            tenant_id: tenant_id.to_string(),
             id: id.to_string(),
             name: format!("Rule {}", id),
             trigger_type: trigger_type.to_string(),
@@ -1358,6 +1380,42 @@ mod tests {
             !actions_type2.is_empty(),
             "Rule should apply to device_type 2"
         );
+    }
+
+    #[test]
+    fn test_evaluate_telemetry_filters_rules_by_tenant() {
+        let mut cache = empty_cache();
+        cache.insert_rule(make_rule(
+            "default-rule",
+            "telemetry",
+            "global",
+            None,
+            0,
+            vec![make_condition("temperature", "gt", "80")],
+            vec![make_alert_action("critical")],
+        ));
+        cache.insert_rule(make_rule_for_tenant(
+            "tenant-b",
+            "tenant-b-rule",
+            "telemetry",
+            "global",
+            None,
+            0,
+            vec![make_condition("temperature", "gt", "80")],
+            vec![make_alert_action("warning")],
+        ));
+
+        let data = make_telemetry(90.0, 50.0, 90.0);
+        let actions = evaluate_telemetry_for_tenant("tenant-b", "dev1", 1, None, &data, &cache);
+
+        assert_eq!(actions.len(), 2);
+        assert!(actions.iter().any(|a| matches!(a,
+            PendingAction::CreateAlert { tenant_id, rule_id, .. }
+                if tenant_id == "tenant-b" && rule_id == "tenant-b-rule"
+        )));
+        assert!(!actions.iter().any(|a| matches!(a,
+            PendingAction::CreateAlert { rule_id, .. } if rule_id == "default-rule"
+        )));
     }
 
     #[test]
