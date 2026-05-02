@@ -9,6 +9,7 @@
 
 pub mod api;
 pub mod api_key_util;
+pub mod app;
 pub mod auth;
 pub mod background;
 pub mod config;
