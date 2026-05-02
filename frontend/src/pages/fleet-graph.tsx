@@ -278,6 +278,10 @@ export const FleetGraph = () => {
     minimapDrawRef.current?.();
   }, []);
 
+  const handleMinimapNavigate = useCallback((x: number, y: number, durationMs?: number) => {
+    graphActionsRef.current?.navigateTo(x, y, durationMs);
+  }, []);
+
   const handlePanelDeviceClick = useCallback(
     (nodeId: string) => {
       setSelectedNodeId(nodeId);
@@ -430,6 +434,7 @@ export const FleetGraph = () => {
           minimapDrawRef={minimapDrawRef}
           canvasWidth={dimensions.width}
           canvasHeight={dimensions.height}
+          onMinimapNavigate={handleMinimapNavigate}
           collapsed={!healthPanelOpen}
           statusVisibility={healthStatusVisibility}
           statusCounts={healthStatusCounts}

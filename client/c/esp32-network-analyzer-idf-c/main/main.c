@@ -42,6 +42,13 @@ static z_loaned_session_t *g_session = NULL;
 static char g_device_id[64];
 static char g_firmware_version[64];
 
+static void ota_task(void *arg) {
+    extrittio_ota_payload_t *ota = (extrittio_ota_payload_t *)arg;
+    ota_handle(g_session, g_device_id, g_firmware_version, ota);
+    free(ota);
+    vTaskDelete(NULL);
+}
+
 static void shadow_delta_callback(const char *device_id,
                                   const char *delta_json,
                                   int64_t version,
@@ -52,7 +59,17 @@ static void shadow_delta_callback(const char *device_id,
 
     extrittio_ota_payload_t ota;
     if (extrittio_ota_parse_from_delta(delta_json, &ota)) {
-        ota_handle(g_session, g_device_id, g_firmware_version, &ota);
+        extrittio_ota_payload_t *ota_arg = malloc(sizeof(*ota_arg));
+        if (ota_arg == NULL) {
+            ESP_LOGE(TAG, "Failed to allocate OTA task payload");
+            return;
+        }
+        *ota_arg = ota;
+        if (xTaskCreate(ota_task, "ota", 12288, ota_arg, 5, NULL) != pdPASS) {
+            ESP_LOGE(TAG, "Failed to start OTA task");
+            free(ota_arg);
+            return;
+        }
     }
 
     extrittio_shadow_report_publish(g_session, g_device_id,

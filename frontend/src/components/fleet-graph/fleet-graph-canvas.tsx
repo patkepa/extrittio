@@ -14,7 +14,7 @@ import { useViewportControls } from './use-viewport-controls';
 import type { ForceGraphApi } from './force-graph-types';
 
 export interface GraphActions {
-  navigateTo: (x: number, y: number) => void;
+  navigateTo: (x: number, y: number, durationMs?: number) => void;
   fitView: () => void;
   zoomIn: () => void;
   zoomOut: () => void;
@@ -548,19 +548,17 @@ export const FleetGraphCanvas = memo(
           const rx = node.x! - side / 2;
           const ry = node.y! - side / 2;
 
-          drawRoundedRect(ctx, rx, ry, side, side, 4);
+          drawRoundedRect(ctx, rx, ry, side, side, 0);
           ctx.fillStyle = colorWithAlpha(typeColor, shouldDim ? 0.05 : 0.18);
           ctx.fill();
-          ctx.setLineDash([2.5, 3.5]);
           ctx.strokeStyle = shouldDim
             ? colorWithAlpha(typeColor, DIM_OPACITY)
             : colorWithAlpha(typeColor, isHovered ? 0.95 : 0.72);
           ctx.lineWidth = isHovered ? 2 : 1.4;
           ctx.stroke();
-          ctx.setLineDash([]);
 
           const stripHeight = Math.max(2, side * 0.14);
-          drawRoundedRect(ctx, rx, ry + side - stripHeight, side, stripHeight, 2);
+          drawRoundedRect(ctx, rx, ry + side - stripHeight, side, stripHeight, 0);
           ctx.fillStyle = shouldDim ? colorWithAlpha(node.color, DIM_OPACITY) : node.color;
           ctx.fill();
 

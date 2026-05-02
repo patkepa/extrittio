@@ -125,7 +125,7 @@ export function useViewportControls(
   useEffect(() => {
     if (!graphActionsRef) return;
     graphActionsRef.current = {
-      navigateTo: (x, y) => graphRef.current?.centerAt(x, y, 500),
+      navigateTo: (x, y, durationMs = 500) => graphRef.current?.centerAt(x, y, durationMs),
       fitView: () => graphRef.current?.zoomToFit(400, 60),
       zoomIn: () => {
         const fg = graphRef.current;

@@ -246,6 +246,13 @@
 .fleet-graph-minimap {
   display: block;
   border-radius: 2px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.fleet-graph-minimap:active {
+  cursor: grabbing;
 }
 
 /* Device list rows — styled like sidebar menu items */

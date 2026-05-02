@@ -32,6 +32,7 @@ interface HealthPanelProps {
   minimapDrawRef: React.MutableRefObject<(() => void) | null>;
   canvasWidth: number;
   canvasHeight: number;
+  onMinimapNavigate: (x: number, y: number, durationMs?: number) => void;
   collapsed?: boolean;
   statusVisibility: HealthStatusVisibility;
   statusCounts: HealthStatusCounts;
@@ -126,6 +127,7 @@ export const HealthPanel = ({
   minimapDrawRef,
   canvasWidth,
   canvasHeight,
+  onMinimapNavigate,
   collapsed,
   statusVisibility,
   statusCounts,
@@ -246,6 +248,7 @@ export const HealthPanel = ({
           viewportRef={viewportRef}
           canvasWidth={canvasWidth}
           canvasHeight={canvasHeight}
+          onNavigate={onMinimapNavigate}
           drawRef={minimapDrawRef}
         />
       </div>

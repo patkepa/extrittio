@@ -8,6 +8,7 @@
 #include "mbedtls/sha256.h"
 #include "nvs.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static const char *TAG = "ota";
@@ -105,12 +106,23 @@ void ota_handle(z_loaned_session_t *session,
     mbedtls_sha256_init(&sha_ctx);
     mbedtls_sha256_starts(&sha_ctx, 0);
 
-    char buf[4096];
+    char *buf = malloc(4096);
+    if (buf == NULL) {
+        esp_http_client_cleanup(client);
+        esp_ota_abort(ota_handle_val);
+        mbedtls_sha256_free(&sha_ctx);
+        report_ota_status(session, device_id, EXTRITTIO_OTA_FAILED,
+                          payload->firmware_version, payload->firmware_update_id,
+                          "OTA buffer allocation failed");
+        return;
+    }
+
     int total = 0;
     int read_len;
-    while ((read_len = esp_http_client_read(client, buf, sizeof(buf))) > 0) {
+    while ((read_len = esp_http_client_read(client, buf, 4096)) > 0) {
         err = esp_ota_write(ota_handle_val, buf, read_len);
         if (err != ESP_OK) {
+            free(buf);
             esp_http_client_cleanup(client);
             esp_ota_abort(ota_handle_val);
             mbedtls_sha256_free(&sha_ctx);
@@ -122,6 +134,7 @@ void ota_handle(z_loaned_session_t *session,
         mbedtls_sha256_update(&sha_ctx, (const unsigned char *)buf, read_len);
         total += read_len;
     }
+    free(buf);
     esp_http_client_cleanup(client);
 
     ESP_LOGI(TAG, "Downloaded %d bytes", total);
