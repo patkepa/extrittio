@@ -17,7 +17,7 @@ pub fn register_firmware(
 ) -> Result<FirmwareUpdate, AppError> {
     policy::require(ctx, Permission::ManageFirmware)?;
 
-    let fw = firmware_repo::insert_firmware_update(conn, new_fw)?;
+    let fw = firmware_repo::insert_firmware_update(conn, ctx.tenant_id_str(), new_fw)?;
     Ok(fw)
 }
 
@@ -32,7 +32,7 @@ pub fn upload_firmware(
     policy::require(ctx, Permission::ManageFirmware)?;
 
     conn.transaction(|conn| {
-        let fw = firmware_repo::insert_firmware_update(conn, new_fw)?;
+        let fw = firmware_repo::insert_firmware_update(conn, ctx.tenant_id_str(), new_fw)?;
 
         let blob_with_id = NewFirmwareBlob {
             firmware_update_id: fw.id,
@@ -42,10 +42,10 @@ pub fn upload_firmware(
 
         // Update URL to point to download endpoint
         let url = format!("/api/v1/firmware-updates/{}/download", fw.id);
-        firmware_repo::update_firmware_url(conn, fw.id, &url)?;
+        firmware_repo::update_firmware_url(conn, ctx.tenant_id_str(), fw.id, &url)?;
 
         // Re-read to get updated URL
-        let updated = firmware_repo::find_firmware_update(conn, fw.id)?;
+        let updated = firmware_repo::find_firmware_update(conn, ctx.tenant_id_str(), fw.id)?;
         Ok(updated)
     })
 }
@@ -58,7 +58,7 @@ pub fn next_version_for_type(
 ) -> Result<String, AppError> {
     policy::require(ctx, Permission::ReadFirmware)?;
 
-    let latest = firmware_repo::find_next_version(conn, device_type_id)?;
+    let latest = firmware_repo::find_next_version(conn, ctx.tenant_id_str(), device_type_id)?;
     Ok(match latest {
         Some(v) => increment_version(&v),
         None => "1.0.0".to_string(),
@@ -88,6 +88,7 @@ pub fn list(
 
     Ok(firmware_repo::list_firmware_updates(
         conn,
+        ctx.tenant_id_str(),
         device_type_id,
         limit,
         offset,
@@ -105,7 +106,11 @@ pub fn list_all_ota_deployments(
     policy::require(ctx, Permission::ReadFirmware)?;
 
     Ok(firmware_repo::list_all_ota_deployments(
-        conn, status, limit, offset,
+        conn,
+        ctx.tenant_id_str(),
+        status,
+        limit,
+        offset,
     )?)
 }
 
@@ -113,7 +118,7 @@ pub fn list_all_ota_deployments(
 pub fn delete(ctx: &RequestContext, conn: &mut PgConnection, id: i32) -> Result<(), AppError> {
     policy::require(ctx, Permission::ManageFirmware)?;
 
-    let deleted = firmware_repo::delete_firmware_update(conn, id)?;
+    let deleted = firmware_repo::delete_firmware_update(conn, ctx.tenant_id_str(), id)?;
     if !deleted {
         return Err(AppError::NotFound(format!(
             "Firmware update {id} not found"

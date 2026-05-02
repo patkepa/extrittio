@@ -30,7 +30,7 @@ pub fn list_with_type_names(
     policy::require(ctx, Permission::ManageApiKeys)?;
 
     let keys = api_key_repo::list_api_keys(conn, ctx.tenant_id_str())?;
-    let all_device_types = device_type_repo::list_all_device_types(conn)?;
+    let all_device_types = device_type_repo::list_all_device_types(conn, ctx.tenant_id_str())?;
     let dt_map: HashMap<i32, String> = all_device_types
         .into_iter()
         .map(|dt| (dt.id, dt.name))

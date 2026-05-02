@@ -1,5 +1,5 @@
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, put},
@@ -8,6 +8,7 @@ use chrono::DateTime;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+use crate::auth::context::RequestContext;
 use crate::error::AppError;
 use crate::services::rule_service;
 use crate::state::{AppState, run_db};
@@ -192,11 +193,13 @@ pub fn router() -> Router<Arc<AppState>> {
 // ---------------------------------------------------------------------------
 
 pub(crate) async fn list_rules(
+    Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
     Query(params): Query<ListRulesQuery>,
 ) -> Result<Json<Vec<RuleResponse>>, AppError> {
     let responses = run_db(&state.db_pool, move |conn| {
         let details_list = rule_service::list_rules_with_details(
+            &ctx,
             conn,
             params.enabled,
             params.trigger_type.as_deref(),
@@ -214,11 +217,12 @@ pub(crate) async fn list_rules(
 }
 
 pub(crate) async fn get_rule(
+    Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<RuleResponse>, AppError> {
     let details = run_db(&state.db_pool, move |conn| {
-        rule_service::get_rule(conn, &id)
+        rule_service::get_rule(&ctx, conn, &id)
     })
     .await?;
 
@@ -226,6 +230,7 @@ pub(crate) async fn get_rule(
 }
 
 pub(crate) async fn create_rule(
+    Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreateRuleRequest>,
 ) -> Result<(StatusCode, Json<RuleResponse>), AppError> {
@@ -245,6 +250,7 @@ pub(crate) async fn create_rule(
 
     let details = run_db(&state.db_pool, move |conn| {
         rule_service::create_rule(
+            &ctx,
             conn,
             &body.name,
             body.description,
@@ -264,6 +270,7 @@ pub(crate) async fn create_rule(
 }
 
 pub(crate) async fn update_rule_handler(
+    Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(body): Json<UpdateRuleRequest>,
@@ -284,6 +291,7 @@ pub(crate) async fn update_rule_handler(
     let rule_id = id.clone();
     let details = run_db(&state.db_pool, move |conn| {
         rule_service::update_rule(
+            &ctx,
             conn,
             &id,
             body.name,
@@ -321,11 +329,12 @@ pub(crate) async fn update_rule_handler(
 }
 
 pub(crate) async fn delete_rule_handler(
+    Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
     run_db(&state.db_pool, move |conn| {
-        rule_service::delete_rule(conn, &id)
+        rule_service::delete_rule(&ctx, conn, &id)
     })
     .await?;
 
@@ -335,13 +344,14 @@ pub(crate) async fn delete_rule_handler(
 }
 
 pub(crate) async fn toggle_rule(
+    Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(body): Json<EnabledInput>,
 ) -> Result<Json<RuleResponse>, AppError> {
     let details = run_db(&state.db_pool, move |conn| {
-        rule_service::toggle_rule(conn, &id, body.enabled)?;
-        rule_service::get_rule(conn, &id)
+        rule_service::toggle_rule(&ctx, conn, &id, body.enabled)?;
+        rule_service::get_rule(&ctx, conn, &id)
     })
     .await?;
 

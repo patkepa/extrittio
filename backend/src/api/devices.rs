@@ -737,10 +737,11 @@ pub(crate) async fn list_ota_deployments(
 )]
 pub(crate) async fn get_device_latest_location(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Path(device_id): Path<String>,
 ) -> Result<Json<Option<LocationResponse>>, AppError> {
     let result = run_db(&state.db_pool, move |conn| {
-        let record = telemetry_repo::get_latest_location(conn, &device_id)?;
+        let record = telemetry_repo::get_latest_location(conn, ctx.tenant_id_str(), &device_id)?;
         Ok(record.map(|r| LocationResponse {
             latitude: r.latitude.unwrap_or(0.0),
             longitude: r.longitude.unwrap_or(0.0),

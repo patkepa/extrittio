@@ -1,5 +1,5 @@
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Path, Query, State},
     routing::get,
 };
@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
+use crate::auth::context::RequestContext;
 use crate::db::models::DeviceLog;
 use crate::error::AppError;
 use crate::services::log_service;
@@ -81,6 +82,7 @@ pub fn router() -> Router<Arc<AppState>> {
 )]
 pub(crate) async fn get_device_logs(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Path(id): Path<String>,
     Query(params): Query<LogsQuery>,
 ) -> Result<Json<Vec<LogResponse>>, AppError> {
@@ -92,7 +94,7 @@ pub(crate) async fn get_device_logs(
 
         let level = params.level.as_deref().map(str::to_uppercase);
 
-        let results = log_service::list(conn, &id, level.as_deref(), since, limit)?;
+        let results = log_service::list(&ctx, conn, &id, level.as_deref(), since, limit)?;
 
         Ok(results.into_iter().map(LogResponse::from).collect())
     })

@@ -1,5 +1,5 @@
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, patch},
@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
 
+use crate::auth::context::RequestContext;
 use crate::db::models::DeviceType;
 use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse, PaginationParams};
@@ -72,12 +73,13 @@ pub fn router() -> Router<Arc<AppState>> {
 )]
 pub(crate) async fn list_device_types(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Query(params): Query<PaginationParams>,
 ) -> Result<Json<PaginatedResponse<DeviceTypeResponse>>, AppError> {
     let (limit, offset) = pagination::clamp(params.limit, params.offset);
 
     let response = run_db(&state.db_pool, move |conn| {
-        let (results, total) = device_type_service::list(conn, limit, offset)?;
+        let (results, total) = device_type_service::list(&ctx, conn, limit, offset)?;
         let data = results.into_iter().map(DeviceTypeResponse::from).collect();
         Ok(PaginatedResponse::new(data, total, limit, offset))
     })
@@ -100,10 +102,12 @@ pub(crate) async fn list_device_types(
 )]
 pub(crate) async fn create_device_type(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Json(body): Json<NewDeviceTypeRequest>,
 ) -> Result<(StatusCode, Json<DeviceTypeResponse>), AppError> {
     let response = run_db(&state.db_pool, move |conn| {
         let created = device_type_service::create(
+            &ctx,
             conn,
             &body.name,
             body.icon.as_deref(),
@@ -132,11 +136,13 @@ pub(crate) async fn create_device_type(
 )]
 pub(crate) async fn update_device_type(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Path(id): Path<i32>,
     Json(body): Json<UpdateDeviceTypeRequest>,
 ) -> Result<Json<DeviceTypeResponse>, AppError> {
     let response = run_db(&state.db_pool, move |conn| {
         let updated = device_type_service::update(
+            &ctx,
             conn,
             id,
             body.name.as_deref(),
@@ -166,10 +172,11 @@ pub(crate) async fn update_device_type(
 )]
 pub(crate) async fn delete_device_type(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Path(id): Path<i32>,
 ) -> Result<StatusCode, AppError> {
     run_db(&state.db_pool, move |conn| {
-        device_type_service::delete(conn, id)
+        device_type_service::delete(&ctx, conn, id)
     })
     .await?;
 

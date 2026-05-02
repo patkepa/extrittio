@@ -264,7 +264,7 @@ pub(crate) async fn create_firmware_update(
 
     let response = run_db(&state.db_pool, move |conn| {
         // Verify device type exists
-        let dt = device_type_service::find_by_id(conn, body.device_type_id)?;
+        let dt = device_type_service::find_by_id(&ctx, conn, body.device_type_id)?;
 
         // Auto-generate version if not provided
         let version = match body.version {
@@ -273,6 +273,7 @@ pub(crate) async fn create_firmware_update(
         };
 
         let new_fw = NewFirmwareUpdate {
+            tenant_id: ctx.tenant_id_str().to_string(),
             device_type_id: body.device_type_id,
             version: version.clone(),
             url: body.url,
@@ -425,7 +426,7 @@ pub(crate) async fn upload_firmware_update(
 
     let response = run_db(&state.db_pool, move |conn| {
         // Verify device type exists
-        let dt = device_type_service::find_by_id(conn, device_type_id)?;
+        let dt = device_type_service::find_by_id(&ctx, conn, device_type_id)?;
 
         // Auto-generate version if not provided
         let version = match version {
@@ -435,6 +436,7 @@ pub(crate) async fn upload_firmware_update(
 
         // Insert firmware update (with placeholder URL) and blob via service
         let new_fw = NewFirmwareUpdate {
+            tenant_id: ctx.tenant_id_str().to_string(),
             device_type_id,
             version: version.clone(),
             url: String::new(),
@@ -450,6 +452,7 @@ pub(crate) async fn upload_firmware_update(
 
         let blob = NewFirmwareBlob {
             firmware_update_id: 0, // overwritten inside upload_firmware
+            tenant_id: ctx.tenant_id_str().to_string(),
             data: file_data,
             size: file_size,
             filename,

@@ -16,11 +16,14 @@ use crate::db::schema::{rule_actions, rule_conditions, rule_cooldowns, rules};
 
 pub fn list_rules(
     conn: &mut PgConnection,
+    tenant_id: &str,
     enabled: Option<bool>,
     trigger_type: Option<&str>,
     target_type: Option<&str>,
 ) -> Result<Vec<Rule>, diesel::result::Error> {
-    let mut query = rules::table.into_boxed();
+    let mut query = rules::table
+        .filter(rules::tenant_id.eq(tenant_id))
+        .into_boxed();
 
     if let Some(en) = enabled {
         query = query.filter(rules::enabled.eq(en));
@@ -38,8 +41,16 @@ pub fn list_rules(
         .load(conn)
 }
 
-pub fn find_rule(conn: &mut PgConnection, id: &str) -> Result<Rule, diesel::result::Error> {
-    rules::table.find(id).select(Rule::as_select()).first(conn)
+pub fn find_rule(
+    conn: &mut PgConnection,
+    tenant_id: &str,
+    id: &str,
+) -> Result<Rule, diesel::result::Error> {
+    rules::table
+        .filter(rules::tenant_id.eq(tenant_id))
+        .filter(rules::id.eq(id))
+        .select(Rule::as_select())
+        .first(conn)
 }
 
 pub fn insert_rule(
@@ -54,16 +65,30 @@ pub fn insert_rule(
 
 pub fn update_rule(
     conn: &mut PgConnection,
+    tenant_id: &str,
     id: &str,
     changeset: &UpdateRule,
 ) -> Result<usize, diesel::result::Error> {
-    diesel::update(rules::table.find(id))
-        .set(changeset)
-        .execute(conn)
+    diesel::update(
+        rules::table
+            .filter(rules::tenant_id.eq(tenant_id))
+            .filter(rules::id.eq(id)),
+    )
+    .set(changeset)
+    .execute(conn)
 }
 
-pub fn delete_rule(conn: &mut PgConnection, id: &str) -> Result<usize, diesel::result::Error> {
-    diesel::delete(rules::table.find(id)).execute(conn)
+pub fn delete_rule(
+    conn: &mut PgConnection,
+    tenant_id: &str,
+    id: &str,
+) -> Result<usize, diesel::result::Error> {
+    diesel::delete(
+        rules::table
+            .filter(rules::tenant_id.eq(tenant_id))
+            .filter(rules::id.eq(id)),
+    )
+    .execute(conn)
 }
 
 // ---------------------------------------------------------------------------
@@ -72,9 +97,11 @@ pub fn delete_rule(conn: &mut PgConnection, id: &str) -> Result<usize, diesel::r
 
 pub fn list_conditions(
     conn: &mut PgConnection,
+    tenant_id: &str,
     rule_id: &str,
 ) -> Result<Vec<RuleCondition>, diesel::result::Error> {
     rule_conditions::table
+        .filter(rule_conditions::tenant_id.eq(tenant_id))
         .filter(rule_conditions::rule_id.eq(rule_id))
         .select(RuleCondition::as_select())
         .load(conn)
@@ -92,10 +119,15 @@ pub fn insert_conditions(
 
 pub fn delete_conditions_for_rule(
     conn: &mut PgConnection,
+    tenant_id: &str,
     rule_id: &str,
 ) -> Result<usize, diesel::result::Error> {
-    diesel::delete(rule_conditions::table.filter(rule_conditions::rule_id.eq(rule_id)))
-        .execute(conn)
+    diesel::delete(
+        rule_conditions::table
+            .filter(rule_conditions::tenant_id.eq(tenant_id))
+            .filter(rule_conditions::rule_id.eq(rule_id)),
+    )
+    .execute(conn)
 }
 
 // ---------------------------------------------------------------------------
@@ -104,9 +136,11 @@ pub fn delete_conditions_for_rule(
 
 pub fn list_actions(
     conn: &mut PgConnection,
+    tenant_id: &str,
     rule_id: &str,
 ) -> Result<Vec<RuleAction>, diesel::result::Error> {
     rule_actions::table
+        .filter(rule_actions::tenant_id.eq(tenant_id))
         .filter(rule_actions::rule_id.eq(rule_id))
         .select(RuleAction::as_select())
         .load(conn)
@@ -124,9 +158,15 @@ pub fn insert_actions(
 
 pub fn delete_actions_for_rule(
     conn: &mut PgConnection,
+    tenant_id: &str,
     rule_id: &str,
 ) -> Result<usize, diesel::result::Error> {
-    diesel::delete(rule_actions::table.filter(rule_actions::rule_id.eq(rule_id))).execute(conn)
+    diesel::delete(
+        rule_actions::table
+            .filter(rule_actions::tenant_id.eq(tenant_id))
+            .filter(rule_actions::rule_id.eq(rule_id)),
+    )
+    .execute(conn)
 }
 
 // ---------------------------------------------------------------------------
@@ -198,11 +238,12 @@ pub fn load_all_enabled_rules(
 /// total regardless of rule count).
 pub fn load_rules_with_details(
     conn: &mut PgConnection,
+    tenant_id: &str,
     enabled: Option<bool>,
     trigger_type: Option<&str>,
     target_type: Option<&str>,
 ) -> Result<Vec<(Rule, Vec<RuleCondition>, Vec<RuleAction>)>, diesel::result::Error> {
-    let filtered_rules = list_rules(conn, enabled, trigger_type, target_type)?;
+    let filtered_rules = list_rules(conn, tenant_id, enabled, trigger_type, target_type)?;
     attach_conditions_and_actions(conn, filtered_rules)
 }
 
@@ -236,6 +277,7 @@ pub fn upsert_cooldown(
 ) -> Result<(), diesel::result::Error> {
     diesel::insert_into(rule_cooldowns::table)
         .values((
+            rule_cooldowns::tenant_id.eq(&cooldown.tenant_id),
             rule_cooldowns::rule_id.eq(&cooldown.rule_id),
             rule_cooldowns::device_id.eq(&cooldown.device_id),
             rule_cooldowns::last_fired_at.eq(cooldown.last_fired_at),

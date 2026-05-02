@@ -143,6 +143,7 @@ pub fn create_device(
         device_repo::insert_device(conn, new_device)?;
         let new_shadow = NewDeviceShadow {
             device_id: new_device.id.clone(),
+            tenant_id: ctx.tenant_id_str().to_string(),
         };
         shadow_repo::insert_shadow(conn, &new_shadow)?;
 
@@ -187,26 +188,27 @@ pub fn auto_register_device(
     }
 
     let type_name = infer_device_type(firmware);
-    let device_type_id = match device_type_repo::find_device_type_by_name(conn, type_name) {
-        Ok(Some(dt)) => dt.id,
-        Ok(None) => {
-            warn!(
-                "Device type '{}' not found, falling back to default",
-                type_name
-            );
-            match device_type_repo::find_default_device_type_id(conn) {
-                Ok(Some(id)) => id,
-                _ => {
-                    warn!("No default device type found, dropping heartbeat");
-                    return None;
+    let device_type_id =
+        match device_type_repo::find_device_type_by_name(conn, DEFAULT_TENANT_ID, type_name) {
+            Ok(Some(dt)) => dt.id,
+            Ok(None) => {
+                warn!(
+                    "Device type '{}' not found, falling back to default",
+                    type_name
+                );
+                match device_type_repo::find_default_device_type_id(conn) {
+                    Ok(Some(id)) => id,
+                    _ => {
+                        warn!("No default device type found, dropping heartbeat");
+                        return None;
+                    }
                 }
             }
-        }
-        Err(e) => {
-            warn!("DB error looking up device type: {}", e);
-            return None;
-        }
-    };
+            Err(e) => {
+                warn!("DB error looking up device type: {}", e);
+                return None;
+            }
+        };
 
     let new_device = NewDevice {
         id: device_id.to_string(),
@@ -221,6 +223,7 @@ pub fn auto_register_device(
         device_repo::insert_device(conn, &new_device)?;
         let new_shadow = NewDeviceShadow {
             device_id: device_id.to_string(),
+            tenant_id: DEFAULT_TENANT_ID.to_string(),
         };
         shadow_repo::insert_shadow(conn, &new_shadow)?;
         Ok::<(), diesel::result::Error>(())
@@ -237,6 +240,7 @@ pub fn auto_register_device(
     let _ = log_repo::insert_log(
         conn,
         &NewDeviceLog {
+            tenant_id: DEFAULT_TENANT_ID.to_string(),
             device_id: device_id.to_string(),
             level: "INFO".to_string(),
             message: "Device registered and came online".to_string(),
@@ -266,11 +270,12 @@ pub async fn trigger_ota(
     let d_id = device_id.to_string();
     let d_id_for_publish = d_id.clone();
     let public_url = public_url.to_string();
+    let tenant_id = ctx.tenant_id_str().to_string();
 
     let (delta, version) = run_db(pool, move |conn| {
         conn.transaction(|conn| {
             let device = device_repo::find_device(conn, &d_id)?;
-            let fw = firmware_repo::find_firmware_update(conn, firmware_update_id)?;
+            let fw = firmware_repo::find_firmware_update(conn, &tenant_id, firmware_update_id)?;
 
             if fw.device_type_id != device.device_type_id {
                 return Err(AppError::BadRequest(
@@ -293,9 +298,11 @@ pub async fn trigger_ota(
             let mut patch = serde_json::Map::new();
             patch.insert(ota_fields::SHADOW_KEY.to_string(), ota_payload);
 
-            let (delta, version) = shadow_service::update_desired_db(conn, &d_id, &patch)?;
+            let (delta, version) =
+                shadow_service::update_desired_db(conn, &tenant_id, &d_id, &patch)?;
 
             let deployment = NewOtaDeployment {
+                tenant_id: tenant_id.clone(),
                 device_id: d_id,
                 firmware_update_id: fw.id,
             };
@@ -512,7 +519,11 @@ pub fn list_ota_deployments(
 
     device_repo::find_device(conn, device_id)?;
     Ok(firmware_repo::list_ota_deployments(
-        conn, device_id, limit, offset,
+        conn,
+        ctx.tenant_id_str(),
+        device_id,
+        limit,
+        offset,
     )?)
 }
 
@@ -545,6 +556,7 @@ pub fn mark_devices_offline(
         if let Err(e) = log_repo::insert_log(
             conn,
             &NewDeviceLog {
+                tenant_id: DEFAULT_TENANT_ID.to_string(),
                 device_id: device_id.clone(),
                 level: "WARN".to_string(),
                 message,
@@ -579,6 +591,7 @@ pub fn check_offline_devices(
         if let Err(e) = log_repo::insert_log(
             conn,
             &NewDeviceLog {
+                tenant_id: DEFAULT_TENANT_ID.to_string(),
                 device_id: device_id.clone(),
                 level: "WARN".to_string(),
                 message,
@@ -638,6 +651,7 @@ pub fn update_from_heartbeat(
             let _ = log_repo::insert_log(
                 conn,
                 &NewDeviceLog {
+                    tenant_id: DEFAULT_TENANT_ID.to_string(),
                     device_id: device_id.to_string(),
                     level: "INFO".to_string(),
                     message,

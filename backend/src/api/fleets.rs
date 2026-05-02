@@ -1,5 +1,5 @@
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     routing::get,
@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
 
+use crate::auth::context::RequestContext;
 use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse, PaginationParams};
 use crate::services::fleet_service;
@@ -52,12 +53,13 @@ pub fn router() -> Router<Arc<AppState>> {
 )]
 pub(crate) async fn list_fleets(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Query(params): Query<PaginationParams>,
 ) -> Result<Json<PaginatedResponse<FleetResponse>>, AppError> {
     let (limit, offset) = pagination::clamp(params.limit, params.offset);
 
     let response = run_db(&state.db_pool, move |conn| {
-        let (enriched, total) = fleet_service::list(conn, limit, offset)?;
+        let (enriched, total) = fleet_service::list(&ctx, conn, limit, offset)?;
 
         let data = enriched
             .into_iter()
@@ -89,10 +91,11 @@ pub(crate) async fn list_fleets(
 )]
 pub(crate) async fn create_fleet(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Json(body): Json<NewFleetRequest>,
 ) -> Result<(StatusCode, Json<FleetResponse>), AppError> {
     let response = run_db(&state.db_pool, move |conn| {
-        let created = fleet_service::create(conn, &body.name)?;
+        let created = fleet_service::create(&ctx, conn, &body.name)?;
         Ok(FleetResponse {
             id: created.id,
             name: created.name,
@@ -120,11 +123,12 @@ pub(crate) async fn create_fleet(
 )]
 pub(crate) async fn update_fleet(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Path(id): Path<i32>,
     Json(body): Json<UpdateFleetRequest>,
 ) -> Result<Json<FleetResponse>, AppError> {
     let response = run_db(&state.db_pool, move |conn| {
-        let updated = fleet_service::rename(conn, id, &body.name)?;
+        let updated = fleet_service::rename(&ctx, conn, id, &body.name)?;
         Ok(FleetResponse {
             id: updated.id,
             name: updated.name,
@@ -150,9 +154,13 @@ pub(crate) async fn update_fleet(
 )]
 pub(crate) async fn delete_fleet(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Path(id): Path<i32>,
 ) -> Result<StatusCode, AppError> {
-    run_db(&state.db_pool, move |conn| fleet_service::delete(conn, id)).await?;
+    run_db(&state.db_pool, move |conn| {
+        fleet_service::delete(&ctx, conn, id)
+    })
+    .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

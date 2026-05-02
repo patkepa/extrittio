@@ -5,6 +5,8 @@ use diesel::PgConnection;
 use serde_json::Value;
 use uuid::Uuid;
 
+use crate::auth::context::RequestContext;
+use crate::auth::policy::{self, Permission};
 use crate::db::models::{
     NewRule, NewRuleAction, NewRuleCondition, Rule, RuleAction, RuleCondition, UpdateRule,
 };
@@ -210,13 +212,17 @@ fn validate_rule(
 // ---------------------------------------------------------------------------
 
 pub fn list_rules(
+    ctx: &RequestContext,
     conn: &mut PgConnection,
     enabled: Option<bool>,
     trigger_type: Option<&str>,
     target_type: Option<&str>,
 ) -> Result<Vec<Rule>, AppError> {
+    policy::require(ctx, Permission::ReadRules)?;
+
     Ok(rule_repo::list_rules(
         conn,
+        ctx.tenant_id_str(),
         enabled,
         trigger_type,
         target_type,
@@ -227,12 +233,21 @@ pub fn list_rules(
 /// (3 queries total, regardless of rule count). This avoids the N+1 query
 /// problem that occurs when fetching details for each rule individually.
 pub fn list_rules_with_details(
+    ctx: &RequestContext,
     conn: &mut PgConnection,
     enabled: Option<bool>,
     trigger_type: Option<&str>,
     target_type: Option<&str>,
 ) -> Result<Vec<RuleWithDetails>, AppError> {
-    let rows = rule_repo::load_rules_with_details(conn, enabled, trigger_type, target_type)?;
+    policy::require(ctx, Permission::ReadRules)?;
+
+    let rows = rule_repo::load_rules_with_details(
+        conn,
+        ctx.tenant_id_str(),
+        enabled,
+        trigger_type,
+        target_type,
+    )?;
     Ok(rows
         .into_iter()
         .map(|(rule, conditions, actions)| RuleWithDetails {
@@ -243,13 +258,26 @@ pub fn list_rules_with_details(
         .collect())
 }
 
-pub fn get_rule(conn: &mut PgConnection, id: &str) -> Result<RuleWithDetails, AppError> {
-    let rule = rule_repo::find_rule(conn, id).map_err(|e| match e {
+pub fn get_rule(
+    ctx: &RequestContext,
+    conn: &mut PgConnection,
+    id: &str,
+) -> Result<RuleWithDetails, AppError> {
+    policy::require(ctx, Permission::ReadRules)?;
+    get_rule_for_tenant(conn, ctx.tenant_id_str(), id)
+}
+
+fn get_rule_for_tenant(
+    conn: &mut PgConnection,
+    tenant_id: &str,
+    id: &str,
+) -> Result<RuleWithDetails, AppError> {
+    let rule = rule_repo::find_rule(conn, tenant_id, id).map_err(|e| match e {
         diesel::result::Error::NotFound => AppError::NotFound(format!("Rule '{id}' not found")),
         other => AppError::Database(other),
     })?;
-    let conditions = rule_repo::list_conditions(conn, id)?;
-    let actions = rule_repo::list_actions(conn, id)?;
+    let conditions = rule_repo::list_conditions(conn, tenant_id, id)?;
+    let actions = rule_repo::list_actions(conn, tenant_id, id)?;
     Ok(RuleWithDetails {
         rule,
         conditions,
@@ -259,6 +287,7 @@ pub fn get_rule(conn: &mut PgConnection, id: &str) -> Result<RuleWithDetails, Ap
 
 #[allow(clippy::too_many_arguments)]
 pub fn create_rule(
+    ctx: &RequestContext,
     conn: &mut PgConnection,
     name: &str,
     description: Option<String>,
@@ -269,6 +298,8 @@ pub fn create_rule(
     conditions: Vec<(String, String, String)>,
     actions: Vec<(String, Value)>,
 ) -> Result<RuleWithDetails, AppError> {
+    policy::require(ctx, Permission::ManageRules)?;
+
     validate_rule(
         name,
         trigger_type,
@@ -283,6 +314,7 @@ pub fn create_rule(
 
     let new_rule = NewRule {
         id: rule_id.clone(),
+        tenant_id: ctx.tenant_id_str().to_string(),
         name: name.trim().to_string(),
         description,
         enabled: true,
@@ -296,6 +328,7 @@ pub fn create_rule(
         .into_iter()
         .map(|(field, operator, value)| NewRuleCondition {
             id: Uuid::new_v4().to_string(),
+            tenant_id: ctx.tenant_id_str().to_string(),
             rule_id: rule_id.clone(),
             field,
             operator,
@@ -309,6 +342,7 @@ pub fn create_rule(
         .into_iter()
         .map(|(action_type, config)| NewRuleAction {
             id: Uuid::new_v4().to_string(),
+            tenant_id: ctx.tenant_id_str().to_string(),
             rule_id: rule_id.clone(),
             action_type,
             config,
@@ -323,11 +357,12 @@ pub fn create_rule(
         Ok::<(), diesel::result::Error>(())
     })?;
 
-    get_rule(conn, &rule_id)
+    get_rule_for_tenant(conn, ctx.tenant_id_str(), &rule_id)
 }
 
 #[allow(clippy::too_many_arguments)]
 pub fn update_rule(
+    ctx: &RequestContext,
     conn: &mut PgConnection,
     id: &str,
     name: Option<String>,
@@ -339,8 +374,10 @@ pub fn update_rule(
     conditions: Option<Vec<(String, String, String)>>,
     actions: Option<Vec<(String, Value)>>,
 ) -> Result<RuleWithDetails, AppError> {
+    policy::require(ctx, Permission::ManageRules)?;
+
     // Fetch current rule to fill in defaults for validation
-    let current = rule_repo::find_rule(conn, id).map_err(|e| match e {
+    let current = rule_repo::find_rule(conn, ctx.tenant_id_str(), id).map_err(|e| match e {
         diesel::result::Error::NotFound => AppError::NotFound(format!("Rule '{id}' not found")),
         other => AppError::Database(other),
     })?;
@@ -362,8 +399,8 @@ pub fn update_rule(
     let resolved_cooldown = cooldown_seconds.unwrap_or(current.cooldown_seconds);
 
     // For conditions/actions validation, load current ones if not replacing
-    let current_conditions = rule_repo::list_conditions(conn, id)?;
-    let current_actions = rule_repo::list_actions(conn, id)?;
+    let current_conditions = rule_repo::list_conditions(conn, ctx.tenant_id_str(), id)?;
+    let current_actions = rule_repo::list_actions(conn, ctx.tenant_id_str(), id)?;
 
     let validated_conditions: Vec<(String, String, String)> = match &conditions {
         Some(c) => c.clone(),
@@ -404,14 +441,15 @@ pub fn update_rule(
 
     use diesel::Connection;
     conn.transaction(|conn| {
-        rule_repo::update_rule(conn, id, &changeset)?;
+        rule_repo::update_rule(conn, ctx.tenant_id_str(), id, &changeset)?;
 
         if let Some(new_conds) = conditions {
-            rule_repo::delete_conditions_for_rule(conn, id)?;
+            rule_repo::delete_conditions_for_rule(conn, ctx.tenant_id_str(), id)?;
             let new_conditions: Vec<NewRuleCondition> = new_conds
                 .into_iter()
                 .map(|(field, operator, value)| NewRuleCondition {
                     id: Uuid::new_v4().to_string(),
+                    tenant_id: ctx.tenant_id_str().to_string(),
                     rule_id: id.to_string(),
                     field,
                     operator,
@@ -426,11 +464,12 @@ pub fn update_rule(
         }
 
         if let Some(new_acts) = actions {
-            rule_repo::delete_actions_for_rule(conn, id)?;
+            rule_repo::delete_actions_for_rule(conn, ctx.tenant_id_str(), id)?;
             let new_actions: Vec<NewRuleAction> = new_acts
                 .into_iter()
                 .map(|(action_type, config)| NewRuleAction {
                     id: Uuid::new_v4().to_string(),
+                    tenant_id: ctx.tenant_id_str().to_string(),
                     rule_id: id.to_string(),
                     action_type,
                     config,
@@ -444,25 +483,38 @@ pub fn update_rule(
         Ok::<(), diesel::result::Error>(())
     })?;
 
-    get_rule(conn, id)
+    get_rule_for_tenant(conn, ctx.tenant_id_str(), id)
 }
 
-pub fn delete_rule(conn: &mut PgConnection, id: &str) -> Result<(), AppError> {
-    let rows = rule_repo::delete_rule(conn, id)?;
+pub fn delete_rule(
+    ctx: &RequestContext,
+    conn: &mut PgConnection,
+    id: &str,
+) -> Result<(), AppError> {
+    policy::require(ctx, Permission::ManageRules)?;
+
+    let rows = rule_repo::delete_rule(conn, ctx.tenant_id_str(), id)?;
     if rows == 0 {
         return Err(AppError::NotFound(format!("Rule '{id}' not found")));
     }
     Ok(())
 }
 
-pub fn toggle_rule(conn: &mut PgConnection, id: &str, enabled: bool) -> Result<(), AppError> {
+pub fn toggle_rule(
+    ctx: &RequestContext,
+    conn: &mut PgConnection,
+    id: &str,
+    enabled: bool,
+) -> Result<(), AppError> {
+    policy::require(ctx, Permission::ManageRules)?;
+
     let now = Utc::now().naive_utc();
     let changeset = UpdateRule {
         enabled: Some(enabled),
         updated_at: Some(now),
         ..Default::default()
     };
-    let rows = rule_repo::update_rule(conn, id, &changeset)?;
+    let rows = rule_repo::update_rule(conn, ctx.tenant_id_str(), id, &changeset)?;
     if rows == 0 {
         return Err(AppError::NotFound(format!("Rule '{id}' not found")));
     }

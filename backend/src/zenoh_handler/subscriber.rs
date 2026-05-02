@@ -349,8 +349,12 @@ pub async fn execute_action(
             let cache = rule_cache.clone();
             let result = tokio::task::spawn_blocking(move || {
                 let mut conn = pool.get().map_err(|e| e.to_string())?;
-                crate::services::alert_service::resolve_alert(&mut conn, &alert_id)
-                    .map_err(|e| e.to_string())
+                crate::services::alert_service::resolve_alert_for_tenant(
+                    &mut conn,
+                    crate::tenancy::DEFAULT_TENANT_ID,
+                    &alert_id,
+                )
+                .map_err(|e| e.to_string())
             })
             .await;
             match result {
@@ -472,6 +476,7 @@ pub async fn execute_action(
             let result = tokio::task::spawn_blocking(move || {
                 let mut conn = pool.get().map_err(|e| e.to_string())?;
                 let cooldown = crate::db::models::RuleCooldown {
+                    tenant_id: crate::tenancy::DEFAULT_TENANT_ID.to_string(),
                     rule_id,
                     device_id,
                     last_fired_at: fired_at,

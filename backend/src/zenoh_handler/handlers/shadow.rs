@@ -44,13 +44,13 @@ pub fn handle_shadow_report(db_pool: &DbPool, payload: &[u8]) {
     };
 
     // Use shadow_service to merge reported state, recompute delta, and persist
-    if let Err(e) = shadow_service::update_reported(&mut conn, &report.device_id, &patch) {
+    if let Err(e) = shadow_service::update_default_reported(&mut conn, &report.device_id, &patch) {
         warn!("Failed to update shadow reported state: {}", e);
         return;
     }
 
     // Re-read the shadow to get the merged reported state and new version for logging & OTA
-    let shadow = match shadow_service::get_shadow(&mut conn, &report.device_id) {
+    let shadow = match shadow_service::get_default_shadow(&mut conn, &report.device_id) {
         Ok(s) => s,
         Err(e) => {
             warn!(
@@ -106,7 +106,7 @@ pub async fn handle_shadow_get(
             Ok(c) => c,
             Err(e) => return Err(format!("Failed to get DB connection: {e}")),
         };
-        shadow_service::get_shadow(&mut conn, &device_id)
+        shadow_service::get_default_shadow(&mut conn, &device_id)
             .map_err(|e| format!("Shadow not found for device {device_id}: {e}"))
     })
     .await

@@ -1,5 +1,5 @@
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Path, Query, State},
     routing::get,
 };
@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
+use crate::auth::context::RequestContext;
 use crate::db::models::TelemetryRecord;
 use crate::error::AppError;
 use crate::services::telemetry_service;
@@ -96,6 +97,7 @@ pub fn router() -> Router<Arc<AppState>> {
 )]
 pub(crate) async fn get_device_telemetry(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Path(id): Path<String>,
     Query(params): Query<TelemetryQuery>,
 ) -> Result<Json<Vec<TelemetryResponse>>, AppError> {
@@ -106,7 +108,7 @@ pub(crate) async fn get_device_telemetry(
     let response = run_db(&state.db_pool, move |conn| {
         let limit = params.limit.unwrap_or(50).clamp(1, 1000);
 
-        let results = telemetry_service::list(conn, &id, since, before, limit)?;
+        let results = telemetry_service::list(&ctx, conn, &id, since, before, limit)?;
 
         Ok(results.into_iter().map(TelemetryResponse::from).collect())
     })

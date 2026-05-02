@@ -8,6 +8,7 @@ use crate::rule_engine::evaluate::{evaluate_geofence, evaluate_telemetry};
 use crate::rule_engine::types::{PendingAction, TelemetryData};
 use crate::services::{device_connections, telemetry_service};
 use crate::state::DbPool;
+use crate::tenancy::DEFAULT_TENANT_ID;
 
 use extrittio_common::extrittio::DeviceTelemetry;
 
@@ -61,6 +62,7 @@ pub fn handle_telemetry(
         device_connections::declared_connections_from_metadata(&telemetry_msg.metadata);
 
     let record = NewTelemetryRecord {
+        tenant_id: DEFAULT_TENANT_ID.to_string(),
         device_id: telemetry_msg.device_id.clone(),
         payload: payload.to_vec(),
         temperature: Some(telemetry_msg.temperature),

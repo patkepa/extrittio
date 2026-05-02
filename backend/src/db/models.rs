@@ -71,11 +71,13 @@ pub struct DeviceType {
     pub icon: String,
     pub color_hex: String,
     pub created_at: NaiveDateTime,
+    pub tenant_id: String,
 }
 
 #[derive(Insertable, Debug)]
 #[diesel(table_name = device_types)]
 pub struct NewDeviceType {
+    pub tenant_id: String,
     pub name: String,
     pub icon: String,
     pub color_hex: String,
@@ -115,6 +117,7 @@ pub struct FirmwareUpdate {
 #[derive(Insertable, Debug)]
 #[diesel(table_name = firmware_updates)]
 pub struct NewFirmwareUpdate {
+    pub tenant_id: String,
     pub device_type_id: i32,
     pub version: String,
     pub url: String,
@@ -146,6 +149,7 @@ pub struct FirmwareBlob {
 #[diesel(table_name = firmware_blobs)]
 pub struct NewFirmwareBlob {
     pub firmware_update_id: i32,
+    pub tenant_id: String,
     pub data: Vec<u8>,
     pub size: i32,
     pub filename: String,
@@ -171,6 +175,7 @@ pub struct OtaDeployment {
 #[derive(Insertable, Debug)]
 #[diesel(table_name = ota_deployments)]
 pub struct NewOtaDeployment {
+    pub tenant_id: String,
     pub device_id: String,
     pub firmware_update_id: i32,
 }
@@ -186,11 +191,13 @@ pub struct Fleet {
     pub id: i32,
     pub name: String,
     pub created_at: NaiveDateTime,
+    pub tenant_id: String,
 }
 
 #[derive(Insertable, Debug)]
 #[diesel(table_name = fleets)]
 pub struct NewFleet {
+    pub tenant_id: String,
     pub name: String,
 }
 
@@ -288,6 +295,7 @@ pub struct NewNetworkObservedHost {
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct TelemetryRecord {
     pub id: i64,
+    pub tenant_id: String,
     pub device_id: String,
     pub payload: Vec<u8>,
     pub temperature: Option<f32>,
@@ -305,6 +313,7 @@ pub struct TelemetryRecord {
 #[derive(Insertable, Debug)]
 #[diesel(table_name = telemetry)]
 pub struct NewTelemetryRecord {
+    pub tenant_id: String,
     pub device_id: String,
     pub payload: Vec<u8>,
     pub temperature: Option<f32>,
@@ -327,6 +336,7 @@ pub struct NewTelemetryRecord {
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct DeviceShadow {
     pub device_id: String,
+    pub tenant_id: String,
     pub desired: JsonValue,
     pub reported: JsonValue,
     pub delta: JsonValue,
@@ -338,6 +348,7 @@ pub struct DeviceShadow {
 #[diesel(table_name = device_shadows)]
 pub struct NewDeviceShadow {
     pub device_id: String,
+    pub tenant_id: String,
 }
 
 #[derive(AsChangeset, Debug, Default)]
@@ -401,6 +412,7 @@ pub struct NewServerConfigEntry {
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct DeviceLog {
     pub id: i64,
+    pub tenant_id: String,
     pub device_id: String,
     pub level: String,
     pub message: String,
@@ -410,6 +422,7 @@ pub struct DeviceLog {
 #[derive(Insertable, Debug)]
 #[diesel(table_name = device_logs)]
 pub struct NewDeviceLog {
+    pub tenant_id: String,
     pub device_id: String,
     pub level: String,
     pub message: String,
@@ -478,6 +491,7 @@ pub struct ApiKey {
     pub device_type_id: Option<i32>,
     pub created_at: NaiveDateTime,
     pub last_used_at: Option<NaiveDateTime>,
+    pub tenant_id: String,
 }
 
 #[derive(Insertable, Debug)]
@@ -565,6 +579,7 @@ pub struct NewAppMetric {
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Rule {
     pub id: String,
+    pub tenant_id: String,
     pub name: String,
     pub description: Option<String>,
     pub enabled: bool,
@@ -580,6 +595,7 @@ pub struct Rule {
 #[diesel(table_name = rules)]
 pub struct NewRule {
     pub id: String,
+    pub tenant_id: String,
     pub name: String,
     pub description: Option<String>,
     pub enabled: bool,
@@ -611,6 +627,7 @@ pub struct UpdateRule {
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct RuleCondition {
     pub id: String,
+    pub tenant_id: String,
     pub rule_id: String,
     pub field: String,
     pub operator: String,
@@ -623,6 +640,7 @@ pub struct RuleCondition {
 #[diesel(table_name = rule_conditions)]
 pub struct NewRuleCondition {
     pub id: String,
+    pub tenant_id: String,
     pub rule_id: String,
     pub field: String,
     pub operator: String,
@@ -640,6 +658,7 @@ pub struct NewRuleCondition {
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct RuleAction {
     pub id: String,
+    pub tenant_id: String,
     pub rule_id: String,
     pub action_type: String,
     pub config: JsonValue,
@@ -649,6 +668,7 @@ pub struct RuleAction {
 #[diesel(table_name = rule_actions)]
 pub struct NewRuleAction {
     pub id: String,
+    pub tenant_id: String,
     pub rule_id: String,
     pub action_type: String,
     pub config: JsonValue,
@@ -663,6 +683,7 @@ pub struct NewRuleAction {
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Alert {
     pub id: String,
+    pub tenant_id: String,
     pub rule_id: Option<String>,
     pub device_id: String,
     pub severity: String,
@@ -678,6 +699,7 @@ pub struct Alert {
 #[diesel(table_name = alerts)]
 pub struct NewAlert {
     pub id: String,
+    pub tenant_id: String,
     pub rule_id: Option<String>,
     pub device_id: String,
     pub severity: String,
@@ -701,6 +723,7 @@ pub struct UpdateAlert {
 #[diesel(table_name = rule_cooldowns)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct RuleCooldown {
+    pub tenant_id: String,
     pub rule_id: String,
     pub device_id: String,
     pub last_fired_at: NaiveDateTime,
@@ -709,6 +732,7 @@ pub struct RuleCooldown {
 #[derive(Insertable, Debug)]
 #[diesel(table_name = rule_cooldowns)]
 pub struct NewRuleCooldown {
+    pub tenant_id: String,
     pub rule_id: String,
     pub device_id: String,
     pub last_fired_at: NaiveDateTime,
@@ -723,6 +747,7 @@ pub struct NewRuleCooldown {
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Zone {
     pub id: String,
+    pub tenant_id: String,
     pub name: String,
     pub description: String,
     pub geometry_type: String,
@@ -736,6 +761,7 @@ pub struct Zone {
 #[diesel(table_name = zones)]
 pub struct NewZone {
     pub id: String,
+    pub tenant_id: String,
     pub name: String,
     pub description: String,
     pub geometry_type: String,

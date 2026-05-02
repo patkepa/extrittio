@@ -5,10 +5,13 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use tracing::warn;
 
+use crate::auth::context::RequestContext;
+use crate::auth::policy::{self, Permission};
 use crate::db::models::{DeviceShadow, UpdateShadow};
 use crate::error::AppError;
 use crate::repositories::{firmware_repo, shadow_repo};
 use crate::state::{DbPool, ZenohMetrics, run_db};
+use crate::tenancy::DEFAULT_TENANT_ID;
 use extrittio_common::shadow::{compute_delta as compute_shadow_delta, merge_json};
 
 /// DB-only part of update_desired. Returns the new delta and version so the
@@ -20,10 +23,11 @@ use extrittio_common::shadow::{compute_delta as compute_shadow_delta, merge_json
 /// `run_db` closure provides the transactional boundary.
 pub fn update_desired_db(
     conn: &mut PgConnection,
+    tenant_id: &str,
     device_id: &str,
     patch: &serde_json::Map<String, Value>,
 ) -> Result<(Value, i32), AppError> {
-    let shadow = shadow_repo::find_shadow(conn, device_id)?;
+    let shadow = shadow_repo::find_shadow(conn, tenant_id, device_id)?;
 
     let current_desired = if shadow.desired.is_object() {
         shadow.desired
@@ -49,24 +53,28 @@ pub fn update_desired_db(
         ..Default::default()
     };
 
-    shadow_repo::update_shadow(conn, device_id, &changeset)?;
+    shadow_repo::update_shadow(conn, tenant_id, device_id, &changeset)?;
 
     Ok((new_delta, new_version))
 }
 
 /// Merge a JSON patch into the desired state, recompute delta, persist, and publish.
 pub async fn update_desired(
+    ctx: &RequestContext,
     pool: &DbPool,
     zenoh_session: &Arc<zenoh::Session>,
     device_id: &str,
     patch: &serde_json::Map<String, Value>,
     zenoh_metrics: &ZenohMetrics,
 ) -> Result<(), AppError> {
+    policy::require(ctx, Permission::ManageShadows)?;
+
     let d_id = device_id.to_string();
     let p = patch.clone();
+    let tenant_id = ctx.tenant_id_str().to_string();
 
     let (delta, version) = run_db(pool, move |conn| {
-        conn.transaction(|conn| update_desired_db(conn, &d_id, &p))
+        conn.transaction(|conn| update_desired_db(conn, &tenant_id, &d_id, &p))
     })
     .await?;
 
@@ -77,11 +85,12 @@ pub async fn update_desired(
 /// Merge a JSON patch into the reported state, recompute delta, persist.
 pub fn update_reported(
     conn: &mut PgConnection,
+    tenant_id: &str,
     device_id: &str,
     patch: &serde_json::Map<String, Value>,
 ) -> Result<(), AppError> {
     conn.transaction(|conn| {
-        let shadow = shadow_repo::find_shadow(conn, device_id)?;
+        let shadow = shadow_repo::find_shadow(conn, tenant_id, device_id)?;
 
         let current_desired = if shadow.desired.is_object() {
             shadow.desired
@@ -106,7 +115,7 @@ pub fn update_reported(
             ..Default::default()
         };
 
-        shadow_repo::update_shadow(conn, device_id, &changeset)?;
+        shadow_repo::update_shadow(conn, tenant_id, device_id, &changeset)?;
         Ok(())
     })
 }
@@ -143,13 +152,28 @@ pub async fn publish_delta_if_nonempty(
 }
 
 /// Get the full shadow state for a device.
-pub fn get_shadow(conn: &mut PgConnection, device_id: &str) -> Result<DeviceShadow, AppError> {
-    Ok(shadow_repo::find_shadow(conn, device_id)?)
+pub fn get_shadow(
+    ctx: &RequestContext,
+    conn: &mut PgConnection,
+    device_id: &str,
+) -> Result<DeviceShadow, AppError> {
+    policy::require(ctx, Permission::ReadShadows)?;
+    Ok(shadow_repo::find_shadow(
+        conn,
+        ctx.tenant_id_str(),
+        device_id,
+    )?)
 }
 
 /// Reset a device's shadow to empty state.
-pub fn delete_shadow(conn: &mut PgConnection, device_id: &str) -> Result<(), AppError> {
-    let shadow = shadow_repo::find_shadow(conn, device_id)?;
+pub fn delete_shadow(
+    ctx: &RequestContext,
+    conn: &mut PgConnection,
+    device_id: &str,
+) -> Result<(), AppError> {
+    policy::require(ctx, Permission::ManageShadows)?;
+
+    let shadow = shadow_repo::find_shadow(conn, ctx.tenant_id_str(), device_id)?;
     let now = chrono::Utc::now().naive_utc();
     let empty = Value::Object(serde_json::Map::default());
     let changeset = UpdateShadow {
@@ -159,8 +183,27 @@ pub fn delete_shadow(conn: &mut PgConnection, device_id: &str) -> Result<(), App
         version: Some(shadow.version + 1),
         updated_at: Some(now),
     };
-    shadow_repo::update_shadow(conn, device_id, &changeset)?;
+    shadow_repo::update_shadow(conn, ctx.tenant_id_str(), device_id, &changeset)?;
     Ok(())
+}
+
+pub fn get_default_shadow(
+    conn: &mut PgConnection,
+    device_id: &str,
+) -> Result<DeviceShadow, AppError> {
+    Ok(shadow_repo::find_shadow(
+        conn,
+        DEFAULT_TENANT_ID,
+        device_id,
+    )?)
+}
+
+pub fn update_default_reported(
+    conn: &mut PgConnection,
+    device_id: &str,
+    patch: &serde_json::Map<String, Value>,
+) -> Result<(), AppError> {
+    update_reported(conn, DEFAULT_TENANT_ID, device_id, patch)
 }
 
 /// Process OTA status from a shadow report's reported state.

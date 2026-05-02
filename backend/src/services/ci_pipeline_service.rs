@@ -36,8 +36,12 @@ pub fn ingest(
     let _ = api_key_repo::update_last_used(conn, api_key.id);
 
     // Resolve device type by name
-    let device_type = device_type_repo::find_device_type_by_name(conn, &params.device_type_name)?
-        .ok_or_else(|| {
+    let device_type = device_type_repo::find_device_type_by_name(
+        conn,
+        &api_key.tenant_id,
+        &params.device_type_name,
+    )?
+    .ok_or_else(|| {
         AppError::NotFound(format!(
             "Device type '{}' not found",
             params.device_type_name
@@ -56,6 +60,7 @@ pub fn ingest(
 
     // Insert firmware update
     let new_fw = NewFirmwareUpdate {
+        tenant_id: api_key.tenant_id.clone(),
         device_type_id: device_type.id,
         version: params.version.clone(),
         url: params.artifact_url,
@@ -69,20 +74,21 @@ pub fn ingest(
         source: Some("ci".to_string()),
     };
 
-    let fw = firmware_repo::insert_firmware_update(conn, &new_fw).map_err(|e| {
-        if let diesel::result::Error::DatabaseError(
-            diesel::result::DatabaseErrorKind::UniqueViolation,
-            _,
-        ) = &e
-        {
-            AppError::Conflict(format!(
-                "Version '{}' already exists for device type '{}'",
-                params.version, params.device_type_name
-            ))
-        } else {
-            AppError::Internal(e.to_string())
-        }
-    })?;
+    let fw =
+        firmware_repo::insert_firmware_update(conn, &api_key.tenant_id, &new_fw).map_err(|e| {
+            if let diesel::result::Error::DatabaseError(
+                diesel::result::DatabaseErrorKind::UniqueViolation,
+                _,
+            ) = &e
+            {
+                AppError::Conflict(format!(
+                    "Version '{}' already exists for device type '{}'",
+                    params.version, params.device_type_name
+                ))
+            } else {
+                AppError::Internal(e.to_string())
+            }
+        })?;
 
     Ok((fw.id, fw.version, params.device_type_name))
 }

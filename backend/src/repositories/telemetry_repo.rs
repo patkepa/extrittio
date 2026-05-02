@@ -20,12 +20,14 @@ pub struct LatestTelemetryCustomJson {
 
 pub fn list_telemetry(
     conn: &mut PgConnection,
+    tenant_id: &str,
     device_id: &str,
     since: Option<NaiveDateTime>,
     before: Option<NaiveDateTime>,
     limit: i64,
 ) -> Result<Vec<TelemetryRecord>, diesel::result::Error> {
     let mut query = telemetry::table
+        .filter(telemetry::tenant_id.eq(tenant_id))
         .filter(telemetry::device_id.eq(device_id))
         .into_boxed();
 
@@ -46,10 +48,12 @@ pub fn list_telemetry(
 
 pub fn get_latest_location(
     conn: &mut PgConnection,
+    tenant_id_filter: &str,
     dev_id: &str,
 ) -> QueryResult<Option<TelemetryRecord>> {
     use crate::db::schema::telemetry::dsl::*;
     telemetry
+        .filter(tenant_id.eq(tenant_id_filter))
         .filter(device_id.eq(dev_id))
         .filter(latitude.is_not_null())
         .filter(longitude.is_not_null())

@@ -22,12 +22,14 @@ pub type OtaDeploymentGlobalRow = (
 
 pub fn list_firmware_updates(
     conn: &mut PgConnection,
+    tenant_id: &str,
     device_type_id: Option<i32>,
     limit: i64,
     offset: i64,
 ) -> Result<(Vec<FirmwareUpdateRow>, i64), diesel::result::Error> {
     // Count query
     let mut count_query = firmware_updates::table.into_boxed();
+    count_query = count_query.filter(firmware_updates::tenant_id.eq(tenant_id));
     if let Some(dt_id) = device_type_id {
         count_query = count_query.filter(firmware_updates::device_type_id.eq(dt_id));
     }
@@ -44,6 +46,7 @@ pub fn list_firmware_updates(
             firmware_blobs::filename.nullable(),
         ))
         .into_boxed();
+    query = query.filter(firmware_updates::tenant_id.eq(tenant_id));
 
     if let Some(dt_id) = device_type_id {
         query = query.filter(firmware_updates::device_type_id.eq(dt_id));
@@ -60,16 +63,19 @@ pub fn list_firmware_updates(
 
 pub fn find_firmware_update(
     conn: &mut PgConnection,
+    tenant_id: &str,
     id: i32,
 ) -> Result<FirmwareUpdate, diesel::result::Error> {
     firmware_updates::table
-        .find(id)
+        .filter(firmware_updates::tenant_id.eq(tenant_id))
+        .filter(firmware_updates::id.eq(id))
         .select(FirmwareUpdate::as_select())
         .first(conn)
 }
 
 pub fn insert_firmware_update(
     conn: &mut PgConnection,
+    tenant_id: &str,
     record: &NewFirmwareUpdate,
 ) -> Result<FirmwareUpdate, diesel::result::Error> {
     use diesel::Connection;
@@ -81,9 +87,11 @@ pub fn insert_firmware_update(
 
         firmware_updates::table
             .filter(
-                firmware_updates::device_type_id
-                    .eq(record.device_type_id)
-                    .and(firmware_updates::version.eq(&record.version)),
+                firmware_updates::tenant_id.eq(tenant_id).and(
+                    firmware_updates::device_type_id
+                        .eq(record.device_type_id)
+                        .and(firmware_updates::version.eq(&record.version)),
+                ),
             )
             .select(FirmwareUpdate::as_select())
             .first(conn)
@@ -92,9 +100,15 @@ pub fn insert_firmware_update(
 
 pub fn delete_firmware_update(
     conn: &mut PgConnection,
+    tenant_id: &str,
     id: i32,
 ) -> Result<bool, diesel::result::Error> {
-    let rows = diesel::delete(firmware_updates::table.find(id)).execute(conn)?;
+    let rows = diesel::delete(
+        firmware_updates::table
+            .filter(firmware_updates::tenant_id.eq(tenant_id))
+            .filter(firmware_updates::id.eq(id)),
+    )
+    .execute(conn)?;
     Ok(rows > 0)
 }
 
@@ -120,9 +134,11 @@ pub fn find_firmware_blob(
 
 pub fn find_next_version(
     conn: &mut PgConnection,
+    tenant_id: &str,
     device_type_id: i32,
 ) -> Result<Option<String>, diesel::result::Error> {
     firmware_updates::table
+        .filter(firmware_updates::tenant_id.eq(tenant_id))
         .filter(firmware_updates::device_type_id.eq(device_type_id))
         .select(firmware_updates::version)
         .order(firmware_updates::created_at.desc())
@@ -132,28 +148,36 @@ pub fn find_next_version(
 
 pub fn update_firmware_url(
     conn: &mut PgConnection,
+    tenant_id: &str,
     id: i32,
     url: &str,
 ) -> Result<(), diesel::result::Error> {
-    diesel::update(firmware_updates::table.find(id))
-        .set(firmware_updates::url.eq(url))
-        .execute(conn)?;
+    diesel::update(
+        firmware_updates::table
+            .filter(firmware_updates::tenant_id.eq(tenant_id))
+            .filter(firmware_updates::id.eq(id)),
+    )
+    .set(firmware_updates::url.eq(url))
+    .execute(conn)?;
     Ok(())
 }
 
 pub fn list_ota_deployments(
     conn: &mut PgConnection,
+    tenant_id: &str,
     device_id: &str,
     limit: i64,
     offset: i64,
 ) -> Result<(Vec<(OtaDeployment, FirmwareUpdate)>, i64), diesel::result::Error> {
     let total: i64 = ota_deployments::table
+        .filter(ota_deployments::tenant_id.eq(tenant_id))
         .filter(ota_deployments::device_id.eq(device_id))
         .count()
         .get_result(conn)?;
 
     let results = ota_deployments::table
         .inner_join(firmware_updates::table)
+        .filter(ota_deployments::tenant_id.eq(tenant_id))
         .filter(ota_deployments::device_id.eq(device_id))
         .select((OtaDeployment::as_select(), FirmwareUpdate::as_select()))
         .order(ota_deployments::initiated_at.desc())
@@ -166,11 +190,13 @@ pub fn list_ota_deployments(
 
 pub fn list_all_ota_deployments(
     conn: &mut PgConnection,
+    tenant_id: &str,
     status_filter: Option<&str>,
     limit: i64,
     offset: i64,
 ) -> Result<(Vec<OtaDeploymentGlobalRow>, i64), diesel::result::Error> {
     let mut count_query = ota_deployments::table.into_boxed();
+    count_query = count_query.filter(ota_deployments::tenant_id.eq(tenant_id));
     let mut query = ota_deployments::table
         .inner_join(firmware_updates::table)
         .inner_join(
@@ -186,6 +212,7 @@ pub fn list_all_ota_deployments(
             Option::<Fleet>::as_select(),
         ))
         .into_boxed();
+    query = query.filter(ota_deployments::tenant_id.eq(tenant_id));
 
     match status_filter {
         Some("in_progress" | "active") => {

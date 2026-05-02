@@ -9,12 +9,14 @@ use crate::db::schema::device_logs;
 
 pub fn list_logs(
     conn: &mut PgConnection,
+    tenant_id: &str,
     device_id: &str,
     level: Option<&str>,
     since: Option<NaiveDateTime>,
     limit: i64,
 ) -> Result<Vec<DeviceLog>, diesel::result::Error> {
     let mut query = device_logs::table
+        .filter(device_logs::tenant_id.eq(tenant_id))
         .filter(device_logs::device_id.eq(device_id))
         .into_boxed();
 

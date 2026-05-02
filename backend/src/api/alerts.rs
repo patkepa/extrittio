@@ -1,5 +1,5 @@
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Path, Query, State},
     routing::{get, put},
 };
@@ -7,6 +7,7 @@ use chrono::DateTime;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+use crate::auth::context::RequestContext;
 use crate::error::AppError;
 use crate::pagination;
 use crate::services::alert_service;
@@ -114,6 +115,7 @@ pub fn router() -> Router<Arc<AppState>> {
 // ---------------------------------------------------------------------------
 
 pub(crate) async fn list_alerts(
+    Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
     Query(params): Query<ListAlertsQuery>,
 ) -> Result<Json<pagination::PaginatedResponse<AlertResponse>>, AppError> {
@@ -123,6 +125,7 @@ pub(crate) async fn list_alerts(
 
     let response = run_db(&state.db_pool, move |conn| {
         let (alerts, total) = alert_service::list_alerts(
+            &ctx,
             conn,
             params.status.as_deref(),
             params.severity.as_deref(),
@@ -145,9 +148,13 @@ pub(crate) async fn list_alerts(
 }
 
 pub(crate) async fn get_summary(
+    Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<AlertSummary>, AppError> {
-    let rows = run_db(&state.db_pool, move |conn| alert_service::summary(conn)).await?;
+    let rows = run_db(&state.db_pool, move |conn| {
+        alert_service::summary(&ctx, conn)
+    })
+    .await?;
 
     let mut active = AlertSeverityCounts {
         info: 0,
@@ -188,22 +195,24 @@ pub(crate) async fn get_summary(
 }
 
 pub(crate) async fn get_alert(
+    Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<AlertResponse>, AppError> {
     let alert = run_db(&state.db_pool, move |conn| {
-        alert_service::get_alert(conn, &id)
+        alert_service::get_alert(&ctx, conn, &id)
     })
     .await?;
     Ok(Json(to_alert_response(alert)))
 }
 
 pub(crate) async fn acknowledge_alert(
+    Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<AlertResponse>, AppError> {
     let alert = run_db(&state.db_pool, move |conn| {
-        alert_service::acknowledge_alert(conn, &id)
+        alert_service::acknowledge_alert(&ctx, conn, &id)
     })
     .await?;
 
@@ -214,11 +223,12 @@ pub(crate) async fn acknowledge_alert(
 }
 
 pub(crate) async fn resolve_alert_handler(
+    Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<AlertResponse>, AppError> {
     let alert = run_db(&state.db_pool, move |conn| {
-        alert_service::resolve_alert(conn, &id)
+        alert_service::resolve_alert(&ctx, conn, &id)
     })
     .await?;
 
@@ -246,6 +256,7 @@ pub(crate) async fn resolve_alert_handler(
 }
 
 pub(crate) async fn bulk_acknowledge(
+    Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
     Json(body): Json<BulkAlertIds>,
 ) -> Result<Json<serde_json::Value>, AppError> {
@@ -253,7 +264,7 @@ pub(crate) async fn bulk_acknowledge(
     let results = run_db(&state.db_pool, move |conn| {
         let mut updated = Vec::new();
         for id in &ids {
-            match alert_service::acknowledge_alert(conn, id) {
+            match alert_service::acknowledge_alert(&ctx, conn, id) {
                 Ok(a) => updated.push(a),
                 Err(e) => tracing::warn!("Failed to acknowledge alert {id}: {e}"),
             }
@@ -269,6 +280,7 @@ pub(crate) async fn bulk_acknowledge(
 }
 
 pub(crate) async fn bulk_resolve(
+    Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
     Json(body): Json<BulkAlertIds>,
 ) -> Result<Json<serde_json::Value>, AppError> {
@@ -276,7 +288,7 @@ pub(crate) async fn bulk_resolve(
     let results = run_db(&state.db_pool, move |conn| {
         let mut updated = Vec::new();
         for id in &ids {
-            match alert_service::resolve_alert(conn, id) {
+            match alert_service::resolve_alert(&ctx, conn, id) {
                 Ok(a) => updated.push(a),
                 Err(e) => tracing::warn!("Failed to resolve alert {id}: {e}"),
             }
@@ -321,11 +333,12 @@ pub(crate) async fn bulk_resolve(
 }
 
 pub(crate) async fn reactivate_alert_handler(
+    Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<AlertResponse>, AppError> {
     let alert = run_db(&state.db_pool, move |conn| {
-        alert_service::reactivate_alert(conn, &id)
+        alert_service::reactivate_alert(&ctx, conn, &id)
     })
     .await?;
 
@@ -346,6 +359,7 @@ pub(crate) async fn reactivate_alert_handler(
 }
 
 pub(crate) async fn bulk_reactivate(
+    Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
     Json(body): Json<BulkAlertIds>,
 ) -> Result<Json<serde_json::Value>, AppError> {
@@ -353,7 +367,7 @@ pub(crate) async fn bulk_reactivate(
     let results = run_db(&state.db_pool, move |conn| {
         let mut updated = Vec::new();
         for id in &ids {
-            match alert_service::reactivate_alert(conn, id) {
+            match alert_service::reactivate_alert(&ctx, conn, id) {
                 Ok(a) => updated.push(a),
                 Err(e) => tracing::warn!("Failed to reactivate alert {id}: {e}"),
             }

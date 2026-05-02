@@ -1,5 +1,5 @@
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Path, State},
     http::StatusCode,
     routing::get,
@@ -9,6 +9,7 @@ use serde_json::Value;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
+use crate::auth::context::RequestContext;
 use crate::db::models::DeviceShadow;
 use crate::error::AppError;
 use crate::services::shadow_service;
@@ -90,10 +91,11 @@ pub fn router() -> Router<Arc<AppState>> {
 )]
 pub(crate) async fn get_shadow(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Path(id): Path<String>,
 ) -> Result<Json<ShadowResponse>, AppError> {
     let response = run_db(&state.db_pool, move |conn| {
-        let shadow = shadow_service::get_shadow(conn, &id)?;
+        let shadow = shadow_service::get_shadow(&ctx, conn, &id)?;
         Ok(to_shadow_response(shadow))
     })
     .await?;
@@ -116,10 +118,12 @@ pub(crate) async fn get_shadow(
 )]
 pub(crate) async fn update_desired(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Path(id): Path<String>,
     Json(body): Json<UpdateShadowRequest>,
 ) -> Result<Json<ShadowResponse>, AppError> {
     shadow_service::update_desired(
+        &ctx,
         &state.db_pool,
         &state.zenoh_session,
         &id,
@@ -130,7 +134,7 @@ pub(crate) async fn update_desired(
 
     let id_clone = id;
     let response = run_db(&state.db_pool, move |conn| {
-        let updated = shadow_service::get_shadow(conn, &id_clone)?;
+        let updated = shadow_service::get_shadow(&ctx, conn, &id_clone)?;
         Ok(to_shadow_response(updated))
     })
     .await?;
@@ -153,12 +157,13 @@ pub(crate) async fn update_desired(
 )]
 pub(crate) async fn update_reported(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Path(id): Path<String>,
     Json(body): Json<UpdateShadowRequest>,
 ) -> Result<Json<ShadowResponse>, AppError> {
     let response = run_db(&state.db_pool, move |conn| {
-        shadow_service::update_reported(conn, &id, &body.state)?;
-        let updated = shadow_service::get_shadow(conn, &id)?;
+        shadow_service::update_reported(conn, ctx.tenant_id_str(), &id, &body.state)?;
+        let updated = shadow_service::get_shadow(&ctx, conn, &id)?;
         Ok(to_shadow_response(updated))
     })
     .await?;
@@ -180,10 +185,11 @@ pub(crate) async fn update_reported(
 )]
 pub(crate) async fn delete_shadow(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
     run_db(&state.db_pool, move |conn| {
-        shadow_service::delete_shadow(conn, &id)
+        shadow_service::delete_shadow(&ctx, conn, &id)
     })
     .await?;
 

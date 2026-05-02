@@ -47,6 +47,7 @@ pub fn seed_default_device_types(conn: &mut PgConnection) -> anyhow::Result<()> 
     let rows: Vec<NewDeviceType> = BUILT_IN_DEVICE_TYPES
         .iter()
         .map(|(name, icon, color_hex)| NewDeviceType {
+            tenant_id: crate::tenancy::DEFAULT_TENANT_ID.to_string(),
             name: (*name).to_string(),
             icon: (*icon).to_string(),
             color_hex: (*color_hex).to_string(),

@@ -13,6 +13,7 @@ use crate::db::schema::alerts;
 
 pub fn list_alerts(
     conn: &mut PgConnection,
+    tenant_id: &str,
     status: Option<&str>,
     severity: Option<&str>,
     device_id: Option<&str>,
@@ -27,6 +28,7 @@ pub fn list_alerts(
     macro_rules! apply_filters {
         ($q:expr) => {{
             let mut q = $q;
+            q = q.filter(alerts::tenant_id.eq(tenant_id));
             if let Some(s) = status {
                 q = q.filter(alerts::status.eq(s));
             }
@@ -67,9 +69,14 @@ pub fn list_alerts(
 // Single record lookup
 // ---------------------------------------------------------------------------
 
-pub fn find_alert(conn: &mut PgConnection, id: &str) -> Result<Alert, diesel::result::Error> {
+pub fn find_alert(
+    conn: &mut PgConnection,
+    tenant_id: &str,
+    id: &str,
+) -> Result<Alert, diesel::result::Error> {
     alerts::table
-        .find(id)
+        .filter(alerts::tenant_id.eq(tenant_id))
+        .filter(alerts::id.eq(id))
         .select(Alert::as_select())
         .first(conn)
 }
@@ -90,12 +97,17 @@ pub fn insert_alert(
 
 pub fn update_alert(
     conn: &mut PgConnection,
+    tenant_id: &str,
     id: &str,
     changeset: &UpdateAlert,
 ) -> Result<usize, diesel::result::Error> {
-    diesel::update(alerts::table.find(id))
-        .set(changeset)
-        .execute(conn)
+    diesel::update(
+        alerts::table
+            .filter(alerts::tenant_id.eq(tenant_id))
+            .filter(alerts::id.eq(id)),
+    )
+    .set(changeset)
+    .execute(conn)
 }
 
 // ---------------------------------------------------------------------------
@@ -106,8 +118,10 @@ pub fn update_alert(
 /// endpoint. Relies on SQLite's GROUP BY support.
 pub fn count_by_status_and_severity(
     conn: &mut PgConnection,
+    tenant_id: &str,
 ) -> Result<Vec<(String, String, i64)>, diesel::result::Error> {
     alerts::table
+        .filter(alerts::tenant_id.eq(tenant_id))
         .group_by((alerts::status, alerts::severity))
         .select((alerts::status, alerts::severity, diesel::dsl::count_star()))
         .load::<(String, String, i64)>(conn)
@@ -138,10 +152,12 @@ pub fn load_active_alerts(conn: &mut PgConnection) -> Result<Vec<Alert>, diesel:
 /// Delete resolved alerts whose `created_at` is older than `cutoff`.
 pub fn delete_resolved_older_than(
     conn: &mut PgConnection,
+    tenant_id: &str,
     cutoff: NaiveDateTime,
 ) -> Result<usize, diesel::result::Error> {
     diesel::delete(
         alerts::table
+            .filter(alerts::tenant_id.eq(tenant_id))
             .filter(alerts::status.eq("resolved"))
             .filter(alerts::created_at.lt(cutoff)),
     )

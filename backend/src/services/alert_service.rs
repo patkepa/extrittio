@@ -4,11 +4,14 @@ use chrono::{NaiveDateTime, Utc};
 use diesel::PgConnection;
 use uuid::Uuid;
 
+use crate::auth::context::RequestContext;
+use crate::auth::policy::{self, Permission};
 use crate::db::models::RuleCooldown;
 use crate::db::models::{Alert, NewAlert, UpdateAlert};
 use crate::error::AppError;
 use crate::repositories::alert_repo;
 use crate::repositories::rule_repo;
+use crate::tenancy::DEFAULT_TENANT_ID;
 
 // ---------------------------------------------------------------------------
 // CRUD
@@ -16,6 +19,7 @@ use crate::repositories::rule_repo;
 
 #[allow(clippy::too_many_arguments)]
 pub fn list_alerts(
+    ctx: &RequestContext,
     conn: &mut PgConnection,
     status: Option<&str>,
     severity: Option<&str>,
@@ -26,13 +30,37 @@ pub fn list_alerts(
     limit: i64,
     offset: i64,
 ) -> Result<(Vec<Alert>, i64), AppError> {
+    policy::require(ctx, Permission::ReadAlerts)?;
+
     Ok(alert_repo::list_alerts(
-        conn, status, severity, device_id, rule_id, since, before, limit, offset,
+        conn,
+        ctx.tenant_id_str(),
+        status,
+        severity,
+        device_id,
+        rule_id,
+        since,
+        before,
+        limit,
+        offset,
     )?)
 }
 
-pub fn get_alert(conn: &mut PgConnection, id: &str) -> Result<Alert, AppError> {
-    alert_repo::find_alert(conn, id).map_err(|e| match e {
+pub fn get_alert(
+    ctx: &RequestContext,
+    conn: &mut PgConnection,
+    id: &str,
+) -> Result<Alert, AppError> {
+    policy::require(ctx, Permission::ReadAlerts)?;
+    get_alert_for_tenant(conn, ctx.tenant_id_str(), id)
+}
+
+pub fn get_alert_for_tenant(
+    conn: &mut PgConnection,
+    tenant_id: &str,
+    id: &str,
+) -> Result<Alert, AppError> {
+    alert_repo::find_alert(conn, tenant_id, id).map_err(|e| match e {
         diesel::result::Error::NotFound => AppError::NotFound(format!("Alert '{id}' not found")),
         other => AppError::Database(other),
     })
@@ -46,9 +74,30 @@ pub fn create_alert(
     message: String,
     triggered_value: Option<String>,
 ) -> Result<Alert, AppError> {
+    create_alert_for_tenant(
+        conn,
+        DEFAULT_TENANT_ID,
+        rule_id,
+        device_id,
+        severity,
+        message,
+        triggered_value,
+    )
+}
+
+pub fn create_alert_for_tenant(
+    conn: &mut PgConnection,
+    tenant_id: &str,
+    rule_id: Option<String>,
+    device_id: String,
+    severity: String,
+    message: String,
+    triggered_value: Option<String>,
+) -> Result<Alert, AppError> {
     let id = Uuid::new_v4().to_string();
     let new_alert = NewAlert {
         id: id.clone(),
+        tenant_id: tenant_id.to_string(),
         rule_id,
         device_id,
         severity,
@@ -56,7 +105,7 @@ pub fn create_alert(
         triggered_value,
     };
     alert_repo::insert_alert(conn, &new_alert)?;
-    get_alert(conn, &id)
+    get_alert_for_tenant(conn, tenant_id, &id)
 }
 
 // ---------------------------------------------------------------------------
@@ -65,8 +114,14 @@ pub fn create_alert(
 
 /// Transition an alert from `active` → `acknowledged`.
 /// Returns `BadRequest` if the alert is not currently active.
-pub fn acknowledge_alert(conn: &mut PgConnection, id: &str) -> Result<Alert, AppError> {
-    let alert = get_alert(conn, id)?;
+pub fn acknowledge_alert(
+    ctx: &RequestContext,
+    conn: &mut PgConnection,
+    id: &str,
+) -> Result<Alert, AppError> {
+    policy::require(ctx, Permission::ManageAlerts)?;
+
+    let alert = get_alert_for_tenant(conn, ctx.tenant_id_str(), id)?;
     if alert.status != "active" {
         return Err(AppError::BadRequest(format!(
             "Alert '{id}' cannot be acknowledged from status '{}'",
@@ -79,14 +134,27 @@ pub fn acknowledge_alert(conn: &mut PgConnection, id: &str) -> Result<Alert, App
         acknowledged_at: Some(Some(now)),
         resolved_at: None,
     };
-    alert_repo::update_alert(conn, id, &changeset)?;
-    get_alert(conn, id)
+    alert_repo::update_alert(conn, ctx.tenant_id_str(), id, &changeset)?;
+    get_alert_for_tenant(conn, ctx.tenant_id_str(), id)
 }
 
 /// Transition an alert from `active` or `acknowledged` → `resolved`.
 /// Returns `BadRequest` if the alert is already resolved.
-pub fn resolve_alert(conn: &mut PgConnection, id: &str) -> Result<Alert, AppError> {
-    let alert = get_alert(conn, id)?;
+pub fn resolve_alert(
+    ctx: &RequestContext,
+    conn: &mut PgConnection,
+    id: &str,
+) -> Result<Alert, AppError> {
+    policy::require(ctx, Permission::ManageAlerts)?;
+    resolve_alert_for_tenant(conn, ctx.tenant_id_str(), id)
+}
+
+pub fn resolve_alert_for_tenant(
+    conn: &mut PgConnection,
+    tenant_id: &str,
+    id: &str,
+) -> Result<Alert, AppError> {
+    let alert = get_alert_for_tenant(conn, tenant_id, id)?;
     if alert.status == "resolved" {
         return Err(AppError::BadRequest(format!(
             "Alert '{id}' is already resolved"
@@ -98,14 +166,20 @@ pub fn resolve_alert(conn: &mut PgConnection, id: &str) -> Result<Alert, AppErro
         resolved_at: Some(Some(now)),
         acknowledged_at: None,
     };
-    alert_repo::update_alert(conn, id, &changeset)?;
-    get_alert(conn, id)
+    alert_repo::update_alert(conn, tenant_id, id, &changeset)?;
+    get_alert_for_tenant(conn, tenant_id, id)
 }
 
 /// Transition an alert from `acknowledged` or `resolved` → `active`.
 /// Returns `BadRequest` if the alert is already active.
-pub fn reactivate_alert(conn: &mut PgConnection, id: &str) -> Result<Alert, AppError> {
-    let alert = get_alert(conn, id)?;
+pub fn reactivate_alert(
+    ctx: &RequestContext,
+    conn: &mut PgConnection,
+    id: &str,
+) -> Result<Alert, AppError> {
+    policy::require(ctx, Permission::ManageAlerts)?;
+
+    let alert = get_alert_for_tenant(conn, ctx.tenant_id_str(), id)?;
     if alert.status == "active" {
         return Err(AppError::BadRequest(format!(
             "Alert '{id}' is already active"
@@ -116,8 +190,8 @@ pub fn reactivate_alert(conn: &mut PgConnection, id: &str) -> Result<Alert, AppE
         acknowledged_at: Some(None),
         resolved_at: Some(None),
     };
-    alert_repo::update_alert(conn, id, &changeset)?;
-    get_alert(conn, id)
+    alert_repo::update_alert(conn, ctx.tenant_id_str(), id, &changeset)?;
+    get_alert_for_tenant(conn, ctx.tenant_id_str(), id)
 }
 
 /// Update the `triggered_value` field of an existing alert (used by the rule
@@ -145,8 +219,15 @@ pub fn update_triggered_value(
 // Analytics
 // ---------------------------------------------------------------------------
 
-pub fn summary(conn: &mut PgConnection) -> Result<Vec<(String, String, i64)>, AppError> {
-    Ok(alert_repo::count_by_status_and_severity(conn)?)
+pub fn summary(
+    ctx: &RequestContext,
+    conn: &mut PgConnection,
+) -> Result<Vec<(String, String, i64)>, AppError> {
+    policy::require(ctx, Permission::ReadAlerts)?;
+    Ok(alert_repo::count_by_status_and_severity(
+        conn,
+        ctx.tenant_id_str(),
+    )?)
 }
 
 // ---------------------------------------------------------------------------
@@ -157,7 +238,11 @@ pub fn delete_resolved_older_than(
     conn: &mut PgConnection,
     cutoff: NaiveDateTime,
 ) -> Result<usize, AppError> {
-    Ok(alert_repo::delete_resolved_older_than(conn, cutoff)?)
+    Ok(alert_repo::delete_resolved_older_than(
+        conn,
+        DEFAULT_TENANT_ID,
+        cutoff,
+    )?)
 }
 
 /// Persist a cooldown entry to the database (fire-and-forget safe).
@@ -170,6 +255,7 @@ pub fn persist_cooldown(
     rule_repo::upsert_cooldown(
         conn,
         &RuleCooldown {
+            tenant_id: DEFAULT_TENANT_ID.to_string(),
             rule_id: rule_id.to_string(),
             device_id: device_id.to_string(),
             last_fired_at,
