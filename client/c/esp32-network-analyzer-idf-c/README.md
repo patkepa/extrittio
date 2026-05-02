@@ -23,6 +23,34 @@ Configure these values in `menuconfig`:
 - `Extrittio Network Analyzer -> Zenoh endpoint`
 - `Extrittio Network Analyzer -> Device ID`
 
-Register the configured device ID in Extrittio before publishing. Each scan is
-sent as a `DeviceTelemetry` message with `metadata.kind=network_analyzer_scan`
-and `metadata.snapshot_json` containing the scan payload.
+The firmware also reads runtime provisioning values from the default NVS
+partition. Values in the `extrittio` namespace override the menuconfig
+defaults:
+
+- `device_id`
+- `wifi_ssid`
+- `wifi_pass`
+- `zenoh`
+- `fw_version`
+
+The Extrittio CLI can create the backend device record and flash these NVS
+values into a connected ESP32:
+
+```bash
+cargo run -p extrittio-cli -- provision \
+  --name analyzer-001 \
+  --device-type esp32-network-analyzer \
+  --firmware v1.0.0-network-analyzer-c \
+  --zenoh-connect tcp/192.168.0.10:7447 \
+  --wifi-ssid "$WIFI_SSID" \
+  --wifi-password "$WIFI_PASSWORD" \
+  --flash-esp32-nvs
+```
+
+Run the provisioning command from an ESP-IDF shell so the CLI can find
+`nvs_partition_gen.py`, `esptool.py`, and the ESP-IDF Python environment.
+
+Register the configured or provisioned device ID in Extrittio before
+publishing. Each scan is sent as a `DeviceTelemetry` message with
+`metadata.kind=network_analyzer_scan` and `metadata.snapshot_json` containing
+the scan payload.

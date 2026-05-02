@@ -1318,7 +1318,7 @@ static void build_snapshot_json(const scan_result_t *scan, char *buf, size_t len
 }
 
 static void publish_scan(z_loaned_session_t *session, const scan_result_t *scan,
-                         const char *snapshot_json) {
+                         const char *device_id, const char *snapshot_json) {
     char host_count[16];
     char targets_scanned[16];
     snprintf(host_count, sizeof(host_count), "%lu", (unsigned long)scan->host_count);
@@ -1334,7 +1334,7 @@ static void publish_scan(z_loaned_session_t *session, const scan_result_t *scan,
     };
 
     extrittio_telemetry_t telemetry = {
-        .device_id = CONFIG_EXTRITTIO_DEVICE_ID,
+        .device_id = device_id,
         .timestamp = extrittio_now_millis(),
         .temperature = 0.0f,
         .humidity = 0.0f,
@@ -1362,12 +1362,16 @@ void app_main(void) {
     }
     ESP_ERROR_CHECK(ret);
 
-    ESP_ERROR_CHECK(wifi_init_sta());
+    extrittio_runtime_config_t runtime_config;
+    ESP_ERROR_CHECK(extrittio_runtime_config_load(&runtime_config));
+
+    ESP_ERROR_CHECK(wifi_init_sta(runtime_config.wifi_ssid,
+                                  runtime_config.wifi_password));
 
     z_owned_config_t config;
     z_config_default(&config);
     zp_config_insert(z_loan_mut(config), Z_CONFIG_CONNECT_KEY,
-                     CONFIG_EXTRITTIO_ZENOH_CONNECT);
+                     runtime_config.zenoh_connect);
 
     z_owned_session_t session;
     if (z_open(&session, z_move(config), NULL) != 0) {
@@ -1393,7 +1397,7 @@ void app_main(void) {
     }
 
     ESP_LOGI(TAG, "Network analyzer started, device=%s, interval=%ds",
-             CONFIG_EXTRITTIO_DEVICE_ID, CONFIG_EXTRITTIO_SCAN_INTERVAL_S);
+             runtime_config.device_id, CONFIG_EXTRITTIO_SCAN_INTERVAL_S);
 
     while (1) {
         int64_t loop_started_ms = extrittio_now_millis();
@@ -1403,17 +1407,17 @@ void app_main(void) {
         run_scan(wifi_sta_netif(), &scan);
         scan.scan_id = scan_id;
         build_snapshot_json(&scan, snapshot, CONFIG_EXTRITTIO_ANALYZER_SNAPSHOT_BYTES);
-        publish_scan(z_loan(session), &scan, snapshot);
+        publish_scan(z_loan(session), &scan, runtime_config.device_id, snapshot);
 
         int64_t now = extrittio_now_millis();
         int64_t hb_interval_ms = CONFIG_EXTRITTIO_HEARTBEAT_INTERVAL_S * 1000LL;
         if (now - last_heartbeat >= hb_interval_ms) {
             int64_t uptime_us = esp_timer_get_time() - boot_time;
             extrittio_heartbeat_t hb = {
-                .device_id = CONFIG_EXTRITTIO_DEVICE_ID,
+                .device_id = runtime_config.device_id,
                 .timestamp = now,
                 .status = EXTRITTIO_STATUS_ONLINE,
-                .firmware = CONFIG_EXTRITTIO_FIRMWARE_VERSION,
+                .firmware = runtime_config.firmware_version,
                 .uptime_seconds = uptime_us / 1000000,
             };
             extrittio_heartbeat_publish(z_loan(session), &hb);

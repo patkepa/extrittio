@@ -70,6 +70,7 @@ Thumbs.db
 # C / CMake (sdk-c)
 # ========================
 client/c/sdk-c/build/
+client/c/*/.cache/
 client/c/*/build/
 client/c/*/managed_components/
 client/c/*/sdkconfig

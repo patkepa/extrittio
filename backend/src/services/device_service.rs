@@ -21,6 +21,17 @@ pub use crate::repositories::device_repo::DeviceWithJoins;
 const NETWORK_ANALYZER_DEVICE_TYPE: &str = "network-analyzer";
 const NETWORK_OBSERVED_HOST_RETENTION_DAYS: i64 = 30;
 
+fn is_network_analyzer_device(
+    device: &crate::db::models::Device,
+    device_type: &crate::db::models::DeviceType,
+) -> bool {
+    device_type.name == NETWORK_ANALYZER_DEVICE_TYPE
+        || device.id.contains("network-analyzer")
+        || device.name.contains("network-analyzer")
+        || device.firmware.contains("network-analyzer")
+        || device.firmware.contains("network_analyzer")
+}
+
 fn has_no_declared_connections(value: &JsonValue) -> bool {
     value.as_array().is_none_or(Vec::is_empty)
 }
@@ -72,7 +83,7 @@ fn hydrate_network_observed_hosts(
     let analyzer_ids: Vec<String> = devices
         .iter()
         .filter_map(|(device, device_type, _)| {
-            (device_type.name == NETWORK_ANALYZER_DEVICE_TYPE).then(|| device.id.clone())
+            is_network_analyzer_device(device, device_type).then(|| device.id.clone())
         })
         .collect();
 
@@ -106,7 +117,7 @@ fn hydrate_network_observed_hosts(
     }
 
     for (device, device_type, _) in devices {
-        if device_type.name != NETWORK_ANALYZER_DEVICE_TYPE {
+        if !is_network_analyzer_device(device, device_type) {
             continue;
         }
         if let Some(connections) = connections_by_analyzer.remove(&device.id) {

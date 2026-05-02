@@ -19,3 +19,26 @@ ON network_observed_hosts(analyzer_device_id, last_seen_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_network_observed_hosts_last_seen
 ON network_observed_hosts(last_seen_at);
+
+INSERT INTO device_types (name)
+VALUES ('network-analyzer')
+ON CONFLICT (name) DO NOTHING;
+
+UPDATE devices
+SET device_type_id = (
+        SELECT id
+        FROM device_types
+        WHERE name = 'network-analyzer'
+    ),
+    updated_at = NOW()
+WHERE (
+        id ILIKE '%network-analyzer%'
+        OR name ILIKE '%network-analyzer%'
+        OR firmware ILIKE '%network-analyzer%'
+        OR firmware ILIKE '%network_analyzer%'
+    )
+  AND device_type_id != (
+        SELECT id
+        FROM device_types
+        WHERE name = 'network-analyzer'
+    );

@@ -4,6 +4,8 @@ use std::{
     fs,
     io::{self, Write},
     path::{Path, PathBuf},
+    process::Command as ProcessCommand,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -14,6 +16,10 @@ use serde_json::{Value, json};
 
 const DEFAULT_URL: &str = "http://localhost:8080";
 const DEFAULT_ZENOH_CONNECT: &str = "tcp/127.0.0.1:7447";
+const DEFAULT_ESP32_CHIP: &str = "esp32c6";
+const DEFAULT_ESP32_BAUD: u32 = 460_800;
+const DEFAULT_ESP32_NVS_OFFSET: &str = "0x9000";
+const DEFAULT_ESP32_NVS_SIZE: &str = "0x4000";
 
 #[derive(Debug, Parser)]
 #[command(name = "extrittio")]
@@ -148,7 +154,10 @@ struct CreateDeviceArgs {
     name: String,
 
     #[arg(long)]
-    device_type_id: i32,
+    device_type_id: Option<i32>,
+
+    #[arg(long, value_name = "NAME")]
+    device_type: Option<String>,
 
     #[arg(long)]
     fleet_id: Option<i32>,
@@ -260,6 +269,62 @@ struct ProvisionArgs {
     /// Regenerate the device certificate before downloading it.
     #[arg(long)]
     regenerate_cert: bool,
+
+    /// Generate and flash an ESP-IDF NVS image with this device's runtime config.
+    #[arg(long)]
+    flash_esp32_nvs: bool,
+
+    /// ESP serial port. Auto-detected when omitted and exactly one USB serial device exists.
+    #[arg(long)]
+    port: Option<PathBuf>,
+
+    /// ESP chip passed to esptool.py.
+    #[arg(long, default_value = DEFAULT_ESP32_CHIP)]
+    chip: String,
+
+    /// ESP serial baud rate passed to esptool.py.
+    #[arg(long, default_value_t = DEFAULT_ESP32_BAUD)]
+    baud: u32,
+
+    /// NVS partition offset for the target firmware partition table.
+    #[arg(long, default_value = DEFAULT_ESP32_NVS_OFFSET)]
+    nvs_offset: String,
+
+    /// NVS partition size for the generated image.
+    #[arg(long, default_value = DEFAULT_ESP32_NVS_SIZE)]
+    nvs_size: String,
+
+    /// Wi-Fi SSID to write into ESP NVS. Defaults to EXTRITTIO_WIFI_SSID.
+    #[arg(long, env = "EXTRITTIO_WIFI_SSID")]
+    wifi_ssid: Option<String>,
+
+    /// Wi-Fi password to write into ESP NVS. Defaults to EXTRITTIO_WIFI_PASSWORD.
+    #[arg(long, env = "EXTRITTIO_WIFI_PASSWORD")]
+    wifi_password: Option<String>,
+
+    /// Firmware version to write into ESP NVS. Defaults to the created device firmware.
+    #[arg(long)]
+    esp32_firmware_version: Option<String>,
+
+    /// ESP-IDF path used to locate nvs_partition_gen.py and esptool.py.
+    #[arg(long, env = "IDF_PATH")]
+    idf_path: Option<PathBuf>,
+
+    /// Python interpreter for ESP-IDF Python tools.
+    #[arg(long, env = "EXTRITTIO_IDF_PYTHON")]
+    idf_python: Option<PathBuf>,
+
+    /// Override path to nvs_partition_gen.py.
+    #[arg(long, env = "EXTRITTIO_NVS_PARTITION_GEN")]
+    nvs_partition_gen: Option<PathBuf>,
+
+    /// Override path to esptool.py.
+    #[arg(long, env = "EXTRITTIO_ESPTOOL")]
+    esptool: Option<PathBuf>,
+
+    /// Keep generated NVS CSV and binary files for inspection.
+    #[arg(long)]
+    keep_nvs_artifacts: bool,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -362,6 +427,17 @@ struct CertificateStatus {
     fingerprint: String,
     expires_at: String,
     created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+struct Esp32NvsFlashResult {
+    port: String,
+    chip: String,
+    baud: u32,
+    nvs_offset: String,
+    nvs_size: String,
+    csv_path: Option<PathBuf>,
+    bin_path: Option<PathBuf>,
 }
 
 #[derive(Clone)]
@@ -635,6 +711,12 @@ async fn main() -> Result<()> {
             } else {
                 None
             };
+            let esp32_nvs = if args.flash_esp32_nvs {
+                let result = flash_esp32_nvs(&device, &args)?;
+                Some(result)
+            } else {
+                None
+            };
             let value = json!({
                 "device_id": device.id,
                 "name": device.name,
@@ -645,6 +727,7 @@ async fn main() -> Result<()> {
                 "firmware": device.firmware,
                 "zenoh_connect": args.zenoh_connect,
                 "certificate_dir": cert_written,
+                "esp32_nvs": esp32_nvs,
             });
             output(cli.output, &value, || format_provisioning(&value))?;
         }
@@ -726,19 +809,59 @@ impl ApiClient {
 }
 
 async fn create_device(client: &ApiClient, args: CreateDeviceArgs) -> Result<DeviceResponse> {
+    let device_type_id =
+        resolve_device_type_id(client, args.device_type_id, args.device_type.as_deref()).await?;
     client
         .request(
             Method::POST,
             "/api/v1/devices",
             Some(json!({
                 "name": args.name,
-                "device_type_id": args.device_type_id,
+                "device_type_id": device_type_id,
                 "fleet_id": args.fleet_id,
                 "firmware": args.firmware,
             })),
             true,
         )
         .await
+}
+
+async fn resolve_device_type_id(
+    client: &ApiClient,
+    device_type_id: Option<i32>,
+    device_type_name: Option<&str>,
+) -> Result<i32> {
+    if device_type_id.is_some() && device_type_name.is_some() {
+        bail!("pass either --device-type-id or --device-type, not both");
+    }
+    if let Some(device_type_id) = device_type_id {
+        return Ok(device_type_id);
+    }
+
+    let device_type_name = device_type_name
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .ok_or_else(|| anyhow!("pass --device-type-id or --device-type"))?;
+    let existing: Paginated<DeviceTypeResponse> = client
+        .get("/api/v1/device-types?limit=1000&offset=0")
+        .await?;
+    if let Some(device_type) = existing
+        .data
+        .iter()
+        .find(|device_type| device_type.name.eq_ignore_ascii_case(device_type_name))
+    {
+        return Ok(device_type.id);
+    }
+
+    let created: DeviceTypeResponse = client
+        .request(
+            Method::POST,
+            "/api/v1/device-types",
+            Some(json!({ "name": device_type_name })),
+            true,
+        )
+        .await?;
+    Ok(created.id)
 }
 
 async fn download_device_cert(
@@ -757,6 +880,234 @@ async fn download_device_cert(
         Method::GET
     };
     client.request(method, &path, None, true).await
+}
+
+fn flash_esp32_nvs(device: &DeviceResponse, args: &ProvisionArgs) -> Result<Esp32NvsFlashResult> {
+    let wifi_ssid = args
+        .wifi_ssid
+        .as_deref()
+        .filter(|ssid| !ssid.is_empty())
+        .ok_or_else(|| {
+            anyhow!("--wifi-ssid or EXTRITTIO_WIFI_SSID is required with --flash-esp32-nvs")
+        })?;
+    let wifi_password = args.wifi_password.as_deref().unwrap_or("");
+    let firmware_version = args
+        .esp32_firmware_version
+        .as_deref()
+        .unwrap_or(device.firmware.as_str());
+    let port = args
+        .port
+        .clone()
+        .map(Ok)
+        .unwrap_or_else(detect_esp_serial_port)?;
+    let nvs_gen = resolve_esp_tool(
+        args.nvs_partition_gen.as_deref(),
+        args.idf_path.as_deref(),
+        &[
+            "components",
+            "nvs_flash",
+            "nvs_partition_generator",
+            "nvs_partition_gen.py",
+        ],
+        "nvs_partition_gen.py",
+    );
+    let esptool = resolve_esp_tool(
+        args.esptool.as_deref(),
+        args.idf_path.as_deref(),
+        &["components", "esptool_py", "esptool", "esptool.py"],
+        "esptool.py",
+    );
+    let idf_python = resolve_idf_python(args.idf_python.as_deref());
+    let (csv_path, bin_path) = nvs_artifact_paths(&device.id)?;
+
+    write_esp32_nvs_csv(
+        &csv_path,
+        &[
+            ("device_id", device.id.as_str()),
+            ("wifi_ssid", wifi_ssid),
+            ("wifi_pass", wifi_password),
+            ("zenoh", args.zenoh_connect.as_str()),
+            ("fw_version", firmware_version),
+        ],
+    )?;
+
+    run_process(
+        ProcessCommand::new(&idf_python)
+            .arg(&nvs_gen)
+            .arg("generate")
+            .arg(&csv_path)
+            .arg(&bin_path)
+            .arg(&args.nvs_size),
+        "failed to generate ESP32 NVS image",
+    )?;
+
+    run_process(
+        ProcessCommand::new(&idf_python)
+            .arg(&esptool)
+            .arg("--chip")
+            .arg(&args.chip)
+            .arg("-p")
+            .arg(&port)
+            .arg("-b")
+            .arg(args.baud.to_string())
+            .arg("--before")
+            .arg("default_reset")
+            .arg("--after")
+            .arg("hard_reset")
+            .arg("write_flash")
+            .arg(&args.nvs_offset)
+            .arg(&bin_path),
+        "failed to flash ESP32 NVS image",
+    )?;
+
+    let result = Esp32NvsFlashResult {
+        port: port.display().to_string(),
+        chip: args.chip.clone(),
+        baud: args.baud,
+        nvs_offset: args.nvs_offset.clone(),
+        nvs_size: args.nvs_size.clone(),
+        csv_path: args.keep_nvs_artifacts.then(|| csv_path.clone()),
+        bin_path: args.keep_nvs_artifacts.then(|| bin_path.clone()),
+    };
+
+    if !args.keep_nvs_artifacts {
+        let _ = fs::remove_file(&csv_path);
+        let _ = fs::remove_file(&bin_path);
+    }
+
+    Ok(result)
+}
+
+fn resolve_esp_tool(
+    explicit: Option<&Path>,
+    idf_path: Option<&Path>,
+    idf_relative: &[&str],
+    fallback: &str,
+) -> PathBuf {
+    if let Some(explicit) = explicit {
+        return explicit.to_path_buf();
+    }
+    if let Some(idf_path) = idf_path {
+        let mut path = idf_path.to_path_buf();
+        for segment in idf_relative {
+            path.push(segment);
+        }
+        return path;
+    }
+    PathBuf::from(fallback)
+}
+
+fn resolve_idf_python(explicit: Option<&Path>) -> PathBuf {
+    if let Some(explicit) = explicit {
+        return explicit.to_path_buf();
+    }
+    if let Ok(env_path) = env::var("IDF_PYTHON_ENV_PATH") {
+        return PathBuf::from(env_path).join("bin").join("python");
+    }
+    PathBuf::from("python")
+}
+
+fn nvs_artifact_paths(device_id: &str) -> Result<(PathBuf, PathBuf)> {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .context("system clock is before unix epoch")?
+        .as_millis();
+    let safe_id = device_id
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    let base = env::temp_dir().join(format!(
+        "extrittio-{safe_id}-{}-{nonce}",
+        std::process::id()
+    ));
+    Ok((base.with_extension("csv"), base.with_extension("bin")))
+}
+
+fn write_esp32_nvs_csv(path: &Path, entries: &[(&str, &str)]) -> Result<()> {
+    let mut csv = String::from("key,type,encoding,value\nextrittio,namespace,,\n");
+    for (key, value) in entries {
+        let _ = writeln!(csv, "{key},data,string,{}", nvs_csv_escape(value));
+    }
+    fs::write(path, csv).with_context(|| format!("failed to write {}", path.display()))
+}
+
+fn nvs_csv_escape(value: &str) -> String {
+    if value.contains([',', '"', '\n', '\r']) {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_string()
+    }
+}
+
+fn detect_esp_serial_port() -> Result<PathBuf> {
+    let mut ports = Vec::new();
+    let mut callout_ports = Vec::new();
+    let dev = Path::new("/dev");
+    for entry in fs::read_dir(dev).context("failed to read /dev for ESP serial ports")? {
+        let entry = entry.context("failed to read /dev entry")?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if is_likely_esp_serial_port(&name) {
+            let path = dev.join(&name);
+            if name.starts_with("cu.") {
+                callout_ports.push(path);
+            } else {
+                ports.push(path);
+            }
+        }
+    }
+    if !callout_ports.is_empty() {
+        ports = callout_ports;
+    }
+    ports.sort();
+    if ports.is_empty() {
+        bail!("no ESP serial port detected; pass --port /dev/<device>");
+    }
+    if ports.len() > 1 {
+        let mut message =
+            String::from("multiple ESP serial ports detected; pass --port explicitly:");
+        for port in ports {
+            let _ = write!(message, "\n  {}", port.display());
+        }
+        bail!("{message}");
+    }
+    Ok(ports.remove(0))
+}
+
+fn is_likely_esp_serial_port(name: &str) -> bool {
+    name.starts_with("cu.usbmodem")
+        || name.starts_with("tty.usbmodem")
+        || name.starts_with("cu.usbserial")
+        || name.starts_with("tty.usbserial")
+        || name.starts_with("cu.SLAB_USBtoUART")
+        || name.starts_with("tty.SLAB_USBtoUART")
+        || name.starts_with("cu.wchusbserial")
+        || name.starts_with("tty.wchusbserial")
+        || name.starts_with("ttyUSB")
+        || name.starts_with("ttyACM")
+}
+
+fn run_process(command: &mut ProcessCommand, context: &str) -> Result<()> {
+    let output = command
+        .output()
+        .with_context(|| format!("{context}: failed to start process"))?;
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    bail!(
+        "{context}: exit status {}\nstdout:\n{}\nstderr:\n{}",
+        output.status,
+        stdout.trim(),
+        stderr.trim()
+    )
 }
 
 fn handle_cert_bundle(
@@ -1066,6 +1417,30 @@ fn format_provisioning(value: &Value) -> String {
     );
     if let Some(cert_dir) = value["certificate_dir"].as_str() {
         let _ = writeln!(out, "certificate_dir={cert_dir}");
+    }
+    if let Some(esp32_nvs) = value["esp32_nvs"].as_object() {
+        let _ = writeln!(
+            out,
+            "esp32_nvs=flashed port={} offset={} size={}",
+            esp32_nvs
+                .get("port")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+            esp32_nvs
+                .get("nvs_offset")
+                .and_then(Value::as_str)
+                .unwrap_or(DEFAULT_ESP32_NVS_OFFSET),
+            esp32_nvs
+                .get("nvs_size")
+                .and_then(Value::as_str)
+                .unwrap_or(DEFAULT_ESP32_NVS_SIZE),
+        );
+        if let Some(csv_path) = esp32_nvs.get("csv_path").and_then(Value::as_str) {
+            let _ = writeln!(out, "nvs_csv={csv_path}");
+        }
+        if let Some(bin_path) = esp32_nvs.get("bin_path").and_then(Value::as_str) {
+            let _ = writeln!(out, "nvs_bin={bin_path}");
+        }
     }
     out
 }
