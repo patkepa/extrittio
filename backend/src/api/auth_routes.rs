@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
 
-use crate::auth::{Claims, create_token};
+use crate::auth::context::RequestContext;
+use crate::auth::create_token;
 use crate::error::AppError;
 use crate::services::user_service;
 use crate::state::{AppState, run_db};
@@ -83,10 +84,10 @@ pub(crate) async fn login(
         (status = 401, description = "Unauthorized"),
     ),
 )]
-pub(crate) async fn me(Extension(claims): Extension<Claims>) -> Json<UserResponse> {
+pub(crate) async fn me(Extension(ctx): Extension<RequestContext>) -> Json<UserResponse> {
     Json(UserResponse {
-        id: claims.sub,
-        username: claims.username,
-        role: claims.role,
+        id: ctx.user_id,
+        username: ctx.username,
+        role: ctx.role,
     })
 }

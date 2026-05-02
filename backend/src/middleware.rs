@@ -6,6 +6,7 @@ use axum::{
 };
 use std::sync::Arc;
 
+use crate::auth::context::RequestContext;
 use crate::auth::validate_token;
 use crate::error::AppError;
 use crate::state::AppState;
@@ -42,7 +43,9 @@ pub async fn auth_middleware(
     };
 
     let claims = validate_token(token, &state.jwt_secret).map_err(|_| AppError::Unauthorized)?;
+    let ctx = RequestContext::from_claims(claims.clone());
 
+    request.extensions_mut().insert(ctx);
     request.extensions_mut().insert(claims);
 
     Ok(next.run(request).await)

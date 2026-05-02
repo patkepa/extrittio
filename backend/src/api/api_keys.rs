@@ -4,7 +4,7 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 use crate::api_key_util;
-use crate::auth::Claims;
+use crate::auth::context::RequestContext;
 use crate::error::AppError;
 use crate::services::api_key_service;
 use crate::state::{AppState, run_db};
@@ -44,20 +44,11 @@ pub fn router() -> Router<Arc<AppState>> {
         )
 }
 
-fn require_admin(claims: &Claims) -> Result<(), AppError> {
-    if claims.role != "admin" {
-        return Err(AppError::Forbidden("Admin role required".into()));
-    }
-    Ok(())
-}
-
 async fn create_api_key(
     State(state): State<Arc<AppState>>,
-    Extension(claims): Extension<Claims>,
+    Extension(ctx): Extension<RequestContext>,
     Json(body): Json<CreateApiKeyRequest>,
 ) -> Result<(StatusCode, Json<CreateApiKeyResponse>), AppError> {
-    require_admin(&claims)?;
-
     if body.name.trim().is_empty() {
         return Err(AppError::UnprocessableEntity("name is required".into()));
     }
@@ -74,7 +65,7 @@ async fn create_api_key(
     };
 
     let api_key = run_db(&state.db_pool, move |conn| {
-        api_key_service::create(conn, &new_key)
+        api_key_service::create(&ctx, conn, &new_key)
     })
     .await?;
 
@@ -92,12 +83,10 @@ async fn create_api_key(
 
 async fn list_api_keys(
     State(state): State<Arc<AppState>>,
-    Extension(claims): Extension<Claims>,
+    Extension(ctx): Extension<RequestContext>,
 ) -> Result<Json<Vec<ApiKeyResponse>>, AppError> {
-    require_admin(&claims)?;
-
     let keys = run_db(&state.db_pool, move |conn| {
-        let keys_with_names = api_key_service::list_with_type_names(conn)?;
+        let keys_with_names = api_key_service::list_with_type_names(&ctx, conn)?;
 
         let responses: Vec<ApiKeyResponse> = keys_with_names
             .into_iter()
@@ -122,13 +111,11 @@ async fn list_api_keys(
 
 async fn delete_api_key(
     State(state): State<Arc<AppState>>,
-    Extension(claims): Extension<Claims>,
+    Extension(ctx): Extension<RequestContext>,
     axum::extract::Path(id): axum::extract::Path<i32>,
 ) -> Result<StatusCode, AppError> {
-    require_admin(&claims)?;
-
     run_db(&state.db_pool, move |conn| {
-        api_key_service::delete(conn, id)
+        api_key_service::delete(&ctx, conn, id)
     })
     .await?;
 
