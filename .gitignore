@@ -70,3 +70,4 @@ Thumbs.db
 # C / CMake (sdk-c)
 # ========================
 client/c/sdk-c/build/
+client/rust/esp32/.embuild/espressif/
