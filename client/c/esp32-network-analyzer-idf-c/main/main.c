@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
+#include <fcntl.h>
 
 #include "esp_log.h"
 #include "esp_mac.h"
@@ -36,6 +38,7 @@
 static const char *TAG = "network_analyzer";
 
 typedef struct {
+    uint32_t addr;
     char ip[16];
     char mac[18];
     char hostname[32];
@@ -340,6 +343,81 @@ static void classify_host(host_record_t *host, uint32_t host_addr, uint32_t gate
     }
 }
 
+static int classification_priority(const char *classification) {
+    if (classification == NULL) return 0;
+    if (strcmp(classification, "network_gateway") == 0) return 100;
+    if (strcmp(classification, "mdns_model") == 0) return 90;
+    if (strcmp(classification, "mdns_service") == 0) return 80;
+    if (strcmp(classification, "tcp_service") == 0) return 70;
+    if (strcmp(classification, "netbios_name") == 0) return 60;
+    if (strcmp(classification, "ssdp_service") == 0) return 50;
+    if (strcmp(classification, "vendor_oui") == 0) return 30;
+    if (strcmp(classification, "randomized_mac") == 0) return 20;
+    return 0;
+}
+
+static void refine_host_identity(host_record_t *host, const char *vendor,
+                                 const char *device_type,
+                                 const char *classification) {
+    int current = classification_priority(host->classification);
+    int incoming = classification_priority(classification);
+
+    if (current == 100 && incoming < 100) {
+        return;
+    }
+    if (incoming < current) {
+        return;
+    }
+
+    if (vendor != NULL &&
+        (strcmp(host->vendor, "Unknown") == 0 ||
+         strcmp(host->vendor, "Private/Randomized") == 0 ||
+         incoming > current)) {
+        host->vendor = vendor;
+    }
+    if (device_type != NULL) {
+        host->device_type = device_type;
+    }
+    if (classification != NULL) {
+        host->classification = classification;
+    }
+}
+
+static char ascii_lower_char(char c) {
+    if (c >= 'A' && c <= 'Z') {
+        return (char)(c + ('a' - 'A'));
+    }
+    return c;
+}
+
+static bool bytes_contains_ci(const uint8_t *data, size_t data_len, const char *needle) {
+    size_t needle_len = strlen(needle);
+    if (needle_len == 0 || data_len < needle_len) {
+        return false;
+    }
+
+    for (size_t i = 0; i <= data_len - needle_len; i++) {
+        size_t j = 0;
+        while (j < needle_len &&
+               ascii_lower_char((char)data[i + j]) == ascii_lower_char(needle[j])) {
+            j++;
+        }
+        if (j == needle_len) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static host_record_t *find_host_by_addr(scan_result_t *scan, uint32_t addr) {
+    for (uint32_t i = 0; i < scan->host_count; i++) {
+        if (scan->hosts[i].addr == addr) {
+            return &scan->hosts[i];
+        }
+    }
+    return NULL;
+}
+
 static void encode_netbios_name(const char *name, uint8_t out[34]) {
     char padded[16];
     memset(padded, ' ', sizeof(padded));
@@ -449,6 +527,307 @@ static bool nbns_probe_hostname(uint32_t host_addr, char *hostname, size_t hostn
     }
 
     return false;
+}
+
+static bool tcp_port_open(uint32_t host_addr, uint16_t port, uint32_t timeout_ms) {
+    int sock = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
+    if (sock < 0) {
+        return false;
+    }
+
+    int flags = fcntl(sock, F_GETFL, 0);
+    if (flags >= 0) {
+        fcntl(sock, F_SETFL, flags | O_NONBLOCK);
+    }
+
+    struct sockaddr_in dest = {
+        .sin_family = AF_INET,
+        .sin_port = htons(port),
+        .sin_addr.s_addr = htonl(host_addr),
+    };
+
+    int rc = connect(sock, (struct sockaddr *)&dest, sizeof(dest));
+    if (rc == 0) {
+        close(sock);
+        return true;
+    }
+    if (errno != EINPROGRESS && errno != EWOULDBLOCK && errno != EAGAIN) {
+        close(sock);
+        return false;
+    }
+
+    fd_set writefds;
+    FD_ZERO(&writefds);
+    FD_SET(sock, &writefds);
+    struct timeval timeout = {
+        .tv_sec = timeout_ms / 1000,
+        .tv_usec = (timeout_ms % 1000) * 1000,
+    };
+
+    rc = select(sock + 1, NULL, &writefds, NULL, &timeout);
+    if (rc <= 0 || !FD_ISSET(sock, &writefds)) {
+        close(sock);
+        return false;
+    }
+
+    int err = 0;
+    socklen_t err_len = sizeof(err);
+    if (getsockopt(sock, SOL_SOCKET, SO_ERROR, &err, &err_len) != 0) {
+        close(sock);
+        return false;
+    }
+
+    close(sock);
+    return err == 0;
+}
+
+static void apply_tcp_fingerprint(host_record_t *host) {
+    const uint32_t timeout_ms = CONFIG_EXTRITTIO_ANALYZER_PING_TIMEOUT_MS / 2;
+
+    if (tcp_port_open(host->addr, 62078, timeout_ms)) {
+        refine_host_identity(host, "Apple", "iphone_or_ipad", "tcp_service");
+        return;
+    }
+    if (tcp_port_open(host->addr, 8009, timeout_ms) ||
+        tcp_port_open(host->addr, 8008, timeout_ms)) {
+        refine_host_identity(host, "Google", "chromecast_or_google_home", "tcp_service");
+        return;
+    }
+    if (tcp_port_open(host->addr, 7000, timeout_ms)) {
+        refine_host_identity(host, "Apple", "airplay_device", "tcp_service");
+        return;
+    }
+    if (tcp_port_open(host->addr, 9100, timeout_ms)) {
+        refine_host_identity(host, NULL, "printer", "tcp_service");
+        return;
+    }
+    if (tcp_port_open(host->addr, 548, timeout_ms)) {
+        refine_host_identity(host,
+                             strcmp(host->vendor, "Apple") == 0 ? "Apple" : NULL,
+                             strcmp(host->vendor, "Apple") == 0 ? "mac" : "file_server_or_nas",
+                             "tcp_service");
+        return;
+    }
+    if (tcp_port_open(host->addr, 445, timeout_ms) ||
+        tcp_port_open(host->addr, 139, timeout_ms)) {
+        if (strcmp(host->vendor, "Apple") == 0) {
+            refine_host_identity(host, "Apple", "mac", "tcp_service");
+        } else {
+            refine_host_identity(host, NULL, "windows_or_smb_device", "tcp_service");
+        }
+    }
+}
+
+static void apply_service_fingerprint(host_record_t *host, const uint8_t *data,
+                                      size_t len, const char *classification) {
+    if (bytes_contains_ci(data, len, "model=MacBook")) {
+        refine_host_identity(host, "Apple", "macbook", "mdns_model");
+    } else if (bytes_contains_ci(data, len, "model=iMac") ||
+               bytes_contains_ci(data, len, "model=Mac")) {
+        refine_host_identity(host, "Apple", "mac", "mdns_model");
+    } else if (bytes_contains_ci(data, len, "model=iPhone")) {
+        refine_host_identity(host, "Apple", "iphone", "mdns_model");
+    } else if (bytes_contains_ci(data, len, "model=iPad")) {
+        refine_host_identity(host, "Apple", "ipad", "mdns_model");
+    } else if (bytes_contains_ci(data, len, "model=AppleTV")) {
+        refine_host_identity(host, "Apple", "apple_tv", "mdns_model");
+    } else if (bytes_contains_ci(data, len, "model=HomePod")) {
+        refine_host_identity(host, "Apple", "homepod", "mdns_model");
+    } else if (bytes_contains_ci(data, len, "_googlecast") ||
+               bytes_contains_ci(data, len, "chromecast")) {
+        refine_host_identity(host, "Google", "chromecast_or_google_home", classification);
+    } else if (bytes_contains_ci(data, len, "_airplay") ||
+               bytes_contains_ci(data, len, "_raop") ||
+               bytes_contains_ci(data, len, "_companion-link") ||
+               bytes_contains_ci(data, len, "_apple-mobdev2")) {
+        refine_host_identity(host, "Apple", "apple_device", classification);
+    } else if (bytes_contains_ci(data, len, "_ipp") ||
+               bytes_contains_ci(data, len, "_printer") ||
+               bytes_contains_ci(data, len, "printer")) {
+        refine_host_identity(host, NULL, "printer", classification);
+    } else if (bytes_contains_ci(data, len, "internetgatewaydevice") ||
+               bytes_contains_ci(data, len, "wanipconnection")) {
+        refine_host_identity(host, NULL, "router", classification);
+    } else if (bytes_contains_ci(data, len, "synology") ||
+               bytes_contains_ci(data, len, "qnap")) {
+        refine_host_identity(host, NULL, "nas", classification);
+    } else if (bytes_contains_ci(data, len, "samsung") &&
+               bytes_contains_ci(data, len, "tv")) {
+        refine_host_identity(host, "Samsung", "samsung_tv", classification);
+    } else if (bytes_contains_ci(data, len, "roku")) {
+        refine_host_identity(host, "Roku", "media_streamer", classification);
+    } else if (bytes_contains_ci(data, len, "sonos")) {
+        refine_host_identity(host, "Sonos", "speaker", classification);
+    } else if (bytes_contains_ci(data, len, "_smb")) {
+        refine_host_identity(host, NULL, "windows_or_smb_device", classification);
+    } else if (bytes_contains_ci(data, len, "_hap") ||
+               bytes_contains_ci(data, len, "_matter")) {
+        refine_host_identity(host, NULL, "smart_home_device", classification);
+    }
+}
+
+static void apply_ssdp_discovery(scan_result_t *scan) {
+    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+    if (sock < 0) {
+        return;
+    }
+
+    struct timeval timeout = {
+        .tv_sec = 0,
+        .tv_usec = 120000,
+    };
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+
+    struct sockaddr_in dest = {
+        .sin_family = AF_INET,
+        .sin_port = htons(1900),
+        .sin_addr.s_addr = inet_addr("239.255.255.250"),
+    };
+
+    const char request[] =
+        "M-SEARCH * HTTP/1.1\r\n"
+        "HOST: 239.255.255.250:1900\r\n"
+        "MAN: \"ssdp:discover\"\r\n"
+        "MX: 1\r\n"
+        "ST: ssdp:all\r\n\r\n";
+    sendto(sock, request, strlen(request), 0, (struct sockaddr *)&dest, sizeof(dest));
+
+    int64_t deadline_us = esp_timer_get_time() + 900000;
+    uint8_t response[768];
+    while (esp_timer_get_time() < deadline_us) {
+        struct sockaddr_in from;
+        socklen_t from_len = sizeof(from);
+        ssize_t received = recvfrom(sock, response, sizeof(response), 0,
+                                    (struct sockaddr *)&from, &from_len);
+        if (received <= 0) {
+            continue;
+        }
+
+        uint32_t addr = ntohl(from.sin_addr.s_addr);
+        host_record_t *host = find_host_by_addr(scan, addr);
+        if (host != NULL) {
+            apply_service_fingerprint(host, response, (size_t)received, "ssdp_service");
+        }
+    }
+
+    close(sock);
+}
+
+static size_t mdns_build_ptr_query(const char *name, uint8_t *packet, size_t packet_len) {
+    if (packet_len < 18) {
+        return 0;
+    }
+
+    memset(packet, 0, packet_len);
+    packet[5] = 0x01;
+    size_t pos = 12;
+    const char *label = name;
+    while (*label != '\0') {
+        const char *dot = strchr(label, '.');
+        size_t label_len = dot == NULL ? strlen(label) : (size_t)(dot - label);
+        if (label_len == 0 || label_len > 63 || pos + label_len + 1 >= packet_len) {
+            return 0;
+        }
+        packet[pos++] = (uint8_t)label_len;
+        memcpy(&packet[pos], label, label_len);
+        pos += label_len;
+        if (dot == NULL) {
+            break;
+        }
+        label = dot + 1;
+    }
+
+    if (pos + 5 > packet_len) {
+        return 0;
+    }
+    packet[pos++] = 0x00;
+    packet[pos++] = 0x00;
+    packet[pos++] = 0x0c;
+    packet[pos++] = 0x00;
+    packet[pos++] = 0x01;
+    return pos;
+}
+
+static void apply_mdns_discovery(scan_result_t *scan) {
+    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+    if (sock < 0) {
+        return;
+    }
+
+    int yes = 1;
+    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+
+    struct sockaddr_in bind_addr = {
+        .sin_family = AF_INET,
+        .sin_port = htons(5353),
+        .sin_addr.s_addr = htonl(INADDR_ANY),
+    };
+    if (bind(sock, (struct sockaddr *)&bind_addr, sizeof(bind_addr)) != 0) {
+        close(sock);
+        return;
+    }
+
+    struct ip_mreq mreq = {
+        .imr_multiaddr.s_addr = inet_addr("224.0.0.251"),
+        .imr_interface.s_addr = htonl(INADDR_ANY),
+    };
+    setsockopt(sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq));
+
+    struct timeval timeout = {
+        .tv_sec = 0,
+        .tv_usec = 120000,
+    };
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+
+    struct sockaddr_in dest = {
+        .sin_family = AF_INET,
+        .sin_port = htons(5353),
+        .sin_addr.s_addr = inet_addr("224.0.0.251"),
+    };
+
+    const char *queries[] = {
+        "_device-info._tcp.local",
+        "_airplay._tcp.local",
+        "_raop._tcp.local",
+        "_companion-link._tcp.local",
+        "_apple-mobdev2._tcp.local",
+        "_googlecast._tcp.local",
+        "_ipp._tcp.local",
+        "_printer._tcp.local",
+        "_smb._tcp.local",
+        "_workstation._tcp.local",
+        "_hap._tcp.local",
+        "_matter._tcp.local",
+    };
+
+    uint8_t packet[128];
+    for (size_t i = 0; i < sizeof(queries) / sizeof(queries[0]); i++) {
+        size_t packet_len = mdns_build_ptr_query(queries[i], packet, sizeof(packet));
+        if (packet_len > 0) {
+            sendto(sock, packet, packet_len, 0, (struct sockaddr *)&dest, sizeof(dest));
+        }
+    }
+
+    int64_t deadline_us = esp_timer_get_time() + 900000;
+    uint8_t response[900];
+    while (esp_timer_get_time() < deadline_us) {
+        struct sockaddr_in from;
+        socklen_t from_len = sizeof(from);
+        ssize_t received = recvfrom(sock, response, sizeof(response), 0,
+                                    (struct sockaddr *)&from, &from_len);
+        if (received <= 0) {
+            continue;
+        }
+
+        uint32_t addr = ntohl(from.sin_addr.s_addr);
+        host_record_t *host = find_host_by_addr(scan, addr);
+        if (host != NULL) {
+            apply_service_fingerprint(host, response, (size_t)received, "mdns_service");
+        }
+    }
+
+    setsockopt(sock, IPPROTO_IP, IP_DROP_MEMBERSHIP, &mreq, sizeof(mreq));
+    close(sock);
 }
 
 static bool lookup_arp_mac(esp_netif_t *esp_netif, uint32_t host_addr, char *out, size_t len) {
@@ -561,20 +940,22 @@ static void run_scan(esp_netif_t *netif, scan_result_t *scan) {
         }
 
         host_record_t *host = &scan->hosts[scan->host_count++];
+        host->addr = addr;
         ipv4_to_string(addr, host->ip, sizeof(host->ip));
         strncpy(host->mac, mac, sizeof(host->mac) - 1);
         host->rtt_ms = elapsed_ms;
         host->source = "arp";
         classify_host(host, addr, gateway);
         if (nbns_probe_hostname(addr, host->hostname, sizeof(host->hostname))) {
-            if (strcmp(host->device_type, "unknown") == 0 ||
-                strcmp(host->device_type, "private_wifi_device") == 0) {
-                host->device_type = "windows_or_smb_device";
-                host->classification = "netbios_name";
-            }
+            refine_host_identity(host, NULL, "windows_or_smb_device", "netbios_name");
         }
     }
 
+    apply_mdns_discovery(scan);
+    apply_ssdp_discovery(scan);
+    for (uint32_t i = 0; i < scan->host_count; i++) {
+        apply_tcp_fingerprint(&scan->hosts[i]);
+    }
 }
 
 static void build_snapshot_json(const scan_result_t *scan, char *buf, size_t len) {
