@@ -1,4 +1,5 @@
 use chrono::NaiveDateTime;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 // ---------------------------------------------------------------------------
@@ -36,7 +37,7 @@ pub struct CachedAction {
 // Pending actions produced by rule evaluation
 // ---------------------------------------------------------------------------
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PendingAction {
     CreateAlert {
         tenant_id: String,

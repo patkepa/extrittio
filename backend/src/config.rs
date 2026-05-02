@@ -13,6 +13,7 @@ pub struct AppConfig {
     pub db_pool_size: u32,
     pub max_firmware_size_bytes: usize,
     pub alert_retention_days: u64,
+    pub telemetry_retention_days: u64,
 }
 
 impl AppConfig {
@@ -61,6 +62,10 @@ impl AppConfig {
                 .unwrap_or(16),
             max_firmware_size_bytes: max_firmware_mb * 1024 * 1024,
             alert_retention_days: env::var("ALERT_RETENTION_DAYS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(30),
+            telemetry_retention_days: env::var("TELEMETRY_RETENTION_DAYS")
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(30),

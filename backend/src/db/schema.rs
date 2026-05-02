@@ -221,6 +221,26 @@ diesel::table! {
 }
 
 diesel::table! {
+    rule_action_outbox (id) {
+        id -> Text,
+        tenant_id -> Text,
+        event_type -> Text,
+        aggregate_type -> Text,
+        aggregate_id -> Text,
+        payload -> Jsonb,
+        status -> Text,
+        attempts -> Int4,
+        max_attempts -> Int4,
+        available_at -> Timestamptz,
+        locked_at -> Nullable<Timestamptz>,
+        locked_by -> Nullable<Text>,
+        last_error -> Nullable<Text>,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     rule_actions (id) {
         id -> Text,
         rule_id -> Text,
@@ -312,6 +332,26 @@ diesel::table! {
 }
 
 diesel::table! {
+    telemetry_rollups_hourly (tenant_id, device_id, bucket_start) {
+        tenant_id -> Text,
+        device_id -> Text,
+        bucket_start -> Timestamptz,
+        sample_count -> Int8,
+        avg_temperature -> Nullable<Float4>,
+        min_temperature -> Nullable<Float4>,
+        max_temperature -> Nullable<Float4>,
+        avg_humidity -> Nullable<Float4>,
+        min_humidity -> Nullable<Float4>,
+        max_humidity -> Nullable<Float4>,
+        avg_battery_level -> Nullable<Float4>,
+        min_battery_level -> Nullable<Float4>,
+        max_battery_level -> Nullable<Float4>,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     users (id) {
         id -> Int4,
         username -> Text,
@@ -365,6 +405,7 @@ diesel::joinable!(network_observed_hosts -> organizations (tenant_id));
 diesel::joinable!(ota_deployments -> devices (device_id));
 diesel::joinable!(ota_deployments -> firmware_updates (firmware_update_id));
 diesel::joinable!(ota_deployments -> organizations (tenant_id));
+diesel::joinable!(rule_action_outbox -> organizations (tenant_id));
 diesel::joinable!(rule_actions -> organizations (tenant_id));
 diesel::joinable!(rule_actions -> rules (rule_id));
 diesel::joinable!(rule_conditions -> organizations (tenant_id));
@@ -376,6 +417,8 @@ diesel::joinable!(rule_cooldowns -> rules (rule_id));
 diesel::joinable!(rules -> organizations (tenant_id));
 diesel::joinable!(telemetry -> devices (device_id));
 diesel::joinable!(telemetry -> organizations (tenant_id));
+diesel::joinable!(telemetry_rollups_hourly -> devices (device_id));
+diesel::joinable!(telemetry_rollups_hourly -> organizations (tenant_id));
 diesel::joinable!(users -> organizations (tenant_id));
 diesel::joinable!(zones -> organizations (tenant_id));
 
@@ -397,6 +440,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     network_observed_hosts,
     organizations,
     ota_deployments,
+    rule_action_outbox,
     rule_actions,
     rule_conditions,
     rule_cooldowns,
@@ -404,6 +448,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     server_config,
     server_metrics,
     telemetry,
+    telemetry_rollups_hourly,
     users,
     zones,
 );

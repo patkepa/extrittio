@@ -4,7 +4,7 @@ use chrono::NaiveDateTime;
 use diesel::OptionalExtension;
 use diesel::PgConnection;
 use diesel::prelude::*;
-use diesel::sql_types::{Array, Jsonb, Text};
+use diesel::sql_types::{Array, Jsonb, Text, Timestamptz};
 use serde_json::Value as JsonValue;
 
 use crate::db::models::{NewTelemetryRecord, TelemetryRecord};
@@ -71,6 +71,74 @@ pub fn insert_telemetry(
         .values(record)
         .execute(conn)?;
     Ok(())
+}
+
+pub fn upsert_hourly_rollups(
+    conn: &mut PgConnection,
+    since: NaiveDateTime,
+    before: NaiveDateTime,
+) -> Result<usize, diesel::result::Error> {
+    diesel::sql_query(
+        r#"
+        INSERT INTO telemetry_rollups_hourly (
+            tenant_id,
+            device_id,
+            bucket_start,
+            sample_count,
+            avg_temperature,
+            min_temperature,
+            max_temperature,
+            avg_humidity,
+            min_humidity,
+            max_humidity,
+            avg_battery_level,
+            min_battery_level,
+            max_battery_level,
+            updated_at
+        )
+        SELECT
+            tenant_id,
+            device_id,
+            date_trunc('hour', received_at) AS bucket_start,
+            count(*) AS sample_count,
+            avg(temperature)::real AS avg_temperature,
+            min(temperature)::real AS min_temperature,
+            max(temperature)::real AS max_temperature,
+            avg(humidity)::real AS avg_humidity,
+            min(humidity)::real AS min_humidity,
+            max(humidity)::real AS max_humidity,
+            avg(battery_level)::real AS avg_battery_level,
+            min(battery_level)::real AS min_battery_level,
+            max(battery_level)::real AS max_battery_level,
+            now() AS updated_at
+        FROM telemetry
+        WHERE received_at >= $1
+          AND received_at < $2
+        GROUP BY tenant_id, device_id, date_trunc('hour', received_at)
+        ON CONFLICT (tenant_id, device_id, bucket_start) DO UPDATE SET
+            sample_count = EXCLUDED.sample_count,
+            avg_temperature = EXCLUDED.avg_temperature,
+            min_temperature = EXCLUDED.min_temperature,
+            max_temperature = EXCLUDED.max_temperature,
+            avg_humidity = EXCLUDED.avg_humidity,
+            min_humidity = EXCLUDED.min_humidity,
+            max_humidity = EXCLUDED.max_humidity,
+            avg_battery_level = EXCLUDED.avg_battery_level,
+            min_battery_level = EXCLUDED.min_battery_level,
+            max_battery_level = EXCLUDED.max_battery_level,
+            updated_at = now()
+        "#,
+    )
+    .bind::<Timestamptz, _>(since)
+    .bind::<Timestamptz, _>(before)
+    .execute(conn)
+}
+
+pub fn delete_older_than(
+    conn: &mut PgConnection,
+    cutoff: NaiveDateTime,
+) -> Result<usize, diesel::result::Error> {
+    diesel::delete(telemetry::table.filter(telemetry::received_at.lt(cutoff))).execute(conn)
 }
 
 pub fn latest_connection_sources_for_devices(

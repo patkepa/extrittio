@@ -1,13 +1,16 @@
 use std::sync::Arc;
 use std::sync::RwLock;
 use std::time::Duration;
+
+use chrono::Timelike;
 use tracing::{info, warn};
 
 use crate::repositories::{device_repo, network_observed_host_repo};
+use crate::rule_engine::actions::enqueue_pending_actions;
 use crate::rule_engine::cache::RuleCache;
 use crate::rule_engine::evaluate::evaluate_status_change;
 use crate::rule_engine::types::{PendingAction, StatusChange};
-use crate::services::{command_service, device_service};
+use crate::services::{command_service, device_service, telemetry_service};
 use crate::state::DbPool;
 
 /// Compute a backoff sleep duration based on consecutive failures.
@@ -22,9 +25,6 @@ pub async fn run_offline_checker(
     db_pool: DbPool,
     timeout_secs: u64,
     rule_cache: Arc<RwLock<RuleCache>>,
-    http_client: reqwest::Client,
-    zenoh_session: Arc<zenoh::Session>,
-    zenoh_metrics: Arc<crate::state::ZenohMetrics>,
 ) {
     let base_interval = Duration::from_secs(60);
     let max_backoff = Duration::from_secs(600); // 10 minutes
@@ -91,19 +91,31 @@ pub async fn run_offline_checker(
                 if count > 0 {
                     info!("Marked {} devices as offline", count);
                 }
-                // Execute pending actions from rule evaluation
-                for action in actions {
-                    let p = db_pool.clone();
-                    let c = rule_cache.clone();
-                    let cl = http_client.clone();
-                    let s = zenoh_session.clone();
-                    let m = zenoh_metrics.clone();
-                    tokio::spawn(async move {
-                        crate::zenoh_handler::subscriber::execute_action(
-                            action, &p, &c, &cl, &s, &m,
-                        )
-                        .await;
-                    });
+                if !actions.is_empty() {
+                    let action_count = actions.len();
+                    let pool = db_pool.clone();
+                    let enqueue_result = tokio::task::spawn_blocking(move || {
+                        let mut conn = pool.get().map_err(|e| e.to_string())?;
+                        enqueue_pending_actions(&mut conn, &actions)
+                    })
+                    .await;
+
+                    match enqueue_result {
+                        Ok(Ok(inserted)) => {
+                            info!(
+                                "Enqueued {} offline rule action(s) into durable outbox",
+                                inserted
+                            );
+                        }
+                        Ok(Err(e)) => warn!(
+                            "Failed to enqueue {} offline rule action(s): {}",
+                            action_count, e
+                        ),
+                        Err(e) => warn!(
+                            "Offline rule action enqueue task panicked for {} action(s): {}",
+                            action_count, e
+                        ),
+                    }
                 }
             }
             Ok(Err(msg)) => {
@@ -285,6 +297,88 @@ pub async fn run_alert_retention(db_pool: DbPool, retention_days: u64) {
                     );
                 } else {
                     warn!("Alert retention task panicked: {}", e);
+                }
+            }
+        }
+    }
+}
+
+pub async fn run_telemetry_rollup_and_retention(db_pool: DbPool, retention_days: u64) {
+    let base_interval = Duration::from_secs(3600);
+    let max_backoff = Duration::from_secs(7200);
+    let mut consecutive_failures: u32 = 0;
+    info!(
+        "Telemetry rollup and retention started ({}d retention)",
+        retention_days
+    );
+
+    loop {
+        let sleep_dur = if consecutive_failures == 0 {
+            base_interval
+        } else {
+            backoff_duration(base_interval, consecutive_failures, max_backoff)
+        };
+        tokio::time::sleep(sleep_dur).await;
+
+        let pool = db_pool.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            let mut conn = pool.get().map_err(|e| e.to_string())?;
+            let now = chrono::Utc::now().naive_utc();
+            let current_hour = now
+                - chrono::Duration::minutes(i64::from(now.minute()))
+                - chrono::Duration::seconds(i64::from(now.second()))
+                - chrono::Duration::nanoseconds(i64::from(now.nanosecond()));
+            let since = current_hour - chrono::Duration::hours(25);
+
+            let rollup_count =
+                telemetry_service::upsert_hourly_rollups(&mut conn, since, current_hour)
+                    .map_err(|e| e.to_string())?;
+
+            #[allow(clippy::cast_possible_wrap)]
+            let cutoff = now - chrono::Duration::days(retention_days as i64);
+            let deleted_count = telemetry_service::delete_older_than(&mut conn, cutoff)
+                .map_err(|e| e.to_string())?;
+
+            Ok::<(usize, usize), String>((rollup_count, deleted_count))
+        })
+        .await;
+
+        match result {
+            Ok(Ok((rollup_count, deleted_count))) => {
+                consecutive_failures = 0;
+                if rollup_count > 0 {
+                    info!("Telemetry rollup: upserted {} hourly buckets", rollup_count);
+                }
+                if deleted_count > 0 {
+                    info!("Telemetry retention: deleted {} raw rows", deleted_count);
+                }
+            }
+            Ok(Err(msg)) => {
+                consecutive_failures = consecutive_failures.saturating_add(1);
+                if consecutive_failures >= 5 {
+                    tracing::error!(
+                        "Telemetry rollup/retention: {} consecutive failures (next retry in {}s): {}",
+                        consecutive_failures,
+                        backoff_duration(base_interval, consecutive_failures, max_backoff)
+                            .as_secs(),
+                        msg,
+                    );
+                } else {
+                    warn!("Telemetry rollup/retention error: {}", msg);
+                }
+            }
+            Err(e) => {
+                consecutive_failures = consecutive_failures.saturating_add(1);
+                if consecutive_failures >= 5 {
+                    tracing::error!(
+                        "Telemetry rollup/retention: {} consecutive failures (next retry in {}s): task panicked: {}",
+                        consecutive_failures,
+                        backoff_duration(base_interval, consecutive_failures, max_backoff)
+                            .as_secs(),
+                        e,
+                    );
+                } else {
+                    warn!("Telemetry rollup/retention task panicked: {}", e);
                 }
             }
         }

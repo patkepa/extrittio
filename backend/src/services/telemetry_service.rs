@@ -73,3 +73,18 @@ pub fn record(
 
     Ok(Some(device))
 }
+
+pub fn upsert_hourly_rollups(
+    conn: &mut PgConnection,
+    since: NaiveDateTime,
+    before: NaiveDateTime,
+) -> Result<usize, AppError> {
+    Ok(telemetry_repo::upsert_hourly_rollups(conn, since, before)?)
+}
+
+pub fn delete_older_than(
+    conn: &mut PgConnection,
+    cutoff: NaiveDateTime,
+) -> Result<usize, AppError> {
+    Ok(telemetry_repo::delete_older_than(conn, cutoff)?)
+}

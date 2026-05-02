@@ -6,9 +6,46 @@ use serde_json::Value as JsonValue;
 use super::schema::{
     alerts, api_keys, app_metrics, ca_certificates, command_history, device_certificates,
     device_configs, device_logs, device_shadows, device_types, devices, firmware_blobs,
-    firmware_updates, fleets, network_observed_hosts, ota_deployments, rule_actions,
-    rule_conditions, rule_cooldowns, rules, server_config, server_metrics, telemetry, users, zones,
+    firmware_updates, fleets, network_observed_hosts, ota_deployments, rule_action_outbox,
+    rule_actions, rule_conditions, rule_cooldowns, rules, server_config, server_metrics, telemetry,
+    telemetry_rollups_hourly, users, zones,
 };
+
+// ---------------------------------------------------------------------------
+// Rule Action Outbox
+// ---------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug, Clone)]
+#[diesel(table_name = rule_action_outbox)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct RuleActionOutboxEvent {
+    pub id: String,
+    pub tenant_id: String,
+    pub event_type: String,
+    pub aggregate_type: String,
+    pub aggregate_id: String,
+    pub payload: JsonValue,
+    pub status: String,
+    pub attempts: i32,
+    pub max_attempts: i32,
+    pub available_at: NaiveDateTime,
+    pub locked_at: Option<NaiveDateTime>,
+    pub locked_by: Option<String>,
+    pub last_error: Option<String>,
+    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = rule_action_outbox)]
+pub struct NewRuleActionOutboxEvent {
+    pub id: String,
+    pub tenant_id: String,
+    pub event_type: String,
+    pub aggregate_type: String,
+    pub aggregate_id: String,
+    pub payload: JsonValue,
+}
 
 // ---------------------------------------------------------------------------
 // CA Certificates
@@ -331,6 +368,27 @@ pub struct NewTelemetryRecord {
     pub speed: Option<f32>,
     pub altitude: Option<f32>,
     pub heading: Option<f32>,
+}
+
+#[derive(Queryable, Selectable, Debug, Clone)]
+#[diesel(table_name = telemetry_rollups_hourly)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct TelemetryRollupHourly {
+    pub tenant_id: String,
+    pub device_id: String,
+    pub bucket_start: NaiveDateTime,
+    pub sample_count: i64,
+    pub avg_temperature: Option<f32>,
+    pub min_temperature: Option<f32>,
+    pub max_temperature: Option<f32>,
+    pub avg_humidity: Option<f32>,
+    pub min_humidity: Option<f32>,
+    pub max_humidity: Option<f32>,
+    pub avg_battery_level: Option<f32>,
+    pub min_battery_level: Option<f32>,
+    pub max_battery_level: Option<f32>,
+    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
 }
 
 // ---------------------------------------------------------------------------
