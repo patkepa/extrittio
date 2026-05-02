@@ -1,4 +1,4 @@
-import type { Device, Fleet } from '../../types/api';
+import type { Device, DeviceType, Fleet } from '../../types/api';
 import { STATUS_COLORS, FLEET_COLOR, DEFAULT_COLOR, TYPE_ABBREVS } from './constants';
 import { getUptimeArcAngle, getHealthTier } from './health-utils';
 
@@ -18,6 +18,8 @@ export interface GraphNode {
   connection?: NonNullable<Device['declared_connections']>[number];
   status?: string;
   deviceTypeName?: string;
+  deviceTypeIcon?: string;
+  deviceTypeColor?: string;
   typeAbbrev?: string;
   // Health data (computed from last_seen_at / uptime_seconds)
   lastSeenTimestamp?: number; // parsed epoch ms, cached for per-frame staleness
@@ -55,6 +57,67 @@ const DEVICE_RING_START_RADIUS = 120;
 const DEVICE_RING_STEP = 58;
 const DEVICE_RING_MIN_SPACING = 42;
 const EXTERNAL_COLOR = '#7B8B9A';
+
+const CONNECTION_TYPE_VISUALS: Array<[string[], { icon: string; color: string }]> = [
+  [['router', 'gateway', 'network_gateway'], { icon: 'globe-network', color: '#8ABBFF' }],
+  [['playstation', 'xbox', 'nintendo', 'console'], { icon: 'console', color: '#D982FF' }],
+  [
+    ['network_device', 'network_gear', 'tp_link', 'netgear', 'switch', 'access_point'],
+    { icon: 'data-connection', color: '#36CFC9' },
+  ],
+  [['private_wifi', 'wifi', 'wi_fi', 'wireless'], { icon: 'cell-tower', color: '#36CFC9' }],
+  [['apple_tv', 'appletv'], { icon: 'media', color: '#A7B0C0' }],
+  [['iphone', 'ipad', 'watch'], { icon: 'mobile-phone', color: '#A7B0C0' }],
+  [['mac', 'imac', 'macbook'], { icon: 'desktop', color: '#A7B0C0' }],
+  [['apple_device'], { icon: 'desktop', color: '#A7B0C0' }],
+  [['android', 'samsung', 'google_device', 'xiaomi', 'huawei'], { icon: 'mobile-phone', color: '#7BD88F' }],
+  [['google_home', 'google_nest', 'nest'], { icon: 'home', color: '#7BD88F' }],
+  [['chromecast', 'roku', 'fire_tv', 'android_tv', 'smart_tv', 'tv', 'lg_device'], { icon: 'media', color: '#D982FF' }],
+  [['raspberry_pi', 'esp32', 'espressif', 'iot'], { icon: 'sim-card', color: '#F29D49' }],
+  [['printer'], { icon: 'print', color: '#F7C948' }],
+  [['nas', 'server', 'smb'], { icon: 'server', color: '#8ABBFF' }],
+  [['camera', 'doorbell'], { icon: 'camera', color: '#E76A6E' }],
+  [['speaker', 'sonos', 'spotify_connect'], { icon: 'volume-up', color: '#D982FF' }],
+  [['hue', 'wemo', 'smart_home'], { icon: 'lightbulb', color: '#F7C948' }],
+  [['sensor'], { icon: 'sensor', color: '#7BD88F' }],
+  [['phone'], { icon: 'phone', color: '#7BD88F' }],
+  [['vehicle'], { icon: 'known-vehicle', color: '#F29D49' }],
+  [['host', 'ip'], { icon: 'ip-address', color: EXTERNAL_COLOR }],
+];
+
+function normalizeDeviceTypeKey(value?: string | null): string {
+  return value?.trim().toLowerCase().replaceAll('-', '_') ?? '';
+}
+
+function getConnectionSearchText(
+  connection: NonNullable<Device['declared_connections']>[number],
+): string {
+  return [
+    connection.device_type,
+    connection.connection_type,
+    connection.label,
+    connection.source,
+    connection.external_id,
+  ]
+    .map(normalizeDeviceTypeKey)
+    .filter(Boolean)
+    .join(' ');
+}
+
+function getConnectionVisual(connection: NonNullable<Device['declared_connections']>[number]): {
+  icon: string;
+  color: string;
+} {
+  const searchText = getConnectionSearchText(connection);
+
+  for (const [tokens, visual] of CONNECTION_TYPE_VISUALS) {
+    if (tokens.some((token) => searchText.includes(token))) {
+      return visual;
+    }
+  }
+
+  return { icon: 'cube', color: EXTERNAL_COLOR };
+}
 
 function connectionNodeId(sourceDeviceId: string, connectionId: string): string {
   return `connection-${sourceDeviceId}-${encodeURIComponent(connectionId)}`;
@@ -117,11 +180,15 @@ export function buildForceGraphData(
   devices: Device[],
   fleets: Fleet[],
   prevNodes?: GraphNode[],
+  deviceTypes?: DeviceType[],
 ): GraphData {
   const nodes: GraphNode[] = [];
   const links: GraphLink[] = [];
   const nodeMap = new Map<string, GraphNode>();
   const deviceNodeIdByDeviceId = new Map<string, string>();
+  const deviceTypeByName = new Map(
+    (deviceTypes ?? []).map((deviceType) => [normalizeDeviceTypeKey(deviceType.name), deviceType]),
+  );
 
   const prevNodeMap = new Map<string, GraphNode>();
   if (prevNodes) {
@@ -256,6 +323,8 @@ export function buildForceGraphData(
       device,
       status: device.status,
       deviceTypeName: device.device_type_name,
+      deviceTypeIcon: device.device_type_icon,
+      deviceTypeColor: device.device_type_color_hex,
       typeAbbrev: getTypeAbbrev(device.device_type_name),
       lastSeenTimestamp,
       uptimeSeconds,
@@ -303,16 +372,21 @@ export function buildForceGraphData(
         if (!nodeMap.has(targetNodeId)) {
           const prev = prevNodeMap.get(targetNodeId);
           const sourceLayout = deviceLayoutById.get(device.id);
+          const deviceTypeName = connection.device_type ?? connection.connection_type;
+          const deviceType = deviceTypeByName.get(normalizeDeviceTypeKey(deviceTypeName));
+          const visual = getConnectionVisual(connection);
           const node: GraphNode = {
             ...prev,
             id: targetNodeId,
             name: getConnectionLabel(connection),
             type: 'external',
             val: 2,
-            color: STATUS_COLORS[connection.status ?? ''] ?? EXTERNAL_COLOR,
+            color: STATUS_COLORS[connection.status ?? ''] ?? deviceType?.color_hex ?? EXTERNAL_COLOR,
             connection,
             status: connection.status ?? 'external',
-            deviceTypeName: connection.device_type ?? connection.connection_type,
+            deviceTypeName,
+            deviceTypeIcon: deviceType?.icon ?? visual.icon,
+            deviceTypeColor: deviceType?.color_hex ?? visual.color,
             typeAbbrev: '?',
             neighbors: [],
             links: [],

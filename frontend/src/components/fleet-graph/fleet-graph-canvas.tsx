@@ -1,10 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- react-force-graph-2d lacks proper TS types */
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { getIconPaths as getBlueprintIconPaths, IconSize } from '@blueprintjs/icons';
+import type { IconName } from '@blueprintjs/icons';
 import ForceGraph2D from 'react-force-graph-2d';
 import type { GraphData, GraphNode, GraphLink } from './build-force-graph-data';
 import type { Device } from '../../types/api';
 import { getHealthTier, getStalenessColor, getPulseFrequency } from './health-utils';
-import { TIER_COLORS, TYPE_ICON_PATHS, FALLBACK_ICON_PATHS, SELECTION_COLOR } from './constants';
+import { TIER_COLORS, SELECTION_COLOR } from './constants';
 import type { ViewportInfo } from './fleet-graph-minimap';
 import { useForceSimulation } from './use-force-simulation';
 import { useLassoSelection } from './use-lasso-selection';
@@ -49,6 +51,7 @@ const CLICK_DIST_THRESHOLD = 12;
 
 // --- Pre-built Path2D cache for device-type icons (16×16 viewBox) ---
 const iconPathCache = new Map<string, Path2D[]>();
+const DEFAULT_DEVICE_TYPE_ICON: IconName = 'cube';
 
 function escapeHtml(value: string): string {
   return value
@@ -101,15 +104,50 @@ function formatExternalTooltip(node: GraphNode): string {
   `;
 }
 
-function getIconPaths(deviceTypeName?: string): Path2D[] {
-  const key = deviceTypeName?.toLowerCase() ?? '__fallback__';
+function getIconPaths(iconName?: string): Path2D[] {
+  const key = iconName?.trim().toLowerCase().replaceAll('_', '-') || DEFAULT_DEVICE_TYPE_ICON;
   let cached = iconPathCache.get(key);
   if (cached) return cached;
 
-  const svgPaths = TYPE_ICON_PATHS[key] ?? FALLBACK_ICON_PATHS;
+  const svgPaths =
+    (getBlueprintIconPaths(key as IconName, IconSize.STANDARD) as string[] | undefined) ??
+    getBlueprintIconPaths(DEFAULT_DEVICE_TYPE_ICON, IconSize.STANDARD);
   cached = svgPaths.map((d) => new Path2D(d));
   iconPathCache.set(key, cached);
   return cached;
+}
+
+function colorWithAlpha(color: string | undefined, alpha: number): string {
+  const match = /^#?([0-9a-f]{6})$/i.exec(color ?? '');
+  const hex = match?.[1];
+  if (!hex) return `rgba(123,139,154,${alpha})`;
+
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function drawRoundedRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number,
+) {
+  const r = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + width - r, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+  ctx.lineTo(x + width, y + height - r);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+  ctx.lineTo(x + r, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
 }
 
 /** Draw a Blueprint icon (16×16 paths) centered at (cx, cy), scaled to fit `size`. */
@@ -505,20 +543,30 @@ export const FleetGraphCanvas = memo(
           }
         } else if (isExternal) {
           ctx.shadowBlur = 0;
-          const side = radius * 2;
-          ctx.save();
-          ctx.translate(node.x!, node.y!);
-          ctx.rotate(Math.PI / 4);
-          ctx.setLineDash([3, 3]);
-          ctx.strokeStyle = shouldDim ? `rgba(123,139,154,${DIM_OPACITY})` : node.color;
-          ctx.lineWidth = isHovered ? 2 : 1.5;
-          ctx.strokeRect(-side / 2, -side / 2, side, side);
+          const typeColor = node.deviceTypeColor ?? node.color;
+          const side = radius * 2.35;
+          const rx = node.x! - side / 2;
+          const ry = node.y! - side / 2;
+
+          drawRoundedRect(ctx, rx, ry, side, side, 4);
+          ctx.fillStyle = colorWithAlpha(typeColor, shouldDim ? 0.05 : 0.18);
+          ctx.fill();
+          ctx.setLineDash([2.5, 3.5]);
+          ctx.strokeStyle = shouldDim
+            ? colorWithAlpha(typeColor, DIM_OPACITY)
+            : colorWithAlpha(typeColor, isHovered ? 0.95 : 0.72);
+          ctx.lineWidth = isHovered ? 2 : 1.4;
+          ctx.stroke();
           ctx.setLineDash([]);
-          ctx.fillStyle = shouldDim
-            ? `rgba(123,139,154,${DIM_OPACITY * 0.35})`
-            : 'rgba(123,139,154,0.16)';
-          ctx.fillRect(-side / 2, -side / 2, side, side);
-          ctx.restore();
+
+          const stripHeight = Math.max(2, side * 0.14);
+          drawRoundedRect(ctx, rx, ry + side - stripHeight, side, stripHeight, 2);
+          ctx.fillStyle = shouldDim ? colorWithAlpha(node.color, DIM_OPACITY) : node.color;
+          ctx.fill();
+
+          const iconPaths = getIconPaths(node.deviceTypeIcon);
+          ctx.fillStyle = shouldDim ? `rgba(255,255,255,${DIM_OPACITY})` : '#ffffff';
+          drawIcon(ctx, iconPaths, node.x!, node.y! - stripHeight / 2, radius * 1.35);
 
           if (showDeviceLabels) {
             const fontSize = Math.max(9, 11 / globalScale);
@@ -592,7 +640,7 @@ export const FleetGraphCanvas = memo(
             );
           }
 
-          const iconPaths = getIconPaths(node.deviceTypeName);
+          const iconPaths = getIconPaths(node.deviceTypeIcon);
           const iconSize = effectiveRadius * 1.2;
           ctx.fillStyle = '#ffffff';
           drawIcon(ctx, iconPaths, node.x!, node.y!, iconSize);
