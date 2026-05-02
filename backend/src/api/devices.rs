@@ -1,5 +1,5 @@
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
+use crate::auth::context::RequestContext;
 use crate::db::models::{NewDevice, UpdateDevice};
 use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse, PaginationParams};
@@ -250,12 +251,14 @@ pub fn router() -> Router<Arc<AppState>> {
 )]
 pub(crate) async fn list_devices(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Query(params): Query<ListDevicesQuery>,
 ) -> Result<Json<PaginatedResponse<DeviceResponse>>, AppError> {
     let (limit, offset) = pagination::clamp(params.limit, params.offset);
 
     let response = run_db(&state.db_pool, move |conn| {
         let (results, total) = device_service::list_devices(
+            &ctx,
             conn,
             params.status.as_deref(),
             params.search.as_deref(),
@@ -287,10 +290,11 @@ pub(crate) async fn list_devices(
 )]
 pub(crate) async fn get_device(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Path(id): Path<String>,
 ) -> Result<Json<DeviceResponse>, AppError> {
     let response = run_db(&state.db_pool, move |conn| {
-        let joined = device_service::get_device(conn, &id)?;
+        let joined = device_service::get_device(&ctx, conn, &id)?;
         Ok(to_device_response(joined))
     })
     .await?;
@@ -313,6 +317,7 @@ pub(crate) async fn get_device(
 )]
 pub(crate) async fn create_device(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Json(body): Json<NewDeviceRequest>,
 ) -> Result<(StatusCode, Json<DeviceResponse>), AppError> {
     if body.name.trim().is_empty() {
@@ -331,9 +336,9 @@ pub(crate) async fn create_device(
             firmware: body.firmware.unwrap_or_else(|| "unknown".to_string()),
         };
 
-        device_service::create_device(conn, &new_device)?;
+        device_service::create_device(&ctx, conn, &new_device)?;
 
-        let joined = device_service::get_device(conn, &id_for_read)?;
+        let joined = device_service::get_device(&ctx, conn, &id_for_read)?;
 
         Ok(to_device_response(joined))
     })
@@ -362,6 +367,7 @@ pub(crate) async fn create_device(
 )]
 pub(crate) async fn update_device(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Path(id): Path<String>,
     Json(body): Json<UpdateDeviceRequest>,
 ) -> Result<Json<DeviceResponse>, AppError> {
@@ -381,7 +387,7 @@ pub(crate) async fn update_device(
             ..Default::default()
         };
 
-        let joined = device_service::update_device(conn, &id, &changeset)?;
+        let joined = device_service::update_device(&ctx, conn, &id, &changeset)?;
 
         Ok(to_device_response(joined))
     })
@@ -407,10 +413,11 @@ pub(crate) async fn update_device(
 )]
 pub(crate) async fn delete_device(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
     run_db(&state.db_pool, move |conn| {
-        device_service::delete_device(conn, &id)
+        device_service::delete_device(&ctx, conn, &id)
     })
     .await?;
 
@@ -431,9 +438,11 @@ pub(crate) async fn delete_device(
 )]
 pub(crate) async fn restart_device(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
-    command_service::send_command(
+    command_service::send_command_as_user(
+        &ctx,
         &state.db_pool,
         &state.zenoh_session,
         &id,
@@ -460,10 +469,12 @@ pub(crate) async fn restart_device(
 )]
 pub(crate) async fn trigger_ota(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Path(id): Path<String>,
     Json(body): Json<TriggerOtaRequest>,
 ) -> Result<StatusCode, AppError> {
     device_service::trigger_ota(
+        &ctx,
         &state.db_pool,
         &state.zenoh_session,
         &id,
@@ -478,6 +489,7 @@ pub(crate) async fn trigger_ota(
 /// Bulk change fleet assignment for multiple devices.
 pub(crate) async fn bulk_change_fleet(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Json(body): Json<BulkFleetRequest>,
 ) -> Result<Json<BulkAffectedResponse>, AppError> {
     let target_fleet_id = body.fleet_id.ok_or_else(|| {
@@ -486,6 +498,7 @@ pub(crate) async fn bulk_change_fleet(
 
     let response = run_db(&state.db_pool, move |conn| {
         let ids = device_service::resolve_target_ids(
+            &ctx,
             conn,
             body.device_ids.as_deref(),
             body.select_all.unwrap_or(false),
@@ -494,7 +507,7 @@ pub(crate) async fn bulk_change_fleet(
             body.filters.as_ref().and_then(|f| f.fleet_id),
             MAX_BULK_SIZE,
         )?;
-        let affected = device_service::bulk_change_fleet(conn, &ids, target_fleet_id)?;
+        let affected = device_service::bulk_change_fleet(&ctx, conn, &ids, target_fleet_id)?;
         Ok(BulkAffectedResponse {
             affected: affected as i64,
         })
@@ -507,10 +520,12 @@ pub(crate) async fn bulk_change_fleet(
 /// Bulk delete multiple devices.
 pub(crate) async fn bulk_delete_devices(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Json(body): Json<BulkDeviceRequest>,
 ) -> Result<Json<BulkAffectedResponse>, AppError> {
     let response = run_db(&state.db_pool, move |conn| {
         let ids = device_service::resolve_target_ids(
+            &ctx,
             conn,
             body.device_ids.as_deref(),
             body.select_all.unwrap_or(false),
@@ -519,7 +534,7 @@ pub(crate) async fn bulk_delete_devices(
             body.filters.as_ref().and_then(|f| f.fleet_id),
             MAX_BULK_SIZE,
         )?;
-        let deleted = device_service::bulk_delete(conn, &ids)?;
+        let deleted = device_service::bulk_delete(&ctx, conn, &ids)?;
         Ok(BulkAffectedResponse {
             affected: deleted as i64,
         })
@@ -532,10 +547,15 @@ pub(crate) async fn bulk_delete_devices(
 /// Bulk restart multiple devices.
 pub(crate) async fn bulk_restart_devices(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Json(body): Json<BulkDeviceRequest>,
 ) -> Result<Json<BulkResultResponse>, AppError> {
+    command_service::authorize_send_commands(&ctx)?;
+
+    let ctx_for_resolve = ctx.clone();
     let ids = run_db(&state.db_pool, move |conn| {
         device_service::resolve_target_ids(
+            &ctx_for_resolve,
             conn,
             body.device_ids.as_deref(),
             body.select_all.unwrap_or(false),
@@ -552,7 +572,8 @@ pub(crate) async fn bulk_restart_devices(
     let mut errors = Vec::new();
 
     for device_id in &ids {
-        match command_service::send_command(
+        match command_service::send_command_as_user(
+            &ctx,
             &state.db_pool,
             &state.zenoh_session,
             device_id,
@@ -583,12 +604,16 @@ pub(crate) async fn bulk_restart_devices(
 /// Bulk trigger OTA firmware update on multiple devices.
 pub(crate) async fn bulk_trigger_ota(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Json(body): Json<BulkOtaRequest>,
 ) -> Result<Json<BulkResultResponse>, AppError> {
     let firmware_update_id = body.firmware_update_id;
+    device_service::authorize_deploy_firmware(&ctx)?;
 
+    let ctx_for_resolve = ctx.clone();
     let ids = run_db(&state.db_pool, move |conn| {
         device_service::resolve_target_ids(
+            &ctx_for_resolve,
             conn,
             body.device_ids.as_deref(),
             body.select_all.unwrap_or(false),
@@ -606,6 +631,7 @@ pub(crate) async fn bulk_trigger_ota(
 
     for device_id in &ids {
         match device_service::trigger_ota(
+            &ctx,
             &state.db_pool,
             &state.zenoh_session,
             device_id,
@@ -666,13 +692,15 @@ pub struct OtaDeploymentResponse {
 )]
 pub(crate) async fn list_ota_deployments(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Path(id): Path<String>,
     Query(params): Query<PaginationParams>,
 ) -> Result<Json<PaginatedResponse<OtaDeploymentResponse>>, AppError> {
     let (limit, offset) = pagination::clamp(params.limit, params.offset);
 
     let response = run_db(&state.db_pool, move |conn| {
-        let (results, total) = device_service::list_ota_deployments(conn, &id, limit, offset)?;
+        let (results, total) =
+            device_service::list_ota_deployments(&ctx, conn, &id, limit, offset)?;
 
         let data = results
             .into_iter()

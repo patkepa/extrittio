@@ -1,5 +1,5 @@
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     routing::get,
@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
+use crate::auth::context::RequestContext;
 use crate::db::models::CommandRecord;
 use crate::error::AppError;
 use crate::services::command_service;
@@ -96,6 +97,7 @@ pub fn router() -> Router<Arc<AppState>> {
 )]
 pub(crate) async fn send_command(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Path(id): Path<String>,
     Json(body): Json<SendCommandRequest>,
 ) -> Result<(StatusCode, Json<CommandResponse>), AppError> {
@@ -104,7 +106,8 @@ pub(crate) async fn send_command(
     }
 
     let params = body.params.unwrap_or_default();
-    let record = command_service::send_command(
+    let record = command_service::send_command_as_user(
+        &ctx,
         &state.db_pool,
         &state.zenoh_session,
         &id,
@@ -133,13 +136,15 @@ pub(crate) async fn send_command(
 )]
 pub(crate) async fn list_commands(
     State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
     Path(id): Path<String>,
     Query(params): Query<CommandsQuery>,
 ) -> Result<Json<Vec<CommandResponse>>, AppError> {
     let response = run_db(&state.db_pool, move |conn| {
         let limit = params.limit.unwrap_or(50).min(500);
 
-        let records = command_service::list_commands(conn, &id, params.status.as_deref(), limit)?;
+        let records =
+            command_service::list_commands(&ctx, conn, &id, params.status.as_deref(), limit)?;
 
         Ok(records.into_iter().map(to_command_response).collect())
     })

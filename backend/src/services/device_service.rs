@@ -7,6 +7,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::{info, warn};
 
+use crate::auth::context::RequestContext;
+use crate::auth::policy::{self, Permission};
 use crate::db::models::{NewDevice, NewDeviceLog, NewDeviceShadow, NewOtaDeployment, UpdateDevice};
 use crate::error::AppError;
 use crate::repositories::{
@@ -129,7 +131,13 @@ fn hydrate_network_observed_hosts(
 }
 
 /// Create a device and its associated shadow record atomically.
-pub fn create_device(conn: &mut PgConnection, new_device: &NewDevice) -> Result<(), AppError> {
+pub fn create_device(
+    ctx: &RequestContext,
+    conn: &mut PgConnection,
+    new_device: &NewDevice,
+) -> Result<(), AppError> {
+    policy::require(ctx, Permission::ManageDevices)?;
+
     conn.transaction(|conn| {
         device_repo::insert_device(conn, new_device)?;
         let new_shadow = NewDeviceShadow {
@@ -243,6 +251,7 @@ pub fn auto_register_device(
 /// happens after the transaction commits so the connection is not held across
 /// the async boundary.
 pub async fn trigger_ota(
+    ctx: &RequestContext,
     pool: &DbPool,
     zenoh_session: &Arc<zenoh::Session>,
     device_id: &str,
@@ -250,6 +259,8 @@ pub async fn trigger_ota(
     public_url: &str,
     zenoh_metrics: &ZenohMetrics,
 ) -> Result<(), AppError> {
+    policy::require(ctx, Permission::DeployFirmware)?;
+
     let d_id = device_id.to_string();
     let d_id_for_publish = d_id.clone();
     let public_url = public_url.to_string();
@@ -305,6 +316,10 @@ pub async fn trigger_ota(
     Ok(())
 }
 
+pub fn authorize_deploy_firmware(ctx: &RequestContext) -> Result<(), AppError> {
+    policy::require(ctx, Permission::DeployFirmware)
+}
+
 fn firmware_download_url(public_url: &str, stored_url: &str) -> String {
     if stored_url.starts_with("http://") || stored_url.starts_with("https://") {
         return stored_url.to_string();
@@ -319,6 +334,7 @@ fn firmware_download_url(public_url: &str, stored_url: &str) -> String {
 
 /// List devices with filtering and pagination.
 pub fn list_devices(
+    ctx: &RequestContext,
     conn: &mut PgConnection,
     status_filter: Option<&str>,
     search_filter: Option<&str>,
@@ -326,6 +342,8 @@ pub fn list_devices(
     limit: i64,
     offset: i64,
 ) -> Result<(Vec<device_repo::DeviceWithJoins>, i64), AppError> {
+    policy::require(ctx, Permission::ReadDevices)?;
+
     let (mut devices, total) = device_repo::list_devices(
         conn,
         status_filter,
@@ -341,9 +359,12 @@ pub fn list_devices(
 
 /// Get a single device with joined type and fleet info.
 pub fn get_device(
+    ctx: &RequestContext,
     conn: &mut PgConnection,
     device_id: &str,
 ) -> Result<device_repo::DeviceWithJoins, AppError> {
+    policy::require(ctx, Permission::ReadDevices)?;
+
     let device = device_repo::find_device_with_joins(conn, device_id)?;
     let mut devices = vec![device];
     hydrate_declared_connections_from_telemetry(conn, &mut devices)?;
@@ -353,17 +374,26 @@ pub fn get_device(
 
 /// Update a device. Returns the updated device with joins.
 pub fn update_device(
+    ctx: &RequestContext,
     conn: &mut PgConnection,
     device_id: &str,
     changeset: &UpdateDevice,
 ) -> Result<device_repo::DeviceWithJoins, AppError> {
+    policy::require(ctx, Permission::ManageDevices)?;
+
     device_repo::find_device(conn, device_id)?;
     device_repo::update_device(conn, device_id, changeset)?;
     Ok(device_repo::find_device_with_joins(conn, device_id)?)
 }
 
 /// Delete a device by ID.
-pub fn delete_device(conn: &mut PgConnection, device_id: &str) -> Result<(), AppError> {
+pub fn delete_device(
+    ctx: &RequestContext,
+    conn: &mut PgConnection,
+    device_id: &str,
+) -> Result<(), AppError> {
+    policy::require(ctx, Permission::ManageDevices)?;
+
     let deleted = device_repo::delete_device(conn, device_id)?;
     if !deleted {
         return Err(AppError::NotFound(format!(
@@ -380,6 +410,7 @@ pub fn delete_device(conn: &mut PgConnection, device_id: &str) -> Result<(), App
 /// `BadRequest` if `None`).
 /// Returns `BadRequest` if the result exceeds `max_size`.
 pub fn resolve_target_ids(
+    ctx: &RequestContext,
     conn: &mut PgConnection,
     device_ids: Option<&[String]>,
     select_all: bool,
@@ -388,6 +419,8 @@ pub fn resolve_target_ids(
     fleet_id_filter: Option<i32>,
     max_size: usize,
 ) -> Result<Vec<String>, AppError> {
+    policy::require(ctx, Permission::ReadDevices)?;
+
     let ids = if select_all {
         device_repo::resolve_device_ids(conn, status_filter, search_filter, fleet_id_filter)?
     } else {
@@ -412,22 +445,32 @@ pub fn resolve_target_ids(
 
 /// Bulk-change fleet assignment.
 pub fn bulk_change_fleet(
+    ctx: &RequestContext,
     conn: &mut PgConnection,
     ids: &[String],
     fleet_id: Option<i32>,
 ) -> Result<usize, AppError> {
+    policy::require(ctx, Permission::ManageDevices)?;
+
     let now = chrono::Utc::now().naive_utc();
     Ok(device_repo::bulk_update_fleet(conn, ids, fleet_id, now)?)
 }
 
 /// Bulk-delete devices.
-pub fn bulk_delete(conn: &mut PgConnection, ids: &[String]) -> Result<usize, AppError> {
+pub fn bulk_delete(
+    ctx: &RequestContext,
+    conn: &mut PgConnection,
+    ids: &[String],
+) -> Result<usize, AppError> {
+    policy::require(ctx, Permission::ManageDevices)?;
+
     Ok(device_repo::bulk_delete_devices(conn, ids)?)
 }
 
 /// List OTA deployments for a device with pagination.
 /// Returns 404 if the device does not exist.
 pub fn list_ota_deployments(
+    ctx: &RequestContext,
     conn: &mut PgConnection,
     device_id: &str,
     limit: i64,
@@ -442,6 +485,8 @@ pub fn list_ota_deployments(
     ),
     AppError,
 > {
+    policy::require(ctx, Permission::ReadDevices)?;
+
     device_repo::find_device(conn, device_id)?;
     Ok(firmware_repo::list_ota_deployments(
         conn, device_id, limit, offset,

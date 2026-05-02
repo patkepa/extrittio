@@ -7,11 +7,17 @@ use std::sync::atomic::Ordering;
 
 use diesel::PgConnection;
 
+use crate::auth::context::RequestContext;
+use crate::auth::policy::{self, Permission};
 use crate::db::models::{CommandRecord, NewCommandRecord};
 use crate::error::AppError;
 use crate::repositories::{command_repo, device_repo};
 use crate::state::{DbPool, ZenohMetrics, run_db};
 use extrittio_common::extrittio::DeviceCommand;
+
+pub fn authorize_send_commands(ctx: &RequestContext) -> Result<(), AppError> {
+    policy::require(ctx, Permission::SendCommands)
+}
 
 /// Send a command to a device: verify it exists, persist the record, publish via
 /// Zenoh, then return the persisted record (with DB-generated timestamps).
@@ -23,6 +29,28 @@ use extrittio_common::extrittio::DeviceCommand;
 ///
 /// Returns `AppError::NotFound` if the device does not exist, or other
 /// `AppError` variants on database/Zenoh failures.
+#[allow(clippy::implicit_hasher)]
+pub async fn send_command_as_user(
+    ctx: &RequestContext,
+    pool: &DbPool,
+    zenoh_session: &Arc<zenoh::Session>,
+    device_id: &str,
+    command: &str,
+    params: HashMap<String, String>,
+    zenoh_metrics: &ZenohMetrics,
+) -> Result<CommandRecord, AppError> {
+    policy::require(ctx, Permission::SendCommands)?;
+    send_command(
+        pool,
+        zenoh_session,
+        device_id,
+        command,
+        params,
+        zenoh_metrics,
+    )
+    .await
+}
+
 #[allow(clippy::implicit_hasher)]
 pub async fn send_command(
     pool: &DbPool,
@@ -116,11 +144,14 @@ pub fn handle_response(
 /// List commands for a device with optional status filter.
 /// Returns 404 if the device does not exist.
 pub fn list_commands(
+    ctx: &RequestContext,
     conn: &mut PgConnection,
     device_id: &str,
     status: Option<&str>,
     limit: i64,
 ) -> Result<Vec<CommandRecord>, AppError> {
+    policy::require(ctx, Permission::ReadCommands)?;
+
     device_repo::find_device(conn, device_id)?;
     Ok(command_repo::list_commands(conn, device_id, status, limit)?)
 }

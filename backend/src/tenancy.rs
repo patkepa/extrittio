@@ -1,5 +1,7 @@
 use std::fmt;
 
+pub const DEFAULT_TENANT_ID: &str = "default";
+
 /// Stable tenant identifier carried through request and service boundaries.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TenantId(String);

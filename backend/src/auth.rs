@@ -5,6 +5,8 @@ use argon2::{
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 
+use crate::tenancy::DEFAULT_TENANT_ID;
+
 pub mod context;
 pub mod policy;
 
@@ -13,6 +15,9 @@ pub struct Claims {
     pub sub: i32,
     pub username: String,
     pub role: String,
+    pub tenant_id: Option<String>,
+    #[serde(default)]
+    pub scopes: Vec<String>,
     pub exp: usize,
 }
 
@@ -48,6 +53,8 @@ pub fn create_token(
         sub: user_id,
         username: username.to_string(),
         role: role.to_string(),
+        tenant_id: Some(DEFAULT_TENANT_ID.to_string()),
+        scopes: Vec::new(),
         exp: expiration,
     };
 
