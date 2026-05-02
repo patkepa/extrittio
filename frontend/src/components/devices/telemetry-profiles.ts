@@ -72,11 +72,39 @@ const MAC_DEVICE_PROFILE: DeviceProfile = {
   ],
 };
 
-const PROFILES: Record<string, DeviceProfile> = {
-  'mac-device': MAC_DEVICE_PROFILE,
+const NETWORK_ANALYZER_PROFILE: DeviceProfile = {
+  currentValues: [
+    { label: 'Reachable Hosts', key: 'host_count', color: '#0F9960', unit: '' },
+    { label: 'Targets Scanned', key: 'targets_scanned', color: '#2965CC', unit: '' },
+  ],
+  charts: [
+    { label: 'Reachable Hosts', key: 'host_count', color: '#0F9960', unit: '' },
+  ],
+  tableColumns: [
+    { label: 'Hosts', key: 'host_count', color: '#0F9960', unit: '' },
+    { label: 'Targets', key: 'targets_scanned', color: '#2965CC', unit: '' },
+  ],
+  infoFields: [
+    { label: 'Kind', key: 'kind' },
+    { label: 'Schema', key: 'schema' },
+  ],
 };
 
-export function getProfile(deviceTypeName: string): DeviceProfile {
+const PROFILES: Record<string, DeviceProfile> = {
+  'mac-device': MAC_DEVICE_PROFILE,
+  'network-analyzer': NETWORK_ANALYZER_PROFILE,
+  'esp32-network-analyzer': NETWORK_ANALYZER_PROFILE,
+  'esp32-network-analyzer-idf-c': NETWORK_ANALYZER_PROFILE,
+};
+
+export function getProfile(deviceTypeName: string, telemetryKind?: unknown): DeviceProfile {
+  if (telemetryKind === 'network_analyzer_scan') return NETWORK_ANALYZER_PROFILE;
+
+  const normalizedName = deviceTypeName.toLowerCase();
+  if (normalizedName.includes('network-analyzer') || normalizedName.includes('network_analyzer')) {
+    return NETWORK_ANALYZER_PROFILE;
+  }
+
   return PROFILES[deviceTypeName] ?? DEFAULT_PROFILE;
 }
 

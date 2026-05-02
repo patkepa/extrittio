@@ -32,17 +32,30 @@ function formatValue(v: number | string | null | undefined): string {
 }
 
 /** Parse custom_json into a flat object, returns empty object on failure. */
-function parseCustomJson(raw: string | null | undefined): Record<string, string> {
+function parseCustomJson(raw: unknown): Record<string, unknown> {
   if (!raw) return {};
+  if (typeof raw === 'object' && !Array.isArray(raw)) return raw as Record<string, unknown>;
+  if (typeof raw !== 'string') return {};
   try {
     const parsed = JSON.parse(raw);
     if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
-      return parsed as Record<string, string>;
+      return parsed as Record<string, unknown>;
     }
     return {};
   } catch {
     return {};
   }
+}
+
+function flattenValue(value: unknown): number | string | null {
+  if (value == null) return null;
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    const n = parseFloat(value);
+    return isNaN(n) ? value : n;
+  }
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  return JSON.stringify(value);
 }
 
 /** Flatten a telemetry record: top-level numeric fields + custom_json keys merged. */
@@ -55,8 +68,7 @@ function flattenRecord(r: TelemetryRecord): Record<string, number | string | nul
     battery_level: r.battery_level ?? null,
   };
   for (const [k, v] of Object.entries(custom)) {
-    const n = parseFloat(v);
-    flat[k] = isNaN(n) ? v : n;
+    flat[k] = flattenValue(v);
   }
   return flat;
 }
@@ -70,6 +82,47 @@ function isPercentMetric(unit: string): boolean {
 /** Format unix seconds to locale time string */
 function formatTooltipTime(unixSec: number): string {
   return formatTimestamp(new Date(unixSec * 1000).toISOString());
+}
+
+interface NetworkAnalyzerHost {
+  ip?: string;
+  mac?: string;
+  hostname?: string | null;
+  reachable?: boolean;
+  rtt_ms?: number;
+  source?: string;
+}
+
+interface NetworkAnalyzerSnapshot {
+  scan_id?: number;
+  network?: {
+    ssid?: string;
+    bssid?: string;
+    channel?: number;
+    rssi?: number;
+    ip?: string;
+    gateway?: string;
+  };
+  hosts?: NetworkAnalyzerHost[];
+  host_count?: number;
+  targets_scanned?: number;
+}
+
+function parseNetworkAnalyzerSnapshot(custom: Record<string, unknown>): NetworkAnalyzerSnapshot | null {
+  const raw = custom.snapshot_json;
+  if (!raw) return null;
+  if (typeof raw === 'object' && !Array.isArray(raw)) return raw as NetworkAnalyzerSnapshot;
+  if (typeof raw !== 'string') return null;
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+      return parsed as NetworkAnalyzerSnapshot;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -103,12 +156,12 @@ export const TelemetryTab = ({ deviceId, deviceTypeName }: TelemetryTabProps) =>
   const isFetching = activeQuery.isFetching;
   const isError = activeQuery.isError;
 
-  const profile = getProfile(deviceTypeName);
-
   // "All" data is sorted ascending; others are descending. Latest is always newest.
   const latest = isAll ? telemetryRecords[telemetryRecords.length - 1] : telemetryRecords[0];
   const latestFlat = latest ? flattenRecord(latest) : null;
   const latestCustom = parseCustomJson(latest?.custom_json);
+  const profile = getProfile(deviceTypeName, latestCustom.kind);
+  const networkAnalyzerSnapshot = parseNetworkAnalyzerSnapshot(latestCustom);
 
   // "All" data is pre-sorted ascending from the hook; others need reversing
   const chartData = useMemo(() => {
@@ -149,7 +202,7 @@ export const TelemetryTab = ({ deviceId, deviceTypeName }: TelemetryTabProps) =>
             );
           })}
           {profile.infoFields?.map((field) => {
-            const value = latestCustom[field.key];
+            const value = flattenValue(latestCustom[field.key]);
             return (
               <div key={field.key} className="telemetry-current-row">
                 <span className="telemetry-current-key">{field.label}</span>
@@ -164,6 +217,10 @@ export const TelemetryTab = ({ deviceId, deviceTypeName }: TelemetryTabProps) =>
           </div>
         )}
       </div>
+
+      {networkAnalyzerSnapshot && (
+        <NetworkAnalyzerScan snapshot={networkAnalyzerSnapshot} receivedAt={latest?.received_at} />
+      )}
 
       {/* Charts section with range selector */}
       <div className="telemetry-section">
@@ -230,6 +287,80 @@ export const TelemetryTab = ({ deviceId, deviceTypeName }: TelemetryTabProps) =>
     </div>
   );
 };
+
+function NetworkAnalyzerScan({
+  snapshot,
+  receivedAt,
+}: {
+  snapshot: NetworkAnalyzerSnapshot;
+  receivedAt?: string;
+}) {
+  const hosts = snapshot.hosts ?? [];
+  const network = snapshot.network;
+
+  return (
+    <div className="telemetry-section">
+      <span className="section-label">Scanned Devices</span>
+      <div className="telemetry-current-table">
+        <div className="telemetry-current-row">
+          <span className="telemetry-current-key">Network</span>
+          <span className="telemetry-current-val mono-data">
+            {[network?.ssid, network?.ip].filter(Boolean).join(' / ') || '—'}
+          </span>
+        </div>
+        <div className="telemetry-current-row">
+          <span className="telemetry-current-key">Gateway</span>
+          <span className="telemetry-current-val mono-data">{network?.gateway ?? '—'}</span>
+        </div>
+        <div className="telemetry-current-row">
+          <span className="telemetry-current-key">Scan</span>
+          <span className="telemetry-current-val mono-data">
+            {snapshot.host_count ?? hosts.length} hosts / {snapshot.targets_scanned ?? '—'} targets
+          </span>
+        </div>
+      </div>
+
+      <div className="telemetry-table-wrap">
+        <table className="telemetry-table">
+          <thead>
+            <tr>
+              <th>IP</th>
+              <th>MAC</th>
+              <th>Hostname</th>
+              <th>RTT</th>
+              <th>Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            {hosts.length === 0 ? (
+              <tr>
+                <td colSpan={5}>No reachable hosts in the latest scan.</td>
+              </tr>
+            ) : (
+              hosts.map((host) => (
+                <tr key={`${host.ip ?? 'unknown'}-${host.mac ?? 'unknown'}`}>
+                  <td className="mono-data">{host.ip ?? '—'}</td>
+                  <td className="mono-data">{host.mac ?? '—'}</td>
+                  <td className="mono-data">{host.hostname ?? '—'}</td>
+                  <td className="mono-data">
+                    {host.rtt_ms == null ? '—' : `${formatValue(host.rtt_ms)} ms`}
+                  </td>
+                  <td className="mono-data">{host.source ?? '—'}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {receivedAt && (
+        <div className="telemetry-current-timestamp">
+          Scan received {formatTimestamp(receivedAt)}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Individual chart for a single metric (memoized options)

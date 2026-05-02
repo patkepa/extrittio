@@ -46,7 +46,6 @@ typedef struct {
     uint32_t scan_id;
     uint32_t targets_scanned;
     uint32_t host_count;
-    uint32_t duration_ms;
     bool target_limit_reached;
     bool host_limit_reached;
     host_record_t hosts[CONFIG_EXTRITTIO_ANALYZER_MAX_HOSTS];
@@ -252,7 +251,6 @@ static bool lookup_arp_mac(esp_netif_t *esp_netif, uint32_t host_addr, char *out
 }
 
 static void run_scan(esp_netif_t *netif, scan_result_t *scan) {
-    int64_t started_us = esp_timer_get_time();
     memset(scan, 0, sizeof(*scan));
 
     esp_netif_ip_info_t ip_info;
@@ -295,7 +293,6 @@ static void run_scan(esp_netif_t *netif, scan_result_t *scan) {
         }
     }
 
-    scan->duration_ms = (uint32_t)((esp_timer_get_time() - started_us) / 1000);
 }
 
 static void build_snapshot_json(const scan_result_t *scan, char *buf, size_t len) {
@@ -360,11 +357,10 @@ static void build_snapshot_json(const scan_result_t *scan, char *buf, size_t len
     }
 
     jw_append(&w, "],\"host_count\":%lu,\"targets_scanned\":%lu,"
-                  "\"duration_ms\":%lu,\"target_limit_reached\":%s,"
+                  "\"target_limit_reached\":%s,"
                   "\"host_limit_reached\":%s,\"snapshot_truncated\":%s}",
               (unsigned long)scan->host_count,
               (unsigned long)scan->targets_scanned,
-              (unsigned long)scan->duration_ms,
               scan->target_limit_reached ? "true" : "false",
               scan->host_limit_reached ? "true" : "false",
               snapshot_truncated || w.failed ? "true" : "false");
@@ -373,10 +369,8 @@ static void build_snapshot_json(const scan_result_t *scan, char *buf, size_t len
 static void publish_scan(z_loaned_session_t *session, const scan_result_t *scan,
                          const char *snapshot_json) {
     char host_count[16];
-    char duration_ms[16];
     char targets_scanned[16];
     snprintf(host_count, sizeof(host_count), "%lu", (unsigned long)scan->host_count);
-    snprintf(duration_ms, sizeof(duration_ms), "%lu", (unsigned long)scan->duration_ms);
     snprintf(targets_scanned, sizeof(targets_scanned), "%lu",
              (unsigned long)scan->targets_scanned);
 
@@ -385,7 +379,6 @@ static void publish_scan(z_loaned_session_t *session, const scan_result_t *scan,
         {.key = "schema", .value = "extrittio.network_analyzer.v1"},
         {.key = "host_count", .value = host_count},
         {.key = "targets_scanned", .value = targets_scanned},
-        {.key = "scan_duration_ms", .value = duration_ms},
         {.key = "snapshot_json", .value = snapshot_json},
     };
 
@@ -401,10 +394,9 @@ static void publish_scan(z_loaned_session_t *session, const scan_result_t *scan,
 
     int rc = extrittio_telemetry_publish(session, &telemetry);
     if (rc == 0) {
-        ESP_LOGI(TAG, "Published scan: hosts=%lu targets=%lu duration=%lums",
+        ESP_LOGI(TAG, "Published scan: hosts=%lu targets=%lu",
                  (unsigned long)scan->host_count,
-                 (unsigned long)scan->targets_scanned,
-                 (unsigned long)scan->duration_ms);
+                 (unsigned long)scan->targets_scanned);
     } else {
         ESP_LOGE(TAG, "Failed to publish scan telemetry: rc=%d", rc);
     }
