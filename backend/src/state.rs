@@ -77,6 +77,7 @@ pub struct AppState {
     pub db_pool: DbPool,
     pub zenoh_session: Arc<zenoh::Session>,
     pub jwt_secret: String,
+    pub public_url: String,
     pub api_rate_limiter: RateLimiter,
     pub login_rate_limiter: RateLimiter,
     pub ci_rate_limiter: ApiKeyRateLimiter,

@@ -16,7 +16,9 @@ mod certs;
 mod config_cmd;
 mod device_types;
 mod devices;
+mod firmware;
 mod fleets;
+mod ota;
 mod pagination;
 mod provision;
 
@@ -45,6 +47,8 @@ pub(crate) async fn run(cli: Cli) -> Result<()> {
         Command::Devices(command) => devices::handle(command, cli.output, &client).await?,
         Command::DeviceTypes(command) => device_types::handle(command, cli.output, &client).await?,
         Command::Fleets(command) => fleets::handle(command, cli.output, &client).await?,
+        Command::Firmware(command) => firmware::handle(command, cli.output, &client).await?,
+        Command::Ota(command) => ota::handle(command, cli.output, &client).await?,
         Command::ApiKeys(command) => api_keys::handle(command, cli.output, &client).await?,
         Command::Certs(command) => certs::handle(command, cli.output, &client).await?,
         Command::Provision(args) => provision::handle(args, cli.output, &client).await?,

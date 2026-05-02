@@ -48,6 +48,10 @@ pub(crate) enum Command {
     DeviceTypes(DeviceTypesCommand),
     /// Manage fleets.
     Fleets(FleetsCommand),
+    /// Publish and list firmware artifacts.
+    Firmware(FirmwareCommand),
+    /// Deploy and inspect firmware over-the-air updates.
+    Ota(OtaCommand),
     /// Manage API keys for CI and automation.
     ApiKeys(ApiKeysCommand),
     /// Download or regenerate device certificates.
@@ -179,6 +183,98 @@ pub(crate) enum FleetsSubcommand {
     Create { name: String },
     /// Delete a fleet.
     Delete { id: i32 },
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct FirmwareCommand {
+    #[command(subcommand)]
+    pub(crate) command: FirmwareSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum FirmwareSubcommand {
+    /// List firmware artifacts.
+    List(ListFirmwareArgs),
+    /// Upload a firmware binary artifact.
+    Upload(UploadFirmwareArgs),
+    /// Delete a firmware artifact.
+    Delete { id: i32 },
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct ListFirmwareArgs {
+    #[arg(long)]
+    pub(crate) device_type_id: Option<i32>,
+    #[arg(long, default_value_t = 50)]
+    pub(crate) limit: i64,
+    #[arg(long, default_value_t = 0)]
+    pub(crate) offset: i64,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct UploadFirmwareArgs {
+    #[arg(long)]
+    pub(crate) device_type_id: i32,
+    #[arg(long)]
+    pub(crate) version: Option<String>,
+    #[arg(long)]
+    pub(crate) description: Option<String>,
+    #[arg(long, value_name = "PATH")]
+    pub(crate) file: PathBuf,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct OtaCommand {
+    #[command(subcommand)]
+    pub(crate) command: OtaSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum OtaSubcommand {
+    /// Trigger OTA for one device or a filtered device set.
+    Deploy(DeployOtaArgs),
+    /// List OTA deployment history for a device.
+    Status(OtaStatusArgs),
+    /// Wait for an OTA deployment to reach a terminal state.
+    Wait(OtaWaitArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DeployOtaArgs {
+    #[arg(long)]
+    pub(crate) firmware_id: i32,
+    #[arg(long)]
+    pub(crate) device: Option<String>,
+    #[arg(long)]
+    pub(crate) fleet_id: Option<i32>,
+    #[arg(long)]
+    pub(crate) status: Option<String>,
+    #[arg(long)]
+    pub(crate) search: Option<String>,
+    #[arg(long)]
+    pub(crate) all: bool,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct OtaStatusArgs {
+    #[arg(long)]
+    pub(crate) device: String,
+    #[arg(long, default_value_t = 20)]
+    pub(crate) limit: i64,
+    #[arg(long, default_value_t = 0)]
+    pub(crate) offset: i64,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct OtaWaitArgs {
+    #[arg(long)]
+    pub(crate) device: String,
+    #[arg(long)]
+    pub(crate) firmware_id: i32,
+    #[arg(long, default_value_t = 600)]
+    pub(crate) timeout_secs: u64,
+    #[arg(long, default_value_t = 2)]
+    pub(crate) interval_secs: u64,
 }
 
 #[derive(Debug, Args)]

@@ -109,9 +109,9 @@ diesel::table! {
     device_types (id) {
         id -> Int4,
         name -> Text,
+        created_at -> Timestamptz,
         icon -> Text,
         color_hex -> Text,
-        created_at -> Timestamptz,
     }
 }
 
@@ -127,9 +127,9 @@ diesel::table! {
         uptime_seconds -> Int4,
         latest_latitude -> Nullable<Float8>,
         latest_longitude -> Nullable<Float8>,
-        declared_connections -> Jsonb,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
+        declared_connections -> Jsonb,
     }
 }
 

@@ -1,5 +1,6 @@
 use axum::{
     extract::{Request, State},
+    http::Method,
     middleware::Next,
     response::Response,
 };
@@ -19,6 +20,9 @@ pub async fn auth_middleware(
         || path == "/health"
         || path == "/ready"
         || path == "/api/v1/firmware-updates/ci"
+        || (request.method() == Method::GET
+            && path.starts_with("/api/v1/firmware-updates/")
+            && path.ends_with("/download"))
     {
         return Ok(next.run(request).await);
     }

@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, anyhow, bail};
-use reqwest::{Method, StatusCode};
+use reqwest::{Method, StatusCode, multipart};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
@@ -70,6 +70,62 @@ impl ApiClient {
         }
 
         Ok(())
+    }
+
+    pub(crate) async fn request_empty_json(
+        &self,
+        method: Method,
+        path: &str,
+        body: Value,
+    ) -> Result<()> {
+        let response = self.send(method, path, Some(body), true).await?;
+        let status = response.status();
+        let bytes = response
+            .bytes()
+            .await
+            .context("failed to read response body")?;
+
+        if !status.is_success() {
+            bail!("{}", api_error(status, &bytes));
+        }
+
+        Ok(())
+    }
+
+    pub(crate) async fn request_multipart<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        form: multipart::Form,
+    ) -> Result<T> {
+        let url = format!("{}{}", self.base_url, path);
+        let token = self
+            .token
+            .as_deref()
+            .ok_or_else(|| anyhow!("not authenticated; run `extrittio auth login` first"))?;
+        let response = self
+            .http
+            .post(url)
+            .bearer_auth(token)
+            .multipart(form)
+            .send()
+            .await
+            .context("request failed")?;
+        let status = response.status();
+        let bytes = response
+            .bytes()
+            .await
+            .context("failed to read response body")?;
+
+        if !status.is_success() {
+            bail!("{}", api_error(status, &bytes));
+        }
+
+        serde_json::from_slice(&bytes).with_context(|| {
+            format!(
+                "failed to parse response from {} as JSON",
+                path.trim_start_matches('/')
+            )
+        })
     }
 
     async fn send(

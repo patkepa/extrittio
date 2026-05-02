@@ -23,7 +23,7 @@ pub(super) fn device_list_query(args: &ListDevicesArgs) -> String {
     format!("?{}", params.join("&"))
 }
 
-fn percent_encode(value: &str) -> String {
+pub(super) fn percent_encode(value: &str) -> String {
     let mut encoded = String::new();
     for byte in value.bytes() {
         match byte {

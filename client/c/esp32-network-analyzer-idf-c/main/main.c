@@ -32,11 +32,32 @@
 
 #include "extrittio_config.h"
 #include "wifi.h"
+#include "ota_handler.h"
 
 #include "extrittio/extrittio.h"
 #include <zenoh-pico.h>
 
 static const char *TAG = "network_analyzer";
+static z_loaned_session_t *g_session = NULL;
+static char g_device_id[64];
+static char g_firmware_version[64];
+
+static void shadow_delta_callback(const char *device_id,
+                                  const char *delta_json,
+                                  int64_t version,
+                                  void *user_data) {
+    (void)device_id;
+    (void)user_data;
+    ESP_LOGI(TAG, "Shadow delta v%lld: %s", (long long)version, delta_json);
+
+    extrittio_ota_payload_t ota;
+    if (extrittio_ota_parse_from_delta(delta_json, &ota)) {
+        ota_handle(g_session, g_device_id, g_firmware_version, &ota);
+    }
+
+    extrittio_shadow_report_publish(g_session, g_device_id,
+                                    extrittio_now_millis(), delta_json, version);
+}
 
 typedef struct {
     uint32_t addr;
@@ -1364,6 +1385,9 @@ void app_main(void) {
 
     extrittio_runtime_config_t runtime_config;
     ESP_ERROR_CHECK(extrittio_runtime_config_load(&runtime_config));
+    strlcpy(g_device_id, runtime_config.device_id, sizeof(g_device_id));
+    strlcpy(g_firmware_version, runtime_config.firmware_version,
+            sizeof(g_firmware_version));
 
     ESP_ERROR_CHECK(wifi_init_sta(runtime_config.wifi_ssid,
                                   runtime_config.wifi_password));
@@ -1386,6 +1410,13 @@ void app_main(void) {
         return;
     }
 
+    g_session = (z_loaned_session_t *)z_loan(session);
+    z_owned_subscriber_t shadow_sub;
+    extrittio_shadow_delta_subscribe(g_session,
+                                     runtime_config.device_id,
+                                     shadow_delta_callback, NULL, &shadow_sub);
+    extrittio_shadow_get_publish(g_session, runtime_config.device_id);
+
     int64_t boot_time = esp_timer_get_time();
     int64_t last_heartbeat = 0;
     uint32_t scan_id = 0;
@@ -1407,7 +1438,7 @@ void app_main(void) {
         run_scan(wifi_sta_netif(), &scan);
         scan.scan_id = scan_id;
         build_snapshot_json(&scan, snapshot, CONFIG_EXTRITTIO_ANALYZER_SNAPSHOT_BYTES);
-        publish_scan(z_loan(session), &scan, runtime_config.device_id, snapshot);
+        publish_scan(g_session, &scan, runtime_config.device_id, snapshot);
 
         int64_t now = extrittio_now_millis();
         int64_t hb_interval_ms = CONFIG_EXTRITTIO_HEARTBEAT_INTERVAL_S * 1000LL;
@@ -1420,7 +1451,7 @@ void app_main(void) {
                 .firmware = runtime_config.firmware_version,
                 .uptime_seconds = uptime_us / 1000000,
             };
-            extrittio_heartbeat_publish(z_loan(session), &hb);
+            extrittio_heartbeat_publish(g_session, &hb);
             last_heartbeat = now;
         }
 

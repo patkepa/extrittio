@@ -247,10 +247,12 @@ pub async fn trigger_ota(
     zenoh_session: &Arc<zenoh::Session>,
     device_id: &str,
     firmware_update_id: i32,
+    public_url: &str,
     zenoh_metrics: &ZenohMetrics,
 ) -> Result<(), AppError> {
     let d_id = device_id.to_string();
     let d_id_for_publish = d_id.clone();
+    let public_url = public_url.to_string();
 
     let (delta, version) = run_db(pool, move |conn| {
         conn.transaction(|conn| {
@@ -268,7 +270,7 @@ pub async fn trigger_ota(
 
             let mut ota_payload = serde_json::json!({
                 ota_fields::FIRMWARE_VERSION: fw.version,
-                ota_fields::FIRMWARE_URL: fw.url,
+                ota_fields::FIRMWARE_URL: firmware_download_url(&public_url, &fw.url),
                 ota_fields::FIRMWARE_UPDATE_ID: fw.id,
             });
             if let Some(ref hash) = fw.sha256 {
@@ -301,6 +303,18 @@ pub async fn trigger_ota(
     .await;
 
     Ok(())
+}
+
+fn firmware_download_url(public_url: &str, stored_url: &str) -> String {
+    if stored_url.starts_with("http://") || stored_url.starts_with("https://") {
+        return stored_url.to_string();
+    }
+
+    format!(
+        "{}/{}",
+        public_url.trim_end_matches('/'),
+        stored_url.trim_start_matches('/')
+    )
 }
 
 /// List devices with filtering and pagination.

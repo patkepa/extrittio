@@ -98,6 +98,52 @@ pub(crate) struct CertificateStatus {
     pub(crate) created_at: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct FirmwareUpdateResponse {
+    pub(crate) id: i32,
+    pub(crate) device_type_id: i32,
+    pub(crate) device_type_name: String,
+    pub(crate) version: String,
+    pub(crate) url: String,
+    pub(crate) sha256: Option<String>,
+    pub(crate) description: Option<String>,
+    pub(crate) created_at: String,
+    pub(crate) has_blob: bool,
+    pub(crate) file_size: Option<i32>,
+    pub(crate) filename: Option<String>,
+    pub(crate) commit_sha: Option<String>,
+    pub(crate) branch: Option<String>,
+    pub(crate) ci_run_url: Option<String>,
+    pub(crate) build_timestamp: Option<String>,
+    pub(crate) changelog: Option<String>,
+    pub(crate) source: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct OtaDeploymentResponse {
+    pub(crate) id: i32,
+    pub(crate) device_id: String,
+    pub(crate) firmware_update_id: i32,
+    pub(crate) firmware_version: String,
+    pub(crate) status: String,
+    pub(crate) error_message: Option<String>,
+    pub(crate) initiated_at: String,
+    pub(crate) completed_at: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct BulkOperationError {
+    pub(crate) device_id: String,
+    pub(crate) error: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct BulkResultResponse {
+    pub(crate) succeeded: i64,
+    pub(crate) failed: i64,
+    pub(crate) errors: Vec<BulkOperationError>,
+}
+
 #[derive(Debug, Serialize)]
 pub(crate) struct Esp32NvsFlashResult {
     pub(crate) port: String,

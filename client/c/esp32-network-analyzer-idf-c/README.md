@@ -54,3 +54,21 @@ Register the configured or provisioned device ID in Extrittio before
 publishing. Each scan is sent as a `DeviceTelemetry` message with
 `metadata.kind=network_analyzer_scan` and `metadata.snapshot_json` containing
 the scan payload.
+
+## OTA
+
+This example subscribes to Extrittio shadow deltas and applies `ota` payloads
+published by the backend. Build and upload the app image, then trigger OTA:
+
+```bash
+idf.py build
+cargo run -p extrittio-cli -- firmware upload \
+  --device-type-id <device-type-id> \
+  --version <new-version> \
+  --file build/extrittio-esp32-network-analyzer-c.bin
+cargo run -p extrittio-cli -- ota deploy --device <device-id> --firmware-id <firmware-id>
+```
+
+Set `EXTRITTIO_PUBLIC_URL` on the backend to an HTTP URL reachable by the ESP32,
+for example `http://192.0.2.20:8080`. The project uses ESP-IDF's larger
+two-OTA partition table so the OTA-enabled image fits in both app slots.

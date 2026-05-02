@@ -96,6 +96,7 @@ async fn main() -> anyhow::Result<()> {
         db_pool: db_pool.clone(),
         zenoh_session: zenoh_session.clone(),
         jwt_secret,
+        public_url: config.public_url.clone(),
         api_rate_limiter: RateLimiter::new(100, 60),
         login_rate_limiter: RateLimiter::new(5, 60),
         ci_rate_limiter: ApiKeyRateLimiter::new(60, 60),

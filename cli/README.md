@@ -11,6 +11,26 @@ cargo run -p extrittio-cli -- device-types list
 cargo run -p extrittio-cli -- fleets list
 ```
 
+Publish a firmware binary and trigger OTA:
+
+```bash
+# Backend should expose an address devices can fetch, not localhost from the device's view.
+EXTRITTIO_PUBLIC_URL=http://192.0.2.20:8080 cargo run -p extrittio-backend
+
+cargo run -p extrittio-cli -- firmware upload \
+  --device-type-id 1 \
+  --version esp32-network-analyzer-c-0.2.0 \
+  --file client/c/esp32-network-analyzer-idf-c/build/extrittio-esp32-network-analyzer-c.bin
+
+cargo run -p extrittio-cli -- ota deploy \
+  --device esp32-network-analyzer-001 \
+  --firmware-id 42
+
+cargo run -p extrittio-cli -- ota wait \
+  --device esp32-network-analyzer-001 \
+  --firmware-id 42
+```
+
 Provision a device and optionally download its mTLS certificate bundle:
 
 ```bash
