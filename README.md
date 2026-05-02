@@ -67,3 +67,21 @@ cargo run -p extrittio-backend
 # 4. Start the frontend (in another terminal)
 cd frontend && npm install && npm run dev
 ```
+
+## CLI
+
+```bash
+cargo run -p extrittio-cli -- --help
+cargo run -p extrittio-cli -- auth login --username admin --password admin
+cargo run -p extrittio-cli -- device-types list
+cargo run -p extrittio-cli -- fleets list
+cargo run -p extrittio-cli -- provision \
+  --name sensor-001 \
+  --device-type-id 1 \
+  --firmware linux-0.1.0 \
+  --cert-dir ./provisioned/sensor-001
+```
+
+The CLI stores its backend URL and JWT token in `~/.config/extrittio/cli.json`
+by default. Override the active connection with `--url`, `--token`,
+`EXTRITTIO_URL`, or `EXTRITTIO_TOKEN`.

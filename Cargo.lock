@@ -940,6 +940,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "extrittio-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "extrittio-client"
 version = "0.1.0"
 dependencies = [

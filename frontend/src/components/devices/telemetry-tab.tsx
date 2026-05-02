@@ -88,6 +88,9 @@ interface NetworkAnalyzerHost {
   ip?: string;
   mac?: string;
   hostname?: string | null;
+  vendor?: string;
+  device_type?: string;
+  classification?: string;
   reachable?: boolean;
   rtt_ms?: number;
   source?: string;
@@ -326,6 +329,8 @@ function NetworkAnalyzerScan({
             <tr>
               <th>IP</th>
               <th>MAC</th>
+              <th>Vendor</th>
+              <th>Type</th>
               <th>Hostname</th>
               <th>RTT</th>
               <th>Source</th>
@@ -334,13 +339,15 @@ function NetworkAnalyzerScan({
           <tbody>
             {hosts.length === 0 ? (
               <tr>
-                <td colSpan={5}>No reachable hosts in the latest scan.</td>
+                <td colSpan={7}>No reachable hosts in the latest scan.</td>
               </tr>
             ) : (
               hosts.map((host) => (
                 <tr key={`${host.ip ?? 'unknown'}-${host.mac ?? 'unknown'}`}>
                   <td className="mono-data">{host.ip ?? '—'}</td>
                   <td className="mono-data">{host.mac ?? '—'}</td>
+                  <td>{host.vendor ?? '—'}</td>
+                  <td>{host.device_type ?? host.classification ?? '—'}</td>
                   <td className="mono-data">{host.hostname ?? '—'}</td>
                   <td className="mono-data">
                     {host.rtt_ms == null ? '—' : `${formatValue(host.rtt_ms)} ms`}

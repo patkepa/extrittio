@@ -53,16 +53,16 @@ config EXTRITTIO_ANALYZER_MAX_HOSTS
         Maximum reachable hosts included in each telemetry snapshot.
 
 config EXTRITTIO_ANALYZER_PING_TIMEOUT_MS
-    int "Ping timeout per host (ms)"
+    int "Probe timeout per host (ms)"
     default 120
     range 20 1000
     help
-        Timeout for each one-shot ICMP probe.
+        Timeout for each one-shot ARP or metadata probe.
 
 config EXTRITTIO_ANALYZER_SNAPSHOT_BYTES
     int "Snapshot JSON buffer bytes"
-    default 3072
-    range 1024 7000
+    default 6144
+    range 1024 12000
     help
         Maximum JSON snapshot size stored in telemetry metadata.
 
