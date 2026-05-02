@@ -62,11 +62,13 @@ pub fn timeout_stale_commands(
 
 pub fn list_commands(
     conn: &mut PgConnection,
+    tenant_id: &str,
     device_id: &str,
     status: Option<&str>,
     limit: i64,
 ) -> Result<Vec<CommandRecord>, diesel::result::Error> {
     let mut query = command_history::table
+        .filter(command_history::tenant_id.eq(tenant_id))
         .filter(command_history::device_id.eq(device_id))
         .into_boxed();
 

@@ -221,6 +221,7 @@ pub struct Device {
 #[diesel(table_name = devices)]
 pub struct NewDevice {
     pub id: String,
+    pub tenant_id: String,
     pub name: String,
     pub device_type_id: i32,
     pub fleet_id: Option<i32>,
@@ -367,6 +368,7 @@ pub struct User {
 #[derive(Insertable, Debug)]
 #[diesel(table_name = users)]
 pub struct NewUser {
+    pub tenant_id: String,
     pub username: String,
     pub password_hash: String,
 }
@@ -455,6 +457,7 @@ pub struct CommandRecord {
 #[diesel(table_name = command_history)]
 pub struct NewCommandRecord {
     pub id: String,
+    pub tenant_id: String,
     pub device_id: String,
     pub command: String,
     pub params: String,
@@ -480,6 +483,7 @@ pub struct ApiKey {
 #[derive(Insertable, Debug)]
 #[diesel(table_name = api_keys)]
 pub struct NewApiKey {
+    pub tenant_id: String,
     pub name: String,
     pub key_hash: String,
     pub key_prefix: String,

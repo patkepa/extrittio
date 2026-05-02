@@ -9,12 +9,17 @@ use crate::db::schema::users;
 
 pub fn list_users(
     conn: &mut PgConnection,
+    tenant_id: &str,
     limit: i64,
     offset: i64,
 ) -> Result<(Vec<User>, i64), diesel::result::Error> {
-    let total: i64 = users::table.count().get_result(conn)?;
+    let total: i64 = users::table
+        .filter(users::tenant_id.eq(tenant_id))
+        .count()
+        .get_result(conn)?;
 
     let results = users::table
+        .filter(users::tenant_id.eq(tenant_id))
         .select(User::as_select())
         .order(users::username.asc())
         .limit(limit)
@@ -26,9 +31,11 @@ pub fn list_users(
 
 pub fn find_user_by_username(
     conn: &mut PgConnection,
+    tenant_id: &str,
     username: &str,
 ) -> Result<User, diesel::result::Error> {
     users::table
+        .filter(users::tenant_id.eq(tenant_id))
         .filter(users::username.eq(username))
         .select(User::as_select())
         .first(conn)
@@ -52,17 +59,44 @@ pub fn delete_user(conn: &mut PgConnection, id: i32) -> Result<bool, diesel::res
     Ok(rows > 0)
 }
 
+pub fn delete_user_for_tenant(
+    conn: &mut PgConnection,
+    tenant_id: &str,
+    id: i32,
+) -> Result<bool, diesel::result::Error> {
+    let rows = diesel::delete(
+        users::table
+            .filter(users::tenant_id.eq(tenant_id))
+            .filter(users::id.eq(id)),
+    )
+    .execute(conn)?;
+    Ok(rows > 0)
+}
+
 pub fn update_password(
     conn: &mut PgConnection,
+    tenant_id: &str,
     id: i32,
     hash: &str,
 ) -> Result<(), diesel::result::Error> {
-    diesel::update(users::table.find(id))
-        .set(users::password_hash.eq(hash))
-        .execute(conn)?;
+    diesel::update(
+        users::table
+            .filter(users::tenant_id.eq(tenant_id))
+            .filter(users::id.eq(id)),
+    )
+    .set(users::password_hash.eq(hash))
+    .execute(conn)?;
     Ok(())
 }
 
-pub fn find_user_by_id(conn: &mut PgConnection, id: i32) -> Result<User, diesel::result::Error> {
-    users::table.find(id).select(User::as_select()).first(conn)
+pub fn find_user_by_id(
+    conn: &mut PgConnection,
+    tenant_id: &str,
+    id: i32,
+) -> Result<User, diesel::result::Error> {
+    users::table
+        .filter(users::tenant_id.eq(tenant_id))
+        .filter(users::id.eq(id))
+        .select(User::as_select())
+        .first(conn)
 }

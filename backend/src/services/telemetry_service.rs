@@ -8,6 +8,7 @@ use crate::db::models::{Device, NewTelemetryRecord, TelemetryRecord, UpdateDevic
 use crate::error::AppError;
 use crate::repositories::{device_repo, network_observed_host_repo, telemetry_repo};
 use crate::services::device_connections::ObservedNetworkHost;
+use crate::tenancy::DEFAULT_TENANT_ID;
 
 const NETWORK_OBSERVED_HOST_RETENTION_DAYS: i64 = 30;
 
@@ -57,7 +58,7 @@ pub fn record(
         declared_connections,
         ..Default::default()
     };
-    device_repo::update_device(conn, &device_id, &changeset)?;
+    device_repo::update_device(conn, DEFAULT_TENANT_ID, &device_id, &changeset)?;
 
     Ok(Some(device))
 }

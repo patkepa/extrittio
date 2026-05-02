@@ -6,6 +6,7 @@ use crate::auth::{hash_password, verify_password};
 use crate::db::models::{NewUser, User};
 use crate::error::AppError;
 use crate::repositories::user_repo;
+use crate::tenancy::DEFAULT_TENANT_ID;
 
 pub fn list(
     ctx: &RequestContext,
@@ -14,7 +15,12 @@ pub fn list(
     offset: i64,
 ) -> Result<(Vec<User>, i64), AppError> {
     policy::require(ctx, Permission::ReadUsers)?;
-    Ok(user_repo::list_users(conn, limit, offset)?)
+    Ok(user_repo::list_users(
+        conn,
+        ctx.tenant_id_str(),
+        limit,
+        offset,
+    )?)
 }
 
 pub fn create(
@@ -36,6 +42,7 @@ pub fn create(
 
     let password_hash = hash_password(password).map_err(|e| AppError::Auth(e.to_string()))?;
     let new_user = NewUser {
+        tenant_id: ctx.tenant_id_str().to_string(),
         username: username.to_string(),
         password_hash,
     };
@@ -63,17 +70,17 @@ pub fn change_password(
         ));
     }
 
-    user_repo::find_user_by_id(conn, user_id)?;
+    user_repo::find_user_by_id(conn, ctx.tenant_id_str(), user_id)?;
 
     let password_hash = hash_password(new_password).map_err(|e| AppError::Auth(e.to_string()))?;
-    user_repo::update_password(conn, user_id, &password_hash)?;
+    user_repo::update_password(conn, ctx.tenant_id_str(), user_id, &password_hash)?;
     Ok(())
 }
 
 pub fn delete(ctx: &RequestContext, conn: &mut PgConnection, id: i32) -> Result<(), AppError> {
     policy::require(ctx, Permission::ManageUsers)?;
 
-    let deleted = user_repo::delete_user(conn, id)?;
+    let deleted = user_repo::delete_user_for_tenant(conn, ctx.tenant_id_str(), id)?;
     if !deleted {
         return Err(AppError::NotFound(format!("User {id} not found")));
     }
@@ -87,10 +94,12 @@ pub fn authenticate(
     username: &str,
     password: &str,
 ) -> Result<(i32, String, String), AppError> {
-    let user = user_repo::find_user_by_username(conn, username).map_err(|e| match e {
-        diesel::result::Error::NotFound => AppError::Unauthorized,
-        other => AppError::Database(other),
-    })?;
+    let user = user_repo::find_user_by_username(conn, DEFAULT_TENANT_ID, username).map_err(
+        |e| match e {
+            diesel::result::Error::NotFound => AppError::Unauthorized,
+            other => AppError::Database(other),
+        },
+    )?;
 
     if !verify_password(password, &user.password_hash) {
         return Err(AppError::Unauthorized);

@@ -6,6 +6,7 @@ use diesel::prelude::*;
 
 pub fn insert_api_key(
     conn: &mut PgConnection,
+    tenant_id: &str,
     new_key: &NewApiKey,
 ) -> Result<ApiKey, diesel::result::Error> {
     conn.transaction(|conn| {
@@ -14,6 +15,7 @@ pub fn insert_api_key(
             .execute(conn)?;
 
         api_keys::table
+            .filter(api_keys::tenant_id.eq(tenant_id))
             .filter(api_keys::key_hash.eq(&new_key.key_hash))
             .select(ApiKey::as_select())
             .first(conn)
@@ -31,8 +33,12 @@ pub fn find_api_key_by_hash(
         .optional()
 }
 
-pub fn list_api_keys(conn: &mut PgConnection) -> Result<Vec<ApiKey>, diesel::result::Error> {
+pub fn list_api_keys(
+    conn: &mut PgConnection,
+    tenant_id: &str,
+) -> Result<Vec<ApiKey>, diesel::result::Error> {
     api_keys::table
+        .filter(api_keys::tenant_id.eq(tenant_id))
         .order(api_keys::created_at.desc())
         .select(ApiKey::as_select())
         .load(conn)
@@ -40,9 +46,15 @@ pub fn list_api_keys(conn: &mut PgConnection) -> Result<Vec<ApiKey>, diesel::res
 
 pub fn delete_api_key(
     conn: &mut PgConnection,
+    tenant_id: &str,
     key_id: i32,
 ) -> Result<usize, diesel::result::Error> {
-    diesel::delete(api_keys::table.filter(api_keys::id.eq(key_id))).execute(conn)
+    diesel::delete(
+        api_keys::table
+            .filter(api_keys::tenant_id.eq(tenant_id))
+            .filter(api_keys::id.eq(key_id)),
+    )
+    .execute(conn)
 }
 
 pub fn update_last_used(

@@ -12,6 +12,7 @@ diesel::table! {
         resolved_at -> Nullable<Timestamptz>,
         acknowledged_at -> Nullable<Timestamptz>,
         created_at -> Timestamptz,
+        tenant_id -> Text,
     }
 }
 
@@ -24,6 +25,7 @@ diesel::table! {
         device_type_id -> Nullable<Int4>,
         created_at -> Timestamptz,
         last_used_at -> Nullable<Timestamptz>,
+        tenant_id -> Text,
     }
 }
 
@@ -61,6 +63,7 @@ diesel::table! {
         response_payload -> Nullable<Text>,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
+        tenant_id -> Text,
     }
 }
 
@@ -73,6 +76,7 @@ diesel::table! {
         fingerprint -> Text,
         expires_at -> Timestamptz,
         created_at -> Timestamptz,
+        tenant_id -> Text,
     }
 }
 
@@ -81,6 +85,7 @@ diesel::table! {
         device_id -> Text,
         config -> Jsonb,
         updated_at -> Timestamptz,
+        tenant_id -> Text,
     }
 }
 
@@ -91,6 +96,7 @@ diesel::table! {
         level -> Text,
         message -> Text,
         created_at -> Timestamptz,
+        tenant_id -> Text,
     }
 }
 
@@ -102,6 +108,7 @@ diesel::table! {
         delta -> Jsonb,
         version -> Int4,
         updated_at -> Timestamptz,
+        tenant_id -> Text,
     }
 }
 
@@ -112,6 +119,7 @@ diesel::table! {
         created_at -> Timestamptz,
         icon -> Text,
         color_hex -> Text,
+        tenant_id -> Text,
     }
 }
 
@@ -130,6 +138,7 @@ diesel::table! {
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
         declared_connections -> Jsonb,
+        tenant_id -> Text,
     }
 }
 
@@ -139,6 +148,7 @@ diesel::table! {
         data -> Bytea,
         size -> Int4,
         filename -> Text,
+        tenant_id -> Text,
     }
 }
 
@@ -157,6 +167,7 @@ diesel::table! {
         changelog -> Nullable<Text>,
         source -> Text,
         created_at -> Timestamptz,
+        tenant_id -> Text,
     }
 }
 
@@ -165,6 +176,7 @@ diesel::table! {
         id -> Int4,
         name -> Text,
         created_at -> Timestamptz,
+        tenant_id -> Text,
     }
 }
 
@@ -182,6 +194,16 @@ diesel::table! {
         last_seen_at -> Timestamptz,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
+        tenant_id -> Text,
+    }
+}
+
+diesel::table! {
+    organizations (id) {
+        id -> Text,
+        name -> Text,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
     }
 }
 
@@ -194,6 +216,7 @@ diesel::table! {
         error_message -> Nullable<Text>,
         initiated_at -> Timestamptz,
         completed_at -> Nullable<Timestamptz>,
+        tenant_id -> Text,
     }
 }
 
@@ -203,6 +226,7 @@ diesel::table! {
         rule_id -> Text,
         action_type -> Text,
         config -> Jsonb,
+        tenant_id -> Text,
     }
 }
 
@@ -215,6 +239,7 @@ diesel::table! {
         value -> Text,
         condition_group -> Int4,
         zone_id -> Nullable<Text>,
+        tenant_id -> Text,
     }
 }
 
@@ -223,6 +248,7 @@ diesel::table! {
         rule_id -> Text,
         device_id -> Text,
         last_fired_at -> Timestamptz,
+        tenant_id -> Text,
     }
 }
 
@@ -238,6 +264,7 @@ diesel::table! {
         cooldown_seconds -> Int4,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
+        tenant_id -> Text,
     }
 }
 
@@ -280,6 +307,7 @@ diesel::table! {
         altitude -> Nullable<Float4>,
         heading -> Nullable<Float4>,
         received_at -> Timestamptz,
+        tenant_id -> Text,
     }
 }
 
@@ -290,6 +318,7 @@ diesel::table! {
         password_hash -> Text,
         role -> Text,
         created_at -> Timestamptz,
+        tenant_id -> Text,
     }
 }
 
@@ -303,30 +332,52 @@ diesel::table! {
         color -> Text,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
+        tenant_id -> Text,
     }
 }
 
 diesel::joinable!(alerts -> devices (device_id));
+diesel::joinable!(alerts -> organizations (tenant_id));
 diesel::joinable!(alerts -> rules (rule_id));
 diesel::joinable!(api_keys -> device_types (device_type_id));
+diesel::joinable!(api_keys -> organizations (tenant_id));
 diesel::joinable!(command_history -> devices (device_id));
+diesel::joinable!(command_history -> organizations (tenant_id));
 diesel::joinable!(device_certificates -> devices (device_id));
+diesel::joinable!(device_certificates -> organizations (tenant_id));
 diesel::joinable!(device_configs -> devices (device_id));
+diesel::joinable!(device_configs -> organizations (tenant_id));
 diesel::joinable!(device_logs -> devices (device_id));
+diesel::joinable!(device_logs -> organizations (tenant_id));
 diesel::joinable!(device_shadows -> devices (device_id));
+diesel::joinable!(device_shadows -> organizations (tenant_id));
+diesel::joinable!(device_types -> organizations (tenant_id));
 diesel::joinable!(devices -> device_types (device_type_id));
 diesel::joinable!(devices -> fleets (fleet_id));
+diesel::joinable!(devices -> organizations (tenant_id));
 diesel::joinable!(firmware_blobs -> firmware_updates (firmware_update_id));
+diesel::joinable!(firmware_blobs -> organizations (tenant_id));
 diesel::joinable!(firmware_updates -> device_types (device_type_id));
+diesel::joinable!(firmware_updates -> organizations (tenant_id));
+diesel::joinable!(fleets -> organizations (tenant_id));
 diesel::joinable!(network_observed_hosts -> devices (analyzer_device_id));
+diesel::joinable!(network_observed_hosts -> organizations (tenant_id));
 diesel::joinable!(ota_deployments -> devices (device_id));
 diesel::joinable!(ota_deployments -> firmware_updates (firmware_update_id));
+diesel::joinable!(ota_deployments -> organizations (tenant_id));
+diesel::joinable!(rule_actions -> organizations (tenant_id));
 diesel::joinable!(rule_actions -> rules (rule_id));
+diesel::joinable!(rule_conditions -> organizations (tenant_id));
 diesel::joinable!(rule_conditions -> rules (rule_id));
 diesel::joinable!(rule_conditions -> zones (zone_id));
 diesel::joinable!(rule_cooldowns -> devices (device_id));
+diesel::joinable!(rule_cooldowns -> organizations (tenant_id));
 diesel::joinable!(rule_cooldowns -> rules (rule_id));
+diesel::joinable!(rules -> organizations (tenant_id));
 diesel::joinable!(telemetry -> devices (device_id));
+diesel::joinable!(telemetry -> organizations (tenant_id));
+diesel::joinable!(users -> organizations (tenant_id));
+diesel::joinable!(zones -> organizations (tenant_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     alerts,
@@ -344,6 +395,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     firmware_updates,
     fleets,
     network_observed_hosts,
+    organizations,
     ota_deployments,
     rule_actions,
     rule_conditions,

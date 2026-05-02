@@ -34,4 +34,11 @@ impl RequestContext {
     pub fn is_admin(&self) -> bool {
         self.role == "admin"
     }
+
+    #[must_use]
+    pub fn tenant_id_str(&self) -> &str {
+        self.tenant_id
+            .as_ref()
+            .map_or(DEFAULT_TENANT_ID, TenantId::as_str)
+    }
 }

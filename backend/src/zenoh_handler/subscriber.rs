@@ -425,6 +425,7 @@ pub async fn execute_action(
                     &mut conn,
                     &crate::db::models::NewCommandRecord {
                         id: cid_clone,
+                        tenant_id: crate::tenancy::DEFAULT_TENANT_ID.to_string(),
                         device_id: did_clone,
                         command: cmd_clone,
                         params: params_json,

@@ -58,6 +58,7 @@ async fn create_api_key(
     let key_prefix = api_key_util::key_prefix(&plaintext_key);
 
     let new_key = crate::db::models::NewApiKey {
+        tenant_id: ctx.tenant_id_str().to_string(),
         name: body.name.clone(),
         key_hash,
         key_prefix: key_prefix.clone(),

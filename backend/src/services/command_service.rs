@@ -13,6 +13,7 @@ use crate::db::models::{CommandRecord, NewCommandRecord};
 use crate::error::AppError;
 use crate::repositories::{command_repo, device_repo};
 use crate::state::{DbPool, ZenohMetrics, run_db};
+use crate::tenancy::DEFAULT_TENANT_ID;
 use extrittio_common::extrittio::DeviceCommand;
 
 pub fn authorize_send_commands(ctx: &RequestContext) -> Result<(), AppError> {
@@ -40,7 +41,8 @@ pub async fn send_command_as_user(
     zenoh_metrics: &ZenohMetrics,
 ) -> Result<CommandRecord, AppError> {
     policy::require(ctx, Permission::SendCommands)?;
-    send_command(
+    send_command_for_tenant(
+        ctx.tenant_id_str(),
         pool,
         zenoh_session,
         device_id,
@@ -60,17 +62,41 @@ pub async fn send_command(
     params: HashMap<String, String>,
     zenoh_metrics: &ZenohMetrics,
 ) -> Result<CommandRecord, AppError> {
+    send_command_for_tenant(
+        DEFAULT_TENANT_ID,
+        pool,
+        zenoh_session,
+        device_id,
+        command,
+        params,
+        zenoh_metrics,
+    )
+    .await
+}
+
+#[allow(clippy::implicit_hasher)]
+async fn send_command_for_tenant(
+    tenant_id: &str,
+    pool: &DbPool,
+    zenoh_session: &Arc<zenoh::Session>,
+    device_id: &str,
+    command: &str,
+    params: HashMap<String, String>,
+    zenoh_metrics: &ZenohMetrics,
+) -> Result<CommandRecord, AppError> {
     let correlation_id = uuid::Uuid::new_v4().to_string();
     let params_json = serde_json::to_string(&params).unwrap_or_else(|_| "{}".to_string());
     let d_id = device_id.to_string();
     let cmd = command.to_string();
     let corr_id = correlation_id.clone();
+    let tenant_id = tenant_id.to_string();
 
     // Verify device exists and persist the command record
     run_db(pool, move |conn| {
         device_repo::find_device(conn, &d_id)?;
         let new_record = NewCommandRecord {
             id: corr_id,
+            tenant_id,
             device_id: d_id,
             command: cmd,
             params: params_json,
@@ -153,7 +179,13 @@ pub fn list_commands(
     policy::require(ctx, Permission::ReadCommands)?;
 
     device_repo::find_device(conn, device_id)?;
-    Ok(command_repo::list_commands(conn, device_id, status, limit)?)
+    Ok(command_repo::list_commands(
+        conn,
+        ctx.tenant_id_str(),
+        device_id,
+        status,
+        limit,
+    )?)
 }
 
 /// Mark stale commands as timed out.

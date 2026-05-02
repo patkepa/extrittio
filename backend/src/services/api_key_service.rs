@@ -14,7 +14,11 @@ pub fn create(
     new_key: &NewApiKey,
 ) -> Result<ApiKey, AppError> {
     policy::require(ctx, Permission::ManageApiKeys)?;
-    Ok(api_key_repo::insert_api_key(conn, new_key)?)
+    Ok(api_key_repo::insert_api_key(
+        conn,
+        ctx.tenant_id_str(),
+        new_key,
+    )?)
 }
 
 /// List all API keys with their device type names resolved.
@@ -25,7 +29,7 @@ pub fn list_with_type_names(
 ) -> Result<Vec<(ApiKey, Option<String>)>, AppError> {
     policy::require(ctx, Permission::ManageApiKeys)?;
 
-    let keys = api_key_repo::list_api_keys(conn)?;
+    let keys = api_key_repo::list_api_keys(conn, ctx.tenant_id_str())?;
     let all_device_types = device_type_repo::list_all_device_types(conn)?;
     let dt_map: HashMap<i32, String> = all_device_types
         .into_iter()
@@ -47,7 +51,7 @@ pub fn list_with_type_names(
 pub fn delete(ctx: &RequestContext, conn: &mut PgConnection, id: i32) -> Result<(), AppError> {
     policy::require(ctx, Permission::ManageApiKeys)?;
 
-    let deleted = api_key_repo::delete_api_key(conn, id)?;
+    let deleted = api_key_repo::delete_api_key(conn, ctx.tenant_id_str(), id)?;
     if deleted == 0 {
         return Err(AppError::NotFound("API key not found".into()));
     }

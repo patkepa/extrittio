@@ -112,6 +112,7 @@ pub fn seed_admin_user(conn: &mut PgConnection) -> anyhow::Result<()> {
         let password_hash = auth::hash_password("admin")
             .map_err(|e| anyhow::anyhow!("Failed to hash default password: {e}"))?;
         let admin = NewUser {
+            tenant_id: crate::tenancy::DEFAULT_TENANT_ID.to_string(),
             username: "admin".to_string(),
             password_hash,
         };

@@ -330,6 +330,7 @@ pub(crate) async fn create_device(
     let response = run_db(&state.db_pool, move |conn| {
         let new_device = NewDevice {
             id: new_id,
+            tenant_id: ctx.tenant_id_str().to_string(),
             name: body.name,
             device_type_id: body.device_type_id,
             fleet_id: body.fleet_id,

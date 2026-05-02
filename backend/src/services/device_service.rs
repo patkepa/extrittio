@@ -17,6 +17,7 @@ use crate::repositories::{
 };
 use crate::services::{cert_service, device_connections, shadow_service};
 use crate::state::{DbPool, ZenohMetrics, run_db};
+use crate::tenancy::DEFAULT_TENANT_ID;
 
 pub use crate::repositories::device_repo::DeviceWithJoins;
 
@@ -209,6 +210,7 @@ pub fn auto_register_device(
 
     let new_device = NewDevice {
         id: device_id.to_string(),
+        tenant_id: DEFAULT_TENANT_ID.to_string(),
         name: device_id.to_string(),
         device_type_id,
         fleet_id: None,
@@ -346,6 +348,7 @@ pub fn list_devices(
 
     let (mut devices, total) = device_repo::list_devices(
         conn,
+        ctx.tenant_id_str(),
         status_filter,
         search_filter,
         fleet_id_filter,
@@ -365,7 +368,7 @@ pub fn get_device(
 ) -> Result<device_repo::DeviceWithJoins, AppError> {
     policy::require(ctx, Permission::ReadDevices)?;
 
-    let device = device_repo::find_device_with_joins(conn, device_id)?;
+    let device = device_repo::find_device_with_joins(conn, ctx.tenant_id_str(), device_id)?;
     let mut devices = vec![device];
     hydrate_declared_connections_from_telemetry(conn, &mut devices)?;
     hydrate_network_observed_hosts(conn, &mut devices)?;
@@ -382,8 +385,12 @@ pub fn update_device(
     policy::require(ctx, Permission::ManageDevices)?;
 
     device_repo::find_device(conn, device_id)?;
-    device_repo::update_device(conn, device_id, changeset)?;
-    Ok(device_repo::find_device_with_joins(conn, device_id)?)
+    device_repo::update_device(conn, ctx.tenant_id_str(), device_id, changeset)?;
+    Ok(device_repo::find_device_with_joins(
+        conn,
+        ctx.tenant_id_str(),
+        device_id,
+    )?)
 }
 
 /// Delete a device by ID.
@@ -394,7 +401,7 @@ pub fn delete_device(
 ) -> Result<(), AppError> {
     policy::require(ctx, Permission::ManageDevices)?;
 
-    let deleted = device_repo::delete_device(conn, device_id)?;
+    let deleted = device_repo::delete_device(conn, ctx.tenant_id_str(), device_id)?;
     if !deleted {
         return Err(AppError::NotFound(format!(
             "Device '{device_id}' not found"
@@ -422,7 +429,13 @@ pub fn resolve_target_ids(
     policy::require(ctx, Permission::ReadDevices)?;
 
     let ids = if select_all {
-        device_repo::resolve_device_ids(conn, status_filter, search_filter, fleet_id_filter)?
+        device_repo::resolve_device_ids(
+            conn,
+            ctx.tenant_id_str(),
+            status_filter,
+            search_filter,
+            fleet_id_filter,
+        )?
     } else {
         device_ids
             .ok_or_else(|| {
@@ -453,7 +466,13 @@ pub fn bulk_change_fleet(
     policy::require(ctx, Permission::ManageDevices)?;
 
     let now = chrono::Utc::now().naive_utc();
-    Ok(device_repo::bulk_update_fleet(conn, ids, fleet_id, now)?)
+    Ok(device_repo::bulk_update_fleet(
+        conn,
+        ctx.tenant_id_str(),
+        ids,
+        fleet_id,
+        now,
+    )?)
 }
 
 /// Bulk-delete devices.
@@ -464,7 +483,11 @@ pub fn bulk_delete(
 ) -> Result<usize, AppError> {
     policy::require(ctx, Permission::ManageDevices)?;
 
-    Ok(device_repo::bulk_delete_devices(conn, ids)?)
+    Ok(device_repo::bulk_delete_devices(
+        conn,
+        ctx.tenant_id_str(),
+        ids,
+    )?)
 }
 
 /// List OTA deployments for a device with pagination.
@@ -607,7 +630,7 @@ pub fn update_from_heartbeat(
         ..Default::default()
     };
 
-    device_repo::update_device(conn, device_id, &changeset)?;
+    device_repo::update_device(conn, DEFAULT_TENANT_ID, device_id, &changeset)?;
 
     let status_change = if let Some(ref prev) = previous_status {
         if prev != &status {

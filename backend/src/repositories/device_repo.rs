@@ -18,6 +18,7 @@ type BoxedDeviceQuery<'a> = diesel::dsl::IntoBoxed<
 
 /// Build a filtered query for devices with joins. Shared by count and data queries.
 fn filtered_device_query<'a>(
+    tenant_id: &'a str,
     status_filter: Option<&'a str>,
     search_filter: Option<&'a str>,
     fleet_id_filter: Option<i32>,
@@ -26,6 +27,8 @@ fn filtered_device_query<'a>(
         .inner_join(device_types::table)
         .left_join(fleets::table)
         .into_boxed();
+
+    query = query.filter(devices::tenant_id.eq(tenant_id));
 
     if let Some(status) = status_filter {
         query = query.filter(devices::status.eq(status));
@@ -47,17 +50,19 @@ fn filtered_device_query<'a>(
 
 pub fn list_devices(
     conn: &mut PgConnection,
+    tenant_id: &str,
     status_filter: Option<&str>,
     search_filter: Option<&str>,
     fleet_id_filter: Option<i32>,
     limit: i64,
     offset: i64,
 ) -> Result<(Vec<DeviceWithJoins>, i64), diesel::result::Error> {
-    let total: i64 = filtered_device_query(status_filter, search_filter, fleet_id_filter)
-        .count()
-        .get_result(conn)?;
+    let total: i64 =
+        filtered_device_query(tenant_id, status_filter, search_filter, fleet_id_filter)
+            .count()
+            .get_result(conn)?;
 
-    let results = filtered_device_query(status_filter, search_filter, fleet_id_filter)
+    let results = filtered_device_query(tenant_id, status_filter, search_filter, fleet_id_filter)
         .select((
             Device::as_select(),
             DeviceType::as_select(),
@@ -74,11 +79,13 @@ pub fn list_devices(
 /// Joins device_types because the search filter searches device_types::name.
 pub fn resolve_device_ids(
     conn: &mut PgConnection,
+    tenant_id: &str,
     status_filter: Option<&str>,
     search_filter: Option<&str>,
     fleet_id_filter: Option<i32>,
 ) -> Result<Vec<String>, diesel::result::Error> {
     let mut query = devices::table.inner_join(device_types::table).into_boxed();
+    query = query.filter(devices::tenant_id.eq(tenant_id));
 
     if let Some(status) = status_filter {
         query = query.filter(devices::status.eq(status));
@@ -101,30 +108,43 @@ pub fn resolve_device_ids(
 /// Bulk-update fleet assignment for the given device IDs.
 pub fn bulk_update_fleet(
     conn: &mut PgConnection,
+    tenant_id: &str,
     ids: &[String],
     fleet_id: Option<i32>,
     now: chrono::NaiveDateTime,
 ) -> Result<usize, diesel::result::Error> {
-    diesel::update(devices::table.filter(devices::id.eq_any(ids)))
-        .set((devices::fleet_id.eq(fleet_id), devices::updated_at.eq(now)))
-        .execute(conn)
+    diesel::update(
+        devices::table
+            .filter(devices::tenant_id.eq(tenant_id))
+            .filter(devices::id.eq_any(ids)),
+    )
+    .set((devices::fleet_id.eq(fleet_id), devices::updated_at.eq(now)))
+    .execute(conn)
 }
 
 /// Bulk-delete devices by IDs. Returns the number of rows deleted.
 pub fn bulk_delete_devices(
     conn: &mut PgConnection,
+    tenant_id: &str,
     ids: &[String],
 ) -> Result<usize, diesel::result::Error> {
-    diesel::delete(devices::table.filter(devices::id.eq_any(ids))).execute(conn)
+    diesel::delete(
+        devices::table
+            .filter(devices::tenant_id.eq(tenant_id))
+            .filter(devices::id.eq_any(ids)),
+    )
+    .execute(conn)
 }
 
 pub fn find_device_with_joins(
     conn: &mut PgConnection,
+    tenant_id: &str,
     id: &str,
 ) -> Result<DeviceWithJoins, diesel::result::Error> {
     devices::table
         .inner_join(device_types::table)
         .left_join(fleets::table)
+        .filter(devices::tenant_id.eq(tenant_id))
         .filter(devices::id.eq(id))
         .select((
             Device::as_select(),
@@ -162,17 +182,31 @@ pub fn insert_device(
 
 pub fn update_device(
     conn: &mut PgConnection,
+    tenant_id: &str,
     id: &str,
     changeset: &UpdateDevice,
 ) -> Result<(), diesel::result::Error> {
-    diesel::update(devices::table.find(id))
-        .set(changeset)
-        .execute(conn)?;
+    diesel::update(
+        devices::table
+            .filter(devices::tenant_id.eq(tenant_id))
+            .filter(devices::id.eq(id)),
+    )
+    .set(changeset)
+    .execute(conn)?;
     Ok(())
 }
 
-pub fn delete_device(conn: &mut PgConnection, id: &str) -> Result<bool, diesel::result::Error> {
-    let rows = diesel::delete(devices::table.find(id)).execute(conn)?;
+pub fn delete_device(
+    conn: &mut PgConnection,
+    tenant_id: &str,
+    id: &str,
+) -> Result<bool, diesel::result::Error> {
+    let rows = diesel::delete(
+        devices::table
+            .filter(devices::tenant_id.eq(tenant_id))
+            .filter(devices::id.eq(id)),
+    )
+    .execute(conn)?;
     Ok(rows > 0)
 }
 
