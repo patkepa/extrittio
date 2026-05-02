@@ -53,6 +53,7 @@ async fn main() -> anyhow::Result<()> {
             .get()
             .context("Failed to get DB connection for initialization")?;
         init::run_migrations(&mut conn)?;
+        init::seed_default_device_types(&mut conn)?;
         let secret = init::init_jwt_secret(&mut conn)?;
         init::seed_admin_user(&mut conn)?;
         init::init_ca_certificate(&mut conn)?;

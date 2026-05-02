@@ -8,8 +8,8 @@ use diesel::r2d2::{ConnectionManager, Pool};
 use diesel_migrations::MigrationHarness;
 use tracing::info;
 
-use crate::db::models::{NewServerConfigEntry, NewUser, ServerConfigEntry};
-use crate::db::schema::{ca_certificates, server_config, users};
+use crate::db::models::{NewDeviceType, NewServerConfigEntry, NewUser, ServerConfigEntry};
+use crate::db::schema::{ca_certificates, device_types, server_config, users};
 use crate::repositories::cert_repo;
 use crate::services::cert_service;
 use crate::state::DbPool;
@@ -32,6 +32,28 @@ pub fn run_migrations(conn: &mut PgConnection) -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("Failed to run database migrations: {e}"))?;
 
     info!("Database migrations completed successfully");
+    Ok(())
+}
+
+/// Ensure built-in device types exist even if a dev/test database was reseeded
+/// after migrations had already run.
+pub fn seed_default_device_types(conn: &mut PgConnection) -> anyhow::Result<()> {
+    const BUILT_IN_DEVICE_TYPES: &[&str] = &["default", "mac-device", "network-analyzer"];
+
+    let rows: Vec<NewDeviceType> = BUILT_IN_DEVICE_TYPES
+        .iter()
+        .map(|name| NewDeviceType {
+            name: (*name).to_string(),
+        })
+        .collect();
+
+    diesel::insert_into(device_types::table)
+        .values(&rows)
+        .on_conflict(device_types::name)
+        .do_nothing()
+        .execute(conn)
+        .context("Failed to seed built-in device types")?;
+
     Ok(())
 }
 
