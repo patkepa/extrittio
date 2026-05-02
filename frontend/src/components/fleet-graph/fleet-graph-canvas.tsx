@@ -50,6 +50,48 @@ const CLICK_DIST_THRESHOLD = 12;
 // --- Pre-built Path2D cache for device-type icons (16×16 viewBox) ---
 const iconPathCache = new Map<string, Path2D[]>();
 
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function formatExternalTooltip(node: GraphNode): string {
+  const connection = node.connection;
+  if (!connection) return '';
+
+  const rows = [
+    ['Type', connection.device_type ?? node.deviceTypeName],
+    ['Connection', connection.connection_type],
+    ['Status', connection.status],
+    ['Address', connection.address],
+    ['External ID', connection.external_id],
+    ['Source', connection.source],
+    ['Device ID', connection.device_id],
+  ].filter((row): row is [string, string] => Boolean(row[1]));
+
+  if (rows.length === 0) return escapeHtml(node.name);
+
+  return `
+    <div class="fleet-graph-node-tooltip">
+      <div class="fleet-graph-node-tooltip-title">${escapeHtml(node.name)}</div>
+      ${rows
+        .map(
+          ([label, value]) => `
+            <div class="fleet-graph-node-tooltip-row">
+              <span>${escapeHtml(label)}</span>
+              <strong>${escapeHtml(value)}</strong>
+            </div>
+          `,
+        )
+        .join('')}
+    </div>
+  `;
+}
+
 function getIconPaths(deviceTypeName?: string): Path2D[] {
   const key = deviceTypeName?.toLowerCase() ?? '__fallback__';
   let cached = iconPathCache.get(key);
@@ -728,6 +770,11 @@ export const FleetGraphCanvas = memo(
       [paintLasso, onFrameRedraw],
     );
 
+    const getNodeLabel = useCallback((node: GraphNode) => {
+      if (node.type !== 'external') return '';
+      return formatExternalTooltip(node);
+    }, []);
+
     return (
       <div
         ref={canvasWrapperRef}
@@ -761,7 +808,7 @@ export const FleetGraphCanvas = memo(
           warmupTicks={50}
           cooldownTicks={200}
           autoPauseRedraw={false}
-          nodeLabel=""
+          nodeLabel={getNodeLabel as any}
           onZoom={handleZoom as any}
           minZoom={0.5}
           maxZoom={8}

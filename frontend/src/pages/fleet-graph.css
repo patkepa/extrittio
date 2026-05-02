@@ -4,6 +4,7 @@
   display: flex;
   flex-direction: row;
   margin: -24px;
+  background-color: var(--content-bg);
 }
 
 .fleet-graph-workspace {
@@ -11,6 +12,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
+  background-color: #171717;
 }
 
 .fleet-graph-canvas {
@@ -18,6 +20,53 @@
   min-height: 0;
   position: relative;
   overflow: hidden;
+  background-color: #171717;
+}
+
+.fleet-graph-canvas .scene-tooltip {
+  padding: 0;
+  color: var(--sidebar-foreground);
+  background: var(--sidebar-bg);
+  border: 1px solid var(--sidebar-border);
+  border-radius: 4px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+}
+
+.fleet-graph-node-tooltip {
+  min-width: 220px;
+  max-width: 300px;
+  padding: 10px 12px;
+}
+
+.fleet-graph-node-tooltip-title {
+  margin-bottom: 8px;
+  color: var(--sidebar-foreground);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.fleet-graph-node-tooltip-row {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+  padding: 2px 0;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.fleet-graph-node-tooltip-row span {
+  color: var(--sidebar-muted-foreground);
+}
+
+.fleet-graph-node-tooltip-row strong {
+  min-width: 0;
+  color: var(--sidebar-foreground);
+  font-family: 'SF Mono', 'Monaco', monospace;
+  font-weight: 500;
+  overflow-wrap: anywhere;
 }
 
 .fleet-graph-toolbar-shell {
@@ -446,10 +495,34 @@
   position: fixed;
   inset: 0;
   z-index: 100;
+  background: transparent;
 }
 
 .fleet-graph-context-menu {
   position: fixed;
   z-index: 101;
   outline: none;
+  min-width: 200px;
+  padding: 4px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: #2f343c;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 14px 32px rgba(0, 0, 0, 0.45);
+}
+
+.fleet-graph-context-menu > .bp6-menu {
+  min-width: 100%;
+  padding: 0;
+  background-color: #2f343c;
+}
+
+body:has(.fleet-graph-context-menu) .bp6-overlay:has(.bp6-submenu.bp6-popover),
+body:has(.fleet-graph-context-menu) .bp6-overlay-content:has(.bp6-submenu.bp6-popover) {
+  z-index: 110;
+}
+
+body:has(.fleet-graph-context-menu) .bp6-submenu.bp6-popover > .bp6-popover-content {
+  background-color: #2f343c;
 }
