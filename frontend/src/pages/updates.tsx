@@ -249,6 +249,7 @@ interface UpdateRowProps {
 function UpdateRow({ deployment, onDeviceClick }: UpdateRowProps) {
   const intent = statusIntent(deployment.status);
   const progress = progressForStatus(deployment.status);
+  const isTerminal = deployment.status === 'success' || deployment.status === 'failed';
 
   return (
     <tr className={`updates-row updates-row--${deployment.status}`}>
@@ -273,7 +274,7 @@ function UpdateRow({ deployment, onDeviceClick }: UpdateRowProps) {
         )}
       </td>
       <td className="updates-progress-cell">
-        <ProgressBar value={progress} intent={intent} animate={deployment.status !== 'failed'} />
+        <ProgressBar value={progress} intent={intent} animate={!isTerminal} />
         <span className="updates-progress-label">{Math.round(progress * 100)}%</span>
       </td>
       <td className="updates-muted-cell">{formatTime(deployment.initiated_at)}</td>
