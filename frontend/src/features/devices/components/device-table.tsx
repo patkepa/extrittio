@@ -1,8 +1,8 @@
 import { memo, useMemo } from 'react';
 import { List } from 'react-window';
-import { Card, Checkbox, Elevation, H4, Icon, Tag } from '@blueprintjs/core';
+import { Card, Checkbox, Elevation, Icon, Tag } from '@blueprintjs/core';
 import type { Device } from '../../../types/api';
-import { StatusLed } from '../../../lib/ui';
+import { EmptyState, StatusLed } from '../../../lib/ui';
 import type { DeviceSortDir, DeviceSortField } from '../hooks/use-device-list-state';
 import { DeviceTypeTag } from '../../../components/devices/device-type-tag';
 
@@ -233,11 +233,11 @@ export function DeviceTable({
   return (
     <Card elevation={Elevation.ONE} className="devices-card">
       {devices.length === 0 ? (
-        <div className="empty-state">
-          <Icon icon="search" size={48} />
-          <H4>No devices found</H4>
-          <p>Try adjusting your search or filter criteria</p>
-        </div>
+        <EmptyState
+          icon="search"
+          title="No devices found"
+          description="Try adjusting your search or filter criteria"
+        />
       ) : (
         <div className="devices-grid" role="grid" aria-rowcount={devices.length}>
           <div className="devices-grid-header" role="row">

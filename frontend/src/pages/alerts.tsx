@@ -9,7 +9,6 @@ import {
   Tag,
   Button,
   Icon,
-  H4,
   Callout,
   Spinner,
   Tooltip,
@@ -23,6 +22,7 @@ import {
   useBulkResolve,
   useBulkReactivate,
 } from '../hooks/use-alerts';
+import { EmptyState, FilterPill } from '../lib/ui';
 import { showSuccessToast, showErrorToast } from '../utils/toaster';
 import type { Alert } from '../types/alerts';
 import './alerts.css';
@@ -198,43 +198,34 @@ export const Alerts = () => {
         <div className="controls-row">
           <div className="filter-section">
             {(['all', 'active', 'acknowledged', 'resolved'] as const).map((status) => (
-              <button
+              <FilterPill
                 key={status}
-                className={`filter-pill ${filterStatus === status ? 'active' : ''}`}
-                onClick={() => {
-                  setFilterStatus(status);
+                value={status}
+                label={status.charAt(0).toUpperCase() + status.slice(1)}
+                active={filterStatus === status}
+                onSelect={(nextStatus) => {
+                  setFilterStatus(nextStatus);
                   setSelectedIds(new Set());
                   setPage(0);
                 }}
-              >
-                <span className="pill-label">
-                  {status.charAt(0).toUpperCase() + status.slice(1)}
-                </span>
-              </button>
+              />
             ))}
           </div>
           <div className="filter-section">
             {(['all', 'info', 'warning', 'critical'] as const).map((severity) => (
-              <button
+              <FilterPill
                 key={severity}
-                className={`filter-pill ${filterSeverity === severity ? 'active' : ''}`}
-                onClick={() => {
-                  setFilterSeverity(severity);
+                value={severity}
+                label={severity.charAt(0).toUpperCase() + severity.slice(1)}
+                active={filterSeverity === severity}
+                icon={severity !== 'all' ? severityIcon(severity) : undefined}
+                iconClassName={severity !== 'all' ? `severity-icon--${severity}` : undefined}
+                onSelect={(nextSeverity) => {
+                  setFilterSeverity(nextSeverity);
                   setSelectedIds(new Set());
                   setPage(0);
                 }}
-              >
-                {severity !== 'all' && (
-                  <Icon
-                    icon={severityIcon(severity)}
-                    size={12}
-                    className={`severity-icon--${severity}`}
-                  />
-                )}
-                <span className="pill-label">
-                  {severity.charAt(0).toUpperCase() + severity.slice(1)}
-                </span>
-              </button>
+              />
             ))}
           </div>
         </div>
@@ -290,11 +281,11 @@ export const Alerts = () => {
       {/* Alerts Table */}
       <Card elevation={Elevation.ONE} className="alerts-card">
         {alerts.length === 0 ? (
-          <div className="empty-state">
-            <Icon icon="tick-circle" size={48} />
-            <H4>No alerts</H4>
-            <p>No alerts matching your current filters</p>
-          </div>
+          <EmptyState
+            icon="tick-circle"
+            title="No alerts"
+            description="No alerts matching your current filters"
+          />
         ) : (
           <HTMLTable interactive className="alerts-table">
             <thead>

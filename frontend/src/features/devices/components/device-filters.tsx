@@ -1,6 +1,6 @@
-import { Card, Elevation, Button, InputGroup } from '@blueprintjs/core';
+import { Card, Elevation } from '@blueprintjs/core';
 import { BulkActionBar } from '../../../components/devices/bulk-action-bar';
-import { StatusLed } from '../../../lib/ui';
+import { FilterPill, SearchField } from '../../../lib/ui';
 import type { BulkDeviceFilters, Fleet } from '../../../types/api';
 import type { DeviceStatusFilter } from '../hooks/use-device-list-state';
 
@@ -49,34 +49,26 @@ export function DeviceFilters({
       <div className={`controls-content ${hasSelection ? 'controls-content--hidden' : ''}`}>
         <div className="controls-row">
           <div className="search-section">
-            <InputGroup
+            <SearchField
               inputRef={searchInputRef}
-              leftIcon="search"
               placeholder="Search by name or type..."
               value={searchQuery}
-              onChange={(e) => onSearchQueryChange(e.target.value)}
-              fill
-              rightElement={
-                searchQuery ? (
-                  <Button icon="cross" minimal onClick={() => onSearchQueryChange('')} />
-                ) : undefined
-              }
+              onChange={onSearchQueryChange}
             />
           </div>
 
           <div className="filter-section">
             {(['all', 'online', 'offline'] as const).map((status) => (
-              <button
+              <FilterPill
                 key={status}
-                className={`filter-pill ${filterStatus === status ? 'active' : ''} ${status !== 'all' ? `pill-${status}` : ''}`}
-                onClick={() => onFilterStatusChange(status)}
-              >
-                {status !== 'all' && <StatusLed status={status} />}
-                <span className="pill-label">
-                  {status === 'all' ? 'All' : status.charAt(0).toUpperCase() + status.slice(1)}
-                </span>
-                <span className="pill-count mono-data">{statusCounts[status]}</span>
-              </button>
+                value={status}
+                label={status === 'all' ? 'All' : status.charAt(0).toUpperCase() + status.slice(1)}
+                active={filterStatus === status}
+                className={status !== 'all' ? `pill-${status}` : undefined}
+                status={status !== 'all' ? status : undefined}
+                count={statusCounts[status]}
+                onSelect={onFilterStatusChange}
+              />
             ))}
           </div>
         </div>
@@ -84,21 +76,21 @@ export function DeviceFilters({
         {fleets.length > 0 && (
           <div className="controls-row" style={{ marginTop: 10 }}>
             <div className="filter-section">
-              <button
-                className={`filter-pill ${filterFleetId === null ? 'active' : ''}`}
-                onClick={() => onFilterFleetIdChange(null)}
-              >
-                <span className="pill-label">All Fleets</span>
-              </button>
+              <FilterPill
+                value="all"
+                label="All Fleets"
+                active={filterFleetId === null}
+                onSelect={() => onFilterFleetIdChange(null)}
+              />
               {fleets.map((fleet) => (
-                <button
+                <FilterPill
                   key={fleet.id}
-                  className={`filter-pill ${filterFleetId === fleet.id ? 'active' : ''}`}
-                  onClick={() => onFilterFleetIdChange(fleet.id)}
-                >
-                  <span className="pill-label">{fleet.name}</span>
-                  <span className="pill-count mono-data">{fleet.device_count}</span>
-                </button>
+                  value={String(fleet.id)}
+                  label={fleet.name}
+                  active={filterFleetId === fleet.id}
+                  count={fleet.device_count}
+                  onSelect={() => onFilterFleetIdChange(fleet.id)}
+                />
               ))}
             </div>
           </div>

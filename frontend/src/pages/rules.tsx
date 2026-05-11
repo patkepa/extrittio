@@ -7,7 +7,6 @@ import {
   Tag,
   Button,
   Icon,
-  H4,
   Callout,
   Spinner,
   Switch,
@@ -20,6 +19,7 @@ import { useFleets } from '../hooks/use-fleets';
 import { useAllDevices } from '../hooks/use-devices';
 import { useUIStore } from '../stores/ui-store';
 import { RuleDialog } from '../components/rules/rule-dialog';
+import { EmptyState, FilterPill } from '../lib/ui';
 import { showSuccessToast, showErrorToast } from '../utils/toaster';
 import type { Rule } from '../types/rules';
 import './rules.css';
@@ -186,37 +186,39 @@ export const Rules = () => {
         <div className="controls-row">
           <div className="filter-section">
             {(['all', 'enabled', 'disabled'] as const).map((status) => (
-              <button
+              <FilterPill
                 key={status}
-                className={`filter-pill ${filterEnabled === status ? 'active' : ''}`}
-                onClick={() => setFilterEnabled(status)}
-              >
-                <span className="pill-label">
-                  {status.charAt(0).toUpperCase() + status.slice(1)}
-                </span>
-                <span className="pill-count mono-data">{statusCounts[status]}</span>
-              </button>
+                value={status}
+                label={status.charAt(0).toUpperCase() + status.slice(1)}
+                active={filterEnabled === status}
+                count={statusCounts[status]}
+                onSelect={setFilterEnabled}
+              />
             ))}
           </div>
           <div className="filter-section">
             {(['all', 'telemetry', 'device_status'] as const).map((trigger) => (
-              <button
+              <FilterPill
                 key={trigger}
-                className={`filter-pill ${filterTrigger === trigger ? 'active' : ''}`}
-                onClick={() => setFilterTrigger(trigger)}
-              >
-                {trigger !== 'all' && (
-                  <Icon icon={trigger === 'telemetry' ? 'pulse' : 'signal-search'} size={12} />
-                )}
-                <span className="pill-label">
-                  {trigger === 'all'
+                value={trigger}
+                label={
+                  trigger === 'all'
                     ? 'All Triggers'
                     : trigger === 'telemetry'
                       ? 'Telemetry'
-                      : 'Device Status'}
-                </span>
-                <span className="pill-count mono-data">{triggerCounts[trigger]}</span>
-              </button>
+                      : 'Device Status'
+                }
+                active={filterTrigger === trigger}
+                icon={
+                  trigger === 'all'
+                    ? undefined
+                    : trigger === 'telemetry'
+                      ? 'pulse'
+                      : 'signal-search'
+                }
+                count={triggerCounts[trigger]}
+                onSelect={setFilterTrigger}
+              />
             ))}
           </div>
         </div>
@@ -225,11 +227,11 @@ export const Rules = () => {
       {/* Rules Table */}
       <Card elevation={Elevation.ONE} className="rules-card">
         {filteredRules.length === 0 ? (
-          <div className="empty-state">
-            <Icon icon="filter" size={48} />
-            <H4>No rules found</H4>
-            <p>Create a rule to start monitoring your devices</p>
-          </div>
+          <EmptyState
+            icon="filter"
+            title="No rules found"
+            description="Create a rule to start monitoring your devices"
+          />
         ) : (
           <HTMLTable interactive className="rules-table">
             <thead>
