@@ -6,9 +6,9 @@ import { useAlertSummary } from '../hooks/use-alerts';
 import { useDashboardStats } from '../hooks/use-dashboard';
 import { useDevice } from '../hooks/use-devices';
 import { AppShell } from '../lib/app-shell';
+import type { NavBadge } from '../lib/navigation';
 import { useAuthStore } from '../stores/auth-store';
 import { useUIStore } from '../stores/ui-store';
-import type { NavBadge } from '../types/navigation';
 import { getRouteLabel, navGroups } from './routes';
 
 interface ExtrittioShellProps {

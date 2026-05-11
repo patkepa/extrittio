@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Spinner } from '@blueprintjs/core';
-import { ThemeProvider } from './context/theme-provider';
+import { ThemeProvider } from './lib/theme';
 import { ExtrittioShell } from './app/extrittio-shell';
 import { AuthGuard } from './components/auth-guard';
 import { Login } from './pages/login';
@@ -10,7 +10,7 @@ import { protectedRoutes } from './app/routes';
 // Import Blueprint.js styles
 import '@blueprintjs/core/lib/css/blueprint.css';
 import '@blueprintjs/icons/lib/css/blueprint-icons.css';
-import './styles/theme.css';
+import './lib/theme/theme.css';
 
 const PageFallback = () => (
   <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>

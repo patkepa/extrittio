@@ -13,10 +13,10 @@ import {
 } from '@blueprintjs/core';
 import { clearKeyboardFocusRegions } from '../../utils/focus-regions';
 import { getDirectionalKey, shouldIgnorePageShortcut } from '../../utils/keyboard';
-import type { NavBadge, NavGroup, NavItem, Project, User } from '../../types/navigation';
+import type { NavBadge, NavGroup, NavItem, Project, User } from '../navigation';
 import './app-sidebar.css';
 
-interface AppSidebarProps {
+export interface AppSidebarProps {
   isCollapsed?: boolean;
   productName: string;
   collapsedProductName?: string;

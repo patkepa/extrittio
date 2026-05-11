@@ -4,10 +4,10 @@
  * This theme uses Blueprint.js v6 color system properly:
  * - Blueprint's .bp6-dark class handles most text/UI colors automatically
  * - We only override backgrounds and structural colors
- * - For custom colors in components, import from @/styles/colors.ts
+ * - For custom colors in components, prefer theme CSS variables from this file
  *
  * @see https://blueprintjs.com/docs/#core/colors
- * @see src/styles/colors.ts for Blueprint Colors constant usage
+ * @see https://blueprintjs.com/docs/#core/colors for Blueprint color references
  */
 
 /* Dark Theme Only - Deep blacks with electric accents and consistent colors */

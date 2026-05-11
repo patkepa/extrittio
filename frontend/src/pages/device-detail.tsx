@@ -12,7 +12,7 @@ import { ShadowTab } from '../components/devices/shadow-tab';
 import { OtaTab } from '../components/devices/ota-tab';
 import { CommandsTab } from '../components/devices/commands-tab';
 import { AlertsTab } from '../components/devices/alerts-tab';
-import { ErrorBoundary } from '../components/error-boundary';
+import { ErrorBoundary } from '../lib/app-shell';
 import { getDirectionalKey, shouldIgnorePageShortcut } from '../utils/keyboard';
 import './device-detail.css';
 

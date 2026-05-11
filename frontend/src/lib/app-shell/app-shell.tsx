@@ -1,11 +1,11 @@
 import { useEffect, type ReactNode } from 'react';
 import { Button, Navbar, NavbarGroup } from '@blueprintjs/core';
-import { AppSidebar } from '../../components/layout/app-sidebar';
-import { ErrorBoundary } from '../../components/error-boundary';
 import { clearKeyboardFocusRegions, moveFocusRegion } from '../../utils/focus-regions';
 import { hasOpenBlockingOverlay, isEditableTarget } from '../../utils/keyboard';
-import type { NavBadge, NavGroup, Project, User } from '../../types/navigation';
-import '../../components/layout/main-layout.css';
+import type { NavBadge, NavGroup, Project, User } from '../navigation';
+import { AppSidebar } from './app-sidebar';
+import { ErrorBoundary } from './error-boundary';
+import './main-layout.css';
 
 export interface AppShellProps {
   children: ReactNode;

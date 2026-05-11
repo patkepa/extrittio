@@ -9,7 +9,7 @@ import {
   Tooltip,
 } from '@blueprintjs/core';
 import { useRef, useState, type ReactNode } from 'react';
-import { BottomToolbar } from '../layout/bottom-toolbar';
+import { BottomToolbar } from '../../lib/ui';
 import { useFleets } from '../../hooks/use-fleets';
 import {
   useBulkChangeFleet,
