@@ -709,6 +709,16 @@
   animation: fadeIn 0.4s ease;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .stagger-item,
+  .device-row,
+  .devices-controls,
+  .devices-card,
+  .device-hover-tooltip {
+    animation: none;
+  }
+}
+
 /* Responsive */
 @media (max-width: 1200px) {
   .controls-row {

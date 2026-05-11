@@ -1,8 +1,15 @@
 {
   "name": "@extrittio/data-client",
-  "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "Backend-agnostic Axios client factory with auth token and unauthorized hooks.",
   "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -11,6 +18,14 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/patkepa/extrittio.git",
+    "directory": "frontend/packages/data-client"
   },
   "peerDependencies": {
     "axios": "^1.12.2"

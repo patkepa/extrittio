@@ -25,8 +25,9 @@ npm run build:packages
 ```
 
 The root `npm run build` and `npm run dev` scripts run `build:packages` first so the app resolves package imports from fresh generated outputs.
+`build:packages` removes stale package `dist/` folders before rebuilding them.
 
-`src/lib/*` only contains compatibility re-exports for older in-repo import paths. New reusable code should be added to the matching package `src/` directory.
+Reusable code should be added to the matching package `src/` directory. The old in-app `src/lib/*` shim layer has been removed; app code and playgrounds should import the workspace packages directly.
 
 ## Basic Usage
 
@@ -66,6 +67,31 @@ export function RouterAdminApp() {
 ```
 
 For a complete non-Extrittio example, see `src/playground/router-admin-demo.tsx`.
+
+## GitHub Packages
+
+The workspace packages are configured for GitHub Packages with `publishConfig.registry` set to `https://npm.pkg.github.com`.
+
+Create local tarballs before publishing:
+
+```bash
+npm run pack:packages
+```
+
+Publish all workspace packages after authenticating with GitHub Packages:
+
+```bash
+npm login --scope=@extrittio --registry=https://npm.pkg.github.com
+npm run publish:packages
+```
+
+Consumer apps need an `.npmrc` entry for the package scope:
+
+```ini
+@extrittio:registry=https://npm.pkg.github.com
+```
+
+See `docs/reusable-ui-github-packages.md` for the complete publish and consumer setup.
 
 ## Runtime Boundaries
 

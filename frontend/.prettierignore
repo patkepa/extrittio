@@ -1,3 +1,4 @@
 dist/
 node_modules/
+packages/*/dist/
 src/types/openapi.ts

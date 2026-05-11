@@ -1,8 +1,15 @@
 {
   "name": "@extrittio/interactions",
-  "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "Reusable keyboard, focus-region, roving-focus, and form-navigation helpers.",
   "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -11,6 +18,14 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/patkepa/extrittio.git",
+    "directory": "frontend/packages/interactions"
   },
   "peerDependencies": {
     "react": "^18.3.1"

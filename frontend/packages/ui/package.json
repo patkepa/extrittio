@@ -1,8 +1,15 @@
 {
   "name": "@extrittio/ui",
-  "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "Reusable Extrittio UI primitives for toolbars, search, filters, status, and empty states.",
   "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "sideEffects": [
     "*.css"
   ],
@@ -15,6 +22,14 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json && cp src/*.css dist/"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/patkepa/extrittio.git",
+    "directory": "frontend/packages/ui"
   },
   "peerDependencies": {
     "@blueprintjs/core": "^6.3.2",

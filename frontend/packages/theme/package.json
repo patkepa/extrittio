@@ -1,8 +1,15 @@
 {
   "name": "@extrittio/theme",
-  "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "Extrittio dark theme provider and CSS custom property theme.",
   "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "sideEffects": [
     "*.css"
   ],
@@ -15,6 +22,14 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json && cp src/theme.css dist/theme.css"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/patkepa/extrittio.git",
+    "directory": "frontend/packages/theme"
   },
   "peerDependencies": {
     "react": "^18.3.1"

@@ -1,8 +1,15 @@
 {
   "name": "@extrittio/app-shell",
-  "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "Reusable Extrittio application shell, sidebar, navbar, and error boundary.",
   "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "sideEffects": [
     "*.css"
   ],
@@ -16,10 +23,18 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && cp src/*.css dist/ && cp styles.css dist/styles.css"
   },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/patkepa/extrittio.git",
+    "directory": "frontend/packages/app-shell"
+  },
   "dependencies": {
-    "@extrittio/interactions": "0.0.0",
-    "@extrittio/navigation": "0.0.0",
-    "@extrittio/ui": "0.0.0"
+    "@extrittio/interactions": "^0.1.0",
+    "@extrittio/navigation": "^0.1.0",
+    "@extrittio/ui": "^0.1.0"
   },
   "peerDependencies": {
     "@blueprintjs/core": "^6.3.2",

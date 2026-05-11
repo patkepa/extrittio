@@ -64,60 +64,6 @@
   --danger-light: 0 60% 15%;
 }
 
-/* LED Status Indicator System */
-.status-led {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  display: inline-block;
-  flex-shrink: 0;
-}
-
-.status-led--online {
-  background-color: hsl(var(--success));
-  box-shadow:
-    0 0 4px hsl(var(--success) / 0.3),
-    0 0 8px hsl(var(--success) / 0.15);
-  animation: led-pulse 2s ease-in-out infinite;
-}
-
-.status-led--offline {
-  background-color: hsl(var(--danger));
-  box-shadow: 0 0 3px hsl(var(--danger) / 0.2);
-}
-
-.status-led--warning {
-  background-color: hsl(var(--warning));
-  box-shadow: 0 0 4px hsl(var(--warning) / 0.25);
-  animation: led-blink 1.5s ease-in-out infinite;
-}
-
-@keyframes led-pulse {
-  0%,
-  100% {
-    opacity: 1;
-    box-shadow:
-      0 0 4px hsl(var(--success) / 0.3),
-      0 0 8px hsl(var(--success) / 0.15);
-  }
-  50% {
-    opacity: 0.7;
-    box-shadow:
-      0 0 2px hsl(var(--success) / 0.15),
-      0 0 4px hsl(var(--success) / 0.08);
-  }
-}
-
-@keyframes led-blink {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.4;
-  }
-}
-
 /* Global styles */
 * {
   margin: 0;
@@ -530,9 +476,7 @@ p {
 .bp6-card,
 .bp6-button,
 .bp6-input,
-.bp6-tag,
-.filter-pill,
-.device-row {
+.bp6-tag {
   transition-property: background-color, border-color, color, fill, stroke;
   transition-duration: 150ms;
   transition-timing-function: ease-in-out;
@@ -680,22 +624,6 @@ p {
 
 .tab-input-spacing {
   margin-bottom: 12px;
-}
-
-/* Accessibility: disable animations for users who prefer reduced motion */
-@media (prefers-reduced-motion: reduce) {
-  .status-led--online,
-  .status-led--warning {
-    animation: none;
-  }
-
-  .stagger-item,
-  .device-row,
-  .devices-controls,
-  .devices-card,
-  .device-hover-tooltip {
-    animation: none;
-  }
 }
 
 /* uPlot dark theme overrides */

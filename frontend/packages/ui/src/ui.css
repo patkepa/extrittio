@@ -2,6 +2,61 @@
 @import './bottom-toolbar.css';
 @import './toolbar-buttons.css';
 
+.status-led {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.status-led--online {
+  background-color: hsl(var(--success));
+  box-shadow:
+    0 0 4px hsl(var(--success) / 0.3),
+    0 0 8px hsl(var(--success) / 0.15);
+  animation: led-pulse 2s ease-in-out infinite;
+}
+
+.status-led--offline {
+  background-color: hsl(var(--danger));
+  box-shadow: 0 0 3px hsl(var(--danger) / 0.2);
+}
+
+.status-led--warning {
+  background-color: hsl(var(--warning));
+  box-shadow: 0 0 4px hsl(var(--warning) / 0.25);
+  animation: led-blink 1.5s ease-in-out infinite;
+}
+
+@keyframes led-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow:
+      0 0 4px hsl(var(--success) / 0.3),
+      0 0 8px hsl(var(--success) / 0.15);
+  }
+
+  50% {
+    opacity: 0.7;
+    box-shadow:
+      0 0 2px hsl(var(--success) / 0.15),
+      0 0 4px hsl(var(--success) / 0.08);
+  }
+}
+
+@keyframes led-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
+}
+
 .filter-section {
   display: flex;
   gap: 8px;
@@ -70,4 +125,11 @@
   margin: 0;
   color: hsl(var(--muted));
   font-size: 13px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-led--online,
+  .status-led--warning {
+    animation: none;
+  }
 }

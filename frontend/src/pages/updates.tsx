@@ -12,6 +12,7 @@ import {
   Spinner,
   Tag,
 } from '@blueprintjs/core';
+import { EmptyState, FilterPill } from '@extrittio/ui';
 import { useAllOtaDeployments } from '../hooks/use-firmware-updates';
 import type { GlobalOtaDeployment } from '../types/api';
 import './updates.css';
@@ -158,15 +159,15 @@ export const Updates = () => {
       </div>
 
       <Card elevation={Elevation.ONE} className="updates-controls">
-        <div className="updates-filter-section">
+        <div className="filter-section">
           {(['in_progress', 'completed', 'all'] as const).map((status) => (
-            <button
+            <FilterPill
               key={status}
-              className={`updates-filter-pill${filter === status ? ' active' : ''}`}
-              onClick={() => changeFilter(status)}
-            >
-              {formatStatus(status)}
-            </button>
+              value={status}
+              label={formatStatus(status)}
+              active={filter === status}
+              onSelect={changeFilter}
+            />
           ))}
         </div>
         <div className="updates-page-stats">
@@ -188,9 +189,8 @@ export const Updates = () => {
           <Spinner />
         </div>
       ) : deployments.length === 0 ? (
-        <Card elevation={Elevation.ONE} className="updates-empty-state">
-          <Icon icon="updated" size={44} />
-          <h4>No updates</h4>
+        <Card elevation={Elevation.ONE} className="updates-empty-card">
+          <EmptyState icon="updated" title="No updates" className="updates-empty-state" />
         </Card>
       ) : (
         <Card elevation={Elevation.ONE} className="updates-card">
