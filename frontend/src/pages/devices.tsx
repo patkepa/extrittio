@@ -5,10 +5,9 @@ import { DeviceFilters } from '../features/devices/components/device-filters';
 import { DeviceTable } from '../features/devices/components/device-table';
 import { useDeviceListState } from '../features/devices/hooks/use-device-list-state';
 import { useFleets } from '../hooks/use-fleets';
-import { useRovingFocus } from '../hooks/use-roving-focus';
+import { getDirectionalKey, shouldIgnorePageShortcut, useRovingFocus } from '../lib/interactions';
 import { useSelectionStore } from '../stores/selection-store';
 import { useUIStore } from '../stores/ui-store';
-import { getDirectionalKey, shouldIgnorePageShortcut } from '../utils/keyboard';
 import './devices.css';
 
 export const Devices = () => {

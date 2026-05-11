@@ -1,7 +1,10 @@
 import { useRef } from 'react';
 import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from 'react';
-import { clearKeyboardFocusRegions } from '../../utils/focus-regions';
-import { getDirectionalKey, isEditableTarget } from '../../utils/keyboard';
+import {
+  clearKeyboardFocusRegions,
+  getDirectionalKey,
+  isEditableTarget,
+} from '../../lib/interactions';
 import './right-sidebar.css';
 
 interface RightSidebarProps {

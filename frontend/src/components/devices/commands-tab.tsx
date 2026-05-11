@@ -12,7 +12,7 @@ import {
   Tag,
 } from '@blueprintjs/core';
 import { useCommandHistory, useSendCommand } from '../../hooks/use-commands';
-import { useFormNavigation } from '../../hooks/use-form-navigation';
+import { useFormNavigation } from '../../lib/interactions';
 import { showSuccessToast, showErrorToast } from '../../utils/toaster';
 
 interface CommandsTabProps {

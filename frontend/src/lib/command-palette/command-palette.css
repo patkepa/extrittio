@@ -1,4 +1,4 @@
-/* Command Palette — cmdk + Radix Dialog overlay */
+/* Command Palette - cmdk + Radix Dialog overlay */
 
 /* Radix overlay backdrop */
 [cmdk-overlay] {
@@ -165,21 +165,11 @@
   flex-shrink: 0;
 }
 
-/* Device status LED inside command palette */
-.cmdk-device-led {
+/* Compact status LED inside command palette */
+.cmdk-status-led {
   width: 6px;
   height: 6px;
-  border-radius: 50%;
   flex-shrink: 0;
-}
-
-.cmdk-device-led--online {
-  background-color: hsl(var(--success));
-  box-shadow: 0 0 4px hsl(var(--success) / 0.5);
-}
-
-.cmdk-device-led--offline {
-  background-color: hsl(var(--danger));
 }
 
 /* Empty state */

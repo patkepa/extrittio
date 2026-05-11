@@ -13,7 +13,7 @@ import {
   Icon,
 } from '@blueprintjs/core';
 import { useRule, useCreateRule, useUpdateRule } from '../../hooks/use-rules';
-import { useConfirmShortcut } from '../../hooks/use-confirm-shortcut';
+import { useConfirmShortcut } from '../../lib/interactions';
 import { useDeviceTypes } from '../../hooks/use-device-types';
 import { useFleets } from '../../hooks/use-fleets';
 import { useAllDevices } from '../../hooks/use-devices';

@@ -18,7 +18,7 @@ import {
   useNextVersion,
   useUploadFirmwareUpdate,
 } from '../../hooks/use-firmware-updates';
-import { useConfirmShortcut } from '../../hooks/use-confirm-shortcut';
+import { useConfirmShortcut } from '../../lib/interactions';
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;

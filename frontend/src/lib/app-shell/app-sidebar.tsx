@@ -11,8 +11,11 @@ import {
   Position,
   Popover,
 } from '@blueprintjs/core';
-import { clearKeyboardFocusRegions } from '../../utils/focus-regions';
-import { getDirectionalKey, shouldIgnorePageShortcut } from '../../utils/keyboard';
+import {
+  clearKeyboardFocusRegions,
+  getDirectionalKey,
+  shouldIgnorePageShortcut,
+} from '../interactions';
 import type { NavBadge, NavGroup, NavItem, Project, User } from '../navigation';
 import { StatusLed } from '../ui';
 import './app-sidebar.css';
