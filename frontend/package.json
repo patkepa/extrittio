@@ -4,7 +4,13 @@
   "version": "0.0.0",
   "type": "module",
   "workspaces": [
-    "packages/*"
+    "packages/navigation",
+    "packages/interactions",
+    "packages/ui",
+    "packages/theme",
+    "packages/data-client",
+    "packages/command-palette",
+    "packages/app-shell"
   ],
   "scripts": {
     "dev": "npm run build:packages && vite",

@@ -1,2 +1,2 @@
-export { CommandPaletteShell } from './command-palette-shell';
-export type { CommandPaletteShellProps } from './command-palette-shell';
+export { CommandPaletteShell } from '@extrittio/command-palette';
+export type { CommandPaletteShellProps } from '@extrittio/command-palette';

@@ -8,13 +8,18 @@
   ],
   "exports": {
     ".": {
-      "types": "./dist/app-shell/index.d.ts",
-      "import": "./dist/app-shell/index.js"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     },
     "./styles.css": "./dist/styles.css"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && cp ../../src/lib/app-shell/*.css dist/app-shell/ && cp ../../src/lib/ui/*.css dist/ui/ && cp styles.css dist/styles.css"
+    "build": "tsc -p tsconfig.json && cp src/*.css dist/ && cp styles.css dist/styles.css"
+  },
+  "dependencies": {
+    "@extrittio/interactions": "0.0.0",
+    "@extrittio/navigation": "0.0.0",
+    "@extrittio/ui": "0.0.0"
   },
   "peerDependencies": {
     "@blueprintjs/core": "^6.3.2",

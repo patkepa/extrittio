@@ -14,7 +14,7 @@
     "./styles.css": "./dist/ui.css"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && cp ../../src/lib/ui/*.css dist/"
+    "build": "tsc -p tsconfig.json && cp src/*.css dist/"
   },
   "peerDependencies": {
     "@blueprintjs/core": "^6.3.2",

@@ -1,13 +1,8 @@
 {
   "extends": "../../tsconfig.package.json",
   "compilerOptions": {
-    "rootDir": "../../src/lib",
+    "rootDir": "src",
     "outDir": "dist"
   },
-  "include": [
-    "../../src/lib/app-shell/**/*",
-    "../../src/lib/interactions/**/*",
-    "../../src/lib/navigation/**/*",
-    "../../src/lib/ui/**/*"
-  ]
+  "include": ["src/**/*"]
 }

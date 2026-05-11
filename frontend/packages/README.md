@@ -2,7 +2,7 @@
 
 These workspace packages expose the reusable frontend foundation used by the Extrittio app and the router admin playground.
 
-The package source currently lives in `src/lib/*`, and each package builds typed ESM output into `packages/*/dist`. The app consumes the package names directly, so future projects can use the same imports without depending on Extrittio device, fleet, telemetry, firmware, alert, or rule code.
+The package source lives in `packages/*/src`, and each package builds typed ESM output into `packages/*/dist`. The app consumes the package names directly, so future projects can use the same imports without depending on Extrittio device, fleet, telemetry, firmware, alert, or rule code.
 
 ## Packages
 
@@ -23,6 +23,8 @@ npm run build:packages
 ```
 
 The root `npm run build` and `npm run dev` scripts run `build:packages` first so the app resolves package imports from fresh generated outputs.
+
+`src/lib/*` only contains compatibility re-exports for older in-repo import paths. New reusable code should be added to the matching package `src/` directory.
 
 ## Basic Usage
 

@@ -14,7 +14,7 @@
     "./theme.css": "./dist/theme.css"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && cp ../../src/lib/theme/theme.css dist/theme.css"
+    "build": "tsc -p tsconfig.json && cp src/theme.css dist/theme.css"
   },
   "peerDependencies": {
     "react": "^18.3.1"

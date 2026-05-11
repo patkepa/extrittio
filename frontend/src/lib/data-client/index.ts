@@ -1,2 +1,2 @@
-export { createApiClient } from './create-api-client';
-export type { CreateApiClientOptions } from './create-api-client';
+export { createApiClient } from '@extrittio/data-client';
+export type { CreateApiClientOptions, CreateApiClientOptions as ApiClientOptions } from '@extrittio/data-client';

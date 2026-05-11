@@ -1,6 +1,3 @@
-@import './app-shell/main-layout.css';
-@import './app-shell/app-sidebar.css';
-@import './ui/ui.css';
-@import './ui/main-toolbar.css';
-@import './ui/bottom-toolbar.css';
-@import './ui/toolbar-buttons.css';
+@import './main-layout.css';
+@import './app-sidebar.css';
+@import '@extrittio/ui/styles.css';

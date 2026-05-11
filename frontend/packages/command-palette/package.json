@@ -14,7 +14,7 @@
     "./styles.css": "./dist/command-palette.css"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && cp ../../src/lib/command-palette/command-palette.css dist/command-palette.css"
+    "build": "tsc -p tsconfig.json && cp src/command-palette.css dist/command-palette.css"
   },
   "peerDependencies": {
     "@blueprintjs/core": "^6.3.2",
