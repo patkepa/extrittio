@@ -3,8 +3,8 @@ import { Command } from 'cmdk';
 import { Icon } from '@blueprintjs/core';
 import { commandPaletteRoutes } from '../../app/routes';
 import { useDevices } from '../../hooks/use-devices';
-import { CommandPaletteShell } from '@extrittio/command-palette';
-import { StatusLed } from '@extrittio/ui';
+import { CommandPaletteShell } from '@patkepa/command-palette';
+import { StatusLed } from '@patkepa/ui';
 import { useUIStore } from '../../stores/ui-store';
 
 const MAX_PALETTE_DEVICES = 20;

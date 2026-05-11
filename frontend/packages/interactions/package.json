@@ -1,5 +1,5 @@
 {
-  "name": "@extrittio/interactions",
+  "name": "@patkepa/interactions",
   "version": "0.1.0",
   "description": "Reusable keyboard, focus-region, roving-focus, and form-navigation helpers.",
   "type": "module",

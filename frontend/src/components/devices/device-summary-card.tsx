@@ -1,5 +1,5 @@
 import { Tag } from '@blueprintjs/core';
-import { StatusLed } from '@extrittio/ui';
+import { StatusLed } from '@patkepa/ui';
 import type { Device } from '../../types/api';
 import { DeviceTypeTag } from './device-type-tag';
 

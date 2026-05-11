@@ -1,5 +1,5 @@
 {
-  "name": "@extrittio/theme",
+  "name": "@patkepa/theme",
   "version": "0.1.0",
   "description": "Extrittio dark theme provider and CSS custom property theme.",
   "type": "module",

@@ -1,4 +1,4 @@
-# @extrittio/app-shell
+# @patkepa/app-shell
 
 Reusable application chrome for operational tools: sidebar, top navigation, breadcrumbs, keyboard shell shortcuts, and an error boundary.
 
@@ -10,15 +10,15 @@ Reusable application chrome for operational tools: sidebar, top navigation, brea
 - `AppShellProps`
 - `AppSidebarProps`
 - `ErrorBoundaryProps`
-- `@extrittio/app-shell/styles.css`
+- `@patkepa/app-shell/styles.css`
 
 ## Usage
 
 ```tsx
-import { AppShell } from '@extrittio/app-shell';
-import type { NavGroup } from '@extrittio/navigation';
+import { AppShell } from '@patkepa/app-shell';
+import type { NavGroup } from '@patkepa/navigation';
 
-import '@extrittio/app-shell/styles.css';
+import '@patkepa/app-shell/styles.css';
 
 const navGroups: NavGroup[] = [
   {

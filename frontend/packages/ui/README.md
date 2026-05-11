@@ -1,4 +1,4 @@
-# @extrittio/ui
+# @patkepa/ui
 
 Reusable UI primitives shared by the Extrittio app and future internal tools.
 
@@ -10,13 +10,13 @@ Reusable UI primitives shared by the Extrittio app and future internal tools.
 - `SearchField`
 - `FilterPill`
 - `EmptyState`
-- `@extrittio/ui/styles.css`
+- `@patkepa/ui/styles.css`
 
 ## Usage
 
 ```tsx
-import { EmptyState, SearchField, StatusLed } from '@extrittio/ui';
-import '@extrittio/ui/styles.css';
+import { EmptyState, SearchField, StatusLed } from '@patkepa/ui';
+import '@patkepa/ui/styles.css';
 
 export function DeviceSearch() {
   return (

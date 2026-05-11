@@ -9,7 +9,7 @@ import {
   getDirectionalKey,
   shouldIgnorePageShortcut,
   useRovingFocus,
-} from '@extrittio/interactions';
+} from '@patkepa/interactions';
 import { useSelectionStore } from '../stores/selection-store';
 import { useUIStore } from '../stores/ui-store';
 import './devices.css';

@@ -15,9 +15,9 @@ import {
   clearKeyboardFocusRegions,
   getDirectionalKey,
   shouldIgnorePageShortcut,
-} from '@extrittio/interactions';
-import type { NavBadge, NavGroup, NavItem, Project, User } from '@extrittio/navigation';
-import { StatusLed } from '@extrittio/ui';
+} from '@patkepa/interactions';
+import type { NavBadge, NavGroup, NavItem, Project, User } from '@patkepa/navigation';
+import { StatusLed } from '@patkepa/ui';
 import './app-sidebar.css';
 
 export interface AppSidebarProps {

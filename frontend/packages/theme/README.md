@@ -1,4 +1,4 @@
-# @extrittio/theme
+# @patkepa/theme
 
 Dark theme provider and CSS variable foundation for Extrittio-style tools.
 
@@ -7,13 +7,13 @@ Dark theme provider and CSS variable foundation for Extrittio-style tools.
 - `ThemeProvider`
 - `useTheme`
 - `Theme`
-- `@extrittio/theme/theme.css`
+- `@patkepa/theme/theme.css`
 
 ## Usage
 
 ```tsx
-import { ThemeProvider } from '@extrittio/theme';
-import '@extrittio/theme/theme.css';
+import { ThemeProvider } from '@patkepa/theme';
+import '@patkepa/theme/theme.css';
 
 export function App() {
   return <ThemeProvider>{/* routes */}</ThemeProvider>;

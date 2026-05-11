@@ -8,13 +8,13 @@ The package source lives in `packages/*/src`, and each package builds typed ESM 
 
 | Package                      | Purpose                                                                                              |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `@extrittio/app-shell`       | Reusable application chrome: shell, sidebar, top navbar, and error boundary.                         |
-| `@extrittio/command-palette` | Reusable command palette frame and keyboard handling.                                                |
-| `@extrittio/data-client`     | Backend-agnostic Axios client factory with token and unauthorized hooks.                             |
-| `@extrittio/interactions`    | Keyboard, focus-region, roving-focus, form-navigation, and confirm-shortcut helpers.                 |
-| `@extrittio/navigation`      | Shared navigation, badge, project, and user types.                                                   |
-| `@extrittio/theme`           | Theme provider and dark theme CSS custom properties.                                                 |
-| `@extrittio/ui`              | Reusable UI primitives such as toolbars, status LEDs, search fields, filter pills, and empty states. |
+| `@patkepa/app-shell`       | Reusable application chrome: shell, sidebar, top navbar, and error boundary.                         |
+| `@patkepa/command-palette` | Reusable command palette frame and keyboard handling.                                                |
+| `@patkepa/data-client`     | Backend-agnostic Axios client factory with token and unauthorized hooks.                             |
+| `@patkepa/interactions`    | Keyboard, focus-region, roving-focus, form-navigation, and confirm-shortcut helpers.                 |
+| `@patkepa/navigation`      | Shared navigation, badge, project, and user types.                                                   |
+| `@patkepa/theme`           | Theme provider and dark theme CSS custom properties.                                                 |
+| `@patkepa/ui`              | Reusable UI primitives such as toolbars, status LEDs, search fields, filter pills, and empty states. |
 
 Each package directory has a small `README.md` with its exports and a focused usage example.
 
@@ -33,13 +33,13 @@ Reusable code should be added to the matching package `src/` directory. The old 
 
 ```tsx
 import { BrowserRouter } from 'react-router-dom';
-import { ThemeProvider } from '@extrittio/theme';
-import { AppShell } from '@extrittio/app-shell';
-import type { NavGroup } from '@extrittio/navigation';
+import { ThemeProvider } from '@patkepa/theme';
+import { AppShell } from '@patkepa/app-shell';
+import type { NavGroup } from '@patkepa/navigation';
 
 import '@blueprintjs/core/lib/css/blueprint.css';
 import '@blueprintjs/icons/lib/css/blueprint-icons.css';
-import '@extrittio/theme/theme.css';
+import '@patkepa/theme/theme.css';
 
 const navGroups: NavGroup[] = [
   {
@@ -81,14 +81,14 @@ npm run pack:packages
 Publish all workspace packages after authenticating with GitHub Packages:
 
 ```bash
-npm login --scope=@extrittio --registry=https://npm.pkg.github.com
+npm login --scope=@patkepa --registry=https://npm.pkg.github.com
 npm run publish:packages
 ```
 
 Consumer apps need an `.npmrc` entry for the package scope:
 
 ```ini
-@extrittio:registry=https://npm.pkg.github.com
+@patkepa:registry=https://npm.pkg.github.com
 ```
 
 See `docs/reusable-ui-github-packages.md` for the complete publish and consumer setup.

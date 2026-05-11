@@ -16,7 +16,7 @@ import {
   useOtaDeployments,
   useTriggerOta,
 } from '../../hooks/use-firmware-updates';
-import { useFormNavigation } from '@extrittio/interactions';
+import { useFormNavigation } from '@patkepa/interactions';
 import { showSuccessToast, showErrorToast } from '../../utils/toaster';
 import { useDeviceShadow } from '../../hooks/use-shadow';
 import type { Device } from '../../types/api';

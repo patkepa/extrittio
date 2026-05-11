@@ -1,4 +1,4 @@
-# @extrittio/interactions
+# @patkepa/interactions
 
 Reusable keyboard and focus helpers for dense operational UIs.
 
@@ -17,7 +17,7 @@ Reusable keyboard and focus helpers for dense operational UIs.
 ## Usage
 
 ```tsx
-import { useRovingFocus } from '@extrittio/interactions';
+import { useRovingFocus } from '@patkepa/interactions';
 
 const { containerRef } = useRovingFocus({
   itemSelector: '[data-row="true"]',

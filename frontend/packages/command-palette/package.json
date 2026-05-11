@@ -1,5 +1,5 @@
 {
-  "name": "@extrittio/command-palette",
+  "name": "@patkepa/command-palette",
   "version": "0.1.0",
   "description": "Reusable Extrittio command palette shell built around cmdk.",
   "type": "module",

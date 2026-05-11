@@ -1,5 +1,5 @@
 {
-  "name": "@extrittio/navigation",
+  "name": "@patkepa/navigation",
   "version": "0.1.0",
   "description": "Shared navigation, badge, project, and user types for Extrittio-style apps.",
   "type": "module",

@@ -1,5 +1,5 @@
 {
-  "name": "@extrittio/data-client",
+  "name": "@patkepa/data-client",
   "version": "0.1.0",
   "description": "Backend-agnostic Axios client factory with auth token and unauthorized hooks.",
   "type": "module",

@@ -1,6 +1,6 @@
 import { Button, Tab, Tabs, Tooltip } from '@blueprintjs/core';
 import { useNavigate } from 'react-router-dom';
-import { MainToolbar, StatusLed } from '@extrittio/ui';
+import { MainToolbar, StatusLed } from '@patkepa/ui';
 import { showSuccessToast } from '../../utils/toaster';
 import type { Device } from '../../types/api';
 

@@ -9,7 +9,7 @@ import {
   Tooltip,
 } from '@blueprintjs/core';
 import { useRef, useState, type ReactNode } from 'react';
-import { BottomToolbar } from '@extrittio/ui';
+import { BottomToolbar } from '@patkepa/ui';
 import { useFleets } from '../../hooks/use-fleets';
 import {
   useBulkChangeFleet,

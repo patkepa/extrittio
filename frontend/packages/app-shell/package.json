@@ -1,5 +1,5 @@
 {
-  "name": "@extrittio/app-shell",
+  "name": "@patkepa/app-shell",
   "version": "0.1.0",
   "description": "Reusable Extrittio application shell, sidebar, navbar, and error boundary.",
   "type": "module",
@@ -32,9 +32,9 @@
     "directory": "frontend/packages/app-shell"
   },
   "dependencies": {
-    "@extrittio/interactions": "^0.1.0",
-    "@extrittio/navigation": "^0.1.0",
-    "@extrittio/ui": "^0.1.0"
+    "@patkepa/interactions": "^0.1.0",
+    "@patkepa/navigation": "^0.1.0",
+    "@patkepa/ui": "^0.1.0"
   },
   "peerDependencies": {
     "@blueprintjs/core": "^6.3.2",

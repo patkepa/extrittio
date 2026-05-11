@@ -5,8 +5,8 @@ import {
   hasOpenBlockingOverlay,
   isEditableTarget,
   moveFocusRegion,
-} from '@extrittio/interactions';
-import type { NavBadge, NavGroup, Project, User } from '@extrittio/navigation';
+} from '@patkepa/interactions';
+import type { NavBadge, NavGroup, Project, User } from '@patkepa/navigation';
 import { AppSidebar } from './app-sidebar';
 import { ErrorBoundary } from './error-boundary';
 import './main-layout.css';

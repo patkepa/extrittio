@@ -1,4 +1,4 @@
-# @extrittio/data-client
+# @patkepa/data-client
 
 Backend-agnostic Axios client factory with injectable token lookup and unauthorized handling.
 
@@ -10,7 +10,7 @@ Backend-agnostic Axios client factory with injectable token lookup and unauthori
 ## Usage
 
 ```ts
-import { createApiClient } from '@extrittio/data-client';
+import { createApiClient } from '@patkepa/data-client';
 
 export const api = createApiClient({
   baseUrl: '/api/v1',

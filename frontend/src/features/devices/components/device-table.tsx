@@ -2,7 +2,7 @@ import { memo, useMemo } from 'react';
 import { List } from 'react-window';
 import { Card, Checkbox, Elevation, Icon, Tag } from '@blueprintjs/core';
 import type { Device } from '../../../types/api';
-import { EmptyState, StatusLed } from '@extrittio/ui';
+import { EmptyState, StatusLed } from '@patkepa/ui';
 import type { DeviceSortDir, DeviceSortField } from '../hooks/use-device-list-state';
 import { DeviceTypeTag } from '../../../components/devices/device-type-tag';
 

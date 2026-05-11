@@ -1,4 +1,4 @@
-# @extrittio/navigation
+# @patkepa/navigation
 
 Shared navigation model types used by the app shell and consuming apps.
 
@@ -13,7 +13,7 @@ Shared navigation model types used by the app shell and consuming apps.
 ## Usage
 
 ```ts
-import type { NavGroup } from '@extrittio/navigation';
+import type { NavGroup } from '@patkepa/navigation';
 
 export const navGroups: NavGroup[] = [
   {
