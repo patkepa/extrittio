@@ -2,7 +2,7 @@ import { Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Spinner } from '@blueprintjs/core';
 import { ThemeProvider } from './context/theme-provider';
-import { MainLayout } from './components/layout/main-layout';
+import { ExtrittioShell } from './app/extrittio-shell';
 import { AuthGuard } from './components/auth-guard';
 import { Login } from './pages/login';
 import { protectedRoutes } from './app/routes';
@@ -28,7 +28,7 @@ function App() {
             path="/*"
             element={
               <AuthGuard>
-                <MainLayout>
+                <ExtrittioShell>
                   <Suspense fallback={<PageFallback />}>
                     <Routes>
                       {protectedRoutes.map((route) => (
@@ -37,7 +37,7 @@ function App() {
                       <Route path="*" element={<Navigate to="/" replace />} />
                     </Routes>
                   </Suspense>
-                </MainLayout>
+                </ExtrittioShell>
               </AuthGuard>
             }
           />

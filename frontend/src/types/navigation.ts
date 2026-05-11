@@ -14,12 +14,18 @@ export interface NavGroup {
 
 export interface Project {
   name: string;
-  environment: 'Production' | 'Development' | 'Testing';
+  environment: string;
   icon: IconName;
+  color?: string;
 }
 
 export interface User {
   name: string;
   email: string;
   avatar?: string;
+}
+
+export interface NavBadge {
+  count?: number;
+  status?: 'online' | 'warning' | 'offline';
 }
