@@ -6,8 +6,8 @@ The package source lives in `packages/*/src`, and each package builds typed ESM 
 
 ## Packages
 
-| Package                      | Purpose                                                                                              |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Package                    | Purpose                                                                                              |
+| -------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `@patkepa/app-shell`       | Reusable application chrome: shell, sidebar, top navbar, and error boundary.                         |
 | `@patkepa/command-palette` | Reusable command palette frame and keyboard handling.                                                |
 | `@patkepa/data-client`     | Backend-agnostic Axios client factory with token and unauthorized hooks.                             |

@@ -6,8 +6,8 @@ GitHub Packages expects the npm scope to match the GitHub user or organization t
 
 ## Packages
 
-| Package                      | Use in consumer apps                                                |
-| ---------------------------- | ------------------------------------------------------------------- |
+| Package                    | Use in consumer apps                                                |
+| -------------------------- | ------------------------------------------------------------------- |
 | `@patkepa/app-shell`       | Application chrome, sidebar, top navbar, and error boundary.        |
 | `@patkepa/command-palette` | Reusable command palette shell.                                     |
 | `@patkepa/data-client`     | Axios client factory.                                               |
