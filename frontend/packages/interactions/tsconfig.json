@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.package.json",
+  "compilerOptions": {
+    "rootDir": "../../src/lib/interactions",
+    "outDir": "dist"
+  },
+  "include": ["../../src/lib/interactions/**/*"]
+}

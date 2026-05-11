@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.package.json",
+  "compilerOptions": {
+    "rootDir": "../../src/lib/command-palette",
+    "outDir": "dist"
+  },
+  "include": ["../../src/lib/command-palette/**/*"]
+}

@@ -1,6 +1,4 @@
 import type { ReactNode } from 'react';
-import './main-toolbar.css';
-import './toolbar-buttons.css';
 
 export interface MainToolbarProps {
   children: ReactNode;

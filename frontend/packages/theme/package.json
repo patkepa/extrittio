@@ -1,0 +1,22 @@
+{
+  "name": "@extrittio/theme",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "sideEffects": [
+    "*.css"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./theme.css": "./dist/theme.css"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && cp ../../src/lib/theme/theme.css dist/theme.css"
+  },
+  "peerDependencies": {
+    "react": "^18.3.1"
+  }
+}

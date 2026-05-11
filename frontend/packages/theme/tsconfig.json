@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.package.json",
+  "compilerOptions": {
+    "rootDir": "../../src/lib/theme",
+    "outDir": "dist"
+  },
+  "include": ["../../src/lib/theme/**/*.ts", "../../src/lib/theme/**/*.tsx"]
+}

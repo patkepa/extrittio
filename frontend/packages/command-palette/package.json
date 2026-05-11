@@ -1,0 +1,24 @@
+{
+  "name": "@extrittio/command-palette",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "sideEffects": [
+    "*.css"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./styles.css": "./dist/command-palette.css"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && cp ../../src/lib/command-palette/command-palette.css dist/command-palette.css"
+  },
+  "peerDependencies": {
+    "@blueprintjs/core": "^6.3.2",
+    "cmdk": "^1.1.1",
+    "react": "^18.3.1"
+  }
+}
