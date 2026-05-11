@@ -2,7 +2,7 @@ export interface Zone {
   id: string;
   name: string;
   description: string;
-  geometry_type: "circle" | "polygon";
+  geometry_type: 'circle' | 'polygon';
   geometry_json: CircleGeometry | PolygonGeometry;
   color: string;
   created_at: string;
@@ -21,7 +21,7 @@ export interface PolygonGeometry {
 export interface CreateZoneRequest {
   name: string;
   description?: string;
-  geometry_type: "circle" | "polygon";
+  geometry_type: 'circle' | 'polygon';
   geometry_json: CircleGeometry | PolygonGeometry;
   color?: string;
 }

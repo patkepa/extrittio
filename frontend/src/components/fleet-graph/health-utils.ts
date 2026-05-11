@@ -26,10 +26,7 @@ export function getHealthTier(stalenessMs: number, status?: string): HealthTier 
   return 'dead';
 }
 
-export function getHealthStatusFilter(
-  stalenessMs: number,
-  status?: string,
-): HealthStatusFilter {
+export function getHealthStatusFilter(stalenessMs: number, status?: string): HealthStatusFilter {
   if (status === 'offline') {
     return Number.isNaN(stalenessMs) || stalenessMs < 0 ? 'never' : 'offline';
   }

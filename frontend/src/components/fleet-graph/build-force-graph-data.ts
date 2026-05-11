@@ -70,9 +70,15 @@ const CONNECTION_TYPE_VISUALS: Array<[string[], { icon: string; color: string }]
   [['iphone', 'ipad', 'watch'], { icon: 'mobile-phone', color: '#A7B0C0' }],
   [['mac', 'imac', 'macbook'], { icon: 'desktop', color: '#A7B0C0' }],
   [['apple_device'], { icon: 'desktop', color: '#A7B0C0' }],
-  [['android', 'samsung', 'google_device', 'xiaomi', 'huawei'], { icon: 'mobile-phone', color: '#7BD88F' }],
+  [
+    ['android', 'samsung', 'google_device', 'xiaomi', 'huawei'],
+    { icon: 'mobile-phone', color: '#7BD88F' },
+  ],
   [['google_home', 'google_nest', 'nest'], { icon: 'home', color: '#7BD88F' }],
-  [['chromecast', 'roku', 'fire_tv', 'android_tv', 'smart_tv', 'tv', 'lg_device'], { icon: 'media', color: '#D982FF' }],
+  [
+    ['chromecast', 'roku', 'fire_tv', 'android_tv', 'smart_tv', 'tv', 'lg_device'],
+    { icon: 'media', color: '#D982FF' },
+  ],
   [['raspberry_pi', 'esp32', 'espressif', 'iot'], { icon: 'sim-card', color: '#F29D49' }],
   [['printer'], { icon: 'print', color: '#F7C948' }],
   [['nas', 'server', 'smb'], { icon: 'server', color: '#8ABBFF' }],
@@ -381,7 +387,8 @@ export function buildForceGraphData(
             name: getConnectionLabel(connection),
             type: 'external',
             val: 2,
-            color: STATUS_COLORS[connection.status ?? ''] ?? deviceType?.color_hex ?? EXTERNAL_COLOR,
+            color:
+              STATUS_COLORS[connection.status ?? ''] ?? deviceType?.color_hex ?? EXTERNAL_COLOR,
             connection,
             status: connection.status ?? 'external',
             deviceTypeName,

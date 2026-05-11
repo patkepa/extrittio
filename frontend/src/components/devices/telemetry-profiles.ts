@@ -77,9 +77,7 @@ const NETWORK_ANALYZER_PROFILE: DeviceProfile = {
     { label: 'Reachable Hosts', key: 'host_count', color: '#0F9960', unit: '' },
     { label: 'Targets Scanned', key: 'targets_scanned', color: '#2965CC', unit: '' },
   ],
-  charts: [
-    { label: 'Reachable Hosts', key: 'host_count', color: '#0F9960', unit: '' },
-  ],
+  charts: [{ label: 'Reachable Hosts', key: 'host_count', color: '#0F9960', unit: '' }],
   tableColumns: [
     { label: 'Hosts', key: 'host_count', color: '#0F9960', unit: '' },
     { label: 'Targets', key: 'targets_scanned', color: '#2965CC', unit: '' },

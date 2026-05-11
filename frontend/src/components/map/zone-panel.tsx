@@ -19,7 +19,7 @@ import {
   Popover,
 } from '@blueprintjs/core';
 import { useZones, useCreateZone, useDeleteZone, useUpdateZone } from '../../hooks/use-zones';
-import { useConfirmShortcut } from '../../lib/interactions';
+import { useConfirmShortcut } from '@extrittio/interactions';
 import type { Zone, CircleGeometry, PolygonGeometry } from '../../types/zones';
 import { RightSidebar } from '../layout/right-sidebar';
 import L from 'leaflet';

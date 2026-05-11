@@ -19,6 +19,7 @@ import './updates.css';
 type UpdateFilter = 'in_progress' | 'completed' | 'all';
 
 const pageSize = 50;
+const emptyDeployments: GlobalOtaDeployment[] = [];
 
 function statusIntent(status: string) {
   switch (status) {
@@ -109,7 +110,7 @@ export const Updates = () => {
   );
 
   const deploymentsQuery = useAllOtaDeployments(params);
-  const deployments = deploymentsQuery.data?.data ?? [];
+  const deployments = deploymentsQuery.data?.data ?? emptyDeployments;
   const total = deploymentsQuery.data?.total ?? 0;
   const totalPages = Math.ceil(total / pageSize);
 
@@ -210,9 +211,7 @@ export const Updates = () => {
                 <UpdateRow
                   key={deployment.id}
                   deployment={deployment}
-                  onDeviceClick={() =>
-                    navigate(`/devices/${deployment.device_id}?tab=ota`)
-                  }
+                  onDeviceClick={() => navigate(`/devices/${deployment.device_id}?tab=ota`)}
                 />
               ))}
             </tbody>

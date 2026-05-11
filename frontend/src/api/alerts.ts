@@ -2,7 +2,9 @@ import client from './client';
 import type { PaginatedResponse } from '../types/api';
 import type { Alert, AlertSummary } from '../types/alerts';
 
-export async function getAlerts(params?: Record<string, unknown>): Promise<PaginatedResponse<Alert>> {
+export async function getAlerts(
+  params?: Record<string, unknown>,
+): Promise<PaginatedResponse<Alert>> {
   const { data } = await client.get<PaginatedResponse<Alert>>('/alerts', { params });
   return data;
 }

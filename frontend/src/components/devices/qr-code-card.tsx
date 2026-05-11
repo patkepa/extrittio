@@ -29,21 +29,15 @@ export const QrCodeCard = ({ deviceId }: QrCodeCardProps) => {
     }
 
     try {
-      const blob = await new Promise<Blob | null>((resolve) =>
-        canvas.toBlob(resolve, 'image/png')
-      );
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
       if (!blob) {
         void showErrorToast('Failed to generate QR image');
         return;
       }
-      await navigator.clipboard.write([
-        new ClipboardItem({ 'image/png': blob }),
-      ]);
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
       void showSuccessToast('QR code copied to clipboard');
     } catch {
-      void showErrorToast(
-        'Failed to copy QR image — try right-clicking to save instead'
-      );
+      void showErrorToast('Failed to copy QR image — try right-clicking to save instead');
     }
   }, []);
 
@@ -77,18 +71,10 @@ export const QrCodeCard = ({ deviceId }: QrCodeCardProps) => {
         <Button icon="link" size="small" onClick={() => void handleCopyUrl()}>
           Copy URL
         </Button>
-        <Button
-          icon="media"
-          size="small"
-          onClick={() => void handleCopyQr()}
-        >
+        <Button icon="media" size="small" onClick={() => void handleCopyQr()}>
           Copy QR
         </Button>
-        <Button
-          icon="download"
-          size="small"
-          onClick={handleDownloadQr}
-        >
+        <Button icon="download" size="small" onClick={handleDownloadQr}>
           Download
         </Button>
       </div>

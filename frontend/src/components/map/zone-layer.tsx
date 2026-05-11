@@ -1,5 +1,5 @@
-import { Circle, Polygon, Tooltip } from "react-leaflet";
-import type { Zone, CircleGeometry, PolygonGeometry } from "../../types/zones";
+import { Circle, Polygon, Tooltip } from 'react-leaflet';
+import type { Zone, CircleGeometry, PolygonGeometry } from '../../types/zones';
 
 interface ZoneLayerProps {
   zones: Zone[];
@@ -11,7 +11,7 @@ export function ZoneLayer({ zones, onZoneClick }: ZoneLayerProps) {
     <>
       {zones.map((zone) => {
         const geo = zone.geometry_json;
-        if (zone.geometry_type === "circle") {
+        if (zone.geometry_type === 'circle') {
           const circleGeo = geo as CircleGeometry;
           return (
             <Circle

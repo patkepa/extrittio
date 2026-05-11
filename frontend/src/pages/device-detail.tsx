@@ -12,8 +12,8 @@ import { ShadowTab } from '../components/devices/shadow-tab';
 import { OtaTab } from '../components/devices/ota-tab';
 import { CommandsTab } from '../components/devices/commands-tab';
 import { AlertsTab } from '../components/devices/alerts-tab';
-import { ErrorBoundary } from '../lib/app-shell';
-import { getDirectionalKey, shouldIgnorePageShortcut } from '../lib/interactions';
+import { ErrorBoundary } from '@extrittio/app-shell';
+import { getDirectionalKey, shouldIgnorePageShortcut } from '@extrittio/interactions';
 import './device-detail.css';
 
 const VALID_TABS = [

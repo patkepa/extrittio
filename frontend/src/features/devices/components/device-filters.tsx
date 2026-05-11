@@ -1,6 +1,6 @@
 import { Card, Elevation } from '@blueprintjs/core';
 import { BulkActionBar } from '../../../components/devices/bulk-action-bar';
-import { FilterPill, SearchField } from '../../../lib/ui';
+import { FilterPill, SearchField } from '@extrittio/ui';
 import type { BulkDeviceFilters, Fleet } from '../../../types/api';
 import type { DeviceStatusFilter } from '../hooks/use-device-list-state';
 

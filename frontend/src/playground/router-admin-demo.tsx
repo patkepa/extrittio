@@ -3,16 +3,16 @@ import ReactDOM from 'react-dom/client';
 import { HashRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { Button, Card, Elevation, Icon, Tag } from '@blueprintjs/core';
 import { Command } from 'cmdk';
-import type { NavGroup, Project, User } from '../lib/navigation';
-import { AppShell } from '../lib/app-shell';
-import { CommandPaletteShell } from '../lib/command-palette';
-import { createApiClient } from '../lib/data-client';
-import { ThemeProvider } from '../lib/theme';
-import { EmptyState, FilterPill, MainToolbar, SearchField, StatusLed } from '../lib/ui';
+import type { NavGroup, Project, User } from '@extrittio/navigation';
+import { AppShell } from '@extrittio/app-shell';
+import { CommandPaletteShell } from '@extrittio/command-palette';
+import { createApiClient } from '@extrittio/data-client';
+import { ThemeProvider } from '@extrittio/theme';
+import { EmptyState, FilterPill, MainToolbar, SearchField, StatusLed } from '@extrittio/ui';
 
 import '@blueprintjs/core/lib/css/blueprint.css';
 import '@blueprintjs/icons/lib/css/blueprint-icons.css';
-import '../lib/theme/theme.css';
+import '@extrittio/theme/theme.css';
 import './router-admin-demo.css';
 
 type InterfaceStatus = 'online' | 'warning' | 'offline';

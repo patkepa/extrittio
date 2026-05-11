@@ -42,7 +42,8 @@
   z-index: 1;
 }
 
-.main-content:has([data-focus-region='main'][data-focus-region-keyboard='true']) .top-navbar::after {
+.main-content:has([data-focus-region='main'][data-focus-region-keyboard='true'])
+  .top-navbar::after {
   background-color: hsl(var(--accent));
 }
 

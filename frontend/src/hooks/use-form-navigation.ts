@@ -1,1 +1,1 @@
-export { useFormNavigation } from '../lib/interactions';
+export { useFormNavigation } from '@extrittio/interactions';

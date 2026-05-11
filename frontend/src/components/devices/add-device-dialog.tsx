@@ -11,8 +11,8 @@ import {
 } from '@blueprintjs/core';
 import type { AxiosError } from 'axios';
 import { useCreateDevice } from '../../hooks/use-devices';
-import { useConfirmShortcut } from '../../lib/interactions';
-import { useFormNavigation } from '../../lib/interactions';
+import { useConfirmShortcut } from '@extrittio/interactions';
+import { useFormNavigation } from '@extrittio/interactions';
 import { useDeviceTypes } from '../../hooks/use-device-types';
 import { useFleets } from '../../hooks/use-fleets';
 import { useUIStore } from '../../stores/ui-store';

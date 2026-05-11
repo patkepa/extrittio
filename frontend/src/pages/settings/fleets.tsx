@@ -19,7 +19,7 @@ import {
   Icon,
 } from '@blueprintjs/core';
 import { useFleets, useCreateFleet, useUpdateFleet, useDeleteFleet } from '../../hooks/use-fleets';
-import { useConfirmShortcut } from '../../lib/interactions';
+import { useConfirmShortcut } from '@extrittio/interactions';
 import './settings.css';
 
 export const FleetsSettings = () => {

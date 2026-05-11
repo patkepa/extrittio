@@ -1,4 +1,4 @@
-import { Polyline, CircleMarker } from "react-leaflet";
+import { Polyline, CircleMarker } from 'react-leaflet';
 
 interface LocationTrailProps {
   points: { latitude: number; longitude: number; timestamp: string }[];
@@ -12,12 +12,12 @@ export function LocationTrail({ points }: LocationTrailProps) {
     <>
       <Polyline
         positions={positions}
-        pathOptions={{ color: "#5c7cfa", weight: 3, opacity: 0.7, dashArray: "5, 10" }}
+        pathOptions={{ color: '#5c7cfa', weight: 3, opacity: 0.7, dashArray: '5, 10' }}
       />
       <CircleMarker
         center={lastPosition}
         radius={6}
-        pathOptions={{ color: "#5c7cfa", fillColor: "#5c7cfa", fillOpacity: 1, weight: 2 }}
+        pathOptions={{ color: '#5c7cfa', fillColor: '#5c7cfa', fillOpacity: 1, weight: 2 }}
       />
     </>
   );

@@ -1,2 +1,2 @@
-export { BottomToolbar } from '../../lib/ui';
-export type { BottomToolbarProps } from '../../lib/ui';
+export { BottomToolbar } from '@extrittio/ui';
+export type { BottomToolbarProps } from '@extrittio/ui';

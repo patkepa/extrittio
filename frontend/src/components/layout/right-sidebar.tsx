@@ -4,7 +4,7 @@ import {
   clearKeyboardFocusRegions,
   getDirectionalKey,
   isEditableTarget,
-} from '../../lib/interactions';
+} from '@extrittio/interactions';
 import './right-sidebar.css';
 
 interface RightSidebarProps {

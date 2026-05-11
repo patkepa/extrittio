@@ -1,8 +1,8 @@
-import client from "./client";
-import type { Zone, CreateZoneRequest, UpdateZoneRequest } from "../types/zones";
+import client from './client';
+import type { Zone, CreateZoneRequest, UpdateZoneRequest } from '../types/zones';
 
 export async function getZones(): Promise<Zone[]> {
-  const { data } = await client.get<Zone[]>("/zones");
+  const { data } = await client.get<Zone[]>('/zones');
   return data;
 }
 
@@ -12,7 +12,7 @@ export async function getZone(id: string): Promise<Zone> {
 }
 
 export async function createZone(body: CreateZoneRequest): Promise<Zone> {
-  const { data } = await client.post<Zone>("/zones", body);
+  const { data } = await client.post<Zone>('/zones', body);
   return data;
 }
 

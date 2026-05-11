@@ -1,2 +1,2 @@
-export { ErrorBoundary } from '../lib/app-shell';
-export type { ErrorBoundaryProps } from '../lib/app-shell';
+export { ErrorBoundary } from '@extrittio/app-shell';
+export type { ErrorBoundaryProps } from '@extrittio/app-shell';

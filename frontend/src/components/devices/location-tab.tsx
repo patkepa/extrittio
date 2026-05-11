@@ -64,7 +64,12 @@ const LOCATION_RANGE_KEYS: RangeKey[] = ['15m', '1h', '6h', '24h', '7d', '30d'];
 // Zone membership helper (point-in-circle, point-in-polygon)
 // ---------------------------------------------------------------------------
 
-function pointInCircle(lat: number, lon: number, center: [number, number], radiusMeters: number): boolean {
+function pointInCircle(
+  lat: number,
+  lon: number,
+  center: [number, number],
+  radiusMeters: number,
+): boolean {
   const R = 6371000;
   const dLat = ((lat - center[0]) * Math.PI) / 180;
   const dLon = ((lon - center[1]) * Math.PI) / 180;
@@ -83,8 +88,10 @@ function pointInPolygon(lat: number, lon: number, points: [number, number][]): b
   for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
     const pi = points[i]!;
     const pj = points[j]!;
-    const xi = pi[0], yi = pi[1];
-    const xj = pj[0], yj = pj[1];
+    const xi = pi[0],
+      yi = pi[1];
+    const xj = pj[0],
+      yj = pj[1];
     const intersect = yi > lon !== yj > lon && lat < ((xj - xi) * (lon - yi)) / (yj - yi) + xi;
     if (intersect) inside = !inside;
   }
@@ -106,7 +113,12 @@ export const LocationTab = ({ deviceId, deviceName, deviceStatus }: LocationTabP
   const rangeConfig = RANGES[selectedRange];
   const since = useMemo(() => computeSince(rangeConfig), [rangeConfig]);
 
-  const { data: rawRecords = [], isLoading, isFetching, isError } = useDeviceTelemetry(deviceId, {
+  const {
+    data: rawRecords = [],
+    isLoading,
+    isFetching,
+    isError,
+  } = useDeviceTelemetry(deviceId, {
     limit: rangeConfig.limit,
     since,
   });
@@ -263,10 +275,7 @@ export const LocationTab = ({ deviceId, deviceName, deviceStatus }: LocationTabP
               ) : (
                 <div className="location-tab-zone-badges">
                   {activeZones.map((zone) => (
-                    <Tag
-                      key={zone.id}
-                      style={{ backgroundColor: zone.color, color: '#fff' }}
-                    >
+                    <Tag key={zone.id} style={{ backgroundColor: zone.color, color: '#fff' }}>
                       {zone.name}
                     </Tag>
                   ))}

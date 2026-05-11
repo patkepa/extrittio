@@ -1,2 +1,2 @@
-export { useConfirmShortcut } from '../lib/interactions';
-export type { UseConfirmShortcutOptions } from '../lib/interactions';
+export { useConfirmShortcut } from '@extrittio/interactions';
+export type { UseConfirmShortcutOptions } from '@extrittio/interactions';

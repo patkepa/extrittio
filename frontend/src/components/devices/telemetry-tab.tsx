@@ -78,7 +78,6 @@ function isPercentMetric(unit: string): boolean {
   return unit === '%';
 }
 
-
 /** Format unix seconds to locale time string */
 function formatTooltipTime(unixSec: number): string {
   return formatTimestamp(new Date(unixSec * 1000).toISOString());
@@ -111,7 +110,9 @@ interface NetworkAnalyzerSnapshot {
   targets_scanned?: number;
 }
 
-function parseNetworkAnalyzerSnapshot(custom: Record<string, unknown>): NetworkAnalyzerSnapshot | null {
+function parseNetworkAnalyzerSnapshot(
+  custom: Record<string, unknown>,
+): NetworkAnalyzerSnapshot | null {
   const raw = custom.snapshot_json;
   if (!raw) return null;
   if (typeof raw === 'object' && !Array.isArray(raw)) return raw as NetworkAnalyzerSnapshot;

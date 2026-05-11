@@ -66,7 +66,6 @@ export function sparklineOpts(
   };
 }
 
-
 /**
  * uPlot plugin: tooltip that shows value + time on hover.
  * Appends a positioned div to the chart wrapper.
