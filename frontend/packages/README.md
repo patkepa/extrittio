@@ -16,6 +16,8 @@ The package source lives in `packages/*/src`, and each package builds typed ESM 
 | `@extrittio/theme`           | Theme provider and dark theme CSS custom properties.                                                 |
 | `@extrittio/ui`              | Reusable UI primitives such as toolbars, status LEDs, search fields, filter pills, and empty states. |
 
+Each package directory has a small `README.md` with its exports and a focused usage example.
+
 ## Build
 
 ```bash
