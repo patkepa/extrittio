@@ -50,6 +50,30 @@ npm install react react-dom react-router-dom @blueprintjs/core @blueprintjs/icon
 
 ## Publish to GitHub Packages
 
+The preferred release path is GitHub Actions. The workflow lives at:
+
+```text
+.github/workflows/ui-packages.yml
+```
+
+It runs on:
+
+- tags matching `ui-v*`
+- manual `workflow_dispatch` runs from the GitHub Actions UI
+
+Before triggering a release, bump the package versions in `frontend/packages/*/package.json` and the matching root `frontend/package.json` workspace dependency versions. GitHub Packages will reject an already-published version.
+
+Release by tag:
+
+```bash
+git tag ui-v0.1.1
+git push origin ui-v0.1.1
+```
+
+The workflow runs `npm ci`, `npm run format:check`, `npm run lint`, `npm run build`, and then `npm publish --workspaces` with `GITHUB_TOKEN`.
+
+Manual local publishing is still possible when needed.
+
 Authenticate locally with a GitHub personal access token that can write packages:
 
 ```bash
