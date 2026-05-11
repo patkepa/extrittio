@@ -1,28 +1,15 @@
-import axios from 'axios';
+import { createApiClient } from '../lib/data-client';
 import { useAuthStore } from '../stores/auth-store';
 
-const client = axios.create({
-  baseURL: '/api/v1',
-});
+export const EXTRITTIO_API_BASE_URL = '/api/v1';
 
-// Request interceptor: attach JWT token
-client.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
-
-// Response interceptor: redirect on 401
-client.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401 && window.location.pathname !== '/login') {
-      useAuthStore.getState().logout();
-    }
-    return Promise.reject(error);
+const client = createApiClient({
+  baseUrl: EXTRITTIO_API_BASE_URL,
+  getToken: () => useAuthStore.getState().token,
+  shouldHandleUnauthorized: () => window.location.pathname !== '/login',
+  onUnauthorized: () => {
+    useAuthStore.getState().logout();
   },
-);
+});
 
 export default client;

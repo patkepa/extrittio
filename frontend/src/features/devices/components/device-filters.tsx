@@ -1,5 +1,6 @@
 import { Card, Elevation, Button, InputGroup } from '@blueprintjs/core';
 import { BulkActionBar } from '../../../components/devices/bulk-action-bar';
+import { StatusLed } from '../../../lib/ui';
 import type { BulkDeviceFilters, Fleet } from '../../../types/api';
 import type { DeviceStatusFilter } from '../hooks/use-device-list-state';
 
@@ -70,7 +71,7 @@ export function DeviceFilters({
                 className={`filter-pill ${filterStatus === status ? 'active' : ''} ${status !== 'all' ? `pill-${status}` : ''}`}
                 onClick={() => onFilterStatusChange(status)}
               >
-                {status !== 'all' && <span className={`status-led status-led--${status}`} />}
+                {status !== 'all' && <StatusLed status={status} />}
                 <span className="pill-label">
                   {status === 'all' ? 'All' : status.charAt(0).toUpperCase() + status.slice(1)}
                 </span>

@@ -1,7 +1,7 @@
 import { Alert, Button, Icon, Menu, MenuDivider, MenuItem, Popover } from '@blueprintjs/core';
 import { useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MainToolbar } from '../../lib/ui';
+import { MainToolbar, StatusLed } from '../../lib/ui';
 import { useFleets } from '../../hooks/use-fleets';
 import {
   useBulkChangeFleet,
@@ -234,7 +234,7 @@ export const FleetGraphToolbar = ({
         {selectedDevice ? (
           <>
             <div className="fleet-graph-toolbar-identity">
-              <span className={`status-led status-led--${selectedDevice.status}`} />
+              <StatusLed status={selectedDevice.status} />
               <div className="fleet-graph-toolbar-title-group">
                 <span className="fleet-graph-toolbar-title">{selectedDevice.name}</span>
                 <span className="fleet-graph-toolbar-subtitle mono-data">{selectedDevice.id}</span>

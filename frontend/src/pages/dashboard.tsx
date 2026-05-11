@@ -7,6 +7,7 @@ import { toSparklineData, sparklineOpts } from '../components/charts/uplot-helpe
 import { useDashboardStats } from '../hooks/use-dashboard';
 import { useAlertSummary } from '../hooks/use-alerts';
 import { ServerHealth } from '../components/dashboard/server-health';
+import { StatusLed } from '../lib/ui';
 import './dashboard.css';
 
 const sparklineData = [
@@ -249,7 +250,7 @@ export const Dashboard = () => {
             <div className="activity-timeline">
               {activityEvents.map((event) => (
                 <div key={event.id} className="timeline-item">
-                  <span className={`status-led status-led--${event.status}`} />
+                  <StatusLed status={event.status} />
                   <span className="timeline-time mono-data">{event.time}</span>
                   <span className="timeline-device">{event.device}</span>
                   <span className="timeline-event">{event.event}</span>

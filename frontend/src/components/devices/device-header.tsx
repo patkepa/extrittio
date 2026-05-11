@@ -1,6 +1,6 @@
 import { Button, Tab, Tabs, Tooltip } from '@blueprintjs/core';
 import { useNavigate } from 'react-router-dom';
-import { MainToolbar } from '../../lib/ui';
+import { MainToolbar, StatusLed } from '../../lib/ui';
 import { showSuccessToast } from '../../utils/toaster';
 import type { Device } from '../../types/api';
 
@@ -30,7 +30,7 @@ export const DeviceHeader = ({ device, currentTab, onTabChange }: DeviceHeaderPr
         <div className="device-toolbar-divider" aria-hidden="true" />
 
         <div className="device-toolbar-identity">
-          <span className={`status-led status-led--${device.status}`} />
+          <StatusLed status={device.status} />
           <div className="device-toolbar-title-group">
             <span className="device-toolbar-title">{device.name}</span>
             <Tooltip content="Click to copy" placement="bottom" compact minimal>

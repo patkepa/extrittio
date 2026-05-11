@@ -2,6 +2,7 @@ import { memo, useMemo } from 'react';
 import { List } from 'react-window';
 import { Card, Checkbox, Elevation, H4, Icon, Tag } from '@blueprintjs/core';
 import type { Device } from '../../../types/api';
+import { StatusLed } from '../../../lib/ui';
 import type { DeviceSortDir, DeviceSortField } from '../hooks/use-device-list-state';
 import { DeviceTypeTag } from '../../../components/devices/device-type-tag';
 
@@ -157,7 +158,7 @@ function DeviceRow({
         />
       </div>
       <div role="cell" className="devices-grid-cell">
-        <span className={`status-led status-led--${device.status}`} />
+        <StatusLed status={device.status} />
       </div>
       <div role="cell" className="devices-grid-cell">
         <div className="device-name-cell">

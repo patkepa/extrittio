@@ -14,6 +14,7 @@ import {
 import { clearKeyboardFocusRegions } from '../../utils/focus-regions';
 import { getDirectionalKey, shouldIgnorePageShortcut } from '../../utils/keyboard';
 import type { NavBadge, NavGroup, NavItem, Project, User } from '../navigation';
+import { StatusLed } from '../ui';
 import './app-sidebar.css';
 
 export interface AppSidebarProps {
@@ -306,7 +307,7 @@ export const AppSidebar = ({
             <span className="nav-item-right">
               {badge &&
                 (badge.status ? (
-                  <span className={`status-led status-led--${badge.status}`} />
+                  <StatusLed status={badge.status} />
                 ) : badge.count ? (
                   <Tag minimal className="nav-count-badge">
                     {badge.count}

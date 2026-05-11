@@ -1,4 +1,5 @@
 import { Tag } from '@blueprintjs/core';
+import { StatusLed } from '../../lib/ui';
 import type { Device } from '../../types/api';
 import { DeviceTypeTag } from './device-type-tag';
 
@@ -9,7 +10,7 @@ interface DeviceSummaryCardProps {
 export const DeviceSummaryCard = ({ device }: DeviceSummaryCardProps) => (
   <div className="device-summary-card">
     <div className="summary-header">
-      <span className={`status-led status-led--${device.status}`} />
+      <StatusLed status={device.status} />
       <strong>{device.name}</strong>
     </div>
     <div className="summary-details">

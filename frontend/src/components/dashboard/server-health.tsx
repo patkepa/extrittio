@@ -3,6 +3,7 @@ import { Card, Elevation, H5, ProgressBar, Tag } from '@blueprintjs/core';
 import type { Intent } from '@blueprintjs/core';
 import { MetricSparkline } from './metric-sparkline';
 import { useCurrentMetrics, useMetricsHistory } from '../../hooks/use-server-metrics';
+import { StatusLed } from '../../lib/ui';
 import type { SystemMetricsSnapshot, AppMetricsSnapshot } from '../../types/api';
 
 // ---------------------------------------------------------------------------
@@ -43,8 +44,8 @@ function severityColor(percent: number, memoryMode = false): string {
 export const ServerHealth = () => {
   const { data: current } = useCurrentMetrics();
 
-  const [since] = useState(
-    () => new Date(Date.now() - 3600_000).toISOString().replace(/\.\d+Z$/, 'Z'),
+  const [since] = useState(() =>
+    new Date(Date.now() - 3600_000).toISOString().replace(/\.\d+Z$/, 'Z'),
   );
   const { data: history } = useMetricsHistory(since);
 
@@ -136,7 +137,7 @@ export const ServerHealth = () => {
       <div className="health-strip">
         {healthMetrics.map((metric) => (
           <div key={metric.label} className="health-metric">
-            <span className={`status-led status-led--${metric.status}`} />
+            <StatusLed status={metric.status} />
             <span className="health-label">{metric.label}</span>
             <span className="health-value mono-data">{metric.value}</span>
           </div>
