@@ -339,7 +339,10 @@
 .nav-item-right {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
+  min-height: 20px;
+  min-width: 24px;
 }
 
 /* Count badge */
