@@ -1,2 +1,2 @@
-export { MainToolbar } from '@patkepa/ui';
-export type { MainToolbarProps } from '@patkepa/ui';
+export { MainToolbar } from '@extrittio/ui';
+export type { MainToolbarProps } from '@extrittio/ui';

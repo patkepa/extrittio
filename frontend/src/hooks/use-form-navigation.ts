@@ -1,1 +1,1 @@
-export { useFormNavigation } from '@patkepa/interactions';
+export { useFormNavigation } from '@extrittio/interactions';

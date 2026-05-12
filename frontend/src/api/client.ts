@@ -1,4 +1,4 @@
-import { createApiClient } from '@patkepa/data-client';
+import { createApiClient } from '@extrittio/data-client';
 import { useAuthStore } from '../stores/auth-store';
 
 export const EXTRITTIO_API_BASE_URL = '/api/v1';

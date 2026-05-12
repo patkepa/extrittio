@@ -1,2 +1,2 @@
-export { useConfirmShortcut } from '@patkepa/interactions';
-export type { UseConfirmShortcutOptions } from '@patkepa/interactions';
+export { useConfirmShortcut } from '@extrittio/interactions';
+export type { UseConfirmShortcutOptions } from '@extrittio/interactions';

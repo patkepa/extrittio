@@ -1,2 +1,2 @@
-export { clearKeyboardFocusRegions, moveFocusRegion } from '@patkepa/interactions';
-export type { FocusRegionDirection } from '@patkepa/interactions';
+export { clearKeyboardFocusRegions, moveFocusRegion } from '@extrittio/interactions';
+export type { FocusRegionDirection } from '@extrittio/interactions';

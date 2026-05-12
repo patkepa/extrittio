@@ -1,2 +1,2 @@
-export { ThemeProvider, useTheme } from '@patkepa/theme';
-export type { Theme } from '@patkepa/theme';
+export { ThemeProvider, useTheme } from '@extrittio/theme';
+export type { Theme } from '@extrittio/theme';

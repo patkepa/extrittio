@@ -12,7 +12,7 @@ import {
   Spinner,
   Tag,
 } from '@blueprintjs/core';
-import { EmptyState, FilterPill } from '@patkepa/ui';
+import { EmptyState, FilterPill } from '@extrittio/ui';
 import { useAllOtaDeployments } from '../hooks/use-firmware-updates';
 import type { GlobalOtaDeployment } from '../types/api';
 import './updates.css';

@@ -3,5 +3,5 @@ export {
   hasOpenBlockingOverlay,
   isEditableTarget,
   shouldIgnorePageShortcut,
-} from '@patkepa/interactions';
-export type { DirectionalKey } from '@patkepa/interactions';
+} from '@extrittio/interactions';
+export type { DirectionalKey } from '@extrittio/interactions';

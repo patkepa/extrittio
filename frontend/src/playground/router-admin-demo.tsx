@@ -14,16 +14,16 @@ import {
 } from '@blueprintjs/core';
 import type { IconName } from '@blueprintjs/icons';
 import { Command } from 'cmdk';
-import { AppShell } from '@patkepa/app-shell';
-import { CommandPaletteShell } from '@patkepa/command-palette';
-import { createApiClient } from '@patkepa/data-client';
-import type { NavGroup, Project, User } from '@patkepa/navigation';
-import { ThemeProvider } from '@patkepa/theme';
-import { EmptyState, FilterPill, MainToolbar, SearchField, StatusLed } from '@patkepa/ui';
+import { AppShell } from '@extrittio/app-shell';
+import { CommandPaletteShell } from '@extrittio/command-palette';
+import { createApiClient } from '@extrittio/data-client';
+import type { NavGroup, Project, User } from '@extrittio/navigation';
+import { ThemeProvider } from '@extrittio/theme';
+import { EmptyState, FilterPill, MainToolbar, SearchField, StatusLed } from '@extrittio/ui';
 
 import '@blueprintjs/core/lib/css/blueprint.css';
 import '@blueprintjs/icons/lib/css/blueprint-icons.css';
-import '@patkepa/theme/theme.css';
+import '@extrittio/theme/theme.css';
 import './router-admin-demo.css';
 
 type RouterStatus = 'online' | 'warning' | 'offline';

@@ -1,1 +1,1 @@
-export type { NavBadge, NavGroup, NavItem, Project, User } from '@patkepa/navigation';
+export type { NavBadge, NavGroup, NavItem, Project, User } from '@extrittio/navigation';

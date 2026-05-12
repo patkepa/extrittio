@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { Button, Callout, Divider, InputGroup, Spinner } from '@blueprintjs/core';
 import { useDeviceConfig, useUpdateDeviceConfig } from '../../hooks/use-config';
-import { useFormNavigation } from '@patkepa/interactions';
+import { useFormNavigation } from '@extrittio/interactions';
 import { showSuccessToast, showErrorToast } from '../../utils/toaster';
 
 interface ConfigTabProps {

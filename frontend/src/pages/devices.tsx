@@ -5,7 +5,11 @@ import { DeviceFilters } from '../features/devices/components/device-filters';
 import { DeviceTable } from '../features/devices/components/device-table';
 import { useDeviceListState } from '../features/devices/hooks/use-device-list-state';
 import { useFleets } from '../hooks/use-fleets';
-import { getDirectionalKey, shouldIgnorePageShortcut, useRovingFocus } from '@patkepa/interactions';
+import {
+  getDirectionalKey,
+  shouldIgnorePageShortcut,
+  useRovingFocus,
+} from '@extrittio/interactions';
 import { useSelectionStore } from '../stores/selection-store';
 import { useUIStore } from '../stores/ui-store';
 import './devices.css';

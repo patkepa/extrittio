@@ -16,7 +16,7 @@ import {
   Spinner,
   Icon,
 } from '@blueprintjs/core';
-import { useConfirmShortcut } from '@patkepa/interactions';
+import { useConfirmShortcut } from '@extrittio/interactions';
 import { useUsers, useCreateUser, useDeleteUser } from '../../hooks/use-users';
 import './settings.css';
 

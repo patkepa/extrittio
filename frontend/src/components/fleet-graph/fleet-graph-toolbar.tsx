@@ -1,7 +1,7 @@
 import { Alert, Button, Icon, Menu, MenuDivider, MenuItem, Popover } from '@blueprintjs/core';
 import { useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MainToolbar, StatusLed } from '@patkepa/ui';
+import { MainToolbar, StatusLed } from '@extrittio/ui';
 import { useFleets } from '../../hooks/use-fleets';
 import {
   useBulkChangeFleet,

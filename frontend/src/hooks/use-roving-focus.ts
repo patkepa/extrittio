@@ -1,2 +1,2 @@
-export { useRovingFocus } from '@patkepa/interactions';
-export type { UseRovingFocusOptions } from '@patkepa/interactions';
+export { useRovingFocus } from '@extrittio/interactions';
+export type { UseRovingFocusOptions } from '@extrittio/interactions';

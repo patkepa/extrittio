@@ -25,7 +25,7 @@ import {
   useUpdateDeviceType,
   useDeleteDeviceType,
 } from '../../hooks/use-device-types';
-import { useConfirmShortcut } from '@patkepa/interactions';
+import { useConfirmShortcut } from '@extrittio/interactions';
 import type { DeviceType } from '../../types/api';
 import './settings.css';
 

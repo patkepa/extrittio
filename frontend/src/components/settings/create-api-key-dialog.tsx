@@ -12,7 +12,7 @@ import {
   Code,
 } from '@blueprintjs/core';
 import { useCreateApiKey } from '../../hooks/use-api-keys';
-import { useConfirmShortcut } from '@patkepa/interactions';
+import { useConfirmShortcut } from '@extrittio/interactions';
 import { useDeviceTypes } from '../../hooks/use-device-types';
 
 interface Props {

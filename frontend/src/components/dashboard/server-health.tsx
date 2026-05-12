@@ -3,7 +3,7 @@ import { Card, Elevation, H5, ProgressBar, Tag } from '@blueprintjs/core';
 import type { Intent } from '@blueprintjs/core';
 import { MetricSparkline } from './metric-sparkline';
 import { useCurrentMetrics, useMetricsHistory } from '../../hooks/use-server-metrics';
-import { StatusLed } from '@patkepa/ui';
+import { StatusLed } from '@extrittio/ui';
 import type { SystemMetricsSnapshot, AppMetricsSnapshot } from '../../types/api';
 
 // ---------------------------------------------------------------------------
