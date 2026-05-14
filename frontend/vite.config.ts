@@ -9,11 +9,9 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolvePath('./index.html'),
-        routerAdminDemo: resolvePath('./router-admin-demo.html'),
       },
       output: {
         manualChunks: {
-          blueprint: ['@blueprintjs/core', '@blueprintjs/icons'],
           charts: ['uplot'],
           query: ['@tanstack/react-query', 'axios'],
           maps: ['leaflet', 'react-leaflet'],

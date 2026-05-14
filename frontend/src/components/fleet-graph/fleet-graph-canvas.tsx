@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- react-force-graph-2d lacks proper TS types */
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getIconPaths as getBlueprintIconPaths, IconSize } from '@blueprintjs/icons';
+import { IconSize } from '@blueprintjs/icons/lib/esm/iconTypes';
+import { splitPathsBySizeLoader } from '@blueprintjs/icons/lib/esm/paths-loaders/splitPathsBySizeLoader';
 import type { IconName } from '@blueprintjs/icons';
 import ForceGraph2D from 'react-force-graph-2d';
 import type { GraphData, GraphNode, GraphLink } from './build-force-graph-data';
@@ -51,7 +52,12 @@ const CLICK_DIST_THRESHOLD = 12;
 
 // --- Pre-built Path2D cache for device-type icons (16×16 viewBox) ---
 const iconPathCache = new Map<string, Path2D[]>();
+const pendingIconLoads = new Map<string, Promise<Path2D[]>>();
 const DEFAULT_DEVICE_TYPE_ICON: IconName = 'cube';
+
+function normalizeIconName(iconName?: string): string {
+  return iconName?.trim().toLowerCase().replaceAll('_', '-') || DEFAULT_DEVICE_TYPE_ICON;
+}
 
 function escapeHtml(value: string): string {
   return value
@@ -104,17 +110,33 @@ function formatExternalTooltip(node: GraphNode): string {
   `;
 }
 
-function getIconPaths(iconName?: string): Path2D[] {
-  const key = iconName?.trim().toLowerCase().replaceAll('_', '-') || DEFAULT_DEVICE_TYPE_ICON;
-  let cached = iconPathCache.get(key);
+async function loadIconPaths(iconName?: string): Promise<Path2D[]> {
+  const key = normalizeIconName(iconName);
+  const cached = iconPathCache.get(key);
   if (cached) return cached;
 
-  const svgPaths =
-    (getBlueprintIconPaths(key as IconName, IconSize.STANDARD) as string[] | undefined) ??
-    getBlueprintIconPaths(DEFAULT_DEVICE_TYPE_ICON, IconSize.STANDARD);
-  cached = svgPaths.map((d) => new Path2D(d));
-  iconPathCache.set(key, cached);
-  return cached;
+  const pending = pendingIconLoads.get(key);
+  if (pending) return pending;
+
+  const load = (async () => {
+    let svgPaths = await splitPathsBySizeLoader(key as IconName, IconSize.STANDARD);
+    if (!svgPaths && key !== DEFAULT_DEVICE_TYPE_ICON) {
+      svgPaths = await splitPathsBySizeLoader(DEFAULT_DEVICE_TYPE_ICON, IconSize.STANDARD);
+    }
+    const paths = (svgPaths ?? []).map((d) => new Path2D(d));
+    iconPathCache.set(key, paths);
+    return paths;
+  })().finally(() => {
+    pendingIconLoads.delete(key);
+  });
+
+  pendingIconLoads.set(key, load);
+  return load;
+}
+
+function getIconPaths(iconName?: string): Path2D[] {
+  const key = normalizeIconName(iconName);
+  return iconPathCache.get(key) ?? iconPathCache.get(DEFAULT_DEVICE_TYPE_ICON) ?? [];
 }
 
 function colorWithAlpha(color: string | undefined, alpha: number): string {
@@ -205,6 +227,7 @@ export const FleetGraphCanvas = memo(
   }: FleetGraphCanvasProps) => {
     const graphRef = useRef<ForceGraphApi>();
     const [hoverNode, setHoverNode] = useState<GraphNode | null>(null);
+    const [iconCacheVersion, setIconCacheVersion] = useState(0);
     const pulseClockRef = useRef(0);
     const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const canvasWrapperRef = useRef<HTMLDivElement>(null);
@@ -258,6 +281,28 @@ export const FleetGraphCanvas = memo(
       if (!hoveredNodeId) return hoverNode;
       return graphData.nodes.find((node) => node.id === hoveredNodeId) ?? null;
     }, [graphData.nodes, hoverNode, hoveredNodeId]);
+
+    useEffect(() => {
+      let cancelled = false;
+      const icons = new Set<string>([DEFAULT_DEVICE_TYPE_ICON]);
+      for (const node of graphData.nodes) {
+        icons.add(normalizeIconName(node.deviceTypeIcon));
+      }
+
+      void Promise.all(Array.from(icons, (icon) => loadIconPaths(icon)))
+        .then(() => {
+          if (!cancelled) {
+            setIconCacheVersion((version) => version + 1);
+          }
+        })
+        .catch((error: unknown) => {
+          console.error('[FleetGraph] Failed to load device type icons', error);
+        });
+
+      return () => {
+        cancelled = true;
+      };
+    }, [graphData.nodes]);
 
     const hoverHighlight = useMemo(() => {
       const nodes = new Set<GraphNode>();
@@ -463,6 +508,7 @@ export const FleetGraphCanvas = memo(
 
         if (node.x == null || node.y == null) return;
 
+        const iconsReady = iconCacheVersion > 0;
         ctx.globalAlpha = shouldDim ? DIM_OPACITY : 1;
 
         const radius = isHovered ? baseRadius * HOVER_SCALE : baseRadius;
@@ -564,7 +610,9 @@ export const FleetGraphCanvas = memo(
 
           const iconPaths = getIconPaths(node.deviceTypeIcon);
           ctx.fillStyle = shouldDim ? `rgba(255,255,255,${DIM_OPACITY})` : '#ffffff';
-          drawIcon(ctx, iconPaths, node.x!, node.y! - stripHeight / 2, radius * 1.35);
+          if (iconsReady || iconPaths.length > 0) {
+            drawIcon(ctx, iconPaths, node.x!, node.y! - stripHeight / 2, radius * 1.35);
+          }
 
           if (showDeviceLabels) {
             const fontSize = Math.max(9, 11 / globalScale);
@@ -641,7 +689,9 @@ export const FleetGraphCanvas = memo(
           const iconPaths = getIconPaths(node.deviceTypeIcon);
           const iconSize = effectiveRadius * 1.2;
           ctx.fillStyle = '#ffffff';
-          drawIcon(ctx, iconPaths, node.x!, node.y!, iconSize);
+          if (iconsReady || iconPaths.length > 0) {
+            drawIcon(ctx, iconPaths, node.x!, node.y!, iconSize);
+          }
 
           if (showAlertBadges && node.device) {
             const badge = alertBadges[node.device.id];
@@ -681,6 +731,7 @@ export const FleetGraphCanvas = memo(
         activeHoverNode,
         alertBadges,
         hoverHighlight,
+        iconCacheVersion,
         selectedDeviceIds,
         showAlertBadges,
         showDeviceLabels,
