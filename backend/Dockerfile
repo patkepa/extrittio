@@ -27,40 +27,45 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY common/Cargo.toml common/Cargo.toml
 COPY backend/Cargo.toml backend/Cargo.toml
-COPY client/linux/Cargo.toml client/linux/Cargo.toml
-COPY client/macos/Cargo.toml client/macos/Cargo.toml
-COPY client/rpi/Cargo.toml client/rpi/Cargo.toml
-COPY client/sdk/Cargo.toml client/sdk/Cargo.toml
+COPY cli/Cargo.toml cli/Cargo.toml
+COPY client/rust/linux/Cargo.toml client/rust/linux/Cargo.toml
+COPY client/rust/macos/Cargo.toml client/rust/macos/Cargo.toml
+COPY client/rust/rpi/Cargo.toml client/rust/rpi/Cargo.toml
+COPY client/rust/sdk/Cargo.toml client/rust/sdk/Cargo.toml
+COPY client/rust/simulator/Cargo.toml client/rust/simulator/Cargo.toml
 
 # Create dummy source files to pre-build dependencies
 RUN mkdir -p common/src && echo "fn main() {}" > common/src/lib.rs && \
     mkdir -p common/src/protos && \
-    mkdir -p backend/src && echo "fn main() {}" > backend/src/main.rs && \
-    mkdir -p client/linux/src && echo "fn main() {}" > client/linux/src/main.rs && \
-    mkdir -p client/macos/src && echo "fn main() {}" > client/macos/src/main.rs && \
-    mkdir -p client/rpi/src && echo "fn main() {}" > client/rpi/src/main.rs && \
-    mkdir -p client/sdk/src && echo "fn main() {}" > client/sdk/src/lib.rs
+    mkdir -p backend/src && echo "fn main() {}" > backend/src/main.rs && echo "" > backend/src/lib.rs && \
+    mkdir -p cli/src && echo "fn main() {}" > cli/src/main.rs && echo "" > cli/src/lib.rs && \
+    mkdir -p client/rust/linux/src && echo "fn main() {}" > client/rust/linux/src/main.rs && \
+    mkdir -p client/rust/macos/src && echo "fn main() {}" > client/rust/macos/src/main.rs && \
+    mkdir -p client/rust/rpi/src && echo "fn main() {}" > client/rust/rpi/src/main.rs && \
+    mkdir -p client/rust/sdk/src && echo "" > client/rust/sdk/src/lib.rs && \
+    mkdir -p client/rust/simulator/src && echo "fn main() {}" > client/rust/simulator/src/main.rs
 
 # Determine Rust target triple from TARGETARCH
 RUN if [ "$TARGETARCH" = "arm64" ]; then \
-        cargo build --release --target aarch64-unknown-linux-gnu -p extrittio-backend 2>/dev/null || true; \
+        cargo build --release --target aarch64-unknown-linux-gnu -p extrittio-cli 2>/dev/null || true; \
     else \
-        cargo build --release -p extrittio-backend 2>/dev/null || true; \
+        cargo build --release -p extrittio-cli 2>/dev/null || true; \
     fi
 
 # Copy actual source code
 COPY common/ common/
 COPY backend/ backend/
+COPY cli/ cli/
 
 # Touch source files to invalidate the dummy build artifacts
-RUN touch common/src/lib.rs common/build.rs backend/src/main.rs
+RUN touch common/src/lib.rs common/build.rs backend/src/main.rs backend/src/lib.rs cli/src/main.rs cli/src/lib.rs
 
 # Build the real binary
 RUN if [ "$TARGETARCH" = "arm64" ]; then \
-        cargo build --release --target aarch64-unknown-linux-gnu -p extrittio-backend && \
-        cp target/aarch64-unknown-linux-gnu/release/extrittio-backend target/release/extrittio-backend; \
+        cargo build --release --target aarch64-unknown-linux-gnu -p extrittio-cli && \
+        cp target/aarch64-unknown-linux-gnu/release/extrittio target/release/extrittio; \
     else \
-        cargo build --release -p extrittio-backend; \
+        cargo build --release -p extrittio-cli; \
     fi
 
 # Stage 2: Minimal runtime image (runs on target arch)
@@ -72,7 +77,7 @@ RUN useradd -r -s /bin/false extrittio
 
 WORKDIR /app
 
-COPY --from=builder /app/target/release/extrittio-backend .
+COPY --from=builder /app/target/release/extrittio .
 
 RUN mkdir -p /app/certs && chown -R extrittio:extrittio /app
 
@@ -80,8 +85,8 @@ USER extrittio
 
 ENV PORT=8080
 ENV CORS_ORIGIN=*
-ENV RUST_LOG=extrittio_backend=info
+ENV RUST_LOG=extrittio=info,extrittio_backend=info
 
 EXPOSE 8080
 
-CMD ["./extrittio-backend"]
+CMD ["./extrittio", "serve"]

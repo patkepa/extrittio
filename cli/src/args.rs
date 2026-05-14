@@ -13,12 +13,13 @@ use crate::{
 #[derive(Debug, Parser)]
 #[command(name = "extrittio")]
 #[command(about = "Command line tooling for Extrittio IoT Hub")]
+#[command(version)]
 pub(crate) struct Cli {
-    /// Extrittio backend URL.
+    /// Extrittio backend URL for client and admin commands.
     #[arg(long, env = "EXTRITTIO_URL", global = true)]
     pub(crate) url: Option<String>,
 
-    /// JWT token. Defaults to EXTRITTIO_TOKEN or the saved CLI config.
+    /// JWT token for client and admin commands. Defaults to EXTRITTIO_TOKEN or the saved CLI config.
     #[arg(long, env = "EXTRITTIO_TOKEN", global = true)]
     pub(crate) token: Option<String>,
 
@@ -36,6 +37,13 @@ pub(crate) struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum Command {
+    /// Run the Extrittio backend service.
+    #[command(alias = "server")]
+    Serve(ServeArgs),
+    /// Run pending database migrations and exit.
+    Migrate(DatabaseArgs),
+    /// Initialize database seed data and service certificates, then exit.
+    Init(InitArgs),
     /// Authenticate and manage the local CLI session.
     Auth(AuthCommand),
     /// Show or update local CLI configuration.
@@ -58,6 +66,83 @@ pub(crate) enum Command {
     Certs(CertsCommand),
     /// Create a device and emit client provisioning material.
     Provision(ProvisionArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct ServeArgs {
+    #[command(flatten)]
+    pub(crate) config: ServiceConfigArgs,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct InitArgs {
+    #[command(flatten)]
+    pub(crate) database: DatabaseArgs,
+
+    /// Directory where CA and server TLS certificates are stored.
+    #[arg(long, env = "EXTRITTIO_CERTS_DIR")]
+    pub(crate) certs_dir: Option<String>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub(crate) struct DatabaseArgs {
+    /// PostgreSQL connection URL.
+    #[arg(long, env = "DATABASE_URL")]
+    pub(crate) database_url: Option<String>,
+
+    /// Maximum PostgreSQL pool size.
+    #[arg(long, env = "DB_POOL_SIZE")]
+    pub(crate) db_pool_size: Option<u32>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub(crate) struct ServiceConfigArgs {
+    #[command(flatten)]
+    pub(crate) database: DatabaseArgs,
+
+    /// HTTP port for the REST API.
+    #[arg(long, env = "PORT")]
+    pub(crate) port: Option<u16>,
+
+    /// Public URL advertised for downloadable artifacts.
+    #[arg(long, env = "EXTRITTIO_PUBLIC_URL")]
+    pub(crate) public_url: Option<String>,
+
+    /// Allowed browser origin for CORS.
+    #[arg(long, env = "CORS_ORIGIN")]
+    pub(crate) cors_origin: Option<String>,
+
+    /// Directory where CA and server TLS certificates are stored.
+    #[arg(long, env = "EXTRITTIO_CERTS_DIR")]
+    pub(crate) certs_dir: Option<String>,
+
+    /// Enable Zenoh TLS/mTLS listener.
+    #[arg(long, env = "ZENOH_TLS_ENABLED")]
+    pub(crate) zenoh_tls_enabled: Option<bool>,
+
+    /// Zenoh TCP/TLS listen port.
+    #[arg(long, env = "ZENOH_TLS_PORT")]
+    pub(crate) zenoh_tls_port: Option<u16>,
+
+    /// Seconds before a device is marked offline.
+    #[arg(long, env = "OFFLINE_TIMEOUT_SECS")]
+    pub(crate) offline_timeout_secs: Option<u64>,
+
+    /// Seconds before a pending command times out.
+    #[arg(long, env = "COMMAND_TIMEOUT_SECS")]
+    pub(crate) command_timeout_secs: Option<u64>,
+
+    /// Maximum uploaded firmware size in MiB.
+    #[arg(long, env = "MAX_FIRMWARE_SIZE_MB")]
+    pub(crate) max_firmware_size_mb: Option<usize>,
+
+    /// Days to keep resolved alerts.
+    #[arg(long, env = "ALERT_RETENTION_DAYS")]
+    pub(crate) alert_retention_days: Option<u64>,
+
+    /// Days to keep raw telemetry.
+    #[arg(long, env = "TELEMETRY_RETENTION_DAYS")]
+    pub(crate) telemetry_retention_days: Option<u64>,
 }
 
 #[derive(Debug, Args)]

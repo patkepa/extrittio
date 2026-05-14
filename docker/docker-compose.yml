@@ -24,7 +24,7 @@ services:
       - DATABASE_URL=postgres://extrittio:extrittio@postgres/extrittio
       - PORT=8080
       - CORS_ORIGIN=*
-      - RUST_LOG=extrittio_backend=info
+      - RUST_LOG=extrittio=info,extrittio_backend=info
       # - JWT_SECRET=change-me-in-production
     networks:
       - app

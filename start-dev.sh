@@ -146,12 +146,8 @@ if [[ "$postgres_ready" != "1" ]]; then
 fi
 
 if [[ "${RUN_MIGRATIONS:-1}" != "0" ]]; then
-  if command -v diesel >/dev/null 2>&1; then
-    log "Running database migrations..."
-    (cd "$ROOT_DIR/backend" && DATABASE_URL="$DATABASE_URL" diesel migration run)
-  else
-    log "diesel CLI not found; skipping migrations. Install with: cargo install diesel_cli --no-default-features --features postgres"
-  fi
+  log "Running database migrations..."
+  (cd "$ROOT_DIR" && DATABASE_URL="$DATABASE_URL" cargo run -p extrittio-cli -- migrate)
 fi
 
 if [[ ! -d "$ROOT_DIR/frontend/node_modules" ]]; then
@@ -168,7 +164,7 @@ log "Starting backend on http://localhost:8080"
 (
   cd "$ROOT_DIR"
   export DATABASE_URL RUST_LOG
-  exec cargo run -p extrittio-backend --bin extrittio-backend
+  exec cargo run -p extrittio-cli -- serve
 ) &
 BACKEND_PID=$!
 

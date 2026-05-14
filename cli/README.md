@@ -1,21 +1,38 @@
 # Extrittio CLI
 
-Command line tooling for the Extrittio backend.
+Command line tooling for operating and administering Extrittio.
 
 ## Usage
 
 ```bash
+cargo run -p extrittio-cli -- serve
+cargo run -p extrittio-cli -- migrate
+cargo run -p extrittio-cli -- init
 cargo run -p extrittio-cli -- auth login --username admin --password admin
 cargo run -p extrittio-cli -- devices list
 cargo run -p extrittio-cli -- device-types list
 cargo run -p extrittio-cli -- fleets list
 ```
 
+For an installed release binary, the same commands are:
+
+```bash
+extrittio serve
+extrittio migrate
+extrittio init
+extrittio auth login --username admin --password admin
+```
+
+`serve` starts the backend service, runs startup initialization, opens Zenoh,
+starts background workers, and serves the REST API. `migrate` only applies
+pending database migrations. `init` applies migrations, seeds built-in records,
+creates the initial admin user when needed, and writes service certificates.
+
 Publish a firmware binary and trigger OTA:
 
 ```bash
 # Backend should expose an address devices can fetch, not localhost from the device's view.
-EXTRITTIO_PUBLIC_URL=http://192.0.2.20:8080 cargo run -p extrittio-backend
+EXTRITTIO_PUBLIC_URL=http://192.0.2.20:8080 cargo run -p extrittio-cli -- serve
 
 cargo run -p extrittio-cli -- firmware upload \
   --device-type-id 1 \

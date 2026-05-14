@@ -35,7 +35,7 @@ export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
 - **Rust** — install via [rustup](https://rustup.rs/)
 - **Docker** — required to run PostgreSQL locally (`docker compose -f docker/docker-compose.yml up -d postgres`)
 - **Node.js 18+** — required for the frontend (`npm install && npm run dev`)
-- **diesel_cli** — required for database migrations:
+- **diesel_cli** — optional for direct migration work in `backend/`:
   ```bash
   cargo install diesel_cli --no-default-features --features postgres
   ```
@@ -58,11 +58,11 @@ Manual setup:
 docker compose -f docker/docker-compose.yml up -d postgres
 
 # 2. Apply database migrations
-cd backend && diesel migration run && cd ..
+cargo run -p extrittio-cli -- migrate
 
-# 3. Start the backend (in one terminal)
+# 3. Start the backend service (in one terminal)
 export DATABASE_URL=postgres://extrittio:extrittio@localhost/extrittio
-cargo run -p extrittio-backend
+cargo run -p extrittio-cli -- serve
 
 # 4. Start the frontend (in another terminal)
 cd frontend && npm install && npm run dev
@@ -72,6 +72,9 @@ cd frontend && npm install && npm run dev
 
 ```bash
 cargo run -p extrittio-cli -- --help
+cargo run -p extrittio-cli -- serve
+cargo run -p extrittio-cli -- migrate
+cargo run -p extrittio-cli -- init
 cargo run -p extrittio-cli -- auth login --username admin --password admin
 cargo run -p extrittio-cli -- device-types list
 cargo run -p extrittio-cli -- fleets list
