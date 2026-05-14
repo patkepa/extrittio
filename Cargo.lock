@@ -901,6 +901,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "extrittio"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "dotenvy",
+ "extrittio-backend",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "extrittio-backend"
 version = "0.1.0"
 dependencies = [
@@ -937,22 +953,6 @@ dependencies = [
  "utoipa-swagger-ui",
  "uuid",
  "zenoh",
-]
-
-[[package]]
-name = "extrittio-cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "dotenvy",
- "extrittio-backend",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

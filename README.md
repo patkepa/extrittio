@@ -58,11 +58,11 @@ Manual setup:
 docker compose -f docker/docker-compose.yml up -d postgres
 
 # 2. Apply database migrations
-cargo run -p extrittio-cli -- migrate
+cargo run -p extrittio -- migrate
 
 # 3. Start the combined backend/UI service (in one terminal)
 export DATABASE_URL=postgres://extrittio:extrittio@localhost/extrittio
-cargo run -p extrittio-cli
+cargo run -p extrittio
 
 # 4. Start the frontend (in another terminal)
 cd frontend && npm install && npm run dev
@@ -71,7 +71,7 @@ cd frontend && npm install && npm run dev
 ## CLI
 
 ```bash
-cargo install --path cli
+cargo install --path extrittio
 extrittio
 extrittio --help
 extrittio serve
@@ -87,15 +87,15 @@ on the same port. Override the UI directory with `EXTRITTIO_UI_DIR` or
 During development, the same binary can be run through Cargo:
 
 ```bash
-cargo run -p extrittio-cli -- --help
-cargo run -p extrittio-cli
-cargo run -p extrittio-cli -- serve
-cargo run -p extrittio-cli -- migrate
-cargo run -p extrittio-cli -- init
-cargo run -p extrittio-cli -- auth login --username admin --password admin
-cargo run -p extrittio-cli -- device-types list
-cargo run -p extrittio-cli -- fleets list
-cargo run -p extrittio-cli -- provision \
+cargo run -p extrittio -- --help
+cargo run -p extrittio
+cargo run -p extrittio -- serve
+cargo run -p extrittio -- migrate
+cargo run -p extrittio -- init
+cargo run -p extrittio -- auth login --username admin --password admin
+cargo run -p extrittio -- device-types list
+cargo run -p extrittio -- fleets list
+cargo run -p extrittio -- provision \
   --name sensor-001 \
   --device-type-id 1 \
   --firmware linux-0.1.0 \

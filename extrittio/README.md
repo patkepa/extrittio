@@ -1,4 +1,4 @@
-# Extrittio CLI
+# Extrittio
 
 Command line tooling for operating and administering Extrittio.
 
@@ -7,24 +7,24 @@ Command line tooling for operating and administering Extrittio.
 Install the operator binary from the repository root:
 
 ```bash
-cargo install --path cli
+cargo install --path extrittio
 ```
 
-Or from this `cli/` directory:
+Or from this `extrittio/` directory:
 
 ```bash
 cargo install --path .
 ```
 
 ```bash
-cargo run -p extrittio-cli
-cargo run -p extrittio-cli -- serve
-cargo run -p extrittio-cli -- migrate
-cargo run -p extrittio-cli -- init
-cargo run -p extrittio-cli -- auth login --username admin --password admin
-cargo run -p extrittio-cli -- devices list
-cargo run -p extrittio-cli -- device-types list
-cargo run -p extrittio-cli -- fleets list
+cargo run -p extrittio
+cargo run -p extrittio -- serve
+cargo run -p extrittio -- migrate
+cargo run -p extrittio -- init
+cargo run -p extrittio -- auth login --username admin --password admin
+cargo run -p extrittio -- devices list
+cargo run -p extrittio -- device-types list
+cargo run -p extrittio -- fleets list
 ```
 
 For an installed release binary, the same commands are:
@@ -50,18 +50,18 @@ Publish a firmware binary and trigger OTA:
 
 ```bash
 # Backend should expose an address devices can fetch, not localhost from the device's view.
-EXTRITTIO_PUBLIC_URL=http://192.0.2.20:8080 cargo run -p extrittio-cli -- serve
+EXTRITTIO_PUBLIC_URL=http://192.0.2.20:8080 cargo run -p extrittio -- serve
 
-cargo run -p extrittio-cli -- firmware upload \
+cargo run -p extrittio -- firmware upload \
   --device-type-id 1 \
   --version esp32-network-analyzer-c-0.2.0 \
   --file client/c/esp32-network-analyzer-idf-c/build/extrittio-esp32-network-analyzer-c.bin
 
-cargo run -p extrittio-cli -- ota deploy \
+cargo run -p extrittio -- ota deploy \
   --device esp32-network-analyzer-001 \
   --firmware-id 42
 
-cargo run -p extrittio-cli -- ota wait \
+cargo run -p extrittio -- ota wait \
   --device esp32-network-analyzer-001 \
   --firmware-id 42
 ```
@@ -69,7 +69,7 @@ cargo run -p extrittio-cli -- ota wait \
 Provision a device and optionally download its mTLS certificate bundle:
 
 ```bash
-cargo run -p extrittio-cli -- provision \
+cargo run -p extrittio -- provision \
   --name sensor-001 \
   --device-type sensor \
   --firmware linux-0.1.0 \
@@ -90,7 +90,7 @@ Provision an ESP32 network analyzer that already has the
 `client/c/esp32-network-analyzer-idf-c` firmware flashed:
 
 ```bash
-cargo run -p extrittio-cli -- provision \
+cargo run -p extrittio -- provision \
   --name analyzer-001 \
   --device-type esp32-network-analyzer \
   --firmware v1.0.0-network-analyzer-c \
@@ -123,7 +123,7 @@ Use `--output json` for scripts.
 
 ## Internal Structure
 
-The CLI is split into layers so new command families can be added without
+The operator binary is split into layers so new command families can be added without
 expanding the binary entrypoint:
 
 - `args.rs` owns the public command shape and clap flags.

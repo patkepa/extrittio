@@ -56,7 +56,7 @@ pub fn seed_default_device_types(conn: &mut PgConnection) -> anyhow::Result<()> 
 
     diesel::insert_into(device_types::table)
         .values(&rows)
-        .on_conflict(device_types::name)
+        .on_conflict((device_types::tenant_id, device_types::name))
         .do_nothing()
         .execute(conn)
         .context("Failed to seed built-in device types")?;

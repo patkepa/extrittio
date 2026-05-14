@@ -2,7 +2,7 @@
 resolver = "2"
 members = [
     "backend",
-    "cli",
+    "extrittio",
     "client/rust/linux",
     "client/rust/macos",
     "client/rust/rpi",

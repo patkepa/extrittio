@@ -27,7 +27,7 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY common/Cargo.toml common/Cargo.toml
 COPY backend/Cargo.toml backend/Cargo.toml
-COPY cli/Cargo.toml cli/Cargo.toml
+COPY extrittio/Cargo.toml extrittio/Cargo.toml
 COPY client/rust/linux/Cargo.toml client/rust/linux/Cargo.toml
 COPY client/rust/macos/Cargo.toml client/rust/macos/Cargo.toml
 COPY client/rust/rpi/Cargo.toml client/rust/rpi/Cargo.toml
@@ -38,7 +38,7 @@ COPY client/rust/simulator/Cargo.toml client/rust/simulator/Cargo.toml
 RUN mkdir -p common/src && echo "fn main() {}" > common/src/lib.rs && \
     mkdir -p common/src/protos && \
     mkdir -p backend/src && echo "fn main() {}" > backend/src/main.rs && echo "" > backend/src/lib.rs && \
-    mkdir -p cli/src && echo "fn main() {}" > cli/src/main.rs && echo "" > cli/src/lib.rs && \
+    mkdir -p extrittio/src && echo "fn main() {}" > extrittio/src/main.rs && echo "" > extrittio/src/lib.rs && \
     mkdir -p client/rust/linux/src && echo "fn main() {}" > client/rust/linux/src/main.rs && \
     mkdir -p client/rust/macos/src && echo "fn main() {}" > client/rust/macos/src/main.rs && \
     mkdir -p client/rust/rpi/src && echo "fn main() {}" > client/rust/rpi/src/main.rs && \
@@ -47,25 +47,25 @@ RUN mkdir -p common/src && echo "fn main() {}" > common/src/lib.rs && \
 
 # Determine Rust target triple from TARGETARCH
 RUN if [ "$TARGETARCH" = "arm64" ]; then \
-        cargo build --release --target aarch64-unknown-linux-gnu -p extrittio-cli 2>/dev/null || true; \
+        cargo build --release --target aarch64-unknown-linux-gnu -p extrittio 2>/dev/null || true; \
     else \
-        cargo build --release -p extrittio-cli 2>/dev/null || true; \
+        cargo build --release -p extrittio 2>/dev/null || true; \
     fi
 
 # Copy actual source code
 COPY common/ common/
 COPY backend/ backend/
-COPY cli/ cli/
+COPY extrittio/ extrittio/
 
 # Touch source files to invalidate the dummy build artifacts
-RUN touch common/src/lib.rs common/build.rs backend/src/main.rs backend/src/lib.rs cli/src/main.rs cli/src/lib.rs
+RUN touch common/src/lib.rs common/build.rs backend/src/main.rs backend/src/lib.rs extrittio/src/main.rs extrittio/src/lib.rs
 
 # Build the real binary
 RUN if [ "$TARGETARCH" = "arm64" ]; then \
-        cargo build --release --target aarch64-unknown-linux-gnu -p extrittio-cli && \
+        cargo build --release --target aarch64-unknown-linux-gnu -p extrittio && \
         cp target/aarch64-unknown-linux-gnu/release/extrittio target/release/extrittio; \
     else \
-        cargo build --release -p extrittio-cli; \
+        cargo build --release -p extrittio; \
     fi
 
 # Stage 2: Build the frontend assets served by the backend process

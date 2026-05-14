@@ -147,7 +147,7 @@ fi
 
 if [[ "${RUN_MIGRATIONS:-1}" != "0" ]]; then
   log "Running database migrations..."
-  (cd "$ROOT_DIR" && DATABASE_URL="$DATABASE_URL" cargo run -p extrittio-cli -- migrate)
+  (cd "$ROOT_DIR" && DATABASE_URL="$DATABASE_URL" cargo run -p extrittio -- migrate)
 fi
 
 if [[ ! -d "$ROOT_DIR/frontend/node_modules" ]]; then
@@ -164,7 +164,7 @@ log "Starting backend on http://localhost:8080"
 (
   cd "$ROOT_DIR"
   export DATABASE_URL RUST_LOG
-  exec cargo run -p extrittio-cli -- serve
+  exec cargo run -p extrittio -- serve
 ) &
 BACKEND_PID=$!
 
