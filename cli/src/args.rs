@@ -32,7 +32,7 @@ pub(crate) struct Cli {
     pub(crate) output: OutputFormat,
 
     #[command(subcommand)]
-    pub(crate) command: Command,
+    pub(crate) command: Option<Command>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -68,13 +68,21 @@ pub(crate) enum Command {
     Provision(ProvisionArgs),
 }
 
-#[derive(Debug, Args)]
+#[derive(Debug, Args, Default)]
 pub(crate) struct ServeArgs {
     #[command(flatten)]
     pub(crate) config: ServiceConfigArgs,
+
+    /// Directory containing the built frontend assets.
+    #[arg(long, env = "EXTRITTIO_UI_DIR")]
+    pub(crate) ui_dir: Option<PathBuf>,
+
+    /// Disable serving the frontend UI from this process.
+    #[arg(long)]
+    pub(crate) no_ui: bool,
 }
 
-#[derive(Debug, Args)]
+#[derive(Debug, Args, Default)]
 pub(crate) struct InitArgs {
     #[command(flatten)]
     pub(crate) database: DatabaseArgs,
@@ -84,7 +92,7 @@ pub(crate) struct InitArgs {
     pub(crate) certs_dir: Option<String>,
 }
 
-#[derive(Debug, Args, Clone)]
+#[derive(Debug, Args, Clone, Default)]
 pub(crate) struct DatabaseArgs {
     /// PostgreSQL connection URL.
     #[arg(long, env = "DATABASE_URL")]
@@ -95,7 +103,7 @@ pub(crate) struct DatabaseArgs {
     pub(crate) db_pool_size: Option<u32>,
 }
 
-#[derive(Debug, Args, Clone)]
+#[derive(Debug, Args, Clone, Default)]
 pub(crate) struct ServiceConfigArgs {
     #[command(flatten)]
     pub(crate) database: DatabaseArgs,

@@ -1,10 +1,19 @@
-use std::sync::Arc;
+use std::{
+    path::{Component, Path, PathBuf},
+    sync::Arc,
+};
 
 use anyhow::Context;
-use axum::middleware as axum_middleware;
+use axum::{
+    Extension, Router,
+    body::Body,
+    http::{StatusCode, Uri, header},
+    middleware as axum_middleware,
+    response::{IntoResponse, Response},
+};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
-use tracing::{Level, info};
+use tracing::{Level, info, warn};
 
 use crate::config::AppConfig;
 use crate::middleware::auth_middleware;
@@ -43,6 +52,7 @@ pub async fn serve(config: &AppConfig, state: Arc<AppState>) -> anyhow::Result<(
         ))
         .layer(cors)
         .with_state(state);
+    let app = attach_frontend_ui(app, config);
 
     let addr: std::net::SocketAddr = format!("0.0.0.0:{}", config.port)
         .parse()
@@ -75,6 +85,142 @@ pub async fn serve(config: &AppConfig, state: Arc<AppState>) -> anyhow::Result<(
 
     info!("Server shut down gracefully");
     Ok(())
+}
+
+#[derive(Clone)]
+struct FrontendUi {
+    root: PathBuf,
+    index: PathBuf,
+}
+
+fn attach_frontend_ui(app: Router, config: &AppConfig) -> Router {
+    if !config.serve_ui {
+        info!("Frontend UI serving disabled");
+        return app;
+    }
+
+    let Some(root) = resolve_ui_dir(config) else {
+        warn!(
+            "Frontend UI build not found; serving API only. Run `npm run build` in frontend/ or set EXTRITTIO_UI_DIR."
+        );
+        return app;
+    };
+
+    let index = root.join("index.html");
+    info!("Serving frontend UI from {}", root.display());
+
+    app.fallback(spa_fallback)
+        .layer(Extension(Arc::new(FrontendUi { root, index })))
+}
+
+fn resolve_ui_dir(config: &AppConfig) -> Option<PathBuf> {
+    if let Some(root) = &config.ui_dir {
+        return validate_ui_dir(root);
+    }
+
+    let mut candidates = Vec::new();
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd.join("frontend/dist"));
+        candidates.push(cwd.join("dist"));
+        candidates.push(cwd.join("../frontend/dist"));
+    }
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(exe_dir) = exe.parent()
+    {
+        candidates.push(exe_dir.join("frontend/dist"));
+        candidates.push(exe_dir.join("../frontend/dist"));
+    }
+    candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../frontend/dist"));
+
+    candidates
+        .into_iter()
+        .find_map(|candidate| validate_ui_dir(&candidate))
+}
+
+fn validate_ui_dir(path: &Path) -> Option<PathBuf> {
+    let index = path.join("index.html");
+    if index.is_file() {
+        Some(path.to_path_buf())
+    } else {
+        None
+    }
+}
+
+async fn spa_fallback(
+    uri: Uri,
+    Extension(ui): Extension<Arc<FrontendUi>>,
+) -> Result<Response, StatusCode> {
+    let path = uri.path();
+    if is_backend_reserved_path(path) {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let Some(relative_path) = sanitized_relative_path(path) else {
+        return Err(StatusCode::BAD_REQUEST);
+    };
+
+    let requested_path = ui.root.join(&relative_path);
+    let file_path = if tokio::fs::metadata(&requested_path)
+        .await
+        .map(|metadata| metadata.is_file())
+        .unwrap_or(false)
+    {
+        requested_path
+    } else if relative_path.extension().is_none() {
+        ui.index.clone()
+    } else {
+        return Err(StatusCode::NOT_FOUND);
+    };
+
+    let bytes = tokio::fs::read(&file_path)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+    Ok(Response::builder()
+        .header(header::CONTENT_TYPE, content_type(&file_path))
+        .body(Body::from(bytes))
+        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response()))
+}
+
+fn is_backend_reserved_path(path: &str) -> bool {
+    path == "/api"
+        || path.starts_with("/api/")
+        || path == "/health"
+        || path == "/ready"
+        || path == "/api-docs"
+        || path.starts_with("/api-docs/")
+        || path == "/swagger-ui"
+        || path.starts_with("/swagger-ui/")
+}
+
+fn sanitized_relative_path(path: &str) -> Option<PathBuf> {
+    let trimmed = path.trim_start_matches('/');
+    if trimmed.is_empty() {
+        return Some(PathBuf::from("index.html"));
+    }
+
+    let mut result = PathBuf::new();
+    for component in Path::new(trimmed).components() {
+        match component {
+            Component::Normal(part) => result.push(part),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => return None,
+        }
+    }
+    Some(result)
+}
+
+fn content_type(path: &Path) -> &'static str {
+    match path.extension().and_then(|extension| extension.to_str()) {
+        Some("css") => "text/css; charset=utf-8",
+        Some("html") => "text/html; charset=utf-8",
+        Some("js") | Some("mjs") => "text/javascript; charset=utf-8",
+        Some("json") | Some("map") => "application/json; charset=utf-8",
+        Some("png") => "image/png",
+        Some("svg") => "image/svg+xml",
+        Some("webmanifest") => "application/manifest+json",
+        Some("woff2") => "font/woff2",
+        _ => "application/octet-stream",
+    }
 }
 
 async fn shutdown_signal() {

@@ -26,7 +26,9 @@ mod provision;
 mod service;
 
 pub(crate) async fn run(cli: Cli) -> Result<()> {
-    let command = cli.command;
+    let command = cli
+        .command
+        .unwrap_or_else(|| Command::Serve(Default::default()));
     let output_format = cli.output;
 
     match command {

@@ -68,7 +68,18 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
         cargo build --release -p extrittio-cli; \
     fi
 
-# Stage 2: Minimal runtime image (runs on target arch)
+# Stage 2: Build the frontend assets served by the backend process
+FROM node:22-bookworm-slim AS frontend-builder
+
+WORKDIR /frontend
+
+COPY frontend/package*.json ./
+RUN npm ci
+
+COPY frontend/ ./
+RUN npm run build
+
+# Stage 3: Minimal runtime image (runs on target arch)
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y libpq5 ca-certificates && rm -rf /var/lib/apt/lists/*
@@ -78,6 +89,7 @@ RUN useradd -r -s /bin/false extrittio
 WORKDIR /app
 
 COPY --from=builder /app/target/release/extrittio .
+COPY --from=frontend-builder /frontend/dist ./frontend
 
 RUN mkdir -p /app/certs && chown -R extrittio:extrittio /app
 
@@ -85,6 +97,7 @@ USER extrittio
 
 ENV PORT=8080
 ENV CORS_ORIGIN=*
+ENV EXTRITTIO_UI_DIR=/app/frontend
 ENV RUST_LOG=extrittio=info,extrittio_backend=info
 
 EXPOSE 8080

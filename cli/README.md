@@ -4,7 +4,20 @@ Command line tooling for operating and administering Extrittio.
 
 ## Usage
 
+Install the operator binary from the repository root:
+
 ```bash
+cargo install --path cli
+```
+
+Or from this `cli/` directory:
+
+```bash
+cargo install --path .
+```
+
+```bash
+cargo run -p extrittio-cli
 cargo run -p extrittio-cli -- serve
 cargo run -p extrittio-cli -- migrate
 cargo run -p extrittio-cli -- init
@@ -17,16 +30,21 @@ cargo run -p extrittio-cli -- fleets list
 For an installed release binary, the same commands are:
 
 ```bash
+extrittio
 extrittio serve
 extrittio migrate
 extrittio init
 extrittio auth login --username admin --password admin
 ```
 
-`serve` starts the backend service, runs startup initialization, opens Zenoh,
-starts background workers, and serves the REST API. `migrate` only applies
-pending database migrations. `init` applies migrations, seeds built-in records,
-creates the initial admin user when needed, and writes service certificates.
+Running `extrittio` with no subcommand defaults to `extrittio serve`. `serve`
+starts the backend service, runs startup initialization, opens Zenoh, starts
+background workers, serves the REST API, and serves the React UI from
+`frontend/dist` when that build directory exists. Override the UI directory with
+`EXTRITTIO_UI_DIR` or `extrittio serve --ui-dir <path>`, or pass `--no-ui` for
+API-only mode. `migrate` only applies pending database migrations. `init`
+applies migrations, seeds built-in records, creates the initial admin user when
+needed, and writes service certificates.
 
 Publish a firmware binary and trigger OTA:
 

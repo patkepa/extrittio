@@ -1,4 +1,4 @@
-use std::env;
+use std::{env, path::PathBuf};
 
 pub struct AppConfig {
     pub port: u16,
@@ -14,6 +14,8 @@ pub struct AppConfig {
     pub max_firmware_size_bytes: usize,
     pub alert_retention_days: u64,
     pub telemetry_retention_days: u64,
+    pub serve_ui: bool,
+    pub ui_dir: Option<PathBuf>,
 }
 
 impl AppConfig {
@@ -69,6 +71,10 @@ impl AppConfig {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(30),
+            serve_ui: env::var("EXTRITTIO_SERVE_UI")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(true),
+            ui_dir: env::var("EXTRITTIO_UI_DIR").ok().map(PathBuf::from),
         }
     }
 }

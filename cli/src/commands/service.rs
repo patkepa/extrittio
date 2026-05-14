@@ -13,7 +13,13 @@ pub(crate) async fn serve(args: ServeArgs) -> Result<()> {
     load_dotenv();
     init_tracing();
 
-    let config = app_config(args.config);
+    let mut config = app_config(args.config);
+    if let Some(ui_dir) = args.ui_dir {
+        config.ui_dir = Some(ui_dir);
+    }
+    if args.no_ui {
+        config.serve_ui = false;
+    }
     info!("Starting extrittio on port {}", config.port);
 
     let state = app::boot::initialize_state(&config).await?;

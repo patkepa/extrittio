@@ -60,9 +60,9 @@ docker compose -f docker/docker-compose.yml up -d postgres
 # 2. Apply database migrations
 cargo run -p extrittio-cli -- migrate
 
-# 3. Start the backend service (in one terminal)
+# 3. Start the combined backend/UI service (in one terminal)
 export DATABASE_URL=postgres://extrittio:extrittio@localhost/extrittio
-cargo run -p extrittio-cli -- serve
+cargo run -p extrittio-cli
 
 # 4. Start the frontend (in another terminal)
 cd frontend && npm install && npm run dev
@@ -71,7 +71,24 @@ cd frontend && npm install && npm run dev
 ## CLI
 
 ```bash
+cargo install --path cli
+extrittio
+extrittio --help
+extrittio serve
+extrittio migrate
+extrittio init
+```
+
+Running `extrittio` with no subcommand defaults to `extrittio serve`. It serves
+the backend API and, when a built UI exists, the React app from `frontend/dist`
+on the same port. Override the UI directory with `EXTRITTIO_UI_DIR` or
+`extrittio serve --ui-dir <path>`.
+
+During development, the same binary can be run through Cargo:
+
+```bash
 cargo run -p extrittio-cli -- --help
+cargo run -p extrittio-cli
 cargo run -p extrittio-cli -- serve
 cargo run -p extrittio-cli -- migrate
 cargo run -p extrittio-cli -- init
