@@ -6,7 +6,7 @@ use diesel::RunQueryDsl;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
 use diesel_migrations::MigrationHarness;
-use tracing::info;
+use tracing::{debug, info};
 
 use crate::db::models::{NewDeviceType, NewServerConfigEntry, NewUser, ServerConfigEntry};
 use crate::db::schema::{ca_certificates, device_types, server_config, users};
@@ -188,6 +188,8 @@ pub async fn open_zenoh_session(
     certs_dir: &str,
 ) -> anyhow::Result<zenoh::Session> {
     let mut zenoh_config = zenoh::Config::default();
+    let listen_scheme = if tls_enabled { "tls" } else { "tcp" };
+    let listen_endpoint = format!("{listen_scheme}/0.0.0.0:{tls_port}");
 
     if tls_enabled {
         let certs_path =
@@ -200,7 +202,6 @@ pub async fn open_zenoh_session(
             anyhow::ensure!(path.exists(), "Missing TLS file: {}", path.display());
         }
 
-        let listen_endpoint = format!("tls/0.0.0.0:{tls_port}");
         zenoh_config
             .insert_json5("listen/endpoints", &format!("[\"{listen_endpoint}\"]"))
             .map_err(|e| anyhow::anyhow!("Failed to set Zenoh listen endpoints: {e}"))?;
@@ -233,14 +234,66 @@ pub async fn open_zenoh_session(
 
         info!("Zenoh TLS configured: listening on {listen_endpoint} with mTLS");
     } else {
-        let listen_endpoint = format!("tcp/0.0.0.0:{tls_port}");
         zenoh_config
             .insert_json5("listen/endpoints", &format!("[\"{listen_endpoint}\"]"))
             .map_err(|e| anyhow::anyhow!("Failed to set Zenoh listen endpoints: {e}"))?;
         info!("Zenoh configured: listening on {listen_endpoint} (no TLS)");
     }
 
-    zenoh::open(zenoh_config)
-        .await
-        .map_err(|e| anyhow::anyhow!("Failed to open zenoh session: {e}"))
+    zenoh::open(zenoh_config).await.map_err(|e| {
+        let raw_error = e.to_string();
+        debug!("Raw Zenoh open error: {raw_error}");
+        anyhow::anyhow!(format_zenoh_open_error(
+            &raw_error,
+            &listen_endpoint,
+            tls_port
+        ))
+    })
+}
+
+fn format_zenoh_open_error(raw_error: &str, listen_endpoint: &str, port: u16) -> String {
+    let lower = raw_error.to_ascii_lowercase();
+    if lower.contains("address already in use")
+        || lower.contains("os error 48")
+        || lower.contains("os error 98")
+    {
+        return format!(
+            "Zenoh port {port} is already in use. Stop the existing Extrittio/Zenoh process, or start this instance with a different port, for example: ZENOH_TLS_PORT={} extrittio",
+            port.saturating_add(1)
+        );
+    }
+
+    format!(
+        "Failed to open Zenoh session on {listen_endpoint}. Check Zenoh configuration, TLS settings, and port availability. Set RUST_LOG=extrittio_backend=debug for the raw Zenoh error."
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_zenoh_open_error;
+
+    #[test]
+    fn zenoh_port_conflict_error_is_actionable() {
+        let raw_error = "Can not create a new TCP listener bound to tcp/0.0.0.0:7447: [0.0.0.0:7447: Address already in use (os error 48) at /registry/src/tcp.rs:52.]";
+
+        let message = format_zenoh_open_error(raw_error, "tcp/0.0.0.0:7447", 7447);
+
+        assert!(message.contains("Zenoh port 7447 is already in use"));
+        assert!(message.contains("ZENOH_TLS_PORT=7448 extrittio"));
+        assert!(!message.contains("/registry/src"));
+        assert!(!message.contains(".rs:"));
+    }
+
+    #[test]
+    fn generic_zenoh_error_is_sanitized() {
+        let message = format_zenoh_open_error(
+            "some dependency detail at /registry/src/lib.rs:12",
+            "tls/0.0.0.0:7447",
+            7447,
+        );
+
+        assert!(message.contains("Failed to open Zenoh session on tls/0.0.0.0:7447"));
+        assert!(!message.contains("/registry/src"));
+        assert!(!message.contains(".rs:"));
+    }
 }
