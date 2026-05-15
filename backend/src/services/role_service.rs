@@ -1,4 +1,4 @@
-use diesel::PgConnection;
+use diesel::{Connection, PgConnection};
 use std::collections::HashSet;
 
 use crate::auth::context::RequestContext;
@@ -98,19 +98,24 @@ pub fn update(
     }
 
     let next_description = description.unwrap_or(existing.description.clone());
-    let role = role_repo::update_role(
-        conn,
-        ctx.tenant_id_str(),
-        id,
-        &next_name,
-        next_description.as_deref(),
-    )
-    .map_err(map_unique_role_error)?;
+    let role = conn.transaction(|conn| {
+        let role = role_repo::update_role(
+            conn,
+            ctx.tenant_id_str(),
+            id,
+            &next_name,
+            next_description.as_deref(),
+        )
+        .map_err(map_unique_role_error)?;
 
-    if let Some(permissions) = permissions {
-        let permissions = validate_permission_keys(&permissions)?;
-        role_repo::replace_role_permissions(conn, role.id, &permissions)?;
-    }
+        if let Some(permissions) = permissions {
+            let permissions = validate_permission_keys(&permissions)?;
+            role_repo::replace_role_permissions(conn, role.id, &permissions)?;
+            role_repo::bump_permission_versions_for_role(conn, ctx.tenant_id_str(), role.id)?;
+        }
+
+        Ok::<Role, AppError>(role)
+    })?;
 
     hydrate_role(conn, ctx.tenant_id_str(), role)
 }

@@ -25,6 +25,7 @@ pub struct AuthenticatedUser {
     pub role: String,
     pub roles: Vec<Role>,
     pub permissions: Vec<String>,
+    pub permission_version: i32,
 }
 
 pub fn list(
@@ -137,21 +138,20 @@ pub fn delete(ctx: &RequestContext, conn: &mut PgConnection, id: i32) -> Result<
 /// Returns (user_id, username, role) on success.
 pub fn authenticate(
     conn: &mut PgConnection,
+    tenant_id: &str,
     username: &str,
     password: &str,
 ) -> Result<AuthenticatedUser, AppError> {
-    let user = user_repo::find_user_by_username(conn, DEFAULT_TENANT_ID, username).map_err(
-        |e| match e {
-            diesel::result::Error::NotFound => AppError::Unauthorized,
-            other => AppError::Database(other),
-        },
-    )?;
+    let user = user_repo::find_user_by_username(conn, tenant_id, username).map_err(|e| match e {
+        diesel::result::Error::NotFound => AppError::Unauthorized,
+        other => AppError::Database(other),
+    })?;
 
     if !user.is_active || !verify_password(password, &user.password_hash) {
         return Err(AppError::Unauthorized);
     }
 
-    user_repo::update_last_login_at(conn, DEFAULT_TENANT_ID, user.id)?;
+    user_repo::update_last_login_at(conn, tenant_id, user.id)?;
     authenticated_user_from_user(conn, user)
 }
 
@@ -168,6 +168,9 @@ pub fn context_from_claims(
     )?;
 
     if !user.is_active {
+        return Err(AppError::Unauthorized);
+    }
+    if user.permission_version != claims.permission_version {
         return Err(AppError::Unauthorized);
     }
 
@@ -195,6 +198,24 @@ pub fn set_roles(
     Ok(UserWithRoles { user, roles })
 }
 
+pub fn current_user(
+    ctx: &RequestContext,
+    conn: &mut PgConnection,
+) -> Result<AuthenticatedUser, AppError> {
+    let user = user_repo::find_user_by_id(conn, ctx.tenant_id_str(), ctx.user_id).map_err(|e| {
+        match e {
+            diesel::result::Error::NotFound => AppError::Unauthorized,
+            other => AppError::Database(other),
+        }
+    })?;
+
+    if !user.is_active {
+        return Err(AppError::Unauthorized);
+    }
+
+    authenticated_user_from_user(conn, user)
+}
+
 fn authenticated_user_from_user(
     conn: &mut PgConnection,
     user: User,
@@ -218,6 +239,7 @@ fn authenticated_user_from_user(
         role,
         roles,
         permissions,
+        permission_version: user.permission_version,
     })
 }
 

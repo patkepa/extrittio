@@ -266,6 +266,25 @@ pub fn count_users_for_role(
         .get_result(conn)
 }
 
+pub fn bump_permission_versions_for_role(
+    conn: &mut PgConnection,
+    tenant_id: &str,
+    role_id: i32,
+) -> QueryResult<usize> {
+    let user_ids = user_roles::table
+        .filter(user_roles::tenant_id.eq(tenant_id))
+        .filter(user_roles::role_id.eq(role_id))
+        .select(user_roles::user_id);
+
+    diesel::update(
+        users::table
+            .filter(users::tenant_id.eq(tenant_id))
+            .filter(users::id.eq_any(user_ids)),
+    )
+    .set(users::permission_version.eq(users::permission_version + 1))
+    .execute(conn)
+}
+
 #[allow(dead_code)]
 pub fn list_user_roles(
     conn: &mut PgConnection,

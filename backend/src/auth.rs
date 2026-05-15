@@ -18,7 +18,13 @@ pub struct Claims {
     pub tenant_id: Option<String>,
     #[serde(default)]
     pub scopes: Vec<String>,
+    #[serde(default = "default_permission_version")]
+    pub permission_version: i32,
     pub exp: usize,
+}
+
+fn default_permission_version() -> i32 {
+    1
 }
 
 pub fn hash_password(password: &str) -> Result<String, argon2::password_hash::Error> {
@@ -49,6 +55,7 @@ pub fn create_token(
         role,
         DEFAULT_TENANT_ID,
         Vec::new(),
+        default_permission_version(),
         secret,
     )
 }
@@ -59,6 +66,7 @@ pub fn create_token_with_scopes(
     role: &str,
     tenant_id: &str,
     scopes: Vec<String>,
+    permission_version: i32,
     secret: &str,
 ) -> Result<String, jsonwebtoken::errors::Error> {
     #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
@@ -73,6 +81,7 @@ pub fn create_token_with_scopes(
         role: role.to_string(),
         tenant_id: Some(tenant_id.to_string()),
         scopes,
+        permission_version,
         exp: expiration,
     };
 

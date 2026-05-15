@@ -75,6 +75,7 @@ pub(crate) async fn list_users(
                     u.user.role,
                     u.roles,
                     permissions,
+                    u.user.permission_version,
                 ))
             })
             .collect::<Result<Vec<_>, AppError>>()?;
@@ -120,6 +121,7 @@ pub(crate) async fn create_user(
             user.role,
             roles,
             permissions,
+            user.permission_version,
         ))
     })
     .await?;
@@ -211,6 +213,7 @@ pub(crate) async fn set_roles(
             user.user.role,
             user.roles,
             permissions,
+            user.user.permission_version,
         ))
     })
     .await?;
