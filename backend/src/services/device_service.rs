@@ -168,8 +168,14 @@ pub fn create_device(
 
 /// Infer the device type name from the firmware version string.
 fn infer_device_type(firmware: &str) -> &'static str {
+    let firmware = firmware.to_ascii_lowercase();
     if firmware.contains("network-analyzer") || firmware.contains("network_analyzer") {
         "network-analyzer"
+    } else if firmware.contains("organbath")
+        || firmware.contains("organ-bath")
+        || firmware.contains("organ_bath")
+    {
+        "OrganBath"
     } else if firmware.contains("macos") {
         "mac-device"
     } else {

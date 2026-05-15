@@ -42,6 +42,7 @@ pub fn seed_default_device_types(conn: &mut PgConnection) -> anyhow::Result<()> 
         ("default", "cube", "#8ABBFF"),
         ("mac-device", "desktop", "#F7C948"),
         ("network-analyzer", "antenna", "#36CFC9"),
+        ("OrganBath", "heatmap", "#E76A6E"),
     ];
 
     let rows: Vec<NewDeviceType> = BUILT_IN_DEVICE_TYPES
