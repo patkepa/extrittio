@@ -76,4 +76,4 @@ client/c/*/build/
 client/c/*/managed_components/
 client/c/*/sdkconfig
 client/c/*/sdkconfig.old
-client/rust/esp32/.embuild/espressif/
+client/rust/esp32/.embuild/
