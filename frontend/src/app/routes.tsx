@@ -1,5 +1,6 @@
 import { lazy, type ReactNode } from 'react';
 import type { IconName } from '@blueprintjs/icons';
+import { hasRequiredPermissions, type PermissionKey } from '../auth/permissions';
 import type { NavGroup, NavItem } from '../types/navigation';
 
 const Dashboard = lazy(() => import('../pages/dashboard').then((m) => ({ default: m.Dashboard })));
@@ -29,6 +30,7 @@ export interface AppRoute {
   navGroup?: 'General' | 'Automation' | 'Management';
   children?: AppRoute[];
   showInCommandPalette?: boolean;
+  requiredPermissions?: PermissionKey[];
 }
 
 export interface SettingsRoute {
@@ -36,17 +38,60 @@ export interface SettingsRoute {
   label: string;
   path: string;
   icon: IconName;
+  requiredPermissions?: PermissionKey[];
 }
 
 export const settingsRoutes: SettingsRoute[] = [
   { id: 'profile', label: 'Profile', icon: 'user', path: 'profile' },
-  { id: 'device-types', label: 'Device Types', icon: 'tag', path: 'device-types' },
-  { id: 'fleets', label: 'Fleets', icon: 'layers', path: 'fleets' },
-  { id: 'users', label: 'Users', icon: 'people', path: 'users' },
-  { id: 'roles', label: 'Roles', icon: 'shield', path: 'roles' },
-  { id: 'firmware', label: 'Firmware', icon: 'upload', path: 'firmware' },
-  { id: 'certificates', label: 'Certificates', icon: 'lock', path: 'certificates' },
-  { id: 'api-keys', label: 'API Keys', icon: 'key', path: 'api-keys' },
+  {
+    id: 'device-types',
+    label: 'Device Types',
+    icon: 'tag',
+    path: 'device-types',
+    requiredPermissions: ['device_types.read'],
+  },
+  {
+    id: 'fleets',
+    label: 'Fleets',
+    icon: 'layers',
+    path: 'fleets',
+    requiredPermissions: ['fleets.read'],
+  },
+  {
+    id: 'users',
+    label: 'Users',
+    icon: 'people',
+    path: 'users',
+    requiredPermissions: ['users.read'],
+  },
+  {
+    id: 'roles',
+    label: 'Roles',
+    icon: 'shield',
+    path: 'roles',
+    requiredPermissions: ['roles.read'],
+  },
+  {
+    id: 'firmware',
+    label: 'Firmware',
+    icon: 'upload',
+    path: 'firmware',
+    requiredPermissions: ['firmware.read'],
+  },
+  {
+    id: 'certificates',
+    label: 'Certificates',
+    icon: 'lock',
+    path: 'certificates',
+    requiredPermissions: ['devices.read'],
+  },
+  {
+    id: 'api-keys',
+    label: 'API Keys',
+    icon: 'key',
+    path: 'api-keys',
+    requiredPermissions: ['api_keys.manage'],
+  },
 ];
 
 export const appRoutes: AppRoute[] = [
@@ -58,6 +103,7 @@ export const appRoutes: AppRoute[] = [
     element: <Dashboard />,
     navGroup: 'General',
     showInCommandPalette: true,
+    requiredPermissions: ['devices.read'],
   },
   {
     id: 'devices',
@@ -67,6 +113,7 @@ export const appRoutes: AppRoute[] = [
     element: <Devices />,
     navGroup: 'General',
     showInCommandPalette: true,
+    requiredPermissions: ['devices.read'],
   },
   {
     id: 'device-detail',
@@ -74,6 +121,7 @@ export const appRoutes: AppRoute[] = [
     icon: 'mobile-video',
     path: '/devices/:deviceId',
     element: <DeviceDetail />,
+    requiredPermissions: ['devices.read'],
   },
   {
     id: 'fleet-graph',
@@ -83,6 +131,7 @@ export const appRoutes: AppRoute[] = [
     element: <FleetGraph />,
     navGroup: 'General',
     showInCommandPalette: true,
+    requiredPermissions: ['devices.read', 'fleets.read', 'device_types.read'],
   },
   {
     id: 'map',
@@ -92,6 +141,7 @@ export const appRoutes: AppRoute[] = [
     element: <MapPage />,
     navGroup: 'General',
     showInCommandPalette: true,
+    requiredPermissions: ['devices.read', 'zones.read'],
   },
   {
     id: 'updates',
@@ -101,6 +151,7 @@ export const appRoutes: AppRoute[] = [
     element: <Updates />,
     navGroup: 'General',
     showInCommandPalette: true,
+    requiredPermissions: ['firmware.read'],
   },
   {
     id: 'rules',
@@ -110,6 +161,7 @@ export const appRoutes: AppRoute[] = [
     element: <Rules />,
     navGroup: 'Automation',
     showInCommandPalette: true,
+    requiredPermissions: ['rules.read'],
   },
   {
     id: 'alerts',
@@ -119,6 +171,7 @@ export const appRoutes: AppRoute[] = [
     element: <Alerts />,
     navGroup: 'Automation',
     showInCommandPalette: true,
+    requiredPermissions: ['alerts.read'],
   },
   {
     id: 'firmware',
@@ -127,6 +180,7 @@ export const appRoutes: AppRoute[] = [
     path: '/settings/firmware',
     navGroup: 'Management',
     showInCommandPalette: true,
+    requiredPermissions: ['firmware.read'],
   },
   {
     id: 'fleets',
@@ -135,6 +189,7 @@ export const appRoutes: AppRoute[] = [
     path: '/settings/fleets',
     navGroup: 'Management',
     showInCommandPalette: true,
+    requiredPermissions: ['fleets.read'],
   },
   {
     id: 'settings',
@@ -151,6 +206,7 @@ export const appRoutes: AppRoute[] = [
       icon: route.icon,
       path: `/settings/${route.path}`,
       showInCommandPalette: true,
+      requiredPermissions: route.requiredPermissions,
     })),
   },
   {
@@ -166,6 +222,43 @@ export const appRoutes: AppRoute[] = [
 
 export const protectedRoutes = appRoutes.filter((route) => route.element);
 
+export function canAccessRoute(
+  route: Pick<AppRoute, 'requiredPermissions'>,
+  permissions: readonly string[] | undefined,
+): boolean {
+  return hasRequiredPermissions(permissions, route.requiredPermissions);
+}
+
+export function canAccessSettingsRoute(
+  route: Pick<SettingsRoute, 'requiredPermissions'>,
+  permissions: readonly string[] | undefined,
+): boolean {
+  return hasRequiredPermissions(permissions, route.requiredPermissions);
+}
+
+export function getAccessibleSettingsRoutes(permissions: readonly string[] | undefined) {
+  return settingsRoutes.filter((route) => canAccessSettingsRoute(route, permissions));
+}
+
+export function getDefaultSettingsPath(permissions: readonly string[] | undefined) {
+  return getAccessibleSettingsRoutes(permissions)[0]?.path ?? 'profile';
+}
+
+function withAccessibleChildren(route: AppRoute, permissions: readonly string[] | undefined) {
+  const children = route.children?.filter((child) => canAccessRoute(child, permissions));
+  return { ...route, children };
+}
+
+export function getAccessibleAppRoutes(permissions: readonly string[] | undefined): AppRoute[] {
+  return appRoutes
+    .filter((route) => canAccessRoute(route, permissions))
+    .map((route) => withAccessibleChildren(route, permissions));
+}
+
+export function getAccessibleProtectedRoutes(permissions: readonly string[] | undefined) {
+  return protectedRoutes.filter((route) => canAccessRoute(route, permissions));
+}
+
 function toNavItem(route: AppRoute): NavItem {
   return {
     label: route.label,
@@ -175,19 +268,39 @@ function toNavItem(route: AppRoute): NavItem {
   };
 }
 
-export const navGroups: NavGroup[] = (['General', 'Automation', 'Management'] as const).map(
-  (group) => ({
-    label: group,
-    items: appRoutes.filter((route) => route.navGroup === group).map(toNavItem),
-  }),
-);
+export function getNavGroups(permissions: readonly string[] | undefined): NavGroup[] {
+  return (['General', 'Automation', 'Management'] as const)
+    .map((group) => ({
+      label: group,
+      items: getAccessibleAppRoutes(permissions)
+        .filter((route) => route.navGroup === group)
+        .map(toNavItem),
+    }))
+    .filter((group) => group.items.length > 0);
+}
 
-export const commandPaletteRoutes = appRoutes.flatMap((route) => {
-  const entries: AppRoute[] = route.showInCommandPalette ? [route] : [];
-  return route.children ? entries.concat(route.children) : entries;
-});
+export function getCommandPaletteRoutes(permissions: readonly string[] | undefined) {
+  return getAccessibleAppRoutes(permissions).flatMap((route) => {
+    const entries: AppRoute[] = route.showInCommandPalette ? [route] : [];
+    return route.children ? entries.concat(route.children) : entries;
+  });
+}
 
-export function getRouteLabel(pathname: string): string {
+export function getDefaultRoutePath(permissions: readonly string[] | undefined): string {
+  for (const route of getAccessibleAppRoutes(permissions)) {
+    if (route.path === '/settings/*') {
+      return route.children?.[0]?.path ?? '/settings/profile';
+    }
+
+    if (!route.element || route.path.includes(':')) continue;
+    return route.href ?? route.path;
+  }
+
+  return '/settings/profile';
+}
+
+export function getRouteLabel(pathname: string, permissions?: readonly string[]): string {
+  const commandPaletteRoutes = getCommandPaletteRoutes(permissions);
   const exact = commandPaletteRoutes.find((route) => route.path === pathname);
   if (exact) return exact.label;
 

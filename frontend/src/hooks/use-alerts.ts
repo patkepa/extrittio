@@ -11,21 +11,28 @@ import {
 } from '../api/alerts';
 import { queryKeys } from './query-keys';
 
-export function useAlerts(params?: Record<string, unknown>) {
+interface AlertQueryOptions {
+  enabled?: boolean;
+  refetchInterval?: number | false;
+}
+
+export function useAlerts(params?: Record<string, unknown>, options?: AlertQueryOptions) {
   return useQuery({
     queryKey: queryKeys.alerts.list(params),
     queryFn: () => getAlerts(params),
     staleTime: 10_000,
-    refetchInterval: 10_000,
+    refetchInterval: options?.refetchInterval ?? 10_000,
+    enabled: options?.enabled ?? true,
   });
 }
 
-export function useAlertSummary() {
+export function useAlertSummary(options?: AlertQueryOptions) {
   return useQuery({
     queryKey: queryKeys.alerts.summary,
     queryFn: getAlertSummary,
     staleTime: 15_000,
     refetchInterval: 30_000,
+    enabled: options?.enabled ?? true,
   });
 }
 

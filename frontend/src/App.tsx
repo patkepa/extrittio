@@ -5,7 +5,8 @@ import { ThemeProvider } from '@extrittio/theme';
 import { ExtrittioShell } from './app/extrittio-shell';
 import { AuthGuard } from './components/auth-guard';
 import { Login } from './pages/login';
-import { protectedRoutes } from './app/routes';
+import { getAccessibleProtectedRoutes, getDefaultRoutePath } from './app/routes';
+import { useAuthStore } from './stores/auth-store';
 
 // Import Blueprint.js styles
 import '@blueprintjs/core/lib/css/blueprint.css';
@@ -19,6 +20,10 @@ const PageFallback = () => (
 );
 
 function App() {
+  const permissions = useAuthStore((s) => s.user?.permissions);
+  const protectedRoutes = getAccessibleProtectedRoutes(permissions);
+  const defaultRoutePath = getDefaultRoutePath(permissions);
+
   return (
     <ThemeProvider>
       <BrowserRouter>
@@ -34,7 +39,7 @@ function App() {
                       {protectedRoutes.map((route) => (
                         <Route key={route.id} path={route.path} element={route.element} />
                       ))}
-                      <Route path="*" element={<Navigate to="/" replace />} />
+                      <Route path="*" element={<Navigate to={defaultRoutePath} replace />} />
                     </Routes>
                   </Suspense>
                 </ExtrittioShell>

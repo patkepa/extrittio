@@ -11,6 +11,7 @@ import {
 } from '@blueprintjs/core';
 import { useNavigate } from 'react-router-dom';
 import { login } from '../api/auth';
+import { getDefaultRoutePath } from '../app/routes';
 import { useAuthStore } from '../stores/auth-store';
 import './login.css';
 
@@ -19,7 +20,7 @@ export const Login = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const setToken = useAuthStore((s) => s.setToken);
+  const setSession = useAuthStore((s) => s.setSession);
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -29,8 +30,8 @@ export const Login = () => {
 
     try {
       const response = await login({ username, password });
-      setToken(response.token);
-      navigate('/', { replace: true });
+      setSession(response.token, response.user);
+      navigate(getDefaultRoutePath(response.user.permissions), { replace: true });
     } catch {
       setError('Invalid username or password');
     } finally {

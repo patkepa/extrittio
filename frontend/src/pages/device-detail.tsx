@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useParams, useSearchParams, Navigate, useNavigate } from 'react-router-dom';
 import { Spinner, Callout } from '@blueprintjs/core';
+import { hasRequiredPermissions, type PermissionKey } from '../auth/permissions';
 import { useDevice } from '../hooks/use-devices';
 import { DeviceHeader } from '../components/devices/device-header';
 import { OverviewTab } from '../components/devices/overview-tab';
@@ -14,29 +15,42 @@ import { CommandsTab } from '../components/devices/commands-tab';
 import { AlertsTab } from '../components/devices/alerts-tab';
 import { ErrorBoundary } from '@extrittio/app-shell';
 import { getDirectionalKey, shouldIgnorePageShortcut } from '@extrittio/interactions';
+import { useAuthStore } from '../stores/auth-store';
 import './device-detail.css';
 
-const VALID_TABS = [
-  'overview',
-  'shadow',
-  'commands',
-  'telemetry',
-  'location',
-  'ota',
-  'config',
-  'logs',
-  'alerts',
+interface DeviceDetailTab {
+  id: string;
+  title: string;
+  requiredPermissions?: PermissionKey[];
+}
+
+const DEVICE_TABS: DeviceDetailTab[] = [
+  { id: 'overview', title: 'Overview' },
+  { id: 'shadow', title: 'Shadow', requiredPermissions: ['shadows.read'] },
+  { id: 'commands', title: 'Commands', requiredPermissions: ['commands.read'] },
+  { id: 'telemetry', title: 'Telemetry', requiredPermissions: ['telemetry.read'] },
+  { id: 'location', title: 'Location', requiredPermissions: ['telemetry.read'] },
+  { id: 'ota', title: 'OTA', requiredPermissions: ['firmware.read', 'shadows.read'] },
+  { id: 'config', title: 'Config' },
+  { id: 'logs', title: 'Logs', requiredPermissions: ['logs.read'] },
+  { id: 'alerts', title: 'Alerts', requiredPermissions: ['alerts.read'] },
 ];
 
 export const DeviceDetail = () => {
   const { deviceId } = useParams<{ deviceId: string }>();
   const navigate = useNavigate();
   const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const permissions = useAuthStore((s) => s.user?.permissions);
   const [searchParams, setSearchParams] = useSearchParams();
   const { data: device, isLoading, error } = useDevice(deviceId ?? null);
+  const visibleTabs = useMemo(
+    () => DEVICE_TABS.filter((tab) => hasRequiredPermissions(permissions, tab.requiredPermissions)),
+    [permissions],
+  );
+  const visibleTabIds = useMemo(() => visibleTabs.map((tab) => tab.id), [visibleTabs]);
 
   const activeTab = searchParams.get('tab') ?? 'overview';
-  const currentTab = VALID_TABS.includes(activeTab) ? activeTab : 'overview';
+  const currentTab = visibleTabIds.includes(activeTab) ? activeTab : 'overview';
 
   const handleTabChange = useCallback(
     (newTab: string) => {
@@ -79,23 +93,23 @@ export const DeviceDetail = () => {
       const direction = getDirectionalKey(event);
       if (!direction || direction === 'up' || direction === 'down') return;
 
-      const currentIndex = VALID_TABS.indexOf(currentTab);
+      const currentIndex = visibleTabIds.indexOf(currentTab);
       let nextIndex = currentIndex;
       if (direction === 'left') nextIndex = currentIndex - 1;
       if (direction === 'right') nextIndex = currentIndex + 1;
       if (direction === 'first') nextIndex = 0;
-      if (direction === 'last') nextIndex = VALID_TABS.length - 1;
+      if (direction === 'last') nextIndex = visibleTabIds.length - 1;
 
-      nextIndex = Math.min(Math.max(nextIndex, 0), VALID_TABS.length - 1);
+      nextIndex = Math.min(Math.max(nextIndex, 0), visibleTabIds.length - 1);
       if (nextIndex === currentIndex) return;
 
       event.preventDefault();
-      handleTabChange(VALID_TABS[nextIndex]!);
+      handleTabChange(visibleTabIds[nextIndex]!);
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [currentTab, handleTabChange, navigate]);
+  }, [currentTab, handleTabChange, navigate, visibleTabIds]);
 
   if (!deviceId) return <Navigate to="/devices" replace />;
 
@@ -123,7 +137,12 @@ export const DeviceDetail = () => {
 
   return (
     <div className="device-detail-page" ref={toolbarRef}>
-      <DeviceHeader device={device} currentTab={currentTab} onTabChange={handleTabChange} />
+      <DeviceHeader
+        device={device}
+        currentTab={currentTab}
+        onTabChange={handleTabChange}
+        tabs={visibleTabs}
+      />
 
       <div className="device-detail-body">
         <div className="detail-tab-content">

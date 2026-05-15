@@ -8,6 +8,8 @@ import { useDashboardStats } from '../hooks/use-dashboard';
 import { useAlertSummary } from '../hooks/use-alerts';
 import { ServerHealth } from '../components/dashboard/server-health';
 import { StatusLed } from '@extrittio/ui';
+import { hasPermission } from '../auth/permissions';
+import { useAuthStore } from '../stores/auth-store';
 import './dashboard.css';
 
 const sparklineData = [
@@ -94,8 +96,11 @@ const DashboardSparkline = ({ data, color }: { data: number[]; color: string }) 
 };
 
 export const Dashboard = () => {
+  const permissions = useAuthStore((s) => s.user?.permissions);
+  const canReadAlerts = hasPermission(permissions, 'alerts.read');
+  const canReadServerMetrics = hasPermission(permissions, 'server_metrics.read');
   const { data: dashboardStats } = useDashboardStats();
-  const { data: alertSummary } = useAlertSummary();
+  const { data: alertSummary } = useAlertSummary({ enabled: canReadAlerts });
 
   const activeAlertCount = alertSummary ? alertSummary.total_active : 0;
 
@@ -137,15 +142,19 @@ export const Dashboard = () => {
           color: '#8F398F',
           sparkIndex: 3,
         },
-        {
-          label: 'Active Alerts',
-          value: formatCount(activeAlertCount),
-          delta: '',
-          deltaUp: false,
-          icon: 'notifications',
-          color: '#DB3737',
-          sparkIndex: 2,
-        },
+        ...(canReadAlerts
+          ? [
+              {
+                label: 'Active Alerts',
+                value: formatCount(activeAlertCount),
+                delta: '',
+                deltaUp: false,
+                icon: 'notifications' as const,
+                color: '#DB3737',
+                sparkIndex: 2,
+              },
+            ]
+          : []),
       ]
     : [
         {
@@ -184,15 +193,19 @@ export const Dashboard = () => {
           color: '#8F398F',
           sparkIndex: 3,
         },
-        {
-          label: 'Active Alerts',
-          value: '\u2014',
-          delta: '',
-          deltaUp: false,
-          icon: 'notifications',
-          color: '#DB3737',
-          sparkIndex: 2,
-        },
+        ...(canReadAlerts
+          ? [
+              {
+                label: 'Active Alerts',
+                value: '\u2014',
+                delta: '',
+                deltaUp: false,
+                icon: 'notifications' as const,
+                color: '#DB3737',
+                sparkIndex: 2,
+              },
+            ]
+          : []),
       ];
 
   const donutData = dashboardStats
@@ -210,7 +223,7 @@ export const Dashboard = () => {
   return (
     <div className="dashboard-page">
       {/* Server Health */}
-      <ServerHealth />
+      {canReadServerMetrics && <ServerHealth />}
 
       {/* Devices Section */}
       <div className="dashboard-section">

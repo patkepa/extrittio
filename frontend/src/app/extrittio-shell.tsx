@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { CommandPalette } from '../components/command-palette/command-palette';
-import { currentUser, projects } from '../data/sidebar-data';
+import { projects } from '../data/sidebar-data';
+import { hasPermission } from '../auth/permissions';
 import { useAlertSummary } from '../hooks/use-alerts';
 import { useDashboardStats } from '../hooks/use-dashboard';
 import { useDevice } from '../hooks/use-devices';
@@ -9,7 +10,7 @@ import { AppShell } from '@extrittio/app-shell';
 import type { NavBadge } from '@extrittio/navigation';
 import { useAuthStore } from '../stores/auth-store';
 import { useUIStore } from '../stores/ui-store';
-import { getRouteLabel, navGroups } from './routes';
+import { getNavGroups, getRouteLabel } from './routes';
 
 interface ExtrittioShellProps {
   children: ReactNode;
@@ -18,17 +19,26 @@ interface ExtrittioShellProps {
 export const ExtrittioShell = ({ children }: ExtrittioShellProps) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const authUser = useAuthStore((s) => s.user);
+  const permissions = authUser?.permissions;
   const logout = useAuthStore((s) => s.logout);
   const openCommandPalette = useUIStore((s) => s.openCommandPalette);
   const sidebarCollapsed = useUIStore((s) => s.isSidebarCollapsed);
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
-  const { data: dashboardStats } = useDashboardStats();
-  const { data: alertSummary } = useAlertSummary();
+  const canReadDevices = hasPermission(permissions, 'devices.read');
+  const canReadAlerts = hasPermission(permissions, 'alerts.read');
+  const { data: dashboardStats } = useDashboardStats({ enabled: canReadDevices });
+  const { data: alertSummary } = useAlertSummary({ enabled: canReadAlerts });
 
   const deviceDetailMatch = location.pathname.match(/^\/devices\/([^/]+)$/);
   const deviceId = deviceDetailMatch?.[1] ?? null;
-  const { data: deviceData } = useDevice(deviceId);
-  const currentRoute = deviceDetailMatch ? null : getRouteLabel(location.pathname);
+  const { data: deviceData } = useDevice(canReadDevices ? deviceId : null);
+  const currentRoute = deviceDetailMatch ? null : getRouteLabel(location.pathname, permissions);
+  const navGroups = getNavGroups(permissions);
+  const currentUser = {
+    name: authUser?.username ?? 'User',
+    email: authUser?.roles?.map((role) => role.name).join(', ') || authUser?.role || '',
+  };
 
   const navBadges: Record<string, NavBadge> = {
     ...(dashboardStats && { Devices: { count: dashboardStats.total_devices } }),

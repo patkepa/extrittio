@@ -1,17 +1,26 @@
 import { useNavigate } from 'react-router-dom';
 import { Command } from 'cmdk';
 import { Icon } from '@blueprintjs/core';
-import { commandPaletteRoutes } from '../../app/routes';
+import { getCommandPaletteRoutes } from '../../app/routes';
+import { hasPermission } from '../../auth/permissions';
 import { useDevices } from '../../hooks/use-devices';
 import { CommandPaletteShell } from '@extrittio/command-palette';
 import { StatusLed } from '@extrittio/ui';
+import { useAuthStore } from '../../stores/auth-store';
 import { useUIStore } from '../../stores/ui-store';
 
 const MAX_PALETTE_DEVICES = 20;
 
 export const CommandPalette = () => {
   const navigate = useNavigate();
-  const devicesQuery = useDevices({ limit: MAX_PALETTE_DEVICES, offset: 0 });
+  const permissions = useAuthStore((s) => s.user?.permissions);
+  const pages = getCommandPaletteRoutes(permissions);
+  const canReadDevices = hasPermission(permissions, 'devices.read');
+  const canManageDevices = hasPermission(permissions, 'devices.manage');
+  const devicesQuery = useDevices(
+    { limit: MAX_PALETTE_DEVICES, offset: 0 },
+    { enabled: canReadDevices },
+  );
   const devices = devicesQuery.data?.data ?? [];
   const totalDevices = devicesQuery.data?.total ?? devices.length;
   const open = useUIStore((s) => s.isCommandPaletteOpen);
@@ -35,7 +44,7 @@ export const CommandPalette = () => {
       onToggle={toggleCommandPalette}
     >
       <Command.Group heading="Pages">
-        {commandPaletteRoutes.map((page) => (
+        {pages.map((page) => (
           <Command.Item
             key={page.id}
             value={page.label}
@@ -47,7 +56,7 @@ export const CommandPalette = () => {
         ))}
       </Command.Group>
 
-      {devices.length > 0 && (
+      {canReadDevices && devices.length > 0 && (
         <Command.Group heading="Devices">
           {displayedDevices.map((device) => (
             <Command.Item
@@ -73,20 +82,22 @@ export const CommandPalette = () => {
         </Command.Group>
       )}
 
-      <Command.Group heading="Actions">
-        <Command.Item
-          value="Add new device"
-          onSelect={() =>
-            runAction(() => {
-              openAddDeviceDialog();
-              navigate('/devices');
-            })
-          }
-        >
-          <Icon icon="add" size={16} />
-          <span className="cmdk-item-label">Add new device</span>
-        </Command.Item>
-      </Command.Group>
+      {canManageDevices && (
+        <Command.Group heading="Actions">
+          <Command.Item
+            value="Add new device"
+            onSelect={() =>
+              runAction(() => {
+                openAddDeviceDialog();
+                navigate('/devices');
+              })
+            }
+          >
+            <Icon icon="add" size={16} />
+            <span className="cmdk-item-label">Add new device</span>
+          </Command.Item>
+        </Command.Group>
+      )}
     </CommandPaletteShell>
   );
 };

@@ -158,6 +158,29 @@ pub fn require(ctx: &RequestContext, permission: Permission) -> Result<(), AppEr
     }
 }
 
+#[must_use]
+pub fn satisfies(held_permission: Permission, required_permission: Permission) -> bool {
+    held_permission == required_permission
+        || implied_permissions(required_permission).contains(&held_permission)
+}
+
+fn implied_permissions(permission: Permission) -> &'static [Permission] {
+    match permission {
+        Permission::ReadAlerts => &[Permission::ManageAlerts],
+        Permission::ReadCommands => &[Permission::SendCommands],
+        Permission::ReadDeviceTypes => &[Permission::ManageDeviceTypes],
+        Permission::ReadDevices => &[Permission::ManageDevices],
+        Permission::ReadFirmware => &[Permission::ManageFirmware, Permission::DeployFirmware],
+        Permission::ReadFleets => &[Permission::ManageFleets],
+        Permission::ReadRoles => &[Permission::ManageRoles],
+        Permission::ReadRules => &[Permission::ManageRules],
+        Permission::ReadShadows => &[Permission::ManageShadows],
+        Permission::ReadUsers => &[Permission::ManageUsers],
+        Permission::ReadZones => &[Permission::ManageZones],
+        _ => &[],
+    }
+}
+
 #[allow(dead_code)]
 pub fn require_legacy(ctx: &RequestContext, permission: Permission) -> Result<(), AppError> {
     match permission {

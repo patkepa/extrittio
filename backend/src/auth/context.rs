@@ -60,7 +60,11 @@ impl RequestContext {
 
     #[must_use]
     pub fn has_permission(&self, permission: Permission) -> bool {
-        self.permissions.contains(&permission) || self.is_admin()
+        self.is_admin()
+            || self
+                .permissions
+                .iter()
+                .any(|held_permission| super::policy::satisfies(*held_permission, permission))
     }
 
     #[must_use]

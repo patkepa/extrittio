@@ -8,9 +8,10 @@ interface DeviceHeaderProps {
   device: Device;
   currentTab: string;
   onTabChange: (tab: string) => void;
+  tabs: Array<{ id: string; title: string }>;
 }
 
-export const DeviceHeader = ({ device, currentTab, onTabChange }: DeviceHeaderProps) => {
+export const DeviceHeader = ({ device, currentTab, onTabChange, tabs }: DeviceHeaderProps) => {
   const navigate = useNavigate();
 
   return (
@@ -56,15 +57,9 @@ export const DeviceHeader = ({ device, currentTab, onTabChange }: DeviceHeaderPr
             selectedTabId={currentTab}
             onChange={(newTab) => onTabChange(newTab as string)}
           >
-            <Tab id="overview" title="Overview" />
-            <Tab id="shadow" title="Shadow" />
-            <Tab id="commands" title="Commands" />
-            <Tab id="telemetry" title="Telemetry" />
-            <Tab id="location" title="Location" />
-            <Tab id="ota" title="OTA" />
-            <Tab id="config" title="Config" />
-            <Tab id="logs" title="Logs" />
-            <Tab id="alerts" title="Alerts" />
+            {tabs.map((tab) => (
+              <Tab key={tab.id} id={tab.id} title={tab.title} />
+            ))}
           </Tabs>
         </div>
       </div>

@@ -32,23 +32,28 @@ export function invalidateDeviceDetails(queryClient: QueryClient) {
   void queryClient.invalidateQueries({ queryKey: queryKeys.devices.detailAll });
 }
 
-export function useDevices(params?: ListDevicesParams, options?: { refetchInterval?: number }) {
+export function useDevices(
+  params?: ListDevicesParams,
+  options?: { enabled?: boolean; refetchInterval?: number },
+) {
   return useQuery({
     queryKey: queryKeys.devices.list(params),
     queryFn: () => getDevices(params),
     staleTime: 30_000,
+    enabled: options?.enabled ?? true,
     refetchInterval: options?.refetchInterval,
   });
 }
 
 export function useAllDevices(
   params?: Omit<ListDevicesParams, 'limit' | 'offset'>,
-  options?: { refetchInterval?: number },
+  options?: { enabled?: boolean; refetchInterval?: number },
 ) {
   return useQuery({
     queryKey: queryKeys.devices.fullList(params),
     queryFn: () => getAllDevices(params),
     staleTime: 30_000,
+    enabled: options?.enabled ?? true,
     refetchInterval: options?.refetchInterval,
   });
 }

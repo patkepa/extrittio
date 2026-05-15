@@ -7,7 +7,8 @@ import { RolesSettings } from './roles';
 import { FirmwareSettings } from './firmware';
 import { CertificatesSettings } from './certificates';
 import { ApiKeysSettings } from './api-keys';
-import { settingsRoutes } from '../../app/routes';
+import { getAccessibleSettingsRoutes, getDefaultSettingsPath } from '../../app/routes';
+import { useAuthStore } from '../../stores/auth-store';
 
 const settingsElements = {
   profile: <ProfileSettings />,
@@ -20,16 +21,22 @@ const settingsElements = {
   'api-keys': <ApiKeysSettings />,
 } as const;
 
-export const Settings = () => (
-  <Routes>
-    <Route index element={<Navigate to="profile" replace />} />
-    {settingsRoutes.map((route) => (
-      <Route
-        key={route.id}
-        path={route.path}
-        element={settingsElements[route.id as keyof typeof settingsElements]}
-      />
-    ))}
-    <Route path="*" element={<Navigate to="profile" replace />} />
-  </Routes>
-);
+export const Settings = () => {
+  const permissions = useAuthStore((s) => s.user?.permissions);
+  const routes = getAccessibleSettingsRoutes(permissions);
+  const defaultPath = getDefaultSettingsPath(permissions);
+
+  return (
+    <Routes>
+      <Route index element={<Navigate to={defaultPath} replace />} />
+      {routes.map((route) => (
+        <Route
+          key={route.id}
+          path={route.path}
+          element={settingsElements[route.id as keyof typeof settingsElements]}
+        />
+      ))}
+      <Route path="*" element={<Navigate to={defaultPath} replace />} />
+    </Routes>
+  );
+};

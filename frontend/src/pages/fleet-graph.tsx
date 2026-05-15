@@ -4,6 +4,7 @@ import { useDevices, useBulkChangeFleet } from '../hooks/use-devices';
 import { useFleets } from '../hooks/use-fleets';
 import { useAlerts } from '../hooks/use-alerts';
 import { useDeviceTypes } from '../hooks/use-device-types';
+import { hasPermission } from '../auth/permissions';
 import { buildForceGraphData } from '../components/fleet-graph/build-force-graph-data';
 import { FleetGraphCanvas } from '../components/fleet-graph/fleet-graph-canvas';
 import type {
@@ -29,6 +30,7 @@ import { FleetGraphBottomToolbar } from '../components/fleet-graph/fleet-graph-b
 import type { FleetGraphDisplayOptions } from '../components/fleet-graph/fleet-graph-bottom-toolbar';
 import { FleetGraphToolbar } from '../components/fleet-graph/fleet-graph-toolbar';
 import { useSelectionStore } from '../stores/selection-store';
+import { useAuthStore } from '../stores/auth-store';
 import { showSuccessToast, showErrorToast } from '../utils/toaster';
 import type { GraphLink, GraphNode } from '../components/fleet-graph/build-force-graph-data';
 import type { ViewportInfo } from '../components/fleet-graph/fleet-graph-minimap';
@@ -42,6 +44,8 @@ function getDeviceHealthStatus(device: Device): HealthStatusFilter {
 }
 
 export const FleetGraph = () => {
+  const permissions = useAuthStore((s) => s.user?.permissions);
+  const canReadAlerts = hasPermission(permissions, 'alerts.read');
   const devicesQuery = useDevices({ limit: 10000 }, { refetchInterval: 30_000 });
   const devices = useMemo(() => devicesQuery.data?.data ?? [], [devicesQuery.data?.data]);
   const devicesLoading = devicesQuery.isLoading;
@@ -50,7 +54,10 @@ export const FleetGraph = () => {
   const fleets = useMemo(() => fleetsData ?? [], [fleetsData]);
   const { data: deviceTypesData } = useDeviceTypes();
   const deviceTypes = useMemo(() => deviceTypesData ?? [], [deviceTypesData]);
-  const activeAlertsQuery = useAlerts({ status: 'active', limit: 10000 });
+  const activeAlertsQuery = useAlerts(
+    { status: 'active', limit: 10000 },
+    { enabled: canReadAlerts },
+  );
   const [toolbarDeviceId, setToolbarDeviceId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [displayOptions, setDisplayOptions] = useState<FleetGraphDisplayOptions>({
@@ -394,7 +401,7 @@ export const FleetGraph = () => {
               graphActionsRef={graphActionsRef}
               onFrameRedraw={handleFrameRedraw}
               showDeviceLabels={displayOptions.labels}
-              showAlertBadges={displayOptions.alerts}
+              showAlertBadges={canReadAlerts && displayOptions.alerts}
               alertBadges={alertBadges}
             />
           ) : null}

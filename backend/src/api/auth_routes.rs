@@ -105,12 +105,19 @@ pub(crate) async fn login(
     ),
 )]
 pub(crate) async fn me(Extension(ctx): Extension<RequestContext>) -> Json<UserResponse> {
+    let mut permissions: Vec<String> = ctx
+        .permissions
+        .iter()
+        .map(|permission| permission.key().to_string())
+        .collect();
+    permissions.sort();
+
     Json(UserResponse {
         id: ctx.user_id,
         username: ctx.username,
         role: ctx.role,
         roles: Vec::new(),
-        permissions: ctx.scopes,
+        permissions,
     })
 }
 
