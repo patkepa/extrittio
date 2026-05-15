@@ -110,6 +110,12 @@ The CLI stores its backend URL and JWT token in `~/.config/extrittio/cli.json`
 by default. Override the active connection with `--url`, `--token`,
 `EXTRITTIO_URL`, or `EXTRITTIO_TOKEN`.
 
+## Client Libraries
+
+- [Arduino ESP32 client](client/arduino/Extrittio/README.md) - Arduino/PlatformIO
+  library for telemetry, heartbeats, shadows, commands, logs, and FOTA over
+  Zenoh-Pico.
+
 ## Documentation
 
 - [Server Upgrades](docs/SERVER_UPGRADES.md) - recommended model for versioned
