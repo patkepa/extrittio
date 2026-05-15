@@ -8,6 +8,7 @@ import { DeviceTypeTag } from '../../../components/devices/device-type-tag';
 
 interface DeviceTableProps {
   devices: Device[];
+  selectedDeviceIds: Set<string>;
   sortField: DeviceSortField;
   sortDir: DeviceSortDir;
   activeRowIndex: number;
@@ -18,7 +19,6 @@ interface DeviceTableProps {
     onFocus: () => void;
   };
   registerRow: (index: number, element: HTMLElement | null) => void;
-  isSelected: (id: string) => boolean;
   onSort: (field: DeviceSortField) => void;
   onViewDevice: (device: Device) => void;
   onToggleDevice: (id: string) => void;
@@ -31,7 +31,7 @@ interface DeviceRowProps {
   activeRowIndex: number;
   getRowProps: DeviceTableProps['getRowProps'];
   registerRow: DeviceTableProps['registerRow'];
-  isSelected: (id: string) => boolean;
+  selectedDeviceIds: Set<string>;
   onViewDevice: (device: Device) => void;
   onToggleDevice: (id: string) => void;
 }
@@ -123,7 +123,7 @@ function DeviceRow({
   activeRowIndex,
   getRowProps,
   registerRow,
-  isSelected,
+  selectedDeviceIds,
   onViewDevice,
   onToggleDevice,
 }: {
@@ -134,7 +134,7 @@ function DeviceRow({
   if (!device) return null;
 
   const focusProps = getRowProps(index);
-  const selected = isSelected(device.id);
+  const selected = selectedDeviceIds.has(device.id);
 
   return (
     <div
@@ -202,32 +202,41 @@ function DeviceRow({
 
 export function DeviceTable({
   devices,
+  selectedDeviceIds,
   sortField,
   sortDir,
   activeRowIndex,
   getRowProps,
   registerRow,
-  isSelected,
   onSort,
   onViewDevice,
   onToggleDevice,
   onSelectAllVisible,
   onDeselectAllVisible,
 }: DeviceTableProps) {
-  const allVisibleSelected = devices.length > 0 && devices.every((device) => isSelected(device.id));
+  const allVisibleSelected =
+    devices.length > 0 && devices.every((device) => selectedDeviceIds.has(device.id));
   const someVisibleSelected =
-    devices.some((device) => isSelected(device.id)) && !allVisibleSelected;
+    devices.some((device) => selectedDeviceIds.has(device.id)) && !allVisibleSelected;
   const rowProps = useMemo<DeviceRowProps>(
     () => ({
       devices,
       activeRowIndex,
       getRowProps,
       registerRow,
-      isSelected,
+      selectedDeviceIds,
       onViewDevice,
       onToggleDevice,
     }),
-    [activeRowIndex, devices, getRowProps, isSelected, onToggleDevice, onViewDevice, registerRow],
+    [
+      activeRowIndex,
+      devices,
+      getRowProps,
+      onToggleDevice,
+      onViewDevice,
+      registerRow,
+      selectedDeviceIds,
+    ],
   );
 
   return (

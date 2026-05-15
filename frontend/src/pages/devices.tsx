@@ -24,7 +24,6 @@ export const Devices = () => {
     selectAllVisible,
     deselectAllVisible,
     clearSelection,
-    isSelected,
   } = useSelectionStore();
   const listState = useDeviceListState();
   const { data: fleets = [] } = useFleets();
@@ -191,12 +190,12 @@ export const Devices = () => {
 
       <DeviceTable
         devices={filteredDevices}
+        selectedDeviceIds={selectedDeviceIds}
         sortField={sortField}
         sortDir={sortDir}
         activeRowIndex={activeRowIndex}
         getRowProps={getRowProps}
         registerRow={registerRow}
-        isSelected={isSelected}
         onSort={handleSort}
         onViewDevice={handleViewDevice}
         onToggleDevice={toggleDevice}
