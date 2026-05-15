@@ -18,6 +18,7 @@ import './login.css';
 export const Login = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [tenantId, setTenantId] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const setSession = useAuthStore((s) => s.setSession);
@@ -29,7 +30,12 @@ export const Login = () => {
     setIsLoading(true);
 
     try {
-      const response = await login({ username, password });
+      const tenant = tenantId.trim();
+      const response = await login({
+        username,
+        password,
+        ...(tenant ? { tenant_id: tenant } : {}),
+      });
       setSession(response.token, response.user);
       navigate(getDefaultRoutePath(response.user.permissions), { replace: true });
     } catch {
@@ -74,6 +80,15 @@ export const Login = () => {
               placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+            />
+          </FormGroup>
+
+          <FormGroup label="Tenant">
+            <InputGroup
+              leftIcon="office"
+              placeholder="default"
+              value={tenantId}
+              onChange={(e) => setTenantId(e.target.value)}
             />
           </FormGroup>
 

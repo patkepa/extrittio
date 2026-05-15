@@ -26,12 +26,16 @@ import {
   useRoles,
   useUpdateRole,
 } from '../../hooks/use-roles';
+import { hasPermission } from '../../auth/permissions';
+import { useAuthStore } from '../../stores/auth-store';
 import type { Role } from '../../types/api';
 import './settings.css';
 
 export const RolesSettings = () => {
+  const permissions = useAuthStore((s) => s.user?.permissions);
+  const canManageRoles = hasPermission(permissions, 'roles.manage');
   const { data: roles = [], isLoading, error } = useRoles();
-  const { data: permissions = [] } = usePermissions();
+  const { data: availablePermissions = [] } = usePermissions();
   const createRoleMutation = useCreateRole();
   const updateRoleMutation = useUpdateRole();
   const deleteRoleMutation = useDeleteRole();
@@ -129,9 +133,11 @@ export const RolesSettings = () => {
             {roles.length} role{roles.length !== 1 ? 's' : ''}
           </p>
         </div>
-        <Button intent="primary" icon="add" onClick={openCreateDialog}>
-          Add Role
-        </Button>
+        {canManageRoles && (
+          <Button intent="primary" icon="add" onClick={openCreateDialog}>
+            Add Role
+          </Button>
+        )}
       </div>
 
       <Card elevation={Elevation.ONE} className="settings-table-card">
@@ -148,7 +154,7 @@ export const RolesSettings = () => {
                 <th>Name</th>
                 <th>Permissions</th>
                 <th>Users</th>
-                <th className="actions-column">Actions</th>
+                {canManageRoles && <th className="actions-column">Actions</th>}
               </tr>
             </thead>
             <tbody>
@@ -163,29 +169,33 @@ export const RolesSettings = () => {
                   </td>
                   <td>{role.permissions.length}</td>
                   <td>{role.user_count}</td>
-                  <td className="actions-column">
-                    <Button
-                      icon="edit"
-                      minimal
-                      small
-                      disabled={role.is_system}
-                      onClick={() => openEditDialog(role)}
-                    />
-                    <Button
-                      icon="trash"
-                      minimal
-                      small
-                      intent="danger"
-                      disabled={role.is_system || role.user_count > 0}
-                      loading={deleteRoleMutation.isPending && deleteRoleMutation.variables === role.id}
-                      onClick={() =>
-                        deleteRoleMutation.mutate(role.id, {
-                          onSuccess: () => void showSuccessToast('Role deleted'),
-                          onError: () => void showErrorToast('Failed to delete role'),
-                        })
-                      }
-                    />
-                  </td>
+                  {canManageRoles && (
+                    <td className="actions-column">
+                      <Button
+                        icon="edit"
+                        minimal
+                        small
+                        disabled={role.is_system}
+                        onClick={() => openEditDialog(role)}
+                      />
+                      <Button
+                        icon="trash"
+                        minimal
+                        small
+                        intent="danger"
+                        disabled={role.is_system || role.user_count > 0}
+                        loading={
+                          deleteRoleMutation.isPending && deleteRoleMutation.variables === role.id
+                        }
+                        onClick={() =>
+                          deleteRoleMutation.mutate(role.id, {
+                            onSuccess: () => void showSuccessToast('Role deleted'),
+                            onError: () => void showErrorToast('Failed to delete role'),
+                          })
+                        }
+                      />
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -217,7 +227,7 @@ export const RolesSettings = () => {
           </FormGroup>
           <FormGroup label="Permissions">
             <div className="permission-checkbox-list">
-              {permissions.map((permission) => (
+              {availablePermissions.map((permission) => (
                 <Checkbox
                   key={permission.key}
                   checked={selectedPermissions.includes(permission.key)}

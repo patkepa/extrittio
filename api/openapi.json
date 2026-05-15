@@ -3058,6 +3058,12 @@
           "password": {
             "type": "string"
           },
+          "tenant_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "username": {
             "type": "string"
           }
@@ -3763,10 +3769,15 @@
                 "username",
                 "role",
                 "roles",
-                "permissions"
+                "permissions",
+                "permission_version"
               ],
               "properties": {
                 "id": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "permission_version": {
                   "type": "integer",
                   "format": "int32"
                 },
@@ -4256,10 +4267,15 @@
           "username",
           "role",
           "roles",
-          "permissions"
+          "permissions",
+          "permission_version"
         ],
         "properties": {
           "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "permission_version": {
             "type": "integer",
             "format": "int32"
           },

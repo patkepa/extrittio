@@ -14,6 +14,8 @@ import {
 import { useCommandHistory, useSendCommand } from '../../hooks/use-commands';
 import { useFormNavigation } from '@extrittio/interactions';
 import { showSuccessToast, showErrorToast } from '../../utils/toaster';
+import { hasPermission } from '../../auth/permissions';
+import { useAuthStore } from '../../stores/auth-store';
 
 interface CommandsTabProps {
   deviceId: string;
@@ -21,6 +23,8 @@ interface CommandsTabProps {
 
 export const CommandsTab = ({ deviceId }: CommandsTabProps) => {
   const formRef = useRef<HTMLDivElement | null>(null);
+  const permissions = useAuthStore((s) => s.user?.permissions);
+  const canSendCommands = hasPermission(permissions, 'commands.send');
   const { data: commands = [], isLoading, isError } = useCommandHistory(deviceId);
   const sendCommandMutation = useSendCommand();
 
@@ -101,77 +105,79 @@ export const CommandsTab = ({ deviceId }: CommandsTabProps) => {
 
   return (
     <div className="commands-tab" ref={formRef}>
-      <Card elevation={Elevation.ONE} className="tab-card">
-        <span className="section-label">Send Command</span>
-        <p className="tab-help-text">
-          Send a direct command to the device via Zenoh. The device must be online and listening.
-        </p>
+      {canSendCommands && (
+        <Card elevation={Elevation.ONE} className="tab-card">
+          <span className="section-label">Send Command</span>
+          <p className="tab-help-text">
+            Send a direct command to the device via Zenoh. The device must be online and listening.
+          </p>
 
-        <InputGroup
-          placeholder="e.g. restart, get_diagnostics, set_mode"
-          value={commandName}
-          onChange={(e) => setCommandName(e.target.value)}
-          className="tab-input-spacing"
-        />
+          <InputGroup
+            placeholder="e.g. restart, get_diagnostics, set_mode"
+            value={commandName}
+            onChange={(e) => setCommandName(e.target.value)}
+            className="tab-input-spacing"
+          />
 
-        {params.map((p) => (
-          <div key={p.id} className="tab-param-row">
-            <InputGroup
-              placeholder="Key"
-              value={p.key}
-              onChange={(e) => updateParam(p.id, 'key', e.target.value)}
-              style={{ flex: 1 }}
-            />
-            <InputGroup
-              placeholder="Value"
-              value={p.value}
-              onChange={(e) => updateParam(p.id, 'value', e.target.value)}
-              style={{ flex: 1 }}
-            />
-            <Button minimal icon="cross" onClick={() => removeParam(p.id)} />
+          {params.map((p) => (
+            <div key={p.id} className="tab-param-row">
+              <InputGroup
+                placeholder="Key"
+                value={p.key}
+                onChange={(e) => updateParam(p.id, 'key', e.target.value)}
+                style={{ flex: 1 }}
+              />
+              <InputGroup
+                placeholder="Value"
+                value={p.value}
+                onChange={(e) => updateParam(p.id, 'value', e.target.value)}
+                style={{ flex: 1 }}
+              />
+              <Button minimal icon="cross" onClick={() => removeParam(p.id)} />
+            </div>
+          ))}
+
+          <div className="tab-actions">
+            <Button minimal icon="plus" onClick={addParam}>
+              Add Parameter
+            </Button>
           </div>
-        ))}
 
-        <div className="tab-actions">
-          <Button minimal icon="plus" onClick={addParam}>
-            Add Parameter
-          </Button>
-        </div>
+          <div className="tab-callout">
+            <Button
+              intent="primary"
+              icon="send-message"
+              loading={sendCommandMutation.isPending}
+              disabled={!commandName.trim()}
+              onClick={() => setIsConfirmOpen(true)}
+            >
+              Send Command
+            </Button>
+          </div>
 
-        <div className="tab-callout">
-          <Button
+          <Alert
+            isOpen={isConfirmOpen}
+            onClose={() => setIsConfirmOpen(false)}
+            onConfirm={handleSend}
+            cancelButtonText="Cancel"
+            confirmButtonText="Send"
             intent="primary"
             icon="send-message"
             loading={sendCommandMutation.isPending}
-            disabled={!commandName.trim()}
-            onClick={() => setIsConfirmOpen(true)}
           >
-            Send Command
-          </Button>
-        </div>
-
-        <Alert
-          isOpen={isConfirmOpen}
-          onClose={() => setIsConfirmOpen(false)}
-          onConfirm={handleSend}
-          cancelButtonText="Cancel"
-          confirmButtonText="Send"
-          intent="primary"
-          icon="send-message"
-          loading={sendCommandMutation.isPending}
-        >
-          <p>
-            Send command <strong>{commandName}</strong> to this device?
-          </p>
-          {params.length > 0 && (
-            <p style={{ fontSize: 12, opacity: 0.7 }}>
-              With {params.filter((p) => p.key.trim()).length} parameter(s)
+            <p>
+              Send command <strong>{commandName}</strong> to this device?
             </p>
-          )}
-        </Alert>
-      </Card>
+            {params.length > 0 && (
+              <p style={{ fontSize: 12, opacity: 0.7 }}>
+                With {params.filter((p) => p.key.trim()).length} parameter(s)
+              </p>
+            )}
+          </Alert>
+        </Card>
+      )}
 
-      <Divider className="tab-divider" />
+      {canSendCommands && <Divider className="tab-divider" />}
 
       <span className="section-label">Command History</span>
       <p className="tab-help-text">Auto-refreshes every 5 seconds.</p>

@@ -880,6 +880,7 @@ export interface components {
         };
         LoginRequest: {
             password: string;
+            tenant_id?: string | null;
             username: string;
         };
         LoginResponse: {
@@ -1070,6 +1071,8 @@ export interface components {
             data: {
                 /** Format: int32 */
                 id: number;
+                /** Format: int32 */
+                permission_version: number;
                 permissions: string[];
                 role: string;
                 roles: components["schemas"]["RoleSummary"][];
@@ -1208,6 +1211,8 @@ export interface components {
         UserResponse: {
             /** Format: int32 */
             id: number;
+            /** Format: int32 */
+            permission_version: number;
             permissions: string[];
             role: string;
             roles: components["schemas"]["RoleSummary"][];

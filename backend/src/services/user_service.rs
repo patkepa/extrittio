@@ -9,7 +9,6 @@ use crate::db::models::{NewUser, Role, User};
 use crate::error::AppError;
 use crate::repositories::{role_repo, user_repo};
 use crate::services::role_service;
-use crate::tenancy::DEFAULT_TENANT_ID;
 
 #[derive(Debug, Clone)]
 pub struct UserWithRoles {
@@ -142,10 +141,11 @@ pub fn authenticate(
     username: &str,
     password: &str,
 ) -> Result<AuthenticatedUser, AppError> {
-    let user = user_repo::find_user_by_username(conn, tenant_id, username).map_err(|e| match e {
-        diesel::result::Error::NotFound => AppError::Unauthorized,
-        other => AppError::Database(other),
-    })?;
+    let user =
+        user_repo::find_user_by_username(conn, tenant_id, username).map_err(|e| match e {
+            diesel::result::Error::NotFound => AppError::Unauthorized,
+            other => AppError::Database(other),
+        })?;
 
     if !user.is_active || !verify_password(password, &user.password_hash) {
         return Err(AppError::Unauthorized);
@@ -202,12 +202,13 @@ pub fn current_user(
     ctx: &RequestContext,
     conn: &mut PgConnection,
 ) -> Result<AuthenticatedUser, AppError> {
-    let user = user_repo::find_user_by_id(conn, ctx.tenant_id_str(), ctx.user_id).map_err(|e| {
-        match e {
-            diesel::result::Error::NotFound => AppError::Unauthorized,
-            other => AppError::Database(other),
-        }
-    })?;
+    let user =
+        user_repo::find_user_by_id(conn, ctx.tenant_id_str(), ctx.user_id).map_err(
+            |e| match e {
+                diesel::result::Error::NotFound => AppError::Unauthorized,
+                other => AppError::Database(other),
+            },
+        )?;
 
     if !user.is_active {
         return Err(AppError::Unauthorized);

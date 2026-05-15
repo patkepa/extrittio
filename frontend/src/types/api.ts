@@ -23,6 +23,7 @@ export interface RoleSummary {
 export type AuthUser = components['schemas']['UserResponse'] & {
   roles?: RoleSummary[];
   permissions?: string[];
+  permission_version?: number;
 };
 export type CreateUserRequest = components['schemas']['CreateUserRequest'] & {
   role_ids?: number[];

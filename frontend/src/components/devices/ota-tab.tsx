@@ -19,6 +19,8 @@ import {
 import { useFormNavigation } from '@extrittio/interactions';
 import { showSuccessToast, showErrorToast } from '../../utils/toaster';
 import { useDeviceShadow } from '../../hooks/use-shadow';
+import { hasPermission } from '../../auth/permissions';
+import { useAuthStore } from '../../stores/auth-store';
 import type { Device } from '../../types/api';
 
 interface OtaTabProps {
@@ -27,6 +29,8 @@ interface OtaTabProps {
 
 export const OtaTab = ({ device }: OtaTabProps) => {
   const formRef = useRef<HTMLDivElement | null>(null);
+  const permissions = useAuthStore((s) => s.user?.permissions);
+  const canDeployFirmware = hasPermission(permissions, 'firmware.deploy');
   const {
     data: firmwareUpdates = [],
     isLoading,
@@ -123,111 +127,115 @@ export const OtaTab = ({ device }: OtaTabProps) => {
         )}
       </Card>
 
-      <Divider className="tab-divider" />
-
-      {/* Deploy new firmware */}
-      <span className="section-label">Deploy Firmware Update</span>
-      <p className="tab-help-text">
-        Select a firmware release to push via device shadow. The device will receive the update URL
-        in its shadow delta.
-      </p>
-
-      {firmwareUpdates.length === 0 ? (
-        <Callout icon="info-sign" intent="primary">
-          No firmware releases registered for device type "{device.device_type_name}". Register one
-          in Settings &rarr; Firmware.
-        </Callout>
-      ) : (
+      {canDeployFirmware && (
         <>
-          <HTMLSelect
-            value={selectedFwId ?? ''}
-            onChange={(e) => setSelectedFwId(e.target.value ? Number(e.target.value) : null)}
-            fill
-            className="tab-input-spacing"
-          >
-            <option value="">Select firmware version...</option>
-            {firmwareUpdates.map((fw) => (
-              <option key={fw.id} value={fw.id}>
-                v{fw.version}
-                {fw.description ? ` — ${fw.description}` : ''}
-              </option>
-            ))}
-          </HTMLSelect>
+          <Divider className="tab-divider" />
 
-          {selectedFw && (
-            <Card elevation={Elevation.ONE} className="tab-card-sm">
-              <div style={{ fontSize: 13 }}>
-                <div>
-                  <span className="tab-label-muted">Version: </span>
-                  <span className="mono-data">v{selectedFw.version}</span>
-                </div>
-                {selectedFw.has_blob ? (
-                  <div>
-                    <span className="tab-label-muted">Source: </span>
-                    <Tag
-                      minimal
-                      intent="success"
-                      icon="document"
-                      style={{ verticalAlign: 'middle' }}
-                    >
-                      {selectedFw.filename}
-                    </Tag>
+          {/* Deploy new firmware */}
+          <span className="section-label">Deploy Firmware Update</span>
+          <p className="tab-help-text">
+            Select a firmware release to push via device shadow. The device will receive the update
+            URL in its shadow delta.
+          </p>
+
+          {firmwareUpdates.length === 0 ? (
+            <Callout icon="info-sign" intent="primary">
+              No firmware releases registered for device type "{device.device_type_name}". Register
+              one in Settings &rarr; Firmware.
+            </Callout>
+          ) : (
+            <>
+              <HTMLSelect
+                value={selectedFwId ?? ''}
+                onChange={(e) => setSelectedFwId(e.target.value ? Number(e.target.value) : null)}
+                fill
+                className="tab-input-spacing"
+              >
+                <option value="">Select firmware version...</option>
+                {firmwareUpdates.map((fw) => (
+                  <option key={fw.id} value={fw.id}>
+                    v{fw.version}
+                    {fw.description ? ` — ${fw.description}` : ''}
+                  </option>
+                ))}
+              </HTMLSelect>
+
+              {selectedFw && (
+                <Card elevation={Elevation.ONE} className="tab-card-sm">
+                  <div style={{ fontSize: 13 }}>
+                    <div>
+                      <span className="tab-label-muted">Version: </span>
+                      <span className="mono-data">v{selectedFw.version}</span>
+                    </div>
+                    {selectedFw.has_blob ? (
+                      <div>
+                        <span className="tab-label-muted">Source: </span>
+                        <Tag
+                          minimal
+                          intent="success"
+                          icon="document"
+                          style={{ verticalAlign: 'middle' }}
+                        >
+                          {selectedFw.filename}
+                        </Tag>
+                      </div>
+                    ) : (
+                      <div>
+                        <span className="tab-label-muted">URL: </span>
+                        <span className="mono-data" style={{ fontSize: 12 }}>
+                          {selectedFw.url}
+                        </span>
+                      </div>
+                    )}
+                    {selectedFw.sha256 && (
+                      <div>
+                        <span className="tab-label-muted">SHA-256: </span>
+                        <span className="mono-data" style={{ fontSize: 12 }}>
+                          {selectedFw.sha256}
+                        </span>
+                      </div>
+                    )}
+                    {selectedFw.description && (
+                      <div style={{ marginTop: 4 }}>
+                        <span className="tab-label-muted">Notes: </span>
+                        {selectedFw.description}
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <div>
-                    <span className="tab-label-muted">URL: </span>
-                    <span className="mono-data" style={{ fontSize: 12 }}>
-                      {selectedFw.url}
-                    </span>
-                  </div>
-                )}
-                {selectedFw.sha256 && (
-                  <div>
-                    <span className="tab-label-muted">SHA-256: </span>
-                    <span className="mono-data" style={{ fontSize: 12 }}>
-                      {selectedFw.sha256}
-                    </span>
-                  </div>
-                )}
-                {selectedFw.description && (
-                  <div style={{ marginTop: 4 }}>
-                    <span className="tab-label-muted">Notes: </span>
-                    {selectedFw.description}
-                  </div>
-                )}
-              </div>
-            </Card>
+                </Card>
+              )}
+
+              <Button
+                intent="warning"
+                icon="cloud-upload"
+                loading={triggerOtaMutation.isPending}
+                disabled={!selectedFwId}
+                onClick={() => setIsConfirmOpen(true)}
+              >
+                Push OTA Update
+              </Button>
+
+              <Alert
+                isOpen={isConfirmOpen}
+                onClose={() => setIsConfirmOpen(false)}
+                onConfirm={handleTrigger}
+                cancelButtonText="Cancel"
+                confirmButtonText="Push Update"
+                intent="warning"
+                icon="warning-sign"
+                loading={triggerOtaMutation.isPending}
+              >
+                <p>
+                  Push firmware <strong>v{selectedFw?.version}</strong> to device{' '}
+                  <strong>{device.name}</strong>?
+                </p>
+                <p style={{ fontSize: 12, opacity: 0.7 }}>
+                  This will update the device shadow's desired state. The device will download and
+                  apply the firmware on its next sync.
+                </p>
+              </Alert>
+            </>
           )}
-
-          <Button
-            intent="warning"
-            icon="cloud-upload"
-            loading={triggerOtaMutation.isPending}
-            disabled={!selectedFwId}
-            onClick={() => setIsConfirmOpen(true)}
-          >
-            Push OTA Update
-          </Button>
-
-          <Alert
-            isOpen={isConfirmOpen}
-            onClose={() => setIsConfirmOpen(false)}
-            onConfirm={handleTrigger}
-            cancelButtonText="Cancel"
-            confirmButtonText="Push Update"
-            intent="warning"
-            icon="warning-sign"
-            loading={triggerOtaMutation.isPending}
-          >
-            <p>
-              Push firmware <strong>v{selectedFw?.version}</strong> to device{' '}
-              <strong>{device.name}</strong>?
-            </p>
-            <p style={{ fontSize: 12, opacity: 0.7 }}>
-              This will update the device shadow's desired state. The device will download and apply
-              the firmware on its next sync.
-            </p>
-          </Alert>
         </>
       )}
 

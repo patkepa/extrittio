@@ -6,6 +6,8 @@ import {
   useDeleteDeviceShadow,
 } from '../../hooks/use-shadow';
 import { showSuccessToast, showErrorToast } from '../../utils/toaster';
+import { hasPermission } from '../../auth/permissions';
+import { useAuthStore } from '../../stores/auth-store';
 
 /**
  * Classify each line of the edited text vs the original text.
@@ -55,6 +57,8 @@ interface ShadowTabProps {
 }
 
 export const ShadowTab = ({ deviceId }: ShadowTabProps) => {
+  const permissions = useAuthStore((s) => s.user?.permissions);
+  const canManageShadows = hasPermission(permissions, 'shadows.manage');
   const { data: shadow, isLoading, isError } = useDeviceShadow(deviceId);
   const updateDesiredMutation = useUpdateDesiredState();
   const deleteShadowMutation = useDeleteDeviceShadow();
@@ -297,7 +301,7 @@ export const ShadowTab = ({ deviceId }: ShadowTabProps) => {
         <div className="shadow-pane">
           <div className="shadow-pane-header">
             <span className="section-label">Desired State</span>
-            {!isEditing && (
+            {!isEditing && canManageShadows && (
               <Button icon="edit" minimal small onClick={handleEdit}>
                 Edit
               </Button>
@@ -379,24 +383,28 @@ export const ShadowTab = ({ deviceId }: ShadowTabProps) => {
         </div>
       )}
 
-      <Divider className="tab-divider" />
+      {canManageShadows && (
+        <>
+          <Divider className="tab-divider" />
 
-      <div className="shadow-actions tab-actions">
-        <Button
-          intent="danger"
-          icon="trash"
-          minimal
-          loading={deleteShadowMutation.isPending}
-          onClick={() =>
-            deleteShadowMutation.mutate(deviceId, {
-              onSuccess: () => void showSuccessToast('Shadow cleared'),
-              onError: () => void showErrorToast('Failed to clear shadow'),
-            })
-          }
-        >
-          Clear Shadow
-        </Button>
-      </div>
+          <div className="shadow-actions tab-actions">
+            <Button
+              intent="danger"
+              icon="trash"
+              minimal
+              loading={deleteShadowMutation.isPending}
+              onClick={() =>
+                deleteShadowMutation.mutate(deviceId, {
+                  onSuccess: () => void showSuccessToast('Shadow cleared'),
+                  onError: () => void showErrorToast('Failed to clear shadow'),
+                })
+              }
+            >
+              Clear Shadow
+            </Button>
+          </div>
+        </>
+      )}
     </div>
   );
 };

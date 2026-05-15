@@ -21,12 +21,17 @@ import {
 import { useConfirmShortcut } from '@extrittio/interactions';
 import { useRoles } from '../../hooks/use-roles';
 import { useUsers, useCreateUser, useDeleteUser, useSetUserRoles } from '../../hooks/use-users';
+import { hasPermission } from '../../auth/permissions';
+import { useAuthStore } from '../../stores/auth-store';
 import type { AuthUser, Role } from '../../types/api';
 import './settings.css';
 
 export const UsersSettings = () => {
+  const permissions = useAuthStore((s) => s.user?.permissions);
+  const canManageUsers = hasPermission(permissions, 'users.manage');
+  const canReadRoles = hasPermission(permissions, 'roles.read');
   const { data: users = [], isLoading, error } = useUsers();
-  const { data: roles = [] } = useRoles();
+  const { data: roles = [] } = useRoles({ enabled: canReadRoles });
   const createUserMutation = useCreateUser();
   const deleteUserMutation = useDeleteUser();
   const setUserRolesMutation = useSetUserRoles();
@@ -49,7 +54,11 @@ export const UsersSettings = () => {
 
   const handleCreate = () => {
     createUserMutation.mutate(
-      { username: newUsername, password: newPassword, role_ids: selectedRoleIds },
+      {
+        username: newUsername,
+        password: newPassword,
+        ...(selectedRoleIds.length > 0 ? { role_ids: selectedRoleIds } : {}),
+      },
       {
         onSuccess: () => {
           setIsDialogOpen(false);
@@ -67,7 +76,7 @@ export const UsersSettings = () => {
   const canCreateUser =
     !!newUsername.trim() &&
     !!newPassword.trim() &&
-    selectedRoleIds.length > 0 &&
+    (!canReadRoles || selectedRoleIds.length > 0) &&
     !createUserMutation.isPending;
 
   const openEditRoles = (user: AuthUser) => {
@@ -126,9 +135,11 @@ export const UsersSettings = () => {
             {users.length} user{users.length !== 1 ? 's' : ''}
           </p>
         </div>
-        <Button intent="primary" icon="add" onClick={openCreateDialog}>
-          Add User
-        </Button>
+        {canManageUsers && (
+          <Button intent="primary" icon="add" onClick={openCreateDialog}>
+            Add User
+          </Button>
+        )}
       </div>
 
       <Card elevation={Elevation.ONE} className="settings-table-card">
@@ -144,7 +155,7 @@ export const UsersSettings = () => {
               <tr>
                 <th>Username</th>
                 <th>Role</th>
-                <th className="actions-column">Actions</th>
+                {canManageUsers && <th className="actions-column">Actions</th>}
               </tr>
             </thead>
             <tbody>
@@ -156,31 +167,35 @@ export const UsersSettings = () => {
                   <td>
                     <RoleTags user={user} />
                   </td>
-                  <td className="actions-column">
-                    <Button
-                      icon="shield"
-                      minimal
-                      small
-                      disabled={roles.length === 0}
-                      onClick={() => openEditRoles(user)}
-                    />
-                    <Button
-                      icon="trash"
-                      minimal
-                      small
-                      intent="danger"
-                      disabled={users.length <= 1}
-                      loading={
-                        deleteUserMutation.isPending && deleteUserMutation.variables === user.id
-                      }
-                      onClick={() =>
-                        deleteUserMutation.mutate(user.id, {
-                          onSuccess: () => void showSuccessToast('User deleted'),
-                          onError: () => void showErrorToast('Failed to delete user'),
-                        })
-                      }
-                    />
-                  </td>
+                  {canManageUsers && (
+                    <td className="actions-column">
+                      {canReadRoles && (
+                        <Button
+                          icon="shield"
+                          minimal
+                          small
+                          disabled={roles.length === 0}
+                          onClick={() => openEditRoles(user)}
+                        />
+                      )}
+                      <Button
+                        icon="trash"
+                        minimal
+                        small
+                        intent="danger"
+                        disabled={users.length <= 1}
+                        loading={
+                          deleteUserMutation.isPending && deleteUserMutation.variables === user.id
+                        }
+                        onClick={() =>
+                          deleteUserMutation.mutate(user.id, {
+                            onSuccess: () => void showSuccessToast('User deleted'),
+                            onError: () => void showErrorToast('Failed to delete user'),
+                          })
+                        }
+                      />
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -210,13 +225,15 @@ export const UsersSettings = () => {
               onChange={(e) => setNewPassword(e.target.value)}
             />
           </FormGroup>
-          <FormGroup label="Roles" labelInfo="(required)">
-            <RoleCheckboxes
-              roles={roles}
-              selectedRoleIds={selectedRoleIds}
-              onChange={setSelectedRoleIds}
-            />
-          </FormGroup>
+          {canReadRoles && (
+            <FormGroup label="Roles" labelInfo="(required)">
+              <RoleCheckboxes
+                roles={roles}
+                selectedRoleIds={selectedRoleIds}
+                onChange={setSelectedRoleIds}
+              />
+            </FormGroup>
+          )}
           {createUserMutation.isError && (
             <Callout intent="danger" icon="error">
               Failed to create user. Username may already exist.

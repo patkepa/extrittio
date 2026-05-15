@@ -3,6 +3,8 @@ import { Button, Callout, Divider, InputGroup, Spinner } from '@blueprintjs/core
 import { useDeviceConfig, useUpdateDeviceConfig } from '../../hooks/use-config';
 import { useFormNavigation } from '@extrittio/interactions';
 import { showSuccessToast, showErrorToast } from '../../utils/toaster';
+import { hasPermission } from '../../auth/permissions';
+import { useAuthStore } from '../../stores/auth-store';
 
 interface ConfigTabProps {
   deviceId: string;
@@ -10,6 +12,8 @@ interface ConfigTabProps {
 
 export const ConfigTab = ({ deviceId }: ConfigTabProps) => {
   const formRef = useRef<HTMLDivElement | null>(null);
+  const permissions = useAuthStore((s) => s.user?.permissions);
+  const canManageDevices = hasPermission(permissions, 'devices.manage');
   const { data: configData, isLoading, isError } = useDeviceConfig(deviceId);
   const updateMutation = useUpdateDeviceConfig();
   const [newKey, setNewKey] = useState('');
@@ -71,7 +75,9 @@ export const ConfigTab = ({ deviceId }: ConfigTabProps) => {
     <div className="config-tab" ref={formRef}>
       {!hasEntries && (
         <Callout icon="info-sign" intent="primary" style={{ marginBottom: 16 }}>
-          No configuration entries yet. Add key-value pairs below.
+          {canManageDevices
+            ? 'No configuration entries yet. Add key-value pairs below.'
+            : 'No configuration entries yet.'}
         </Callout>
       )}
 
@@ -89,46 +95,52 @@ export const ConfigTab = ({ deviceId }: ConfigTabProps) => {
                 {typeof value === 'object' ? JSON.stringify(value) : String(value)}
               </span>
               <span className="config-actions">
-                <Button
-                  icon="cross"
-                  minimal
-                  small
-                  intent="danger"
-                  loading={updateMutation.isPending}
-                  onClick={() => handleRemove(key)}
-                />
+                {canManageDevices && (
+                  <Button
+                    icon="cross"
+                    minimal
+                    small
+                    intent="danger"
+                    loading={updateMutation.isPending}
+                    onClick={() => handleRemove(key)}
+                  />
+                )}
               </span>
             </div>
           ))}
         </div>
       )}
 
-      <Divider className="tab-divider" />
+      {canManageDevices && (
+        <>
+          <Divider className="tab-divider" />
 
-      <span className="section-label">Add Configuration Entry</span>
-      <div className="config-add-form">
-        <InputGroup
-          placeholder="Key"
-          value={newKey}
-          onChange={(e) => setNewKey(e.target.value)}
-          className="mono-data"
-        />
-        <InputGroup
-          placeholder="Value"
-          value={newValue}
-          onChange={(e) => setNewValue(e.target.value)}
-          className="mono-data"
-        />
-        <Button
-          intent="primary"
-          icon="plus"
-          loading={updateMutation.isPending}
-          disabled={!newKey.trim()}
-          onClick={handleAdd}
-        >
-          Add
-        </Button>
-      </div>
+          <span className="section-label">Add Configuration Entry</span>
+          <div className="config-add-form">
+            <InputGroup
+              placeholder="Key"
+              value={newKey}
+              onChange={(e) => setNewKey(e.target.value)}
+              className="mono-data"
+            />
+            <InputGroup
+              placeholder="Value"
+              value={newValue}
+              onChange={(e) => setNewValue(e.target.value)}
+              className="mono-data"
+            />
+            <Button
+              intent="primary"
+              icon="plus"
+              loading={updateMutation.isPending}
+              disabled={!newKey.trim()}
+              onClick={handleAdd}
+            >
+              Add
+            </Button>
+          </div>
+        </>
+      )}
 
       {updateMutation.isError && (
         <Callout intent="danger" icon="error" className="tab-callout">
