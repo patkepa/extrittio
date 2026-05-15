@@ -15,22 +15,41 @@ import {
   Callout,
   Spinner,
   Icon,
+  Checkbox,
+  Tag,
 } from '@blueprintjs/core';
 import { useConfirmShortcut } from '@extrittio/interactions';
-import { useUsers, useCreateUser, useDeleteUser } from '../../hooks/use-users';
+import { useRoles } from '../../hooks/use-roles';
+import { useUsers, useCreateUser, useDeleteUser, useSetUserRoles } from '../../hooks/use-users';
+import type { AuthUser, Role } from '../../types/api';
 import './settings.css';
 
 export const UsersSettings = () => {
   const { data: users = [], isLoading, error } = useUsers();
+  const { data: roles = [] } = useRoles();
   const createUserMutation = useCreateUser();
   const deleteUserMutation = useDeleteUser();
+  const setUserRolesMutation = useSetUserRoles();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<AuthUser | null>(null);
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [selectedRoleIds, setSelectedRoleIds] = useState<number[]>([]);
+  const [editingRoleIds, setEditingRoleIds] = useState<number[]>([]);
+
+  const defaultRoleIds = () => {
+    const viewer = roles.find((role) => role.name === 'viewer');
+    return viewer ? [viewer.id] : roles.slice(0, 1).map((role) => role.id);
+  };
+
+  const openCreateDialog = () => {
+    setSelectedRoleIds(defaultRoleIds());
+    setIsDialogOpen(true);
+  };
 
   const handleCreate = () => {
     createUserMutation.mutate(
-      { username: newUsername, password: newPassword },
+      { username: newUsername, password: newPassword, role_ids: selectedRoleIds },
       {
         onSuccess: () => {
           setIsDialogOpen(false);
@@ -46,7 +65,33 @@ export const UsersSettings = () => {
   };
 
   const canCreateUser =
-    !!newUsername.trim() && !!newPassword.trim() && !createUserMutation.isPending;
+    !!newUsername.trim() &&
+    !!newPassword.trim() &&
+    selectedRoleIds.length > 0 &&
+    !createUserMutation.isPending;
+
+  const openEditRoles = (user: AuthUser) => {
+    setEditingUser(user);
+    setEditingRoleIds(user.roles?.map((role) => role.id) ?? []);
+  };
+
+  const handleUpdateRoles = () => {
+    if (!editingUser) return;
+
+    setUserRolesMutation.mutate(
+      { id: editingUser.id, roleIds: editingRoleIds },
+      {
+        onSuccess: () => {
+          setEditingUser(null);
+          setEditingRoleIds([]);
+          void showSuccessToast('Roles updated');
+        },
+        onError: () => {
+          void showErrorToast('Failed to update roles');
+        },
+      },
+    );
+  };
 
   useConfirmShortcut({
     isOpen: isDialogOpen,
@@ -81,7 +126,7 @@ export const UsersSettings = () => {
             {users.length} user{users.length !== 1 ? 's' : ''}
           </p>
         </div>
-        <Button intent="primary" icon="add" onClick={() => setIsDialogOpen(true)}>
+        <Button intent="primary" icon="add" onClick={openCreateDialog}>
           Add User
         </Button>
       </div>
@@ -108,8 +153,17 @@ export const UsersSettings = () => {
                   <td>
                     <strong>{user.username}</strong>
                   </td>
-                  <td>{user.role}</td>
+                  <td>
+                    <RoleTags user={user} />
+                  </td>
                   <td className="actions-column">
+                    <Button
+                      icon="shield"
+                      minimal
+                      small
+                      disabled={roles.length === 0}
+                      onClick={() => openEditRoles(user)}
+                    />
                     <Button
                       icon="trash"
                       minimal
@@ -156,6 +210,13 @@ export const UsersSettings = () => {
               onChange={(e) => setNewPassword(e.target.value)}
             />
           </FormGroup>
+          <FormGroup label="Roles" labelInfo="(required)">
+            <RoleCheckboxes
+              roles={roles}
+              selectedRoleIds={selectedRoleIds}
+              onChange={setSelectedRoleIds}
+            />
+          </FormGroup>
           {createUserMutation.isError && (
             <Callout intent="danger" icon="error">
               Failed to create user. Username may already exist.
@@ -179,6 +240,99 @@ export const UsersSettings = () => {
           }
         />
       </Dialog>
+
+      <Dialog
+        icon="shield"
+        title={`Roles: ${editingUser?.username ?? ''}`}
+        isOpen={!!editingUser}
+        onClose={() => setEditingUser(null)}
+      >
+        <DialogBody>
+          <RoleCheckboxes
+            roles={roles}
+            selectedRoleIds={editingRoleIds}
+            onChange={setEditingRoleIds}
+          />
+          {setUserRolesMutation.isError && (
+            <Callout intent="danger" icon="error">
+              Failed to update roles. A tenant must keep at least one owner.
+            </Callout>
+          )}
+        </DialogBody>
+        <DialogFooter
+          actions={
+            <>
+              <Button onClick={() => setEditingUser(null)}>Cancel</Button>
+              <Button
+                intent="primary"
+                icon="tick"
+                onClick={handleUpdateRoles}
+                loading={setUserRolesMutation.isPending}
+                disabled={editingRoleIds.length === 0 || setUserRolesMutation.isPending}
+              >
+                Save Roles
+              </Button>
+            </>
+          }
+        />
+      </Dialog>
+    </div>
+  );
+};
+
+const RoleTags = ({ user }: { user: AuthUser }) => {
+  const roles = user.roles && user.roles.length > 0 ? user.roles : undefined;
+
+  if (!roles) {
+    return <Tag minimal>{user.role}</Tag>;
+  }
+
+  return (
+    <div className="role-tag-row">
+      {roles.map((role) => (
+        <Tag key={role.id} minimal intent={role.name === 'owner' ? 'primary' : 'none'}>
+          {role.name}
+        </Tag>
+      ))}
+    </div>
+  );
+};
+
+const RoleCheckboxes = ({
+  roles,
+  selectedRoleIds,
+  onChange,
+}: {
+  roles: Role[];
+  selectedRoleIds: number[];
+  onChange: (ids: number[]) => void;
+}) => {
+  const toggleRole = (roleId: number, checked: boolean) => {
+    if (checked) {
+      onChange([...selectedRoleIds, roleId]);
+    } else {
+      onChange(selectedRoleIds.filter((id) => id !== roleId));
+    }
+  };
+
+  if (roles.length === 0) {
+    return (
+      <Callout intent="warning" icon="warning-sign">
+        No roles are available.
+      </Callout>
+    );
+  }
+
+  return (
+    <div className="role-checkbox-list">
+      {roles.map((role) => (
+        <Checkbox
+          key={role.id}
+          checked={selectedRoleIds.includes(role.id)}
+          label={role.name}
+          onChange={(event) => toggleRole(role.id, event.currentTarget.checked)}
+        />
+      ))}
     </div>
   );
 };

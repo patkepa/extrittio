@@ -90,6 +90,21 @@ pub fn update_password(
     Ok(())
 }
 
+pub fn update_last_login_at(
+    conn: &mut PgConnection,
+    tenant_id: &str,
+    id: i32,
+) -> Result<(), diesel::result::Error> {
+    diesel::update(
+        users::table
+            .filter(users::tenant_id.eq(tenant_id))
+            .filter(users::id.eq(id)),
+    )
+    .set(users::last_login_at.eq(diesel::dsl::now))
+    .execute(conn)?;
+    Ok(())
+}
+
 pub fn find_user_by_id(
     conn: &mut PgConnection,
     tenant_id: &str,

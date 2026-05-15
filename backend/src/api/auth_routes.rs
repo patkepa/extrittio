@@ -8,7 +8,8 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 use crate::auth::context::RequestContext;
-use crate::auth::create_token;
+use crate::auth::create_token_with_scopes;
+use crate::db::models::Role;
 use crate::error::AppError;
 use crate::services::user_service;
 use crate::state::{AppState, run_db};
@@ -30,6 +31,16 @@ pub struct UserResponse {
     pub id: i32,
     pub username: String,
     pub role: String,
+    pub roles: Vec<RoleSummary>,
+    pub permissions: Vec<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema, Clone)]
+pub struct RoleSummary {
+    pub id: i32,
+    pub name: String,
+    pub description: Option<String>,
+    pub is_system: bool,
 }
 
 pub fn router() -> Router<Arc<AppState>> {
@@ -55,21 +66,30 @@ pub(crate) async fn login(
 ) -> Result<Json<LoginResponse>, AppError> {
     let jwt_secret = state.jwt_secret.clone();
 
-    let (user_id, username, role) = run_db(&state.db_pool, move |conn| {
+    let user = run_db(&state.db_pool, move |conn| {
         user_service::authenticate(conn, &body.username, &body.password)
     })
     .await?;
 
-    let token = create_token(user_id, &username, &role, &jwt_secret)
-        .map_err(|e| AppError::Auth(e.to_string()))?;
+    let token = create_token_with_scopes(
+        user.id,
+        &user.username,
+        &user.role,
+        &user.tenant_id,
+        user.permissions.clone(),
+        &jwt_secret,
+    )
+    .map_err(|e| AppError::Auth(e.to_string()))?;
 
     Ok(Json(LoginResponse {
         token,
-        user: UserResponse {
-            id: user_id,
-            username,
-            role,
-        },
+        user: user_response(
+            user.id,
+            user.username,
+            user.role,
+            user.roles,
+            user.permissions,
+        ),
     }))
 }
 
@@ -89,5 +109,32 @@ pub(crate) async fn me(Extension(ctx): Extension<RequestContext>) -> Json<UserRe
         id: ctx.user_id,
         username: ctx.username,
         role: ctx.role,
+        roles: Vec::new(),
+        permissions: ctx.scopes,
     })
+}
+
+pub fn role_summary(role: Role) -> RoleSummary {
+    RoleSummary {
+        id: role.id,
+        name: role.name,
+        description: role.description,
+        is_system: role.is_system,
+    }
+}
+
+pub fn user_response(
+    id: i32,
+    username: String,
+    role: String,
+    roles: Vec<Role>,
+    permissions: Vec<String>,
+) -> UserResponse {
+    UserResponse {
+        id,
+        username,
+        role,
+        roles: roles.into_iter().map(role_summary).collect(),
+        permissions,
+    }
 }

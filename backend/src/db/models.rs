@@ -6,9 +6,9 @@ use serde_json::Value as JsonValue;
 use super::schema::{
     alerts, api_keys, app_metrics, ca_certificates, command_history, device_certificates,
     device_configs, device_logs, device_shadows, device_types, devices, firmware_blobs,
-    firmware_updates, fleets, network_observed_hosts, ota_deployments, rule_action_outbox,
-    rule_actions, rule_conditions, rule_cooldowns, rules, server_config, server_metrics, telemetry,
-    telemetry_rollups_hourly, users, zones,
+    firmware_updates, fleets, network_observed_hosts, ota_deployments, role_permissions, roles,
+    rule_action_outbox, rule_actions, rule_conditions, rule_cooldowns, rules, server_config,
+    server_metrics, telemetry, telemetry_rollups_hourly, user_roles, users, zones,
 };
 
 // ---------------------------------------------------------------------------
@@ -436,10 +436,14 @@ pub struct UpdateShadow {
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct User {
     pub id: i32,
+    pub tenant_id: String,
     pub username: String,
     pub password_hash: String,
     pub role: String,
     pub created_at: NaiveDateTime,
+    pub is_active: bool,
+    pub permission_version: i32,
+    pub last_login_at: Option<NaiveDateTime>,
 }
 
 #[derive(Insertable, Debug)]
@@ -448,6 +452,73 @@ pub struct NewUser {
     pub tenant_id: String,
     pub username: String,
     pub password_hash: String,
+    pub role: String,
+}
+
+// ---------------------------------------------------------------------------
+// Roles & Permissions
+// ---------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug, Clone)]
+#[diesel(table_name = roles)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct Role {
+    pub id: i32,
+    pub tenant_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub is_system: bool,
+    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = roles)]
+pub struct NewRole {
+    pub tenant_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub is_system: bool,
+}
+
+#[derive(AsChangeset, Debug)]
+#[diesel(table_name = roles)]
+pub struct UpdateRole {
+    pub name: Option<String>,
+    pub description: Option<Option<String>>,
+}
+
+#[derive(Queryable, Selectable, Debug, Clone)]
+#[diesel(table_name = role_permissions)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct RolePermission {
+    pub role_id: i32,
+    pub permission: String,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = role_permissions)]
+pub struct NewRolePermission {
+    pub role_id: i32,
+    pub permission: String,
+}
+
+#[derive(Queryable, Selectable, Debug, Clone)]
+#[diesel(table_name = user_roles)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct UserRole {
+    pub user_id: i32,
+    pub role_id: i32,
+    pub tenant_id: String,
+    pub created_at: NaiveDateTime,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = user_roles)]
+pub struct NewUserRole {
+    pub user_id: i32,
+    pub role_id: i32,
+    pub tenant_id: String,
 }
 
 // ---------------------------------------------------------------------------

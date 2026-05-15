@@ -1801,6 +1801,309 @@
         ]
       }
     },
+    "/api/v1/ota-deployments": {
+      "get": {
+        "tags": [
+          "firmware"
+        ],
+        "summary": "List OTA deployments across all devices.",
+        "operationId": "list_all_ota_deployments",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Filter by status: all, in_progress, completed, pending, downloading, verifying, installing, success, failed.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of OTA deployments",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_GlobalOtaDeploymentResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/roles": {
+      "get": {
+        "tags": [
+          "roles"
+        ],
+        "summary": "List roles for the current tenant.",
+        "operationId": "list_roles",
+        "responses": {
+          "200": {
+            "description": "Roles",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RoleResponse"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "roles"
+        ],
+        "summary": "Create a custom role.",
+        "operationId": "create_role",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRoleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Role created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "409": {
+            "description": "Role name already exists"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/roles/permissions": {
+      "get": {
+        "tags": [
+          "roles"
+        ],
+        "summary": "List available permission keys.",
+        "operationId": "list_permissions",
+        "responses": {
+          "200": {
+            "description": "Available permissions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PermissionResponse"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/roles/{id}": {
+      "put": {
+        "tags": [
+          "roles"
+        ],
+        "summary": "Update a custom role.",
+        "operationId": "update_role",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Role ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRoleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Role updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "404": {
+            "description": "Role not found"
+          },
+          "409": {
+            "description": "Role name already exists"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "roles"
+        ],
+        "summary": "Delete a custom role.",
+        "operationId": "delete_role",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Role ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Role deleted"
+          },
+          "400": {
+            "description": "Built-in role cannot be deleted"
+          },
+          "404": {
+            "description": "Role not found"
+          },
+          "409": {
+            "description": "Role still assigned to users"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/server/outbox/rule-actions": {
+      "get": {
+        "tags": [
+          "server-metrics"
+        ],
+        "operationId": "get_summary",
+        "responses": {
+          "200": {
+            "description": "Rule action outbox summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuleActionOutboxSummaryResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/system/version": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Return runtime build metadata and database readiness.",
+        "operationId": "get_version",
+        "responses": {
+          "200": {
+            "description": "Runtime version metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemVersionResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/users": {
       "get": {
         "tags": [
@@ -1974,6 +2277,63 @@
         ]
       }
     },
+    "/api/v1/users/{id}/roles": {
+      "put": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Assign roles to a user.",
+        "operationId": "set_roles",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "User ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetUserRolesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Roles assigned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "404": {
+            "description": "User or role not found"
+          },
+          "409": {
+            "description": "Would remove the last owner"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ]
+      }
+    },
     "/health": {
       "get": {
         "tags": [
@@ -2131,6 +2491,30 @@
           }
         }
       },
+      "CreateRoleRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "permissions"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "CreateUserRequest": {
         "type": "object",
         "required": [
@@ -2140,6 +2524,16 @@
         "properties": {
           "password": {
             "type": "string"
+          },
+          "role_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            }
           },
           "username": {
             "type": "string"
@@ -2532,6 +2926,85 @@
             "format": "int32"
           },
           "name": {
+            "type": "string"
+          }
+        }
+      },
+      "GlobalOtaDeploymentResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "device_id",
+          "device_name",
+          "device_status",
+          "current_firmware",
+          "device_type_id",
+          "device_type_name",
+          "firmware_update_id",
+          "firmware_version",
+          "status",
+          "initiated_at"
+        ],
+        "properties": {
+          "completed_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "current_firmware": {
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "device_name": {
+            "type": "string"
+          },
+          "device_status": {
+            "type": "string"
+          },
+          "device_type_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "device_type_name": {
+            "type": "string"
+          },
+          "error_message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "firmware_update_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "firmware_version": {
+            "type": "string"
+          },
+          "fleet_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "fleet_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "initiated_at": {
+            "type": "string"
+          },
+          "status": {
             "type": "string"
           }
         }
@@ -3096,6 +3569,111 @@
           }
         }
       },
+      "PaginatedResponse_GlobalOtaDeploymentResponse": {
+        "type": "object",
+        "required": [
+          "data",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "device_id",
+                "device_name",
+                "device_status",
+                "current_firmware",
+                "device_type_id",
+                "device_type_name",
+                "firmware_update_id",
+                "firmware_version",
+                "status",
+                "initiated_at"
+              ],
+              "properties": {
+                "completed_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "current_firmware": {
+                  "type": "string"
+                },
+                "device_id": {
+                  "type": "string"
+                },
+                "device_name": {
+                  "type": "string"
+                },
+                "device_status": {
+                  "type": "string"
+                },
+                "device_type_id": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "device_type_name": {
+                  "type": "string"
+                },
+                "error_message": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "firmware_update_id": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "firmware_version": {
+                  "type": "string"
+                },
+                "fleet_id": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int32"
+                },
+                "fleet_name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "id": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "initiated_at": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "PaginatedResponse_OtaDeploymentResponse": {
         "type": "object",
         "required": [
@@ -3183,15 +3761,29 @@
               "required": [
                 "id",
                 "username",
-                "role"
+                "role",
+                "roles",
+                "permissions"
               ],
               "properties": {
                 "id": {
                   "type": "integer",
                   "format": "int32"
                 },
+                "permissions": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
                 "role": {
                   "type": "string"
+                },
+                "roles": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RoleSummary"
+                  }
                 },
                 "username": {
                   "type": "string"
@@ -3232,6 +3824,17 @@
           }
         }
       },
+      "PermissionResponse": {
+        "type": "object",
+        "required": [
+          "key"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          }
+        }
+      },
       "ReadyResponse": {
         "type": "object",
         "required": [
@@ -3244,6 +3847,115 @@
           },
           "status": {
             "type": "string"
+          }
+        }
+      },
+      "RoleResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "is_system",
+          "permissions",
+          "user_count"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "is_system": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "user_count": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "RoleSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "is_system"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "is_system": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "RuleActionOutboxSummaryResponse": {
+        "type": "object",
+        "required": [
+          "pending_count",
+          "processing_count",
+          "failed_count",
+          "dead_letter_count",
+          "succeeded_count"
+        ],
+        "properties": {
+          "dead_letter_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "failed_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "oldest_pending_age_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "oldest_pending_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pending_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "processing_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "succeeded_count": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -3266,6 +3978,21 @@
             },
             "propertyNames": {
               "type": "string"
+            }
+          }
+        }
+      },
+      "SetUserRolesRequest": {
+        "type": "object",
+        "required": [
+          "role_ids"
+        ],
+        "properties": {
+          "role_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
             }
           }
         }
@@ -3311,6 +4038,29 @@
           "version": {
             "type": "integer",
             "format": "int32"
+          }
+        }
+      },
+      "SystemVersionResponse": {
+        "type": "object",
+        "required": [
+          "version",
+          "commit_sha",
+          "build_timestamp",
+          "database"
+        ],
+        "properties": {
+          "build_timestamp": {
+            "type": "string"
+          },
+          "commit_sha": {
+            "type": "string"
+          },
+          "database": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
           }
         }
       },
@@ -3473,20 +4223,60 @@
           }
         }
       },
+      "UpdateRoleRequest": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "permissions": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "UserResponse": {
         "type": "object",
         "required": [
           "id",
           "username",
-          "role"
+          "role",
+          "roles",
+          "permissions"
         ],
         "properties": {
           "id": {
             "type": "integer",
             "format": "int32"
           },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "role": {
             "type": "string"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoleSummary"
+            }
           },
           "username": {
             "type": "string"
@@ -3518,6 +4308,10 @@
     {
       "name": "users",
       "description": "User management"
+    },
+    {
+      "name": "roles",
+      "description": "Role and permission management"
     },
     {
       "name": "devices",
@@ -3558,6 +4352,14 @@
     {
       "name": "certificates",
       "description": "TLS certificates"
+    },
+    {
+      "name": "server-metrics",
+      "description": "Server metrics and operational queues"
+    },
+    {
+      "name": "system",
+      "description": "Runtime system metadata"
     }
   ]
 }

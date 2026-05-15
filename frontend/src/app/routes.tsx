@@ -43,6 +43,7 @@ export const settingsRoutes: SettingsRoute[] = [
   { id: 'device-types', label: 'Device Types', icon: 'tag', path: 'device-types' },
   { id: 'fleets', label: 'Fleets', icon: 'layers', path: 'fleets' },
   { id: 'users', label: 'Users', icon: 'people', path: 'users' },
+  { id: 'roles', label: 'Roles', icon: 'shield', path: 'roles' },
   { id: 'firmware', label: 'Firmware', icon: 'upload', path: 'firmware' },
   { id: 'certificates', label: 'Certificates', icon: 'lock', path: 'certificates' },
   { id: 'api-keys', label: 'API Keys', icon: 'key', path: 'api-keys' },

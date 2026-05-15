@@ -497,6 +497,109 @@ export interface paths {
         patch: operations["update_fleet"];
         trace?: never;
     };
+    "/api/v1/ota-deployments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List OTA deployments across all devices. */
+        get: operations["list_all_ota_deployments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List roles for the current tenant. */
+        get: operations["list_roles"];
+        put?: never;
+        /** Create a custom role. */
+        post: operations["create_role"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/roles/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List available permission keys. */
+        get: operations["list_permissions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/roles/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update a custom role. */
+        put: operations["update_role"];
+        post?: never;
+        /** Delete a custom role. */
+        delete: operations["delete_role"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/server/outbox/rule-actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_summary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Return runtime build metadata and database readiness. */
+        get: operations["get_version"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users": {
         parameters: {
             query?: never;
@@ -542,6 +645,23 @@ export interface paths {
         get?: never;
         /** Change a user's password. */
         put: operations["change_password"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/{id}/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Assign roles to a user. */
+        put: operations["set_roles"];
         post?: never;
         delete?: never;
         options?: never;
@@ -616,8 +736,14 @@ export interface components {
             device_id: string;
             updated_at: string;
         };
+        CreateRoleRequest: {
+            description?: string | null;
+            name: string;
+            permissions: string[];
+        };
         CreateUserRequest: {
             password: string;
+            role_ids?: number[] | null;
             username: string;
         };
         DashboardStats: {
@@ -719,6 +845,27 @@ export interface components {
             /** Format: int32 */
             id: number;
             name: string;
+        };
+        GlobalOtaDeploymentResponse: {
+            completed_at?: string | null;
+            current_firmware: string;
+            device_id: string;
+            device_name: string;
+            device_status: string;
+            /** Format: int32 */
+            device_type_id: number;
+            device_type_name: string;
+            error_message?: string | null;
+            /** Format: int32 */
+            firmware_update_id: number;
+            firmware_version: string;
+            /** Format: int32 */
+            fleet_id?: number | null;
+            fleet_name?: string | null;
+            /** Format: int32 */
+            id: number;
+            initiated_at: string;
+            status: string;
         };
         HealthResponse: {
             status: string;
@@ -870,6 +1017,35 @@ export interface components {
             /** Format: int64 */
             total: number;
         };
+        PaginatedResponse_GlobalOtaDeploymentResponse: {
+            data: {
+                completed_at?: string | null;
+                current_firmware: string;
+                device_id: string;
+                device_name: string;
+                device_status: string;
+                /** Format: int32 */
+                device_type_id: number;
+                device_type_name: string;
+                error_message?: string | null;
+                /** Format: int32 */
+                firmware_update_id: number;
+                firmware_version: string;
+                /** Format: int32 */
+                fleet_id?: number | null;
+                fleet_name?: string | null;
+                /** Format: int32 */
+                id: number;
+                initiated_at: string;
+                status: string;
+            }[];
+            /** Format: int64 */
+            limit: number;
+            /** Format: int64 */
+            offset: number;
+            /** Format: int64 */
+            total: number;
+        };
         PaginatedResponse_OtaDeploymentResponse: {
             data: {
                 completed_at?: string | null;
@@ -894,7 +1070,9 @@ export interface components {
             data: {
                 /** Format: int32 */
                 id: number;
+                permissions: string[];
                 role: string;
+                roles: components["schemas"]["RoleSummary"][];
                 username: string;
             }[];
             /** Format: int64 */
@@ -910,15 +1088,53 @@ export interface components {
             /** Format: int64 */
             offset?: number | null;
         };
+        PermissionResponse: {
+            key: string;
+        };
         ReadyResponse: {
             database: string;
             status: string;
+        };
+        RoleResponse: {
+            description?: string | null;
+            /** Format: int32 */
+            id: number;
+            is_system: boolean;
+            name: string;
+            permissions: string[];
+            /** Format: int64 */
+            user_count: number;
+        };
+        RoleSummary: {
+            description?: string | null;
+            /** Format: int32 */
+            id: number;
+            is_system: boolean;
+            name: string;
+        };
+        RuleActionOutboxSummaryResponse: {
+            /** Format: int64 */
+            dead_letter_count: number;
+            /** Format: int64 */
+            failed_count: number;
+            /** Format: int64 */
+            oldest_pending_age_seconds?: number | null;
+            oldest_pending_at?: string | null;
+            /** Format: int64 */
+            pending_count: number;
+            /** Format: int64 */
+            processing_count: number;
+            /** Format: int64 */
+            succeeded_count: number;
         };
         SendCommandRequest: {
             command: string;
             params?: {
                 [key: string]: string;
             } | null;
+        };
+        SetUserRolesRequest: {
+            role_ids: number[];
         };
         ShadowResponse: {
             delta: {
@@ -934,6 +1150,12 @@ export interface components {
             updated_at: string;
             /** Format: int32 */
             version: number;
+        };
+        SystemVersionResponse: {
+            build_timestamp: string;
+            commit_sha: string;
+            database: string;
+            version: string;
         };
         TelemetryResponse: {
             /** Format: float */
@@ -978,10 +1200,17 @@ export interface components {
         UpdateFleetRequest: {
             name: string;
         };
+        UpdateRoleRequest: {
+            description?: string | null;
+            name?: string | null;
+            permissions?: string[] | null;
+        };
         UserResponse: {
             /** Format: int32 */
             id: number;
+            permissions: string[];
             role: string;
+            roles: components["schemas"]["RoleSummary"][];
             username: string;
         };
     };
@@ -2255,6 +2484,239 @@ export interface operations {
             };
         };
     };
+    list_all_ota_deployments: {
+        parameters: {
+            query?: {
+                /** @description Filter by status: all, in_progress, completed, pending, downloading, verifying, installing, success, failed. */
+                status?: string | null;
+                limit?: number | null;
+                offset?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated list of OTA deployments */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponse_GlobalOtaDeploymentResponse"];
+                };
+            };
+        };
+    };
+    list_roles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Roles */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleResponse"][];
+                };
+            };
+        };
+    };
+    create_role: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateRoleRequest"];
+            };
+        };
+        responses: {
+            /** @description Role created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleResponse"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Role name already exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_permissions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Available permissions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PermissionResponse"][];
+                };
+            };
+        };
+    };
+    update_role: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Role ID */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateRoleRequest"];
+            };
+        };
+        responses: {
+            /** @description Role updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleResponse"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Role not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Role name already exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    delete_role: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Role ID */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Role deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Built-in role cannot be deleted */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Role not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Role still assigned to users */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_summary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rule action outbox summary */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleActionOutboxSummaryResponse"];
+                };
+            };
+        };
+    };
+    get_version: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Runtime version metadata */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemVersionResponse"];
+                };
+            };
+        };
+    };
     list_users: {
         parameters: {
             query?: {
@@ -2376,6 +2838,54 @@ export interface operations {
             };
             /** @description User not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    set_roles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description User ID */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetUserRolesRequest"];
+            };
+        };
+        responses: {
+            /** @description Roles assigned */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserResponse"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description User or role not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Would remove the last owner */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

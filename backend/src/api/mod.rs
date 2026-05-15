@@ -14,6 +14,7 @@ pub mod health;
 pub mod logs;
 pub mod openapi;
 pub mod outbox;
+pub mod roles;
 pub mod rules;
 pub mod server_metrics;
 pub mod shadows;
@@ -46,6 +47,7 @@ pub fn router(max_firmware_size: usize) -> Router<Arc<AppState>> {
         .merge(configs::router())
         .merge(commands::router())
         .merge(certificates::router())
+        .merge(roles::router())
         .merge(rules::router())
         .merge(alerts::router())
         .merge(health::router())

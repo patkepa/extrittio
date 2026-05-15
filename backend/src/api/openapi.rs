@@ -24,6 +24,13 @@ use utoipa::{Modify, OpenApi};
         super::users::create_user,
         super::users::delete_user,
         super::users::change_password,
+        super::users::set_roles,
+        // Roles
+        super::roles::list_roles,
+        super::roles::list_permissions,
+        super::roles::create_role,
+        super::roles::update_role,
+        super::roles::delete_role,
         // Devices
         super::devices::list_devices,
         super::devices::get_device,
@@ -55,7 +62,7 @@ use utoipa::{Modify, OpenApi};
         super::commands::list_commands,
         // Firmware
         super::firmware_updates::list_firmware_updates,
-        super::firmware_updates::list_ota_deployments,
+        super::firmware_updates::list_all_ota_deployments,
         super::firmware_updates::create_firmware_update,
         super::firmware_updates::upload_firmware_update,
         super::firmware_updates::download_firmware_blob,
@@ -83,11 +90,18 @@ use utoipa::{Modify, OpenApi};
         super::auth_routes::LoginRequest,
         super::auth_routes::LoginResponse,
         super::auth_routes::UserResponse,
+        super::auth_routes::RoleSummary,
         // Dashboard
         super::dashboard::DashboardStats,
         // Users
         super::users::CreateUserRequest,
         super::users::ChangePasswordRequest,
+        super::users::SetUserRolesRequest,
+        // Roles
+        super::roles::RoleResponse,
+        super::roles::PermissionResponse,
+        super::roles::CreateRoleRequest,
+        super::roles::UpdateRoleRequest,
         // Devices
         super::devices::DeviceResponse,
         super::devices::NewDeviceRequest,
@@ -136,6 +150,7 @@ use utoipa::{Modify, OpenApi};
         (name = "auth", description = "Authentication"),
         (name = "dashboard", description = "Dashboard statistics"),
         (name = "users", description = "User management"),
+        (name = "roles", description = "Role and permission management"),
         (name = "devices", description = "Device management"),
         (name = "device-types", description = "Device type management"),
         (name = "fleets", description = "Fleet management"),

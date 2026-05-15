@@ -10,8 +10,8 @@ use tracing::{debug, info};
 
 use crate::db::models::{NewDeviceType, NewServerConfigEntry, NewUser, ServerConfigEntry};
 use crate::db::schema::{ca_certificates, device_types, server_config, users};
-use crate::repositories::cert_repo;
-use crate::services::cert_service;
+use crate::repositories::{cert_repo, role_repo, user_repo};
+use crate::services::{cert_service, role_service};
 use crate::state::DbPool;
 use crate::{MIGRATIONS, auth};
 
@@ -117,11 +117,22 @@ pub fn seed_admin_user(conn: &mut PgConnection) -> anyhow::Result<()> {
             tenant_id: crate::tenancy::DEFAULT_TENANT_ID.to_string(),
             username: "admin".to_string(),
             password_hash,
+            role: role_service::OWNER_ROLE.to_string(),
         };
-        diesel::insert_into(users::table)
-            .values(&admin)
-            .execute(conn)
-            .context("Failed to seed admin user")?;
+        let admin = user_repo::insert_user(conn, &admin).context("Failed to seed admin user")?;
+        let owner_role = role_repo::find_role_by_name(
+            conn,
+            crate::tenancy::DEFAULT_TENANT_ID,
+            role_service::OWNER_ROLE,
+        )
+        .context("Failed to find owner role for seeded admin")?;
+        role_repo::set_user_roles(
+            conn,
+            crate::tenancy::DEFAULT_TENANT_ID,
+            admin.id,
+            &[owner_role.id],
+        )
+        .context("Failed to assign owner role to seeded admin")?;
         tracing::warn!(
             "Default admin user created (username: admin, password: admin). Change this immediately!"
         );

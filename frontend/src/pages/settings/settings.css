@@ -3,6 +3,10 @@
   margin: 0 auto;
 }
 
+.settings-page-wide {
+  max-width: 1040px;
+}
+
 .settings-page .page-header {
   margin-bottom: 24px;
 }
@@ -97,6 +101,33 @@
 .settings-table .actions-column {
   width: 112px;
   text-align: right;
+}
+
+.role-tag-row,
+.role-name-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.role-description {
+  margin: 4px 0 0;
+  color: hsl(var(--muted) / 0.75);
+  font-size: 12px;
+}
+
+.role-checkbox-list,
+.permission-checkbox-list {
+  display: grid;
+  gap: 6px;
+}
+
+.permission-checkbox-list {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  max-height: 280px;
+  overflow: auto;
+  padding: 4px 0;
 }
 
 .settings-empty {

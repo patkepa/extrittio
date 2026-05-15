@@ -3,6 +3,7 @@ import { ProfileSettings } from './profile';
 import { DeviceTypesSettings } from './device-types';
 import { FleetsSettings } from './fleets';
 import { UsersSettings } from './users';
+import { RolesSettings } from './roles';
 import { FirmwareSettings } from './firmware';
 import { CertificatesSettings } from './certificates';
 import { ApiKeysSettings } from './api-keys';
@@ -13,6 +14,7 @@ const settingsElements = {
   'device-types': <DeviceTypesSettings />,
   fleets: <FleetsSettings />,
   users: <UsersSettings />,
+  roles: <RolesSettings />,
   firmware: <FirmwareSettings />,
   certificates: <CertificatesSettings />,
   'api-keys': <ApiKeysSettings />,

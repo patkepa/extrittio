@@ -98,7 +98,7 @@ pub struct GlobalOtaDeploymentResponse {
 
 pub fn router(max_firmware_size: usize) -> Router<Arc<AppState>> {
     Router::new()
-        .route("/api/v1/ota-deployments", get(list_ota_deployments))
+        .route("/api/v1/ota-deployments", get(list_all_ota_deployments))
         .route(
             "/api/v1/firmware-updates",
             get(list_firmware_updates).post(create_firmware_update),
@@ -193,7 +193,7 @@ pub(crate) async fn list_firmware_updates(
         (status = 200, description = "Paginated list of OTA deployments", body = PaginatedResponse<GlobalOtaDeploymentResponse>),
     ),
 )]
-pub(crate) async fn list_ota_deployments(
+pub(crate) async fn list_all_ota_deployments(
     State(state): State<Arc<AppState>>,
     Extension(ctx): Extension<RequestContext>,
     Query(params): Query<ListOtaDeploymentsQuery>,

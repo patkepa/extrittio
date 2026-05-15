@@ -43,6 +43,24 @@ pub fn create_token(
     role: &str,
     secret: &str,
 ) -> Result<String, jsonwebtoken::errors::Error> {
+    create_token_with_scopes(
+        user_id,
+        username,
+        role,
+        DEFAULT_TENANT_ID,
+        Vec::new(),
+        secret,
+    )
+}
+
+pub fn create_token_with_scopes(
+    user_id: i32,
+    username: &str,
+    role: &str,
+    tenant_id: &str,
+    scopes: Vec<String>,
+    secret: &str,
+) -> Result<String, jsonwebtoken::errors::Error> {
     #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
     let expiration = chrono::Utc::now()
         .checked_add_signed(chrono::Duration::hours(24))
@@ -53,8 +71,8 @@ pub fn create_token(
         sub: user_id,
         username: username.to_string(),
         role: role.to_string(),
-        tenant_id: Some(DEFAULT_TENANT_ID.to_string()),
-        scopes: Vec::new(),
+        tenant_id: Some(tenant_id.to_string()),
+        scopes,
         exp: expiration,
     };
 

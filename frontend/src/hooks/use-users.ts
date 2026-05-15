@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getUsers, createUser, deleteUser } from '../api/auth';
+import { getUsers, createUser, deleteUser, setUserRoles } from '../api/auth';
 import type { CreateUserRequest } from '../types/api';
 import { queryKeys } from './query-keys';
 
@@ -27,6 +27,17 @@ export function useDeleteUser() {
     mutationFn: (id: number) => deleteUser(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
+    },
+  });
+}
+
+export function useSetUserRoles() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, roleIds }: { id: number; roleIds: number[] }) => setUserRoles(id, roleIds),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.roles.all });
     },
   });
 }

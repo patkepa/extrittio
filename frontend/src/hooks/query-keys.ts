@@ -42,6 +42,10 @@ export const queryKeys = {
   users: {
     all: ['users'] as const,
   },
+  roles: {
+    all: ['roles'] as const,
+    permissions: ['roles', 'permissions'] as const,
+  },
   certificates: {
     ca: ['ca-certificate'] as const,
     deviceStatusAll: ['device-certificate-status'] as const,

@@ -28,3 +28,8 @@ export async function deleteUser(id: number): Promise<void> {
 export async function changePassword(id: number, password: string): Promise<void> {
   await client.put(`/users/${id}/password`, { password });
 }
+
+export async function setUserRoles(id: number, roleIds: number[]): Promise<AuthUser> {
+  const { data } = await client.put<AuthUser>(`/users/${id}/roles`, { role_ids: roleIds });
+  return data;
+}

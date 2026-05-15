@@ -12,6 +12,7 @@ pub mod firmware_service;
 pub mod fleet_service;
 pub mod log_service;
 pub mod metrics_middleware;
+pub mod role_service;
 pub mod rule_service;
 pub mod server_metrics;
 pub mod shadow_service;

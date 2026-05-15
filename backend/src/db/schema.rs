@@ -221,6 +221,25 @@ diesel::table! {
 }
 
 diesel::table! {
+    role_permissions (role_id, permission) {
+        role_id -> Int4,
+        permission -> Text,
+    }
+}
+
+diesel::table! {
+    roles (id) {
+        id -> Int4,
+        tenant_id -> Text,
+        name -> Text,
+        description -> Nullable<Text>,
+        is_system -> Bool,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     rule_action_outbox (id) {
         id -> Text,
         tenant_id -> Text,
@@ -353,6 +372,15 @@ diesel::table! {
 }
 
 diesel::table! {
+    user_roles (user_id, role_id) {
+        user_id -> Int4,
+        role_id -> Int4,
+        tenant_id -> Text,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     users (id) {
         id -> Int4,
         username -> Text,
@@ -360,6 +388,9 @@ diesel::table! {
         role -> Text,
         created_at -> Timestamptz,
         tenant_id -> Text,
+        is_active -> Bool,
+        permission_version -> Int4,
+        last_login_at -> Nullable<Timestamptz>,
     }
 }
 
@@ -406,6 +437,8 @@ diesel::joinable!(network_observed_hosts -> organizations (tenant_id));
 diesel::joinable!(ota_deployments -> devices (device_id));
 diesel::joinable!(ota_deployments -> firmware_updates (firmware_update_id));
 diesel::joinable!(ota_deployments -> organizations (tenant_id));
+diesel::joinable!(role_permissions -> roles (role_id));
+diesel::joinable!(roles -> organizations (tenant_id));
 diesel::joinable!(rule_action_outbox -> organizations (tenant_id));
 diesel::joinable!(rule_actions -> organizations (tenant_id));
 diesel::joinable!(rule_actions -> rules (rule_id));
@@ -420,6 +453,9 @@ diesel::joinable!(telemetry -> devices (device_id));
 diesel::joinable!(telemetry -> organizations (tenant_id));
 diesel::joinable!(telemetry_rollups_hourly -> devices (device_id));
 diesel::joinable!(telemetry_rollups_hourly -> organizations (tenant_id));
+diesel::joinable!(user_roles -> organizations (tenant_id));
+diesel::joinable!(user_roles -> roles (role_id));
+diesel::joinable!(user_roles -> users (user_id));
 diesel::joinable!(users -> organizations (tenant_id));
 diesel::joinable!(zones -> organizations (tenant_id));
 
@@ -441,6 +477,8 @@ diesel::allow_tables_to_appear_in_same_query!(
     network_observed_hosts,
     organizations,
     ota_deployments,
+    role_permissions,
+    roles,
     rule_action_outbox,
     rule_actions,
     rule_conditions,
@@ -450,6 +488,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     server_metrics,
     telemetry,
     telemetry_rollups_hourly,
+    user_roles,
     users,
     zones,
 );

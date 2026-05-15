@@ -14,9 +14,48 @@ import type { components, operations } from './openapi';
 
 export type LoginRequest = components['schemas']['LoginRequest'];
 export type LoginResponse = components['schemas']['LoginResponse'];
-export type AuthUser = components['schemas']['UserResponse'];
-export type CreateUserRequest = components['schemas']['CreateUserRequest'];
+export interface RoleSummary {
+  id: number;
+  name: string;
+  description?: string | null;
+  is_system: boolean;
+}
+export type AuthUser = components['schemas']['UserResponse'] & {
+  roles?: RoleSummary[];
+  permissions?: string[];
+};
+export type CreateUserRequest = components['schemas']['CreateUserRequest'] & {
+  role_ids?: number[];
+};
 export type ChangePasswordRequest = components['schemas']['ChangePasswordRequest'];
+export interface SetUserRolesRequest {
+  role_ids: number[];
+}
+
+export interface Role {
+  id: number;
+  name: string;
+  description?: string | null;
+  is_system: boolean;
+  permissions: string[];
+  user_count: number;
+}
+
+export interface Permission {
+  key: string;
+}
+
+export interface CreateRoleRequest {
+  name: string;
+  description?: string | null;
+  permissions: string[];
+}
+
+export interface UpdateRoleRequest {
+  name?: string;
+  description?: string | null;
+  permissions?: string[];
+}
 
 // ---------------------------------------------------------------------------
 // Dashboard
