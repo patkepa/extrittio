@@ -82,7 +82,11 @@ RUN npm run build
 # Stage 3: Minimal runtime image (runs on target arch)
 FROM debian:bookworm-slim
 
-RUN apt-get update && apt-get install -y libpq5 ca-certificates && rm -rf /var/lib/apt/lists/*
+ARG EXTRITTIO_VERSION
+ARG EXTRITTIO_COMMIT_SHA
+ARG EXTRITTIO_BUILD_TIMESTAMP
+
+RUN apt-get update && apt-get install -y libpq5 ca-certificates curl && rm -rf /var/lib/apt/lists/*
 
 RUN useradd -r -s /bin/false extrittio
 
@@ -98,6 +102,9 @@ USER extrittio
 ENV PORT=8080
 ENV CORS_ORIGIN=*
 ENV EXTRITTIO_UI_DIR=/app/frontend
+ENV EXTRITTIO_VERSION=$EXTRITTIO_VERSION
+ENV EXTRITTIO_COMMIT_SHA=$EXTRITTIO_COMMIT_SHA
+ENV EXTRITTIO_BUILD_TIMESTAMP=$EXTRITTIO_BUILD_TIMESTAMP
 ENV RUST_LOG=extrittio=info,extrittio_backend=info
 
 EXPOSE 8080

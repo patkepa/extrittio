@@ -48,8 +48,10 @@ pub(crate) enum Command {
     Auth(AuthCommand),
     /// Show or update local CLI configuration.
     Config(ConfigCommand),
-    /// Check backend health.
+    /// Check backend liveness.
     Health,
+    /// Check backend readiness, including database reachability.
+    Ready,
     /// Manage devices.
     Devices(DevicesCommand),
     /// Manage device types.

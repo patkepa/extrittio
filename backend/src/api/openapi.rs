@@ -12,6 +12,8 @@ use utoipa::{Modify, OpenApi};
         // Health
         super::health::health,
         super::health::ready,
+        // System
+        super::system::get_version,
         // Auth
         super::auth_routes::login,
         super::auth_routes::me,
@@ -123,6 +125,8 @@ use utoipa::{Modify, OpenApi};
         // Health
         super::health::HealthResponse,
         super::health::ReadyResponse,
+        // System
+        super::system::SystemVersionResponse,
         // Outbox
         super::outbox::RuleActionOutboxSummaryResponse,
     )),
@@ -143,6 +147,7 @@ use utoipa::{Modify, OpenApi};
         (name = "config", description = "Device configuration"),
         (name = "certificates", description = "TLS certificates"),
         (name = "server-metrics", description = "Server metrics and operational queues"),
+        (name = "system", description = "Runtime system metadata"),
     ),
 )]
 pub struct ApiDoc;

@@ -20,6 +20,7 @@ pub async fn auth_middleware(
     if path == "/api/v1/auth/login"
         || path == "/health"
         || path == "/ready"
+        || path == "/api/v1/system/version"
         || path == "/api/v1/firmware-updates/ci"
         || (request.method() == Method::GET
             && path.starts_with("/api/v1/firmware-updates/")

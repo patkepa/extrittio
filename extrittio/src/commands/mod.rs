@@ -65,6 +65,10 @@ async fn run_api_command(
             let value: Value = client.request(Method::GET, "/health", None, false).await?;
             output(output_format, &value, || "Backend is healthy".to_string())?;
         }
+        Command::Ready => {
+            let value: Value = client.request(Method::GET, "/ready", None, false).await?;
+            output(output_format, &value, || "Backend is ready".to_string())?;
+        }
         Command::Devices(command) => devices::handle(command, output_format, &client).await?,
         Command::DeviceTypes(command) => {
             device_types::handle(command, output_format, &client).await?

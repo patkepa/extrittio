@@ -77,6 +77,8 @@ extrittio --help
 extrittio serve
 extrittio migrate
 extrittio init
+extrittio health
+extrittio ready
 ```
 
 Running `extrittio` with no subcommand defaults to `extrittio serve`. It serves
@@ -92,6 +94,8 @@ cargo run -p extrittio
 cargo run -p extrittio -- serve
 cargo run -p extrittio -- migrate
 cargo run -p extrittio -- init
+cargo run -p extrittio -- health
+cargo run -p extrittio -- ready
 cargo run -p extrittio -- auth login --username admin --password admin
 cargo run -p extrittio -- device-types list
 cargo run -p extrittio -- fleets list
@@ -108,6 +112,9 @@ by default. Override the active connection with `--url`, `--token`,
 
 ## Documentation
 
+- [Server Upgrades](docs/SERVER_UPGRADES.md) - recommended model for versioned
+  self-hosted Extrittio upgrades, migrations, backups, health checks, release
+  manifests, rollback behavior, and future updater tooling.
 - [External Integration Opportunities](docs/INTEGRATIONS.md) - potential services and
   open-source projects to plug into Extrittio around MQTT, observability, SSO,
   analytics, object storage, automation, streaming, OTA, industrial gateways, and
