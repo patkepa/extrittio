@@ -34,12 +34,15 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) {
 
     tokio::spawn(services::server_metrics::run_system_metrics_collector(
         state.db_pool.clone(),
+        config.system_metrics_interval_secs,
     ));
     tokio::spawn(services::server_metrics::run_app_metrics_flusher(
         state.clone(),
+        config.app_metrics_flush_interval_secs,
     ));
     tokio::spawn(services::server_metrics::run_metrics_retention(
         state.db_pool.clone(),
+        config.metrics_retention_hours,
     ));
 
     let checker_pool = state.db_pool.clone();
@@ -53,6 +56,12 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) {
     let retention_days = config.alert_retention_days;
     tokio::spawn(async move {
         background::run_alert_retention(retention_pool, retention_days).await;
+    });
+
+    let log_retention_pool = state.db_pool.clone();
+    let log_retention_days = config.log_retention_days;
+    tokio::spawn(async move {
+        background::run_log_retention(log_retention_pool, log_retention_days).await;
     });
 
     let cmd_timeout_pool = state.db_pool.clone();

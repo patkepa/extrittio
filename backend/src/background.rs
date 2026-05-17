@@ -10,7 +10,7 @@ use crate::rule_engine::actions::enqueue_pending_actions;
 use crate::rule_engine::cache::RuleCache;
 use crate::rule_engine::evaluate::evaluate_status_change;
 use crate::rule_engine::types::{PendingAction, StatusChange};
-use crate::services::{command_service, device_service, telemetry_service};
+use crate::services::{command_service, device_service, log_service, telemetry_service};
 use crate::state::DbPool;
 
 /// Compute a backoff sleep duration based on consecutive failures.
@@ -297,6 +297,69 @@ pub async fn run_alert_retention(db_pool: DbPool, retention_days: u64) {
                     );
                 } else {
                     warn!("Alert retention task panicked: {}", e);
+                }
+            }
+        }
+    }
+}
+
+pub async fn run_log_retention(db_pool: DbPool, retention_days: u64) {
+    let base_interval = Duration::from_secs(3600);
+    let max_backoff = Duration::from_secs(7200);
+    let mut consecutive_failures: u32 = 0;
+    info!("Log retention started ({}d retention)", retention_days);
+
+    loop {
+        let sleep_dur = if consecutive_failures == 0 {
+            base_interval
+        } else {
+            backoff_duration(base_interval, consecutive_failures, max_backoff)
+        };
+        tokio::time::sleep(sleep_dur).await;
+
+        let pool = db_pool.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            let mut conn = pool.get().map_err(|e| e.to_string())?;
+            #[allow(clippy::cast_possible_wrap)]
+            let cutoff =
+                chrono::Utc::now().naive_utc() - chrono::Duration::days(retention_days as i64);
+            log_service::delete_older_than(&mut conn, cutoff).map_err(|e| e.to_string())
+        })
+        .await;
+
+        match result {
+            Ok(Ok(count)) => {
+                consecutive_failures = 0;
+                if count > 0 {
+                    info!("Log retention: deleted {} device log rows", count);
+                }
+            }
+            Ok(Err(msg)) => {
+                consecutive_failures = consecutive_failures.saturating_add(1);
+                if consecutive_failures >= 5 {
+                    tracing::error!(
+                        "Log retention: {} consecutive failures (next retry in {}s): {}",
+                        consecutive_failures,
+                        backoff_duration(base_interval, consecutive_failures, max_backoff)
+                            .as_secs(),
+                        msg,
+                    );
+                } else {
+                    warn!("Log retention error: {}", msg);
+                }
+            }
+            Err(e) => {
+                consecutive_failures = consecutive_failures.saturating_add(1);
+                if consecutive_failures >= 5 {
+                    tracing::error!(
+                        "Log retention: {} consecutive failures (next retry in {}s): task panicked: {}",
+                        consecutive_failures,
+                        backoff_duration(base_interval, consecutive_failures, max_backoff)
+                            .as_secs(),
+                        e,
+                    );
+                } else {
+                    warn!("Log retention task panicked: {}", e);
                 }
             }
         }

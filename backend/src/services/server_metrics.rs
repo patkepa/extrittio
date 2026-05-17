@@ -24,8 +24,14 @@ pub struct MetricsHistoryData {
     pub app_downsampled: Option<Vec<DownsampledAppMetric>>,
 }
 
-/// Sample system-level metrics every 10 seconds and persist to the database.
-pub async fn run_system_metrics_collector(db_pool: DbPool) {
+/// Sample system-level metrics and persist them to the database.
+pub async fn run_system_metrics_collector(db_pool: DbPool, interval_secs: u64) {
+    let interval_secs = interval_secs.max(1);
+    info!(
+        "System metrics collector started ({}s interval)",
+        interval_secs
+    );
+
     let mut sys = System::new_all();
     let mut networks = Networks::new_with_refreshed_list();
     let mut disks = Disks::new_with_refreshed_list();
@@ -33,7 +39,7 @@ pub async fn run_system_metrics_collector(db_pool: DbPool) {
     let mut prev_tx: u64 = networks.iter().map(|(_, n)| n.total_transmitted()).sum();
     let mut first_sample = true;
 
-    let mut tick = interval(Duration::from_secs(10));
+    let mut tick = interval(Duration::from_secs(interval_secs));
     loop {
         tick.tick().await;
 
@@ -106,9 +112,12 @@ pub async fn run_system_metrics_collector(db_pool: DbPool) {
     }
 }
 
-/// Flush accumulated HTTP and Zenoh metrics every 10 seconds.
-pub async fn run_app_metrics_flusher(state: Arc<AppState>) {
-    let mut tick = interval(Duration::from_secs(10));
+/// Flush accumulated HTTP and Zenoh metrics.
+pub async fn run_app_metrics_flusher(state: Arc<AppState>, interval_secs: u64) {
+    let interval_secs = interval_secs.max(1);
+    info!("App metrics flusher started ({}s interval)", interval_secs);
+
+    let mut tick = interval(Duration::from_secs(interval_secs));
     loop {
         tick.tick().await;
 
@@ -153,13 +162,17 @@ pub async fn run_app_metrics_flusher(state: Arc<AppState>) {
     }
 }
 
-/// Delete metrics older than 24 hours, running once per hour.
-pub async fn run_metrics_retention(db_pool: DbPool) {
+/// Delete old metrics rows, running once per hour.
+pub async fn run_metrics_retention(db_pool: DbPool, retention_hours: u64) {
+    let retention_hours = retention_hours.max(1);
+    info!("Metrics retention started ({}h retention)", retention_hours);
+
     let mut tick = interval(Duration::from_secs(3600));
     loop {
         tick.tick().await;
 
-        let cutoff = Utc::now().naive_utc() - chrono::TimeDelta::hours(24);
+        #[allow(clippy::cast_possible_wrap)]
+        let cutoff = Utc::now().naive_utc() - chrono::TimeDelta::hours(retention_hours as i64);
 
         let pool = db_pool.clone();
         let _ = tokio::task::spawn_blocking(move || match pool.get() {

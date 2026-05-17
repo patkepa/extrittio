@@ -18,8 +18,38 @@ function formatBytes(bytes: number): string {
   return `${val.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-function formatRate(bytesPerInterval: number): string {
-  const perSecond = bytesPerInterval / 10;
+type TimedMetric = { recorded_at: string };
+
+function intervalSecondsBetween(later: string, earlier: string): number | null {
+  const diff = (Date.parse(later) - Date.parse(earlier)) / 1000;
+  return Number.isFinite(diff) && diff > 0 ? diff : null;
+}
+
+function currentIntervalSeconds(
+  history: TimedMetric[],
+  currentRecordedAt?: string,
+  fallback = 10,
+): number {
+  const latest = history[history.length - 1];
+  if (currentRecordedAt && latest && currentRecordedAt !== latest.recorded_at) {
+    const diff = intervalSecondsBetween(currentRecordedAt, latest.recorded_at);
+    if (diff) return diff;
+  }
+
+  if (history.length >= 2) {
+    const latestRecord = history[history.length - 1];
+    const previous = history[history.length - 2];
+    if (latestRecord && previous) {
+      const diff = intervalSecondsBetween(latestRecord.recorded_at, previous.recorded_at);
+      if (diff) return diff;
+    }
+  }
+
+  return fallback;
+}
+
+function formatRate(bytesPerInterval: number, intervalSeconds: number): string {
+  const perSecond = bytesPerInterval / intervalSeconds;
   return `${formatBytes(perSecond)}/s`;
 }
 
@@ -93,6 +123,8 @@ export const ServerHealth = () => {
       : 0;
   const dbPoolTotal = app ? app.db_pool_active + app.db_pool_idle : 0;
   const dbPoolPct = dbPoolTotal > 0 ? ((app?.db_pool_active ?? 0) / dbPoolTotal) * 100 : 0;
+  const systemIntervalSeconds = currentIntervalSeconds(sysHistory, system?.recorded_at);
+  const appIntervalSeconds = currentIntervalSeconds(appHistory, app?.recorded_at);
 
   const showLoad =
     system && (system.load_avg_1m !== 0 || system.load_avg_5m !== 0 || system.load_avg_15m !== 0);
@@ -206,8 +238,8 @@ export const ServerHealth = () => {
               <span className="server-metric-label">Network</span>
               <div className="server-metric-value">
                 <span className="server-metric-detail">
-                  RX {formatRate(system?.network_rx_bytes_delta ?? 0)} / TX{' '}
-                  {formatRate(system?.network_tx_bytes_delta ?? 0)}
+                  RX {formatRate(system?.network_rx_bytes_delta ?? 0, systemIntervalSeconds)} / TX{' '}
+                  {formatRate(system?.network_tx_bytes_delta ?? 0, systemIntervalSeconds)}
                 </span>
               </div>
               <div className="server-metric-spark">
@@ -242,7 +274,7 @@ export const ServerHealth = () => {
               <span className="server-metric-label">Requests</span>
               <div className="server-metric-value">
                 <span className="server-metric-detail">
-                  {((app?.request_count ?? 0) / 10).toFixed(1)} req/s
+                  {((app?.request_count ?? 0) / appIntervalSeconds).toFixed(1)} req/s
                 </span>
               </div>
               <div className="server-metric-spark">
@@ -302,8 +334,8 @@ export const ServerHealth = () => {
               <span className="server-metric-label">Zenoh</span>
               <div className="server-metric-value">
                 <span className="server-metric-detail">
-                  in {((app?.zenoh_messages_in ?? 0) / 10).toFixed(1)}/s / out{' '}
-                  {((app?.zenoh_messages_out ?? 0) / 10).toFixed(1)}/s
+                  in {((app?.zenoh_messages_in ?? 0) / appIntervalSeconds).toFixed(1)}/s / out{' '}
+                  {((app?.zenoh_messages_out ?? 0) / appIntervalSeconds).toFixed(1)}/s
                 </span>
               </div>
               <div className="server-metric-spark">

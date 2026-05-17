@@ -68,3 +68,10 @@ pub fn record(
 
     Ok(true)
 }
+
+pub fn delete_older_than(
+    conn: &mut PgConnection,
+    cutoff: NaiveDateTime,
+) -> Result<usize, AppError> {
+    Ok(log_repo::delete_older_than(conn, cutoff)?)
+}

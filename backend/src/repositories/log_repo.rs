@@ -44,3 +44,10 @@ pub fn insert_log(
         .execute(conn)?;
     Ok(())
 }
+
+pub fn delete_older_than(
+    conn: &mut PgConnection,
+    cutoff: NaiveDateTime,
+) -> Result<usize, diesel::result::Error> {
+    diesel::delete(device_logs::table.filter(device_logs::created_at.lt(cutoff))).execute(conn)
+}
