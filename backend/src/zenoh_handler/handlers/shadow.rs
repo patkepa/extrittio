@@ -9,7 +9,7 @@ use extrittio_common::extrittio::{ShadowGet, ShadowReport};
 
 /// Decode a `ShadowReport` protobuf message, merge the reported state into the
 /// device shadow, and update OTA deployment status if applicable.
-pub fn handle_shadow_report(db_pool: &DbPool, payload: &[u8]) {
+pub fn handle_shadow_report(db_pool: &DbPool, topic_device_id: &str, payload: &[u8]) {
     let report = match ShadowReport::decode(payload) {
         Ok(msg) => msg,
         Err(e) => {
@@ -17,6 +17,9 @@ pub fn handle_shadow_report(db_pool: &DbPool, payload: &[u8]) {
             return;
         }
     };
+    if !super::validate_topic_device("shadow report", topic_device_id, &report.device_id) {
+        return;
+    }
 
     let mut conn = match db_pool.get() {
         Ok(c) => c,
@@ -87,6 +90,7 @@ pub fn handle_shadow_report(db_pool: &DbPool, payload: &[u8]) {
 pub async fn handle_shadow_get(
     db_pool: &DbPool,
     session: &Arc<zenoh::Session>,
+    topic_device_id: &str,
     payload: &[u8],
     zenoh_metrics: &ZenohMetrics,
 ) {
@@ -97,6 +101,9 @@ pub async fn handle_shadow_get(
             return;
         }
     };
+    if !super::validate_topic_device("shadow get", topic_device_id, &get_msg.device_id) {
+        return;
+    }
 
     let device_id = get_msg.device_id.clone();
     let pool = db_pool.clone();

@@ -22,6 +22,7 @@ use extrittio_common::extrittio::DeviceTelemetry;
 /// Logs and drops messages from unregistered devices or malformed payloads.
 pub fn handle_telemetry(
     db_pool: &DbPool,
+    topic_device_id: &str,
     payload: &[u8],
     rule_cache: &std::sync::RwLock<RuleCache>,
 ) -> Vec<PendingAction> {
@@ -32,6 +33,9 @@ pub fn handle_telemetry(
             return Vec::new();
         }
     };
+    if !super::validate_topic_device("telemetry", topic_device_id, &telemetry_msg.device_id) {
+        return Vec::new();
+    }
 
     let mut conn = match db_pool.get() {
         Ok(c) => c,

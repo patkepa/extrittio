@@ -29,6 +29,17 @@ pub fn insert_ca_certificate(
         .first(conn)
 }
 
+pub fn update_ca_private_key(
+    conn: &mut PgConnection,
+    ca_id: i32,
+    private_key_pem: &str,
+) -> Result<(), diesel::result::Error> {
+    diesel::update(ca_certificates::table.filter(ca_certificates::id.eq(ca_id)))
+        .set(ca_certificates::private_key_pem.eq(private_key_pem))
+        .execute(conn)?;
+    Ok(())
+}
+
 pub fn get_device_certificate(
     conn: &mut PgConnection,
     device_id: &str,
@@ -64,6 +75,31 @@ pub fn insert_device_certificate(
         .select(DeviceCertificate::as_select())
         .order(device_certificates::id.desc())
         .first(conn)
+}
+
+pub fn list_device_certificates_with_private_keys(
+    conn: &mut PgConnection,
+) -> Result<Vec<DeviceCertificate>, diesel::result::Error> {
+    device_certificates::table
+        .filter(device_certificates::private_key_pem.ne(""))
+        .select(DeviceCertificate::as_select())
+        .load(conn)
+}
+
+pub fn update_device_private_key_for_tenant(
+    conn: &mut PgConnection,
+    tenant_id: &str,
+    cert_id: i32,
+    private_key_pem: &str,
+) -> Result<(), diesel::result::Error> {
+    diesel::update(
+        device_certificates::table
+            .filter(device_certificates::tenant_id.eq(tenant_id))
+            .filter(device_certificates::id.eq(cert_id)),
+    )
+    .set(device_certificates::private_key_pem.eq(private_key_pem))
+    .execute(conn)?;
+    Ok(())
 }
 
 pub fn clear_device_private_key(

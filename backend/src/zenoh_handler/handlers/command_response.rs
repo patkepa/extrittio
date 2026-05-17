@@ -8,7 +8,7 @@ use extrittio_common::extrittio::DeviceCommandResponse;
 
 /// Decode a `DeviceCommandResponse` protobuf message and update the corresponding
 /// command record's status and response payload.
-pub fn handle_command_response(db_pool: &DbPool, payload: &[u8]) {
+pub fn handle_command_response(db_pool: &DbPool, topic_device_id: &str, payload: &[u8]) {
     let response = match DeviceCommandResponse::decode(payload) {
         Ok(msg) => msg,
         Err(e) => {
@@ -16,6 +16,9 @@ pub fn handle_command_response(db_pool: &DbPool, payload: &[u8]) {
             return;
         }
     };
+    if !super::validate_topic_device("command response", topic_device_id, &response.device_id) {
+        return;
+    }
 
     if response.correlation_id.is_empty() {
         warn!("Received command response with empty correlation_id");

@@ -85,7 +85,10 @@ pub fn update_password(
             .filter(users::tenant_id.eq(tenant_id))
             .filter(users::id.eq(id)),
     )
-    .set(users::password_hash.eq(hash))
+    .set((
+        users::password_hash.eq(hash),
+        users::permission_version.eq(users::permission_version + 1),
+    ))
     .execute(conn)?;
     Ok(())
 }

@@ -216,14 +216,7 @@ fn authenticated_user_from_user(
     user: User,
 ) -> Result<AuthenticatedUser, AppError> {
     let roles = role_service::roles_for_user(conn, &user.tenant_id, user.id)?;
-    let mut permissions = role_service::permission_keys_for_user(conn, &user.tenant_id, user.id)?;
-
-    if permissions.is_empty() && matches!(user.role.as_str(), "admin" | "owner") {
-        permissions = Permission::all()
-            .iter()
-            .map(|permission| permission.key().to_string())
-            .collect();
-    }
+    let permissions = role_service::permission_keys_for_user(conn, &user.tenant_id, user.id)?;
 
     let role = primary_role_name(&roles).unwrap_or(&user.role).to_string();
 

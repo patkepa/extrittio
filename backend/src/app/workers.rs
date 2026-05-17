@@ -10,12 +10,16 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) {
     let subscriber_session = state.zenoh_session.clone();
     let subscriber_metrics = state.zenoh_metrics.clone();
     let sub_cache = state.rule_cache.clone();
+    let max_zenoh_payload_size_bytes = config.max_zenoh_payload_size_bytes;
+    let auto_register_devices = config.auto_register_devices;
     tokio::spawn(async move {
         if let Err(e) = zenoh_handler::subscriber::run_subscriber(
             subscriber_session,
             subscriber_pool,
             subscriber_metrics,
             sub_cache,
+            max_zenoh_payload_size_bytes,
+            auto_register_devices,
         )
         .await
         {

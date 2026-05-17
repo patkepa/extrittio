@@ -48,6 +48,7 @@ pub fn create_zone(
     color: String,
 ) -> Result<Zone, AppError> {
     policy::require(ctx, Permission::ManageZones)?;
+    validate_geometry(&geometry_type, &geometry_json)?;
 
     let zone_id = Uuid::new_v4().to_string();
 
@@ -81,7 +82,12 @@ pub fn update_zone(
     policy::require(ctx, Permission::ManageZones)?;
 
     // Verify zone exists first
-    get_zone_for_tenant(conn, ctx.tenant_id_str(), zone_id)?;
+    let existing = get_zone_for_tenant(conn, ctx.tenant_id_str(), zone_id)?;
+    let effective_geometry_type = geometry_type
+        .as_deref()
+        .unwrap_or(existing.geometry_type.as_str());
+    let effective_geometry_json = geometry_json.as_ref().unwrap_or(&existing.geometry_json);
+    validate_geometry(effective_geometry_type, effective_geometry_json)?;
 
     Ok(zone_repo::update_zone(
         conn,
@@ -124,4 +130,65 @@ pub fn delete_zone(
     }
 
     Ok(())
+}
+
+fn validate_geometry(geometry_type: &str, geometry_json: &JsonValue) -> Result<(), AppError> {
+    match geometry_type {
+        "circle" => {
+            let center = geometry_json
+                .get("center")
+                .and_then(JsonValue::as_array)
+                .ok_or_else(|| AppError::BadRequest("Circle geometry requires center".into()))?;
+            if center.len() != 2
+                || !center[0].as_f64().is_some_and(f64::is_finite)
+                || !center[1].as_f64().is_some_and(f64::is_finite)
+            {
+                return Err(AppError::BadRequest(
+                    "Circle center must be [latitude, longitude]".into(),
+                ));
+            }
+            let radius = geometry_json
+                .get("radius_meters")
+                .and_then(JsonValue::as_f64)
+                .ok_or_else(|| {
+                    AppError::BadRequest("Circle geometry requires radius_meters".into())
+                })?;
+            if !radius.is_finite() || radius <= 0.0 {
+                return Err(AppError::BadRequest(
+                    "Circle radius_meters must be a positive number".into(),
+                ));
+            }
+            Ok(())
+        }
+        "polygon" => {
+            let points = geometry_json
+                .get("points")
+                .and_then(JsonValue::as_array)
+                .ok_or_else(|| AppError::BadRequest("Polygon geometry requires points".into()))?;
+            if points.len() < 3 {
+                return Err(AppError::BadRequest(
+                    "Polygon geometry requires at least three points".into(),
+                ));
+            }
+            for point in points {
+                let Some(coords) = point.as_array() else {
+                    return Err(AppError::BadRequest(
+                        "Polygon points must be [latitude, longitude] arrays".into(),
+                    ));
+                };
+                if coords.len() != 2
+                    || !coords[0].as_f64().is_some_and(f64::is_finite)
+                    || !coords[1].as_f64().is_some_and(f64::is_finite)
+                {
+                    return Err(AppError::BadRequest(
+                        "Polygon points must contain finite latitude and longitude values".into(),
+                    ));
+                }
+            }
+            Ok(())
+        }
+        _ => Err(AppError::BadRequest(format!(
+            "Unsupported zone geometry type '{geometry_type}'"
+        ))),
+    }
 }

@@ -5,7 +5,7 @@ use tracing::info;
 
 use crate::config::AppConfig;
 use crate::init;
-use crate::rate_limit::{ApiKeyRateLimiter, RateLimiter};
+use crate::rate_limit::{ApiKeyRateLimiter, RateLimiter, parse_trusted_proxies};
 use crate::services;
 use crate::state::{AppState, MetricsAccumulator, ZenohMetrics};
 
@@ -23,6 +23,8 @@ pub async fn initialize_state(config: &AppConfig) -> anyhow::Result<Arc<AppState
         let secret = init::init_jwt_secret(&mut conn)?;
         init::seed_admin_user(&mut conn)?;
         init::init_ca_certificate(&mut conn)?;
+        services::cert_service::encrypt_stored_private_keys(&mut conn)
+            .context("Failed to encrypt stored certificate private keys")?;
         init::write_tls_certs(&mut conn, &config.certs_dir)?;
         secret
     };
@@ -63,6 +65,7 @@ pub async fn initialize_state(config: &AppConfig) -> anyhow::Result<Arc<AppState
         cookie_secure: config.cookie_secure,
         api_rate_limiter: RateLimiter::new(100, 60),
         login_rate_limiter: RateLimiter::new(5, 60),
+        trusted_proxies: parse_trusted_proxies(&config.trusted_proxies),
         ci_rate_limiter: ApiKeyRateLimiter::new(60, 60),
         metrics_accumulator: MetricsAccumulator::new(),
         zenoh_metrics,

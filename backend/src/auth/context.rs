@@ -55,16 +55,16 @@ impl RequestContext {
 
     #[must_use]
     pub fn is_admin(&self) -> bool {
-        matches!(self.role.as_str(), "admin" | "owner")
+        Permission::all()
+            .iter()
+            .all(|permission| self.permissions.contains(permission))
     }
 
     #[must_use]
     pub fn has_permission(&self, permission: Permission) -> bool {
-        self.is_admin()
-            || self
-                .permissions
-                .iter()
-                .any(|held_permission| super::policy::satisfies(*held_permission, permission))
+        self.permissions
+            .iter()
+            .any(|held_permission| super::policy::satisfies(*held_permission, permission))
     }
 
     #[must_use]

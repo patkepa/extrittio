@@ -20,8 +20,10 @@ use extrittio_common::extrittio::DeviceHeartbeat;
 /// `PendingAction`s for the subscriber to execute asynchronously.
 pub fn handle_heartbeat(
     db_pool: &DbPool,
+    topic_device_id: &str,
     payload: &[u8],
     rule_cache: &std::sync::RwLock<RuleCache>,
+    allow_auto_register: bool,
 ) -> Vec<PendingAction> {
     let heartbeat_msg = match DeviceHeartbeat::decode(payload) {
         Ok(msg) => msg,
@@ -30,6 +32,9 @@ pub fn handle_heartbeat(
             return Vec::new();
         }
     };
+    if !super::validate_topic_device("heartbeat", topic_device_id, &heartbeat_msg.device_id) {
+        return Vec::new();
+    }
 
     let mut conn = match db_pool.get() {
         Ok(c) => c,
@@ -39,15 +44,17 @@ pub fn handle_heartbeat(
         }
     };
 
-    // Auto-register device on first heartbeat (returns None on failure)
-    if device_service::auto_register_device(
-        &mut conn,
-        &heartbeat_msg.device_id,
-        &heartbeat_msg.firmware,
-    )
-    .is_none()
-    {
-        return Vec::new();
+    if allow_auto_register {
+        // Auto-register device on first heartbeat (returns None on failure)
+        if device_service::auto_register_device(
+            &mut conn,
+            &heartbeat_msg.device_id,
+            &heartbeat_msg.firmware,
+        )
+        .is_none()
+        {
+            return Vec::new();
+        }
     }
 
     #[allow(clippy::cast_sign_loss)]

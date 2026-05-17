@@ -1,7 +1,10 @@
+use base64::{Engine as _, engine::general_purpose::STANDARD_NO_PAD};
 use chrono::{Duration, NaiveDateTime, Utc};
 use rcgen::{
     CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa, Issuer, KeyPair, KeyUsagePurpose,
 };
+use ring::aead::{AES_256_GCM, Aad, LessSafeKey, Nonce, UnboundKey};
+use ring::rand::{SecureRandom, SystemRandom};
 use sha2::{Digest, Sha256};
 
 use diesel::PgConnection;
@@ -12,6 +15,9 @@ use crate::db::models::{CaCertificate, DeviceCertificate, NewCaCertificate, NewD
 use crate::error::AppError;
 use crate::repositories::{cert_repo, device_repo};
 use crate::tenancy::DEFAULT_TENANT_ID;
+
+const ENCRYPTED_KEY_PREFIX: &str = "enc:v1:";
+const KEY_ENCRYPTION_SECRET_ENV: &str = "EXTRITTIO_KEY_ENCRYPTION_SECRET";
 
 /// Generate a self-signed root CA certificate (Ed25519, 10-year validity).
 pub fn generate_ca_certificate() -> Result<NewCaCertificate, AppError> {
@@ -40,7 +46,7 @@ pub fn generate_ca_certificate() -> Result<NewCaCertificate, AppError> {
         .map_err(|e| AppError::Internal(format!("Failed to self-sign CA certificate: {e}")))?;
 
     Ok(NewCaCertificate {
-        private_key_pem: key_pair.serialize_pem(),
+        private_key_pem: protect_private_key(&key_pair.serialize_pem())?,
         certificate_pem: ca_cert.pem(),
     })
 }
@@ -61,7 +67,8 @@ pub fn generate_device_certificate_for_tenant(
     device_id: &str,
     ca: &CaCertificate,
 ) -> Result<NewDeviceCertificate, AppError> {
-    let ca_key_pair = KeyPair::from_pem(&ca.private_key_pem)
+    let ca_private_key_pem = unprotect_private_key(&ca.private_key_pem)?;
+    let ca_key_pair = KeyPair::from_pem(&ca_private_key_pem)
         .map_err(|e| AppError::Internal(format!("Failed to parse CA key: {e}")))?;
 
     let issuer = Issuer::from_ca_cert_pem(&ca.certificate_pem, ca_key_pair)
@@ -101,10 +108,12 @@ pub fn generate_device_certificate_for_tenant(
 
     let expires_at: NaiveDateTime = (Utc::now() + Duration::days(365)).naive_utc();
 
+    let device_private_key_pem = device_key_pair.serialize_pem();
+
     Ok(NewDeviceCertificate {
         tenant_id: tenant_id.to_string(),
         device_id: device_id.to_string(),
-        private_key_pem: device_key_pair.serialize_pem(),
+        private_key_pem: protect_private_key(&device_private_key_pem)?,
         certificate_pem: cert_pem,
         fingerprint,
         expires_at,
@@ -113,7 +122,8 @@ pub fn generate_device_certificate_for_tenant(
 
 /// Generate a server certificate signed by the CA for Zenoh TLS.
 pub fn generate_server_certificate(ca: &CaCertificate) -> Result<(String, String), AppError> {
-    let ca_key_pair = KeyPair::from_pem(&ca.private_key_pem)
+    let ca_private_key_pem = unprotect_private_key(&ca.private_key_pem)?;
+    let ca_key_pair = KeyPair::from_pem(&ca_private_key_pem)
         .map_err(|e| AppError::Internal(format!("Failed to parse CA key: {e}")))?;
 
     let issuer = Issuer::from_ca_cert_pem(&ca.certificate_pem, ca_key_pair)
@@ -144,6 +154,35 @@ pub fn generate_server_certificate(ca: &CaCertificate) -> Result<(String, String
         .map_err(|e| AppError::Internal(format!("Failed to sign server certificate: {e}")))?;
 
     Ok((server_cert.pem(), server_key_pair.serialize_pem()))
+}
+
+pub fn encrypt_stored_private_keys(conn: &mut PgConnection) -> Result<(), AppError> {
+    if key_encryption_secret().is_none() {
+        return Ok(());
+    }
+
+    if let Some(ca) = cert_repo::get_ca_certificate(conn)?
+        && !ca.private_key_pem.is_empty()
+        && !is_protected_private_key(&ca.private_key_pem)
+    {
+        let protected = protect_private_key(&ca.private_key_pem)?;
+        cert_repo::update_ca_private_key(conn, ca.id, &protected)?;
+    }
+
+    for cert in cert_repo::list_device_certificates_with_private_keys(conn)? {
+        if is_protected_private_key(&cert.private_key_pem) {
+            continue;
+        }
+        let protected = protect_private_key(&cert.private_key_pem)?;
+        cert_repo::update_device_private_key_for_tenant(
+            conn,
+            &cert.tenant_id,
+            cert.id,
+            &protected,
+        )?;
+    }
+
+    Ok(())
 }
 
 /// Compute SHA-256 fingerprint formatted as colon-separated hex.
@@ -188,8 +227,9 @@ pub fn get_device_certificate_bundle(
         .ok_or_else(|| AppError::Internal("CA certificate not found".into()))?;
 
     let private_key = if !cert.private_key_pem.is_empty() {
+        let private_key_pem = unprotect_private_key(&cert.private_key_pem)?;
         cert_repo::clear_device_private_key_for_tenant(conn, ctx.tenant_id_str(), cert.id)?;
-        Some(cert.private_key_pem.clone())
+        Some(private_key_pem)
     } else {
         None
     };
@@ -246,12 +286,101 @@ pub fn regenerate_device_certificate_bundle(
 
     cert_repo::delete_device_certificates_for_tenant(conn, ctx.tenant_id_str(), device_id)?;
     let new_cert = generate_device_certificate_for_tenant(ctx.tenant_id_str(), device_id, &ca)?;
+    let private_key_pem = unprotect_private_key(&new_cert.private_key_pem)?;
     let cert = cert_repo::insert_device_certificate(conn, &new_cert)?;
     cert_repo::clear_device_private_key_for_tenant(conn, ctx.tenant_id_str(), cert.id)?;
 
     Ok(CertBundle {
         device_cert: cert,
         ca_cert_pem: ca.certificate_pem,
-        private_key_pem: Some(new_cert.private_key_pem),
+        private_key_pem: Some(private_key_pem),
     })
+}
+
+fn key_encryption_secret() -> Option<String> {
+    std::env::var(KEY_ENCRYPTION_SECRET_ENV)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn is_protected_private_key(value: &str) -> bool {
+    value.starts_with(ENCRYPTED_KEY_PREFIX)
+}
+
+fn protect_private_key(private_key_pem: &str) -> Result<String, AppError> {
+    let Some(secret) = key_encryption_secret() else {
+        return Ok(private_key_pem.to_string());
+    };
+
+    let mut nonce_bytes = [0_u8; 12];
+    SystemRandom::new()
+        .fill(&mut nonce_bytes)
+        .map_err(|_| AppError::Internal("Failed to generate private-key nonce".into()))?;
+
+    let key_bytes = key_encryption_key(&secret);
+    let key =
+        LessSafeKey::new(UnboundKey::new(&AES_256_GCM, &key_bytes).map_err(|_| {
+            AppError::Internal("Failed to create private-key encryption key".into())
+        })?);
+
+    let mut encrypted = private_key_pem.as_bytes().to_vec();
+    key.seal_in_place_append_tag(
+        Nonce::assume_unique_for_key(nonce_bytes),
+        Aad::empty(),
+        &mut encrypted,
+    )
+    .map_err(|_| AppError::Internal("Failed to encrypt private key".into()))?;
+
+    Ok(format!(
+        "{ENCRYPTED_KEY_PREFIX}{}:{}",
+        STANDARD_NO_PAD.encode(nonce_bytes),
+        STANDARD_NO_PAD.encode(encrypted)
+    ))
+}
+
+fn unprotect_private_key(stored_value: &str) -> Result<String, AppError> {
+    if !is_protected_private_key(stored_value) {
+        return Ok(stored_value.to_string());
+    }
+
+    let Some(secret) = key_encryption_secret() else {
+        return Err(AppError::Internal(format!(
+            "{KEY_ENCRYPTION_SECRET_ENV} is required to decrypt stored private keys"
+        )));
+    };
+
+    let encrypted = stored_value.trim_start_matches(ENCRYPTED_KEY_PREFIX);
+    let (nonce, ciphertext) = encrypted
+        .split_once(':')
+        .ok_or_else(|| AppError::Internal("Invalid encrypted private-key format".into()))?;
+    let nonce_bytes = STANDARD_NO_PAD
+        .decode(nonce)
+        .map_err(|_| AppError::Internal("Invalid private-key nonce encoding".into()))?;
+    let nonce_bytes: [u8; 12] = nonce_bytes
+        .try_into()
+        .map_err(|_| AppError::Internal("Invalid private-key nonce length".into()))?;
+    let mut ciphertext = STANDARD_NO_PAD
+        .decode(ciphertext)
+        .map_err(|_| AppError::Internal("Invalid private-key ciphertext encoding".into()))?;
+
+    let key_bytes = key_encryption_key(&secret);
+    let key =
+        LessSafeKey::new(UnboundKey::new(&AES_256_GCM, &key_bytes).map_err(|_| {
+            AppError::Internal("Failed to create private-key encryption key".into())
+        })?);
+    let plaintext = key
+        .open_in_place(
+            Nonce::assume_unique_for_key(nonce_bytes),
+            Aad::empty(),
+            &mut ciphertext,
+        )
+        .map_err(|_| AppError::Internal("Failed to decrypt private key".into()))?;
+
+    String::from_utf8(plaintext.to_vec())
+        .map_err(|_| AppError::Internal("Decrypted private key is not UTF-8".into()))
+}
+
+fn key_encryption_key(secret: &str) -> [u8; 32] {
+    Sha256::digest(secret.as_bytes()).into()
 }

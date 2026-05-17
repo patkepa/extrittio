@@ -607,23 +607,31 @@ fn parse_zone_geometry(geometry_type: &str, geometry_json: &Value) -> Result<Zon
     match geometry_type {
         "circle" => {
             let center = geometry_json["center"].as_array().ok_or("Missing center")?;
+            if center.len() != 2 {
+                return Err("Circle center must have two coordinates".into());
+            }
             Ok(ZoneGeometry::Circle {
-                center_lat: center[0].as_f64().unwrap_or(0.0),
-                center_lon: center[1].as_f64().unwrap_or(0.0),
-                radius_meters: geometry_json["radius_meters"].as_f64().unwrap_or(0.0),
+                center_lat: center[0].as_f64().ok_or("Invalid center latitude")?,
+                center_lon: center[1].as_f64().ok_or("Invalid center longitude")?,
+                radius_meters: geometry_json["radius_meters"]
+                    .as_f64()
+                    .ok_or("Invalid radius_meters")?,
             })
         }
         "polygon" => {
             let points = geometry_json["points"].as_array().ok_or("Missing points")?;
-            Ok(ZoneGeometry::Polygon {
-                points: points
-                    .iter()
-                    .map(|p| {
-                        let a = p.as_array().unwrap();
-                        (a[0].as_f64().unwrap_or(0.0), a[1].as_f64().unwrap_or(0.0))
-                    })
-                    .collect(),
-            })
+            let mut parsed = Vec::with_capacity(points.len());
+            for point in points {
+                let coords = point.as_array().ok_or("Invalid polygon point")?;
+                if coords.len() != 2 {
+                    return Err("Polygon point must have two coordinates".into());
+                }
+                parsed.push((
+                    coords[0].as_f64().ok_or("Invalid point latitude")?,
+                    coords[1].as_f64().ok_or("Invalid point longitude")?,
+                ));
+            }
+            Ok(ZoneGeometry::Polygon { points: parsed })
         }
         _ => Err(format!("Unknown geometry type: {}", geometry_type)),
     }

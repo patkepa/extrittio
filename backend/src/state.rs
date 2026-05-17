@@ -6,10 +6,12 @@ use std::sync::RwLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::error::AppError;
-use crate::rate_limit::{ApiKeyRateLimiter, RateLimiter};
+use crate::rate_limit::{ApiKeyRateLimiter, RateLimiter, TrustedProxy};
 use crate::rule_engine::cache::RuleCache;
 
 pub type DbPool = Pool<ConnectionManager<PgConnection>>;
+
+const MAX_LATENCY_SAMPLES_PER_FLUSH: usize = 10_000;
 
 /// Tracks Zenoh message counts. Shared between subscriber, services, and metrics flush.
 pub struct ZenohMetrics {
@@ -52,7 +54,9 @@ impl MetricsAccumulator {
         if is_error {
             self.error_count.fetch_add(1, Ordering::Relaxed);
         }
-        if let Ok(mut samples) = self.latency_samples.lock() {
+        if let Ok(mut samples) = self.latency_samples.try_lock()
+            && samples.len() < MAX_LATENCY_SAMPLES_PER_FLUSH
+        {
             samples.push(latency_micros);
         }
     }
@@ -81,6 +85,7 @@ pub struct AppState {
     pub cookie_secure: bool,
     pub api_rate_limiter: RateLimiter,
     pub login_rate_limiter: RateLimiter,
+    pub trusted_proxies: Vec<TrustedProxy>,
     pub ci_rate_limiter: ApiKeyRateLimiter,
     pub metrics_accumulator: MetricsAccumulator,
     pub zenoh_metrics: Arc<ZenohMetrics>,

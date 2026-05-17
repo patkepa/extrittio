@@ -30,7 +30,10 @@ pub async fn run_subscriber(
     db_pool: DbPool,
     zenoh_metrics: Arc<ZenohMetrics>,
     rule_cache: Arc<RwLock<RuleCache>>,
+    max_payload_size_bytes: usize,
+    allow_auto_register: bool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    use extrittio_common::topics;
     use extrittio_common::topics::patterns;
 
     let telemetry_sub = session.declare_subscriber(patterns::TELEMETRY).await?;
@@ -59,11 +62,24 @@ pub async fn run_subscriber(
         loop {
             match heartbeat_sub.recv_async().await {
                 Ok(sample) => {
-                    let payload = sample.payload().to_bytes().to_vec();
+                    let Some((topic_device_id, payload)) = accept_sample(
+                        &sample,
+                        topics::heartbeat_device_id,
+                        max_payload_size_bytes,
+                        "heartbeat",
+                    ) else {
+                        continue;
+                    };
                     let pool = heartbeat_pool.clone();
                     let cache = heartbeat_cache.clone();
                     let result = tokio::task::spawn_blocking(move || {
-                        handlers::heartbeat::handle_heartbeat(&pool, &payload, &cache)
+                        handlers::heartbeat::handle_heartbeat(
+                            &pool,
+                            &topic_device_id,
+                            &payload,
+                            &cache,
+                            allow_auto_register,
+                        )
                     })
                     .await;
                     heartbeat_metrics
@@ -89,10 +105,17 @@ pub async fn run_subscriber(
         loop {
             match shadow_report_sub.recv_async().await {
                 Ok(sample) => {
-                    let payload = sample.payload().to_bytes().to_vec();
+                    let Some((topic_device_id, payload)) = accept_sample(
+                        &sample,
+                        topics::shadow_report_device_id,
+                        max_payload_size_bytes,
+                        "shadow report",
+                    ) else {
+                        continue;
+                    };
                     let pool = shadow_report_pool.clone();
                     let _ = tokio::task::spawn_blocking(move || {
-                        handlers::shadow::handle_shadow_report(&pool, &payload);
+                        handlers::shadow::handle_shadow_report(&pool, &topic_device_id, &payload);
                     })
                     .await;
                     shadow_report_metrics
@@ -115,10 +138,18 @@ pub async fn run_subscriber(
         loop {
             match shadow_get_sub.recv_async().await {
                 Ok(sample) => {
-                    let payload = sample.payload().to_bytes().to_vec();
+                    let Some((topic_device_id, payload)) = accept_sample(
+                        &sample,
+                        topics::shadow_get_device_id,
+                        max_payload_size_bytes,
+                        "shadow get",
+                    ) else {
+                        continue;
+                    };
                     handlers::shadow::handle_shadow_get(
                         &shadow_get_pool,
                         &shadow_get_session,
+                        &topic_device_id,
                         &payload,
                         &shadow_get_metrics,
                     )
@@ -142,10 +173,17 @@ pub async fn run_subscriber(
         loop {
             match log_sub.recv_async().await {
                 Ok(sample) => {
-                    let payload = sample.payload().to_bytes().to_vec();
+                    let Some((topic_device_id, payload)) = accept_sample(
+                        &sample,
+                        topics::logs_device_id,
+                        max_payload_size_bytes,
+                        "device log",
+                    ) else {
+                        continue;
+                    };
                     let pool = log_pool.clone();
                     let _ = tokio::task::spawn_blocking(move || {
-                        handlers::log::handle_device_log(&pool, &payload);
+                        handlers::log::handle_device_log(&pool, &topic_device_id, &payload);
                     })
                     .await;
                     log_metrics.messages_in.fetch_add(1, Ordering::Relaxed);
@@ -165,10 +203,21 @@ pub async fn run_subscriber(
         loop {
             match cmd_response_sub.recv_async().await {
                 Ok(sample) => {
-                    let payload = sample.payload().to_bytes().to_vec();
+                    let Some((topic_device_id, payload)) = accept_sample(
+                        &sample,
+                        topics::commands_response_device_id,
+                        max_payload_size_bytes,
+                        "command response",
+                    ) else {
+                        continue;
+                    };
                     let pool = cmd_response_pool.clone();
                     let _ = tokio::task::spawn_blocking(move || {
-                        handlers::command_response::handle_command_response(&pool, &payload);
+                        handlers::command_response::handle_command_response(
+                            &pool,
+                            &topic_device_id,
+                            &payload,
+                        );
                     })
                     .await;
                     cmd_response_metrics
@@ -187,11 +236,18 @@ pub async fn run_subscriber(
     loop {
         match telemetry_sub.recv_async().await {
             Ok(sample) => {
-                let payload = sample.payload().to_bytes().to_vec();
+                let Some((topic_device_id, payload)) = accept_sample(
+                    &sample,
+                    topics::telemetry_device_id,
+                    max_payload_size_bytes,
+                    "telemetry",
+                ) else {
+                    continue;
+                };
                 let pool = db_pool.clone();
                 let cache = rule_cache.clone();
                 let result = tokio::task::spawn_blocking(move || {
-                    handlers::telemetry::handle_telemetry(&pool, &payload, &cache)
+                    handlers::telemetry::handle_telemetry(&pool, &topic_device_id, &payload, &cache)
                 })
                 .await;
                 zenoh_metrics.messages_in.fetch_add(1, Ordering::Relaxed);
@@ -208,6 +264,29 @@ pub async fn run_subscriber(
     }
 
     Ok(())
+}
+
+fn accept_sample<'a>(
+    sample: &'a zenoh::sample::Sample,
+    topic_device_id: impl Fn(&'a str) -> Option<&'a str>,
+    max_payload_size_bytes: usize,
+    label: &str,
+) -> Option<(String, Vec<u8>)> {
+    let topic = sample.key_expr().as_str();
+    let Some(device_id) = topic_device_id(topic) else {
+        warn!("{label} sample arrived on invalid topic `{topic}`; dropping message");
+        return None;
+    };
+
+    let payload_len = sample.payload().len();
+    if payload_len > max_payload_size_bytes {
+        warn!(
+            "{label} sample for device {device_id} exceeded payload limit: {payload_len} > {max_payload_size_bytes}; dropping message"
+        );
+        return None;
+    }
+
+    Some((device_id.to_string(), sample.payload().to_bytes().to_vec()))
 }
 
 async fn enqueue_actions(db_pool: DbPool, actions: Vec<PendingAction>, source: &'static str) {

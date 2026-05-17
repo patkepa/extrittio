@@ -100,11 +100,12 @@ RUN mkdir -p /app/certs && chown -R extrittio:extrittio /app
 USER extrittio
 
 ENV PORT=8080
-ENV CORS_ORIGIN=*
+ENV CORS_ORIGIN=http://localhost:8080
 ENV EXTRITTIO_UI_DIR=/app/frontend
 ENV EXTRITTIO_VERSION=$EXTRITTIO_VERSION
 ENV EXTRITTIO_COMMIT_SHA=$EXTRITTIO_COMMIT_SHA
 ENV EXTRITTIO_BUILD_TIMESTAMP=$EXTRITTIO_BUILD_TIMESTAMP
+ENV MALLOC_CONF=background_thread:true,dirty_decay_ms:5000,muzzy_decay_ms:5000
 ENV RUST_LOG=extrittio=info,extrittio_backend=info
 
 EXPOSE 8080

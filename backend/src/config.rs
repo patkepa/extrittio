@@ -17,6 +17,7 @@ const RPI_SYSTEM_METRICS_INTERVAL_SECS: u64 = 60;
 const DEFAULT_APP_METRICS_FLUSH_INTERVAL_SECS: u64 = 10;
 const RPI_APP_METRICS_FLUSH_INTERVAL_SECS: u64 = 60;
 const DEFAULT_METRICS_RETENTION_HOURS: u64 = 24;
+const DEFAULT_ZENOH_MAX_PAYLOAD_KB: usize = 256;
 
 pub struct AppConfig {
     pub rpi_mode: bool,
@@ -42,6 +43,9 @@ pub struct AppConfig {
     pub ui_dir: Option<PathBuf>,
     pub enable_api_docs: bool,
     pub cookie_secure: bool,
+    pub max_zenoh_payload_size_bytes: usize,
+    pub auto_register_devices: bool,
+    pub trusted_proxies: Vec<String>,
 }
 
 impl AppConfig {
@@ -66,6 +70,8 @@ impl AppConfig {
         let zenoh_tls_enabled = env_bool(&read_env, "ZENOH_TLS_ENABLED").unwrap_or(false);
         let cookie_secure = env_bool(&read_env, "EXTRITTIO_COOKIE_SECURE")
             .unwrap_or_else(|| public_url.starts_with("https://"));
+        let max_zenoh_payload_kb: usize =
+            env_parse(&read_env, "ZENOH_MAX_PAYLOAD_KB").unwrap_or(DEFAULT_ZENOH_MAX_PAYLOAD_KB);
 
         Self {
             rpi_mode,
@@ -93,13 +99,8 @@ impl AppConfig {
             certs_dir: read_env("EXTRITTIO_CERTS_DIR").unwrap_or_else(|| "./certs".to_string()),
             zenoh_tls_enabled,
             zenoh_tls_port: env_parse(&read_env, "ZENOH_TLS_PORT").unwrap_or(7447),
-            zenoh_listen_host: read_env("ZENOH_LISTEN_HOST").unwrap_or_else(|| {
-                if zenoh_tls_enabled {
-                    "0.0.0.0".to_string()
-                } else {
-                    "127.0.0.1".to_string()
-                }
-            }),
+            zenoh_listen_host: read_env("ZENOH_LISTEN_HOST")
+                .unwrap_or_else(|| "127.0.0.1".to_string()),
             db_pool_size: env_parse(&read_env, "DB_POOL_SIZE").unwrap_or(if rpi_mode {
                 RPI_DB_POOL_SIZE
             } else {
@@ -146,8 +147,28 @@ impl AppConfig {
             ui_dir: read_env("EXTRITTIO_UI_DIR").map(PathBuf::from),
             enable_api_docs: env_bool(&read_env, "EXTRITTIO_ENABLE_API_DOCS").unwrap_or(false),
             cookie_secure,
+            max_zenoh_payload_size_bytes: max_zenoh_payload_kb.saturating_mul(1024),
+            auto_register_devices: env_bool(&read_env, "EXTRITTIO_AUTO_REGISTER_DEVICES")
+                .unwrap_or(false),
+            trusted_proxies: csv_env(&read_env, "EXTRITTIO_TRUSTED_PROXIES"),
         }
     }
+}
+
+fn csv_env<F>(read_env: &F, key: &str) -> Vec<String>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    read_env(key)
+        .map(|value| {
+            value
+                .split(',')
+                .map(str::trim)
+                .filter(|item| !item.is_empty())
+                .map(ToString::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn env_parse<F, T>(read_env: &F, key: &str) -> Option<T>
@@ -195,6 +216,13 @@ mod tests {
         assert_eq!(config.system_metrics_interval_secs, 10);
         assert_eq!(config.app_metrics_flush_interval_secs, 10);
         assert_eq!(config.metrics_retention_hours, 24);
+        assert_eq!(config.zenoh_listen_host, "127.0.0.1");
+        assert_eq!(
+            config.max_zenoh_payload_size_bytes,
+            super::DEFAULT_ZENOH_MAX_PAYLOAD_KB * 1024
+        );
+        assert!(!config.auto_register_devices);
+        assert!(config.trusted_proxies.is_empty());
     }
 
     #[test]
@@ -225,6 +253,9 @@ mod tests {
             ("SYSTEM_METRICS_INTERVAL_SECS", "300"),
             ("APP_METRICS_FLUSH_INTERVAL_SECS", "120"),
             ("METRICS_RETENTION_HOURS", "6"),
+            ("ZENOH_MAX_PAYLOAD_KB", "512"),
+            ("EXTRITTIO_AUTO_REGISTER_DEVICES", "true"),
+            ("EXTRITTIO_TRUSTED_PROXIES", "127.0.0.1, 172.30.0.3"),
         ]);
 
         assert_eq!(config.db_pool_size, 2);
@@ -235,5 +266,11 @@ mod tests {
         assert_eq!(config.system_metrics_interval_secs, 300);
         assert_eq!(config.app_metrics_flush_interval_secs, 120);
         assert_eq!(config.metrics_retention_hours, 6);
+        assert_eq!(config.max_zenoh_payload_size_bytes, 512 * 1024);
+        assert!(config.auto_register_devices);
+        assert_eq!(
+            config.trusted_proxies,
+            vec!["127.0.0.1".to_string(), "172.30.0.3".to_string()]
+        );
     }
 }

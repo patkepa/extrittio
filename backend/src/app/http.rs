@@ -7,9 +7,11 @@ use std::{
 use anyhow::Context;
 use axum::{
     Extension, Router,
-    body::Body,
-    http::{StatusCode, Uri, header},
+    body::{Body, Bytes},
+    extract::Request,
+    http::{HeaderName, HeaderValue, StatusCode, Uri, header},
     middleware as axum_middleware,
+    middleware::Next,
     response::{IntoResponse, Response},
 };
 use tower_http::cors::{Any, CorsLayer};
@@ -57,7 +59,7 @@ pub async fn serve(config: &AppConfig, state: Arc<AppState>) -> anyhow::Result<(
         ))
         .layer(cors)
         .with_state(state);
-    let app = attach_frontend_ui(app, config);
+    let app = attach_frontend_ui(app, config).layer(axum_middleware::from_fn(security_headers));
 
     let addr: std::net::SocketAddr = format!("0.0.0.0:{}", config.port)
         .parse()
@@ -95,10 +97,49 @@ pub async fn serve(config: &AppConfig, state: Arc<AppState>) -> anyhow::Result<(
     Ok(())
 }
 
+async fn security_headers(request: Request, next: Next) -> Response {
+    let mut response = next.run(request).await;
+    let headers = response.headers_mut();
+
+    headers.insert(
+        header::STRICT_TRANSPORT_SECURITY,
+        HeaderValue::from_static("max-age=31536000; includeSubDomains"),
+    );
+    headers.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+    headers.insert(
+        header::REFERRER_POLICY,
+        HeaderValue::from_static("strict-origin-when-cross-origin"),
+    );
+    headers.insert(
+        HeaderName::from_static("permissions-policy"),
+        HeaderValue::from_static("camera=(), microphone=(), geolocation=()"),
+    );
+
+    let is_html = headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.starts_with("text/html"));
+    if is_html {
+        headers.insert(
+            header::CONTENT_SECURITY_POLICY,
+            HeaderValue::from_static(
+                "default-src 'self'; connect-src 'self'; img-src 'self' data: https://*.tile.openstreetmap.org; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+            ),
+        );
+    }
+
+    response
+}
+
 #[derive(Clone)]
 struct FrontendUi {
     root: PathBuf,
     index: PathBuf,
+    index_html: Bytes,
 }
 
 fn attach_frontend_ui(app: Router, config: &AppConfig) -> Router {
@@ -115,10 +156,21 @@ fn attach_frontend_ui(app: Router, config: &AppConfig) -> Router {
     };
 
     let index = root.join("index.html");
+    let index_html = match std::fs::read(&index) {
+        Ok(bytes) => Bytes::from(bytes),
+        Err(e) => {
+            warn!("Frontend UI index could not be read: {}", e);
+            return app;
+        }
+    };
     info!("Serving frontend UI from {}", root.display());
 
     app.fallback(spa_fallback)
-        .layer(Extension(Arc::new(FrontendUi { root, index })))
+        .layer(Extension(Arc::new(FrontendUi {
+            root,
+            index,
+            index_html,
+        })))
 }
 
 fn resolve_ui_dir(config: &AppConfig) -> Option<PathBuf> {
@@ -167,6 +219,14 @@ async fn spa_fallback(
         return Err(StatusCode::BAD_REQUEST);
     };
 
+    if is_index_path(&relative_path) {
+        return Ok(static_response(
+            &ui.index,
+            Body::from(ui.index_html.clone()),
+            HeaderValue::from_static("no-cache"),
+        ));
+    }
+
     let requested_path = ui.root.join(&relative_path);
     let file_path = if tokio::fs::metadata(&requested_path)
         .await
@@ -175,7 +235,11 @@ async fn spa_fallback(
     {
         requested_path
     } else if relative_path.extension().is_none() {
-        ui.index.clone()
+        return Ok(static_response(
+            &ui.index,
+            Body::from(ui.index_html.clone()),
+            HeaderValue::from_static("no-cache"),
+        ));
     } else {
         return Err(StatusCode::NOT_FOUND);
     };
@@ -183,10 +247,31 @@ async fn spa_fallback(
     let bytes = tokio::fs::read(&file_path)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
-    Ok(Response::builder()
-        .header(header::CONTENT_TYPE, content_type(&file_path))
-        .body(Body::from(bytes))
-        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response()))
+    Ok(static_response(
+        &file_path,
+        Body::from(bytes),
+        cache_control_for_path(&relative_path),
+    ))
+}
+
+fn is_index_path(path: &Path) -> bool {
+    path == Path::new("index.html")
+}
+
+fn cache_control_for_path(path: &Path) -> HeaderValue {
+    if path.starts_with("assets") {
+        HeaderValue::from_static("public, max-age=31536000, immutable")
+    } else {
+        HeaderValue::from_static("no-cache")
+    }
+}
+
+fn static_response(file_path: &Path, body: Body, cache_control: HeaderValue) -> Response {
+    Response::builder()
+        .header(header::CONTENT_TYPE, content_type(file_path))
+        .header(header::CACHE_CONTROL, cache_control)
+        .body(body)
+        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
 fn is_backend_reserved_path(path: &str) -> bool {

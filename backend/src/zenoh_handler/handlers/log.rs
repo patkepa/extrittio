@@ -9,7 +9,7 @@ use extrittio_common::extrittio::DeviceLog;
 /// Decode a `DeviceLog` protobuf message and insert it into the database.
 ///
 /// Logs and drops messages from unregistered devices or malformed payloads.
-pub fn handle_device_log(db_pool: &DbPool, payload: &[u8]) {
+pub fn handle_device_log(db_pool: &DbPool, topic_device_id: &str, payload: &[u8]) {
     let log_msg = match DeviceLog::decode(payload) {
         Ok(msg) => msg,
         Err(e) => {
@@ -17,6 +17,9 @@ pub fn handle_device_log(db_pool: &DbPool, payload: &[u8]) {
             return;
         }
     };
+    if !super::validate_topic_device("device log", topic_device_id, &log_msg.device_id) {
+        return;
+    }
 
     let mut conn = match db_pool.get() {
         Ok(c) => c,

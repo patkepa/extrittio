@@ -24,6 +24,17 @@ pub use crate::repositories::device_repo::DeviceWithJoins;
 const NETWORK_ANALYZER_DEVICE_TYPE: &str = "network-analyzer";
 const NETWORK_OBSERVED_HOST_RETENTION_DAYS: i64 = 30;
 
+fn validate_device_id(device_id: &str) -> Result<(), AppError> {
+    if extrittio_common::topics::is_valid_device_id(device_id) {
+        Ok(())
+    } else {
+        Err(AppError::BadRequest(
+            "Device ID must be 1-128 characters and contain only letters, numbers, '-', '_', '.', or ':'"
+                .into(),
+        ))
+    }
+}
+
 fn is_network_analyzer_device(
     device: &crate::db::models::Device,
     device_type: &crate::db::models::DeviceType,
@@ -143,6 +154,7 @@ pub fn create_device(
     new_device: &NewDevice,
 ) -> Result<(), AppError> {
     policy::require(ctx, Permission::ManageDevices)?;
+    validate_device_id(&new_device.id)?;
 
     conn.transaction(|conn| {
         device_repo::insert_device(conn, new_device)?;
@@ -193,6 +205,14 @@ pub fn auto_register_device(
     device_id: &str,
     firmware: &str,
 ) -> Option<bool> {
+    if let Err(e) = validate_device_id(device_id) {
+        warn!(
+            "Dropping heartbeat with invalid device ID '{}': {}",
+            device_id, e
+        );
+        return None;
+    }
+
     match device_repo::device_exists(conn, device_id) {
         Ok(true) => return Some(false),
         Ok(false) => {}
