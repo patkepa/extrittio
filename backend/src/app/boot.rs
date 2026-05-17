@@ -38,6 +38,7 @@ pub async fn initialize_state(config: &AppConfig) -> anyhow::Result<Arc<AppState
 
     let http_client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(5))
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .context("Failed to create HTTP client")?;
 
@@ -45,6 +46,7 @@ pub async fn initialize_state(config: &AppConfig) -> anyhow::Result<Arc<AppState
         init::open_zenoh_session(
             config.zenoh_tls_enabled,
             config.zenoh_tls_port,
+            &config.zenoh_listen_host,
             &config.certs_dir,
         )
         .await?,
@@ -58,6 +60,7 @@ pub async fn initialize_state(config: &AppConfig) -> anyhow::Result<Arc<AppState
         zenoh_session,
         jwt_secret,
         public_url: config.public_url.clone(),
+        cookie_secure: config.cookie_secure,
         api_rate_limiter: RateLimiter::new(100, 60),
         login_rate_limiter: RateLimiter::new(5, 60),
         ci_rate_limiter: ApiKeyRateLimiter::new(60, 60),

@@ -29,6 +29,7 @@ pub struct AppConfig {
     pub certs_dir: String,
     pub zenoh_tls_enabled: bool,
     pub zenoh_tls_port: u16,
+    pub zenoh_listen_host: String,
     pub db_pool_size: u32,
     pub max_firmware_size_bytes: usize,
     pub alert_retention_days: u64,
@@ -39,6 +40,8 @@ pub struct AppConfig {
     pub metrics_retention_hours: u64,
     pub serve_ui: bool,
     pub ui_dir: Option<PathBuf>,
+    pub enable_api_docs: bool,
+    pub cookie_secure: bool,
 }
 
 impl AppConfig {
@@ -60,6 +63,9 @@ impl AppConfig {
             .unwrap_or_else(|| format!("http://localhost:{port}"))
             .trim_end_matches('/')
             .to_string();
+        let zenoh_tls_enabled = env_bool(&read_env, "ZENOH_TLS_ENABLED").unwrap_or(false);
+        let cookie_secure = env_bool(&read_env, "EXTRITTIO_COOKIE_SECURE")
+            .unwrap_or_else(|| public_url.starts_with("https://"));
 
         Self {
             rpi_mode,
@@ -85,8 +91,15 @@ impl AppConfig {
                 },
             ),
             certs_dir: read_env("EXTRITTIO_CERTS_DIR").unwrap_or_else(|| "./certs".to_string()),
-            zenoh_tls_enabled: env_bool(&read_env, "ZENOH_TLS_ENABLED").unwrap_or(false),
+            zenoh_tls_enabled,
             zenoh_tls_port: env_parse(&read_env, "ZENOH_TLS_PORT").unwrap_or(7447),
+            zenoh_listen_host: read_env("ZENOH_LISTEN_HOST").unwrap_or_else(|| {
+                if zenoh_tls_enabled {
+                    "0.0.0.0".to_string()
+                } else {
+                    "127.0.0.1".to_string()
+                }
+            }),
             db_pool_size: env_parse(&read_env, "DB_POOL_SIZE").unwrap_or(if rpi_mode {
                 RPI_DB_POOL_SIZE
             } else {
@@ -131,6 +144,8 @@ impl AppConfig {
                 .unwrap_or(DEFAULT_METRICS_RETENTION_HOURS),
             serve_ui: env_bool(&read_env, "EXTRITTIO_SERVE_UI").unwrap_or(true),
             ui_dir: read_env("EXTRITTIO_UI_DIR").map(PathBuf::from),
+            enable_api_docs: env_bool(&read_env, "EXTRITTIO_ENABLE_API_DOCS").unwrap_or(false),
+            cookie_secure,
         }
     }
 }

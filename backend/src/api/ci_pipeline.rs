@@ -11,6 +11,7 @@ use utoipa::ToSchema;
 
 use crate::api_key_util;
 use crate::error::AppError;
+use crate::security;
 use crate::services::ci_pipeline_service::{self, CiIngestParams};
 use crate::state::{AppState, run_db};
 
@@ -69,11 +70,20 @@ async fn ci_ingest(
     }
 
     // 3. Validate required fields
-    if body.artifact_url.is_empty()
-        || (!body.artifact_url.starts_with("http://") && !body.artifact_url.starts_with("https://"))
+    if body.artifact_url.is_empty() {
+        return Err(AppError::UnprocessableEntity(
+            "artifact_url must be a valid HTTPS URL".into(),
+        ));
+    }
+    security::validate_public_https_url(&body.artifact_url, "artifact_url")
+        .map_err(|e| AppError::UnprocessableEntity(e.to_string()))?;
+    if !body
+        .sha256
+        .as_deref()
+        .is_some_and(|hash| hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit()))
     {
         return Err(AppError::UnprocessableEntity(
-            "artifact_url must be a valid http:// or https:// URL".into(),
+            "sha256 is required and must be a 64-character hex digest".into(),
         ));
     }
 

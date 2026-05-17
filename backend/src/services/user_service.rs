@@ -10,6 +10,8 @@ use crate::error::AppError;
 use crate::repositories::{role_repo, user_repo};
 use crate::services::role_service;
 
+pub const MIN_PASSWORD_LEN: usize = 12;
+
 #[derive(Debug, Clone)]
 pub struct UserWithRoles {
     pub user: User,
@@ -58,11 +60,7 @@ pub fn create(
     if username.trim().is_empty() {
         return Err(AppError::BadRequest("Username must not be empty".into()));
     }
-    if password.len() < 4 {
-        return Err(AppError::BadRequest(
-            "Password must be at least 4 characters".into(),
-        ));
-    }
+    validate_password(password)?;
 
     let tenant_id = ctx.tenant_id_str().to_string();
     conn.transaction(|conn| {
@@ -98,11 +96,7 @@ pub fn change_password(
 ) -> Result<(), AppError> {
     policy::require(ctx, Permission::ManageUsers)?;
 
-    if new_password.len() < 4 {
-        return Err(AppError::BadRequest(
-            "Password must be at least 4 characters".into(),
-        ));
-    }
+    validate_password(new_password)?;
 
     user_repo::find_user_by_id(conn, ctx.tenant_id_str(), user_id)?;
 
@@ -242,6 +236,27 @@ fn authenticated_user_from_user(
         permissions,
         permission_version: user.permission_version,
     })
+}
+
+pub fn validate_password(password: &str) -> Result<(), AppError> {
+    if password.len() < MIN_PASSWORD_LEN {
+        return Err(AppError::BadRequest(format!(
+            "Password must be at least {MIN_PASSWORD_LEN} characters"
+        )));
+    }
+
+    let has_lower = password.chars().any(|c| c.is_ascii_lowercase());
+    let has_upper = password.chars().any(|c| c.is_ascii_uppercase());
+    let has_digit = password.chars().any(|c| c.is_ascii_digit());
+    let has_symbol = password.chars().any(|c| !c.is_ascii_alphanumeric());
+
+    if !(has_lower && has_upper && has_digit && has_symbol) {
+        return Err(AppError::BadRequest(
+            "Password must include lowercase, uppercase, number, and symbol characters".into(),
+        ));
+    }
+
+    Ok(())
 }
 
 fn resolve_roles_for_new_user(

@@ -232,11 +232,11 @@ pub fn get_ca_certificate_for_request(
 }
 
 /// Delete old certificates and generate a new one.
-pub fn regenerate_device_certificate(
+pub fn regenerate_device_certificate_bundle(
     ctx: &RequestContext,
     conn: &mut PgConnection,
     device_id: &str,
-) -> Result<DeviceCertificate, AppError> {
+) -> Result<CertBundle, AppError> {
     policy::require(ctx, Permission::ManageDevices)?;
 
     device_repo::find_device_for_tenant(conn, ctx.tenant_id_str(), device_id)?;
@@ -246,5 +246,12 @@ pub fn regenerate_device_certificate(
 
     cert_repo::delete_device_certificates_for_tenant(conn, ctx.tenant_id_str(), device_id)?;
     let new_cert = generate_device_certificate_for_tenant(ctx.tenant_id_str(), device_id, &ca)?;
-    Ok(cert_repo::insert_device_certificate(conn, &new_cert)?)
+    let cert = cert_repo::insert_device_certificate(conn, &new_cert)?;
+    cert_repo::clear_device_private_key_for_tenant(conn, ctx.tenant_id_str(), cert.id)?;
+
+    Ok(CertBundle {
+        device_cert: cert,
+        ca_cert_pem: ca.certificate_pem,
+        private_key_pem: Some(new_cert.private_key_pem),
+    })
 }

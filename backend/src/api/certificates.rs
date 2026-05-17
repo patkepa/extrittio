@@ -151,18 +151,18 @@ pub(crate) async fn regenerate_device_certificate(
     Path(id): Path<String>,
 ) -> Result<(StatusCode, Json<DeviceCertificateResponse>), AppError> {
     let response = run_db(&state.db_pool, move |conn| {
-        let cert = cert_service::regenerate_device_certificate(&ctx, conn, &id)?;
-
-        let ca = cert_service::get_ca_certificate(conn)?
-            .ok_or_else(|| AppError::Internal("CA certificate not initialized".into()))?;
+        let bundle = cert_service::regenerate_device_certificate_bundle(&ctx, conn, &id)?;
+        let private_key_pem = bundle.private_key_pem.ok_or_else(|| {
+            AppError::Internal("Regenerated certificate private key was not returned".into())
+        })?;
 
         Ok(DeviceCertificateResponse {
-            certificate_pem: cert.certificate_pem,
-            private_key_pem: cert.private_key_pem,
-            ca_pem: ca.certificate_pem,
-            fingerprint: cert.fingerprint,
-            expires_at: cert.expires_at.to_string(),
-            created_at: cert.created_at.to_string(),
+            certificate_pem: bundle.device_cert.certificate_pem,
+            private_key_pem,
+            ca_pem: bundle.ca_cert_pem,
+            fingerprint: bundle.device_cert.fingerprint,
+            expires_at: bundle.device_cert.expires_at.to_string(),
+            created_at: bundle.device_cert.created_at.to_string(),
         })
     })
     .await?;

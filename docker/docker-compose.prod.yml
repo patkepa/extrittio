@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_DB: extrittio
       POSTGRES_USER: extrittio
-      POSTGRES_PASSWORD: extrittio
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:
@@ -24,11 +24,18 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      - DATABASE_URL=postgres://extrittio:extrittio@postgres/extrittio
+      - DATABASE_URL=postgres://extrittio:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres/extrittio
       - PORT=8080
-      - CORS_ORIGIN=*
+      - CORS_ORIGIN=${CORS_ORIGIN:?set CORS_ORIGIN}
+      - EXTRITTIO_PUBLIC_URL=${EXTRITTIO_PUBLIC_URL:?set EXTRITTIO_PUBLIC_URL}
+      - EXTRITTIO_COOKIE_SECURE=true
+      - EXTRITTIO_ENABLE_API_DOCS=false
+      - EXTRITTIO_BOOTSTRAP_ADMIN_USERNAME=${EXTRITTIO_BOOTSTRAP_ADMIN_USERNAME:-admin}
+      - EXTRITTIO_BOOTSTRAP_ADMIN_PASSWORD=${EXTRITTIO_BOOTSTRAP_ADMIN_PASSWORD:-}
+      - ZENOH_TLS_ENABLED=true
+      - ZENOH_LISTEN_HOST=0.0.0.0
       - RUST_LOG=extrittio=info,extrittio_backend=info
-      # - JWT_SECRET=change-me-in-production
+      - JWT_SECRET=${JWT_SECRET:?set JWT_SECRET}
     networks:
       - app
       - zenoh
@@ -43,7 +50,7 @@ services:
     image: ghcr.io/patkepa/extrittio-frontend:${EXTRITTIO_VERSION:?set EXTRITTIO_VERSION}
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "127.0.0.1:${EXTRITTIO_FRONTEND_PORT:-8080}:80"
     depends_on:
       backend:
         condition: service_healthy

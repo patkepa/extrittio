@@ -1,4 +1,5 @@
 use std::{
+    net::SocketAddr,
     path::{Component, Path, PathBuf},
     sync::Arc,
 };
@@ -23,6 +24,10 @@ use crate::{api, rate_limit, services};
 /// Build and serve the HTTP API.
 pub async fn serve(config: &AppConfig, state: Arc<AppState>) -> anyhow::Result<()> {
     let origin = config.allowed_origin.clone();
+    anyhow::ensure!(
+        origin != "*",
+        "CORS_ORIGIN='*' is not allowed; set it to the public web origin"
+    );
     let cors = CorsLayer::new()
         .allow_origin(
             origin
@@ -36,7 +41,7 @@ pub async fn serve(config: &AppConfig, state: Arc<AppState>) -> anyhow::Result<(
         .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
         .on_response(DefaultOnResponse::new().level(Level::INFO));
 
-    let app = api::router(config.max_firmware_size_bytes)
+    let app = api::router(config.max_firmware_size_bytes, config.enable_api_docs)
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,
@@ -78,10 +83,13 @@ pub async fn serve(config: &AppConfig, state: Arc<AppState>) -> anyhow::Result<(
         .context("Failed to create tokio TcpListener")?;
     info!("Listening on {}", addr);
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .context("Server error")?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await
+    .context("Server error")?;
 
     info!("Server shut down gracefully");
     Ok(())

@@ -345,7 +345,7 @@ pub fn authorize_deploy_firmware(ctx: &RequestContext) -> Result<(), AppError> {
 }
 
 fn firmware_download_url(public_url: &str, stored_url: &str) -> String {
-    if stored_url.starts_with("http://") || stored_url.starts_with("https://") {
+    if stored_url.starts_with("https://") {
         return stored_url.to_string();
     }
 

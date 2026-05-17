@@ -6,7 +6,6 @@ import { queryKeys } from './query-keys';
 import { useAuthStore } from '../stores/auth-store';
 
 async function refreshCurrentUser() {
-  if (!useAuthStore.getState().token) return;
   try {
     const me = await getMe();
     useAuthStore.getState().setUser(me);

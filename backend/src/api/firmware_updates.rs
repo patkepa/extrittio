@@ -15,6 +15,7 @@ use crate::auth::context::RequestContext;
 use crate::db::models::{NewFirmwareBlob, NewFirmwareUpdate};
 use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse};
+use crate::security;
 use crate::services::{device_type_service, firmware_service};
 use crate::state::{AppState, run_db};
 
@@ -259,6 +260,16 @@ pub(crate) async fn create_firmware_update(
     if body.url.trim().is_empty() {
         return Err(AppError::BadRequest(
             "Firmware URL must not be empty".into(),
+        ));
+    }
+    security::validate_public_https_url(&body.url, "Firmware URL")?;
+    if !body
+        .sha256
+        .as_deref()
+        .is_some_and(|hash| hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit()))
+    {
+        return Err(AppError::BadRequest(
+            "SHA-256 is required for external firmware URLs".into(),
         ));
     }
 

@@ -30,8 +30,8 @@ use utoipa_swagger_ui::SwaggerUi;
 
 use crate::state::AppState;
 
-pub fn router(max_firmware_size: usize) -> Router<Arc<AppState>> {
-    Router::new()
+pub fn router(max_firmware_size: usize, enable_api_docs: bool) -> Router<Arc<AppState>> {
+    let router = Router::new()
         .merge(api_keys::router())
         .merge(auth_routes::router())
         .merge(ci_pipeline::router())
@@ -54,8 +54,13 @@ pub fn router(max_firmware_size: usize) -> Router<Arc<AppState>> {
         .merge(server_metrics::router())
         .merge(outbox::router())
         .merge(system::router())
-        .merge(zones::router())
-        .merge(
+        .merge(zones::router());
+
+    if enable_api_docs {
+        router.merge(
             SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", openapi::ApiDoc::openapi()),
         )
+    } else {
+        router
+    }
 }

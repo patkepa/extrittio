@@ -41,6 +41,12 @@ export const UsersSettings = () => {
   const [newPassword, setNewPassword] = useState('');
   const [selectedRoleIds, setSelectedRoleIds] = useState<number[]>([]);
   const [editingRoleIds, setEditingRoleIds] = useState<number[]>([]);
+  const hasStrongPassword =
+    newPassword.length >= 12 &&
+    /[a-z]/.test(newPassword) &&
+    /[A-Z]/.test(newPassword) &&
+    /[0-9]/.test(newPassword) &&
+    /[^a-zA-Z0-9]/.test(newPassword);
 
   const defaultRoleIds = () => {
     const viewer = roles.find((role) => role.name === 'viewer');
@@ -75,7 +81,7 @@ export const UsersSettings = () => {
 
   const canCreateUser =
     !!newUsername.trim() &&
-    !!newPassword.trim() &&
+    hasStrongPassword &&
     (!canReadRoles || selectedRoleIds.length > 0) &&
     !createUserMutation.isPending;
 
@@ -217,7 +223,11 @@ export const UsersSettings = () => {
               onChange={(e) => setNewUsername(e.target.value)}
             />
           </FormGroup>
-          <FormGroup label="Password" labelInfo="(required)">
+          <FormGroup
+            label="Password"
+            labelInfo="(required)"
+            helperText="At least 12 characters with lowercase, uppercase, number, and symbol"
+          >
             <InputGroup
               type="password"
               placeholder="Password"

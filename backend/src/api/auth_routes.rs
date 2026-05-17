@@ -1,6 +1,8 @@
 use axum::{
     Extension, Json, Router,
     extract::State,
+    http::{HeaderMap, HeaderValue, StatusCode, header},
+    response::IntoResponse,
     routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
@@ -49,6 +51,7 @@ pub struct RoleSummary {
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/api/v1/auth/login", post(login))
+        .route("/api/v1/auth/logout", post(logout))
         .route("/api/v1/auth/me", get(me))
 }
 
@@ -66,7 +69,7 @@ pub fn router() -> Router<Arc<AppState>> {
 pub(crate) async fn login(
     State(state): State<Arc<AppState>>,
     Json(body): Json<LoginRequest>,
-) -> Result<Json<LoginResponse>, AppError> {
+) -> Result<impl IntoResponse, AppError> {
     let jwt_secret = state.jwt_secret.clone();
     let tenant_id = body
         .tenant_id
@@ -93,8 +96,8 @@ pub(crate) async fn login(
     )
     .map_err(|e| AppError::Auth(e.to_string()))?;
 
-    Ok(Json(LoginResponse {
-        token,
+    let response = LoginResponse {
+        token: token.clone(),
         user: user_response(
             user.id,
             user.username,
@@ -103,7 +106,41 @@ pub(crate) async fn login(
             user.permissions,
             user.permission_version,
         ),
-    }))
+    };
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::SET_COOKIE,
+        HeaderValue::from_str(&session_cookie(&token, state.cookie_secure))
+            .map_err(|e| AppError::Internal(format!("Failed to build session cookie: {e}")))?,
+    );
+
+    Ok((headers, Json(response)))
+}
+
+/// Clear the current browser session cookie.
+pub(crate) async fn logout(
+    State(state): State<Arc<AppState>>,
+) -> Result<impl IntoResponse, AppError> {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::SET_COOKIE,
+        HeaderValue::from_str(&expired_session_cookie(state.cookie_secure))
+            .map_err(|e| AppError::Internal(format!("Failed to build session cookie: {e}")))?,
+    );
+
+    Ok((headers, StatusCode::NO_CONTENT))
+}
+
+fn session_cookie(token: &str, secure: bool) -> String {
+    let secure_attr = if secure { "; Secure" } else { "" };
+    format!(
+        "extrittio_session={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400{secure_attr}"
+    )
+}
+
+fn expired_session_cookie(secure: bool) -> String {
+    let secure_attr = if secure { "; Secure" } else { "" };
+    format!("extrittio_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0{secure_attr}")
 }
 
 /// Get the currently authenticated user.

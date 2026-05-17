@@ -63,29 +63,54 @@ impl RateLimiter {
     }
 }
 
-/// Extract the client IP from the socket address (via axum's ConnectInfo) if
-/// available, falling back to X-Forwarded-For only when the socket address is
-/// absent (e.g. behind a trusted reverse proxy that strips ConnectInfo).
-///
-/// NOTE: X-Forwarded-For is trivially spoofable. Only trust it when you control
-/// the reverse proxy and it overwrites the header.
+/// Extract the client IP from the socket address or from proxy headers only
+/// when the direct peer is a local/private reverse proxy.
 fn extract_client_ip(request: &Request) -> IpAddr {
-    // Prefer the real socket address injected by axum's ConnectInfo
-    if let Some(connect_info) = request
+    let peer_ip = request
         .extensions()
         .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
-    {
-        return connect_info.0.ip();
+        .map(|connect_info| connect_info.0.ip());
+
+    if peer_ip.is_some_and(is_trusted_proxy_peer) {
+        if let Some(ip) = header_ip(request, "x-real-ip").or_else(|| forwarded_for_ip(request)) {
+            return ip;
+        }
     }
 
-    // Fallback: X-Forwarded-For (first hop) — only safe behind a trusted proxy
+    if let Some(ip) = peer_ip {
+        return ip;
+    }
+
+    header_ip(request, "x-real-ip")
+        .or_else(|| forwarded_for_ip(request))
+        .unwrap_or(IpAddr::V4(std::net::Ipv4Addr::LOCALHOST))
+}
+
+fn header_ip(request: &Request, header: &'static str) -> Option<IpAddr> {
+    request
+        .headers()
+        .get(header)
+        .and_then(|h| h.to_str().ok())
+        .and_then(|s| s.trim().parse().ok())
+}
+
+fn forwarded_for_ip(request: &Request) -> Option<IpAddr> {
     request
         .headers()
         .get("x-forwarded-for")
         .and_then(|h| h.to_str().ok())
-        .and_then(|s| s.split(',').next())
+        .and_then(|s| s.rsplit(',').next())
         .and_then(|s| s.trim().parse().ok())
-        .unwrap_or(IpAddr::V4(std::net::Ipv4Addr::LOCALHOST))
+}
+
+fn is_trusted_proxy_peer(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ip) => ip.is_loopback() || ip.is_private(),
+        IpAddr::V6(ip) => {
+            let segments = ip.segments();
+            ip.is_loopback() || (segments[0] & 0xfe00) == 0xfc00
+        }
+    }
 }
 
 /// Sliding-window rate limiter keyed by API key hash (string).

@@ -51,7 +51,9 @@ export const AddFirmwareDialog = ({ isOpen, onClose }: AddFirmwareDialogProps) =
 
   const canSubmit =
     !!selectedDeviceTypeId &&
-    (uploadMode === 'file' ? !!selectedFile : !!url.trim()) &&
+    (uploadMode === 'file'
+      ? !!selectedFile
+      : url.trim().startsWith('https://') && /^[a-fA-F0-9]{64}$/.test(sha256.trim())) &&
     !isSubmitting;
 
   const handleAdd = () => {
@@ -75,7 +77,7 @@ export const AddFirmwareDialog = ({ isOpen, onClose }: AddFirmwareDialogProps) =
         },
       );
     } else {
-      if (!url.trim()) return;
+      if (!url.trim() || !sha256.trim()) return;
       createMutation.mutate(
         {
           device_type_id: selectedDeviceTypeId,
@@ -200,7 +202,8 @@ export const AddFirmwareDialog = ({ isOpen, onClose }: AddFirmwareDialogProps) =
             </FormGroup>
             <FormGroup
               label="SHA-256 Hash"
-              helperText="Optional hash for binary verification on device"
+              labelInfo="(required)"
+              helperText="Required for device-side binary verification"
             >
               <InputGroup
                 placeholder="e.g. a1b2c3d4..."

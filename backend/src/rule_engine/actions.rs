@@ -266,6 +266,9 @@ pub async fn execute_action(
             headers,
             payload,
         } => {
+            let parsed_url = crate::security::validate_public_https_url(&url, "webhook url")
+                .map_err(|e| e.to_string())?;
+            crate::security::validate_resolved_public_target(&parsed_url).await?;
             let mut req = http_client.post(&url).json(&payload);
             for (key, value) in &headers {
                 req = req.header(key, value);

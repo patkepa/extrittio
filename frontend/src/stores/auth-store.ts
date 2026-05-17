@@ -11,23 +11,21 @@ interface AuthStore {
 }
 
 export const useAuthStore = create<AuthStore>((set) => ({
-  token: localStorage.getItem('token'),
+  token: null,
   user: null,
   setToken: (token) => {
-    if (token) {
-      localStorage.setItem('token', token);
-    } else {
-      localStorage.removeItem('token');
-    }
     set({ token, ...(token ? {} : { user: null }) });
   },
   setUser: (user) => set({ user }),
   setSession: (token, user) => {
-    localStorage.setItem('token', token);
     set({ token, user });
   },
   logout: () => {
-    localStorage.removeItem('token');
+    void fetch('/api/v1/auth/logout', {
+      method: 'POST',
+      credentials: 'same-origin',
+      keepalive: true,
+    }).catch(() => undefined);
     set({ token: null, user: null });
     window.location.href = '/login';
   },

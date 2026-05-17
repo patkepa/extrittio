@@ -1,17 +1,19 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Spinner } from '@blueprintjs/core';
 import { getMe } from '../api/auth';
 import { useAuthStore } from '../stores/auth-store';
 
 export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
-  const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
   const setUser = useAuthStore((s) => s.setUser);
-  const logout = useAuthStore((s) => s.logout);
+  const [checked, setChecked] = useState(false);
 
   useEffect(() => {
-    if (!token || user) return;
+    if (user) {
+      setChecked(true);
+      return;
+    }
 
     let cancelled = false;
 
@@ -19,22 +21,19 @@ export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
       .then((me) => {
         if (cancelled) return;
         setUser(me);
+        setChecked(true);
       })
       .catch(() => {
         if (cancelled) return;
-        logout();
+        setChecked(true);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [logout, setUser, token, user]);
+  }, [setUser, user]);
 
-  if (!token) {
-    return <Navigate to="/login" replace />;
-  }
-
-  if (!user) {
+  if (!checked) {
     return (
       <div
         style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}
@@ -42,6 +41,10 @@ export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
         <Spinner size={40} />
       </div>
     );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
   }
 
   return <>{children}</>;

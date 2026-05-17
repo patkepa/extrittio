@@ -16,7 +16,7 @@ uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-zenoh = "1"
+zenoh = { version = "1", default-features = false, features = ["transport_tcp", "transport_tls"] }
 prost = "0.13"
 argon2 = "0.5"
 jsonwebtoken = "9"

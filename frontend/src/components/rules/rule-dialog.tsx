@@ -176,7 +176,7 @@ export function RuleDialog() {
   const hasInvalidActions = actions.some((a) => {
     if (a.action_type === 'webhook') {
       const url = (a.config.url as string) ?? '';
-      return !url.trim() || (!url.startsWith('http://') && !url.startsWith('https://'));
+      return !url.trim() || !url.startsWith('https://');
     }
     if (a.action_type === 'command') {
       return !((a.config.command as string) ?? '').trim();

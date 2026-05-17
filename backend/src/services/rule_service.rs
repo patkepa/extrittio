@@ -16,6 +16,7 @@ use crate::rule_engine::cache::RuleCache;
 use crate::rule_engine::types::{
     CachedAction, CachedCondition, CachedRule, CachedZone, ZoneGeometry,
 };
+use crate::security;
 
 // ---------------------------------------------------------------------------
 // Public composite type
@@ -175,11 +176,7 @@ fn validate_rule(
                         "webhook action config must have a non-empty 'url'".into(),
                     ));
                 }
-                if !url.starts_with("http://") && !url.starts_with("https://") {
-                    return Err(AppError::BadRequest(
-                        "webhook url must start with http:// or https://".into(),
-                    ));
-                }
+                security::validate_public_https_url(url, "webhook url")?;
             }
             "command" => {
                 let cmd = config_val
