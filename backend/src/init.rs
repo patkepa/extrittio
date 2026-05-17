@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{collections::BTreeSet, time::Duration};
 
 use anyhow::Context;
 use diesel::PgConnection;
@@ -14,6 +14,7 @@ use crate::repositories::{cert_repo, role_repo, user_repo};
 use crate::services::{cert_service, role_service, user_service};
 use crate::state::DbPool;
 use crate::{MIGRATIONS, auth};
+use extrittio_common::topics::{self, patterns};
 
 /// Create the PostgreSQL connection pool.
 pub fn create_db_pool(database_url: &str, pool_size: u32) -> anyhow::Result<DbPool> {
@@ -220,6 +221,8 @@ pub async fn open_zenoh_session(
     tls_port: u16,
     listen_host: &str,
     certs_dir: &str,
+    cert_acl_enabled: bool,
+    device_certificate_ids: &[String],
 ) -> anyhow::Result<zenoh::Session> {
     let mut zenoh_config = zenoh::Config::default();
     let listen_scheme = if tls_enabled { "tls" } else { "tcp" };
@@ -265,9 +268,19 @@ pub async fn open_zenoh_session(
         zenoh_config
             .insert_json5("transport/link/tls/enable_mtls", "true")
             .map_err(|e| anyhow::anyhow!("Failed to enable Zenoh mTLS: {e}"))?;
+        zenoh_config
+            .insert_json5("transport/link/tls/close_link_on_expiration", "true")
+            .map_err(|e| {
+                anyhow::anyhow!("Failed to enable Zenoh TLS expiration enforcement: {e}")
+            })?;
+
+        configure_zenoh_device_acl(&mut zenoh_config, cert_acl_enabled, device_certificate_ids)?;
 
         info!("Zenoh TLS configured: listening on {listen_endpoint} with mTLS");
     } else {
+        if cert_acl_enabled {
+            warn!("Zenoh certificate ACL requested without TLS; certificate ACL is disabled");
+        }
         zenoh_config
             .insert_json5("listen/endpoints", &format!("[\"{listen_endpoint}\"]"))
             .map_err(|e| anyhow::anyhow!("Failed to set Zenoh listen endpoints: {e}"))?;
@@ -283,6 +296,164 @@ pub async fn open_zenoh_session(
             tls_port
         ))
     })
+}
+
+fn configure_zenoh_device_acl(
+    zenoh_config: &mut zenoh::Config,
+    cert_acl_enabled: bool,
+    device_certificate_ids: &[String],
+) -> anyhow::Result<()> {
+    if !cert_acl_enabled {
+        warn!(
+            "Zenoh device certificate ACL disabled; mTLS clients are not bound to per-device topics"
+        );
+        return Ok(());
+    }
+
+    let (valid_device_ids, skipped_count) = normalize_acl_device_ids(device_certificate_ids);
+    if skipped_count > 0 {
+        warn!(
+            "Skipped {skipped_count} device certificate ID(s) with invalid topic characters while building Zenoh ACL"
+        );
+    }
+    if valid_device_ids.is_empty() {
+        warn!(
+            "Zenoh device certificate ACL enabled with no active device certificates; all device traffic will be denied until the backend restarts with active certificates"
+        );
+    } else {
+        info!(
+            "Zenoh device certificate ACL enabled for {} active device certificate(s)",
+            valid_device_ids.len()
+        );
+    }
+
+    let acl_json = build_zenoh_device_acl(&valid_device_ids);
+    zenoh_config
+        .insert_json5("access_control", &acl_json)
+        .map_err(|e| anyhow::anyhow!("Failed to configure Zenoh device certificate ACL: {e}"))?;
+    Ok(())
+}
+
+fn normalize_acl_device_ids(device_ids: &[String]) -> (Vec<String>, usize) {
+    let mut valid = BTreeSet::new();
+    let mut skipped_count = 0;
+
+    for device_id in device_ids {
+        if topics::is_valid_device_id(device_id) {
+            valid.insert(device_id.clone());
+        } else {
+            skipped_count += 1;
+        }
+    }
+
+    (valid.into_iter().collect(), skipped_count)
+}
+
+fn build_zenoh_device_acl(device_ids: &[String]) -> String {
+    let mut rules = Vec::new();
+    let mut subjects = Vec::new();
+    let mut policies = Vec::new();
+
+    if device_ids.is_empty() {
+        rules.push(serde_json::json!({
+            "id": "deny-all-no-active-device-certificates",
+            "permission": "deny",
+            "flows": ["ingress", "egress"],
+            "messages": ["put", "delete", "declare_subscriber", "query", "reply", "declare_queryable"],
+            "key_exprs": ["**"],
+        }));
+        subjects.push(serde_json::json!({
+            "id": "no-active-device-certificates",
+            "cert_common_names": ["extrittio-no-active-device-certificates.invalid"],
+        }));
+        policies.push(serde_json::json!({
+            "id": "no-active-device-certificates",
+            "rules": ["deny-all-no-active-device-certificates"],
+            "subjects": ["no-active-device-certificates"],
+        }));
+    } else {
+        rules.push(serde_json::json!({
+            "id": "backend-device-subscriptions",
+            "permission": "allow",
+            "flows": ["egress"],
+            "messages": ["declare_subscriber"],
+            "key_exprs": [
+                patterns::TELEMETRY,
+                patterns::HEARTBEAT,
+                patterns::SHADOW_REPORT,
+                patterns::SHADOW_GET,
+                patterns::LOGS,
+                patterns::COMMANDS_RESPONSE,
+            ],
+        }));
+
+        for (index, device_id) in device_ids.iter().enumerate() {
+            let subject_id = format!("device-{index}");
+            let ingress_put_rule_id = format!("{subject_id}-ingress-put");
+            let ingress_subscribe_rule_id = format!("{subject_id}-ingress-subscribe");
+            let egress_put_rule_id = format!("{subject_id}-egress-put");
+
+            subjects.push(serde_json::json!({
+                "id": subject_id,
+                "cert_common_names": [device_id],
+            }));
+            rules.push(serde_json::json!({
+                "id": ingress_put_rule_id,
+                "permission": "allow",
+                "flows": ["ingress"],
+                "messages": ["put"],
+                "key_exprs": device_ingress_put_keyexprs(device_id),
+            }));
+            rules.push(serde_json::json!({
+                "id": ingress_subscribe_rule_id,
+                "permission": "allow",
+                "flows": ["ingress"],
+                "messages": ["declare_subscriber"],
+                "key_exprs": device_downstream_keyexprs(device_id),
+            }));
+            rules.push(serde_json::json!({
+                "id": egress_put_rule_id,
+                "permission": "allow",
+                "flows": ["egress"],
+                "messages": ["put"],
+                "key_exprs": device_downstream_keyexprs(device_id),
+            }));
+            policies.push(serde_json::json!({
+                "id": format!("{subject_id}-policy"),
+                "rules": [
+                    "backend-device-subscriptions",
+                    ingress_put_rule_id,
+                    ingress_subscribe_rule_id,
+                    egress_put_rule_id,
+                ],
+                "subjects": [subject_id],
+            }));
+        }
+    }
+
+    serde_json::json!({
+        "enabled": true,
+        "default_permission": "deny",
+        "rules": rules,
+        "subjects": subjects,
+        "policies": policies,
+    })
+    .to_string()
+}
+
+fn device_ingress_put_keyexprs(device_id: &str) -> Vec<String> {
+    vec![
+        topics::telemetry(device_id),
+        topics::heartbeat(device_id),
+        topics::shadow_report(device_id),
+        topics::shadow_get(device_id),
+        topics::logs(device_id),
+        topics::commands_response(device_id),
+    ]
+}
+
+fn device_downstream_keyexprs(device_id: &str) -> Vec<String> {
+    vec![topics::commands(device_id), topics::shadow_delta(device_id)]
 }
 
 fn format_zenoh_open_error(raw_error: &str, listen_endpoint: &str, port: u16) -> String {
@@ -304,7 +475,9 @@ fn format_zenoh_open_error(raw_error: &str, listen_endpoint: &str, port: u16) ->
 
 #[cfg(test)]
 mod tests {
-    use super::format_zenoh_open_error;
+    use serde_json::Value;
+
+    use super::{build_zenoh_device_acl, format_zenoh_open_error, normalize_acl_device_ids};
 
     #[test]
     fn zenoh_port_conflict_error_is_actionable() {
@@ -329,5 +502,65 @@ mod tests {
         assert!(message.contains("Failed to open Zenoh session on tls/0.0.0.0:7447"));
         assert!(!message.contains("/registry/src"));
         assert!(!message.contains(".rs:"));
+    }
+
+    #[test]
+    fn normalizes_acl_device_ids() {
+        let (device_ids, skipped_count) = normalize_acl_device_ids(&[
+            "dev-b".to_string(),
+            "dev/a".to_string(),
+            "dev-a".to_string(),
+            "dev-a".to_string(),
+        ]);
+
+        assert_eq!(device_ids, vec!["dev-a".to_string(), "dev-b".to_string()]);
+        assert_eq!(skipped_count, 1);
+    }
+
+    #[test]
+    fn device_acl_binds_certificate_cn_to_device_topics() {
+        let acl: Value =
+            serde_json::from_str(&build_zenoh_device_acl(&["dev-001".to_string()])).unwrap();
+
+        assert_eq!(acl["enabled"], true);
+        assert_eq!(acl["default_permission"], "deny");
+
+        let subjects = acl["subjects"].as_array().unwrap();
+        assert_eq!(subjects.len(), 1);
+        assert_eq!(
+            subjects[0]["cert_common_names"],
+            serde_json::json!(["dev-001"])
+        );
+
+        let rules = acl["rules"].as_array().unwrap();
+        assert!(rules.iter().any(|rule| {
+            rule["flows"] == serde_json::json!(["ingress"])
+                && rule["messages"] == serde_json::json!(["put"])
+                && rule["key_exprs"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&Value::String(
+                        "extrittio/devices/dev-001/telemetry".to_string(),
+                    ))
+        }));
+        assert!(!rules.iter().any(|rule| {
+            rule["key_exprs"]
+                .as_array()
+                .unwrap()
+                .contains(&Value::String(
+                    "extrittio/devices/dev-002/telemetry".to_string(),
+                ))
+        }));
+    }
+
+    #[test]
+    fn empty_device_acl_is_valid_and_deny_by_default() {
+        let acl: Value = serde_json::from_str(&build_zenoh_device_acl(&[])).unwrap();
+
+        assert_eq!(acl["enabled"], true);
+        assert_eq!(acl["default_permission"], "deny");
+        assert!(!acl["rules"].as_array().unwrap().is_empty());
+        assert!(!acl["subjects"].as_array().unwrap().is_empty());
+        assert!(!acl["policies"].as_array().unwrap().is_empty());
     }
 }

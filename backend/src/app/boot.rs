@@ -6,6 +6,7 @@ use tracing::info;
 use crate::config::AppConfig;
 use crate::init;
 use crate::rate_limit::{ApiKeyRateLimiter, RateLimiter, parse_trusted_proxies};
+use crate::repositories::cert_repo;
 use crate::services;
 use crate::state::{AppState, MetricsAccumulator, ZenohMetrics};
 
@@ -14,7 +15,7 @@ pub async fn initialize_state(config: &AppConfig) -> anyhow::Result<Arc<AppState
     let db_pool = init::create_db_pool(&config.database_url, config.db_pool_size)?;
     info!("DB connection pool: max_size={}", config.db_pool_size);
 
-    let jwt_secret = {
+    let (jwt_secret, device_certificate_ids) = {
         let mut conn = db_pool
             .get()
             .context("Failed to get DB connection for initialization")?;
@@ -26,7 +27,10 @@ pub async fn initialize_state(config: &AppConfig) -> anyhow::Result<Arc<AppState
         services::cert_service::encrypt_stored_private_keys(&mut conn)
             .context("Failed to encrypt stored certificate private keys")?;
         init::write_tls_certs(&mut conn, &config.certs_dir)?;
-        secret
+        let device_certificate_ids =
+            cert_repo::list_active_device_certificate_device_ids(&mut conn)
+                .context("Failed to load active device certificate IDs for Zenoh ACL")?;
+        (secret, device_certificate_ids)
     };
 
     let rule_cache = {
@@ -50,6 +54,8 @@ pub async fn initialize_state(config: &AppConfig) -> anyhow::Result<Arc<AppState
             config.zenoh_tls_port,
             &config.zenoh_listen_host,
             &config.certs_dir,
+            config.zenoh_cert_acl_enabled,
+            &device_certificate_ids,
         )
         .await?,
     );

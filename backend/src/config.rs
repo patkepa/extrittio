@@ -29,6 +29,7 @@ pub struct AppConfig {
     pub command_timeout_secs: u64,
     pub certs_dir: String,
     pub zenoh_tls_enabled: bool,
+    pub zenoh_cert_acl_enabled: bool,
     pub zenoh_tls_port: u16,
     pub zenoh_listen_host: String,
     pub db_pool_size: u32,
@@ -68,6 +69,8 @@ impl AppConfig {
             .trim_end_matches('/')
             .to_string();
         let zenoh_tls_enabled = env_bool(&read_env, "ZENOH_TLS_ENABLED").unwrap_or(false);
+        let zenoh_cert_acl_enabled =
+            env_bool(&read_env, "EXTRITTIO_ZENOH_CERT_ACL_ENABLED").unwrap_or(zenoh_tls_enabled);
         let cookie_secure = env_bool(&read_env, "EXTRITTIO_COOKIE_SECURE")
             .unwrap_or_else(|| public_url.starts_with("https://"));
         let max_zenoh_payload_kb: usize =
@@ -98,6 +101,7 @@ impl AppConfig {
             ),
             certs_dir: read_env("EXTRITTIO_CERTS_DIR").unwrap_or_else(|| "./certs".to_string()),
             zenoh_tls_enabled,
+            zenoh_cert_acl_enabled,
             zenoh_tls_port: env_parse(&read_env, "ZENOH_TLS_PORT").unwrap_or(7447),
             zenoh_listen_host: read_env("ZENOH_LISTEN_HOST")
                 .unwrap_or_else(|| "127.0.0.1".to_string()),
@@ -217,6 +221,7 @@ mod tests {
         assert_eq!(config.app_metrics_flush_interval_secs, 10);
         assert_eq!(config.metrics_retention_hours, 24);
         assert_eq!(config.zenoh_listen_host, "127.0.0.1");
+        assert!(!config.zenoh_cert_acl_enabled);
         assert_eq!(
             config.max_zenoh_payload_size_bytes,
             super::DEFAULT_ZENOH_MAX_PAYLOAD_KB * 1024
@@ -272,5 +277,24 @@ mod tests {
             config.trusted_proxies,
             vec!["127.0.0.1".to_string(), "172.30.0.3".to_string()]
         );
+    }
+
+    #[test]
+    fn enables_zenoh_certificate_acl_when_tls_is_enabled() {
+        let config = config_from(&[("ZENOH_TLS_ENABLED", "true")]);
+
+        assert!(config.zenoh_tls_enabled);
+        assert!(config.zenoh_cert_acl_enabled);
+    }
+
+    #[test]
+    fn allows_overriding_zenoh_certificate_acl() {
+        let config = config_from(&[
+            ("ZENOH_TLS_ENABLED", "true"),
+            ("EXTRITTIO_ZENOH_CERT_ACL_ENABLED", "false"),
+        ]);
+
+        assert!(config.zenoh_tls_enabled);
+        assert!(!config.zenoh_cert_acl_enabled);
     }
 }

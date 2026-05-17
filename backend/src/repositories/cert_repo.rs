@@ -86,6 +86,16 @@ pub fn list_device_certificates_with_private_keys(
         .load(conn)
 }
 
+pub fn list_active_device_certificate_device_ids(
+    conn: &mut PgConnection,
+) -> Result<Vec<String>, diesel::result::Error> {
+    device_certificates::table
+        .filter(device_certificates::expires_at.gt(chrono::Utc::now().naive_utc()))
+        .select(device_certificates::device_id)
+        .distinct()
+        .load(conn)
+}
+
 pub fn update_device_private_key_for_tenant(
     conn: &mut PgConnection,
     tenant_id: &str,
