@@ -8,10 +8,10 @@ pub fn cpu_temperature() -> f32 {
         "/sys/class/thermal/thermal_zone0/temp",
         "/sys/class/thermal/thermal_zone1/temp",
     ] {
-        if let Ok(contents) = std::fs::read_to_string(path) {
-            if let Ok(millidegrees) = contents.trim().parse::<f32>() {
-                return millidegrees / 1000.0;
-            }
+        if let Ok(contents) = std::fs::read_to_string(path)
+            && let Ok(millidegrees) = contents.trim().parse::<f32>()
+        {
+            return millidegrees / 1000.0;
         }
     }
     0.0
@@ -119,10 +119,10 @@ pub fn extended_metrics() -> HashMap<String, String> {
     }
 
     // Uptime
-    if let Ok(contents) = std::fs::read_to_string("/proc/uptime") {
-        if let Some(uptime) = contents.split_whitespace().next() {
-            m.insert("system_uptime_secs".into(), uptime.into());
-        }
+    if let Ok(contents) = std::fs::read_to_string("/proc/uptime")
+        && let Some(uptime) = contents.split_whitespace().next()
+    {
+        m.insert("system_uptime_secs".into(), uptime.into());
     }
 
     // Number of processes

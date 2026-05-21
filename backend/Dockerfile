@@ -1,9 +1,12 @@
+# syntax=docker/dockerfile:1.7
+
 # Stage 1: Cross-compile on native x86_64 for ARM64
 FROM --platform=$BUILDPLATFORM rust:1.90-bookworm AS builder
 
 ARG TARGETARCH
 
 RUN apt-get update && apt-get install -y \
+    pkg-config \
     protobuf-compiler \
     && rm -rf /var/lib/apt/lists/*
 
@@ -11,11 +14,11 @@ RUN apt-get update && apt-get install -y \
 RUN if [ "$TARGETARCH" = "arm64" ]; then \
         dpkg --add-architecture arm64 && \
         apt-get update && \
-        apt-get install -y gcc-aarch64-linux-gnu libpq-dev:arm64 && \
+        apt-get install -y gcc-aarch64-linux-gnu libpq-dev:arm64 libssl-dev:arm64 && \
         rm -rf /var/lib/apt/lists/* && \
         rustup target add aarch64-unknown-linux-gnu; \
     else \
-        apt-get update && apt-get install -y libpq-dev && rm -rf /var/lib/apt/lists/*; \
+        apt-get update && apt-get install -y libpq-dev libssl-dev && rm -rf /var/lib/apt/lists/*; \
     fi
 
 # Configure cross-linker for ARM64
@@ -47,6 +50,7 @@ RUN mkdir -p common/src && echo "fn main() {}" > common/src/lib.rs && \
 
 # Determine Rust target triple from TARGETARCH
 RUN if [ "$TARGETARCH" = "arm64" ]; then \
+        PKG_CONFIG_ALLOW_CROSS=1 PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig \
         cargo build --release --target aarch64-unknown-linux-gnu -p extrittio 2>/dev/null || true; \
     else \
         cargo build --release -p extrittio 2>/dev/null || true; \
@@ -62,6 +66,7 @@ RUN touch common/src/lib.rs common/build.rs backend/src/main.rs backend/src/lib.
 
 # Build the real binary
 RUN if [ "$TARGETARCH" = "arm64" ]; then \
+        PKG_CONFIG_ALLOW_CROSS=1 PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig \
         cargo build --release --target aarch64-unknown-linux-gnu -p extrittio && \
         cp target/aarch64-unknown-linux-gnu/release/extrittio target/release/extrittio; \
     else \
@@ -74,7 +79,12 @@ FROM node:22-bookworm-slim AS frontend-builder
 WORKDIR /frontend
 
 COPY frontend/package*.json ./
-RUN npm ci
+COPY frontend/.npmrc ./
+RUN --mount=type=secret,id=node_auth_token,required=false \
+    if [ -f /run/secrets/node_auth_token ]; then \
+        export NODE_AUTH_TOKEN="$(cat /run/secrets/node_auth_token)"; \
+    fi; \
+    npm ci
 
 COPY frontend/ ./
 RUN npm run build

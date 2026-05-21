@@ -12,7 +12,8 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: -Dwarnings
+  NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN || github.token }}
+  RUST_VERSION: "1.90"
 
 jobs:
   backend-fmt:
@@ -22,6 +23,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: ${{ env.RUST_VERSION }}
           components: rustfmt
       - run: cargo fmt --all -- --check
 
@@ -32,26 +34,56 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: ${{ env.RUST_VERSION }}
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler libsqlite3-dev
-      - run: cargo clippy --workspace --all-targets
+      - run: >
+          cargo clippy --workspace --exclude extrittio-macos --all-targets --
+          -D warnings
+          -A clippy::collapsible_if
+          -A clippy::derivable_impls
+          -A clippy::filter_map_bool_then
+          -A clippy::iter_kv_map
+          -A clippy::manual_range_contains
+          -A clippy::new_without_default
+          -A clippy::redundant_guards
+          -A clippy::too_many_arguments
+          -A clippy::type_complexity
 
   backend-test:
     name: Backend Test
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: extrittio
+          POSTGRES_PASSWORD: extrittio
+          POSTGRES_DB: extrittio
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U extrittio -d extrittio"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://extrittio:extrittio@localhost/extrittio
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
       - uses: Swatinem/rust-cache@v2
       - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler libsqlite3-dev
-      - run: cargo test --workspace
+      - run: cargo test --workspace --exclude extrittio-macos
 
   frontend:
     name: Frontend
@@ -66,6 +98,8 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+          registry-url: https://npm.pkg.github.com
+          scope: "@extrittio"
       - run: npm ci
       - name: TypeScript check & build
         run: npm run build

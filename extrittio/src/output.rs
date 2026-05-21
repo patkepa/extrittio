@@ -37,8 +37,8 @@ pub(crate) fn format_devices(devices: &Paginated<DeviceResponse>) -> String {
     let mut out = String::new();
     let _ = writeln!(
         out,
-        "{:<38} {:<24} {:<14} {:<12} {:<16} {}",
-        "ID", "NAME", "TYPE", "STATUS", "FLEET", "FIRMWARE"
+        "{:<38} {:<24} {:<14} {:<12} {:<16} FIRMWARE",
+        "ID", "NAME", "TYPE", "STATUS", "FLEET"
     );
     for device in &devices.data {
         let _ = writeln!(

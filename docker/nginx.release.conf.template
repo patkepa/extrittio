@@ -1,0 +1,35 @@
+server {
+    listen 80 default_server;
+    server_name _;
+    return 444;
+}
+
+server {
+    listen 80;
+    server_name ${EXTRITTIO_DOMAIN};
+
+    location /api-docs/ {
+        return 404;
+    }
+
+    location = /api-docs {
+        return 404;
+    }
+
+    location /swagger-ui/ {
+        return 404;
+    }
+
+    location = /swagger-ui {
+        return 404;
+    }
+
+    location / {
+        proxy_pass http://extrittio:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+}
+

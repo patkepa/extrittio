@@ -32,9 +32,9 @@ pub(crate) async fn run(cli: Cli) -> Result<()> {
     let output_format = cli.output;
 
     match command {
-        Command::Serve(args) => return service::serve(args).await,
-        Command::Migrate(args) => return service::migrate(args, output_format),
-        Command::Init(args) => return service::init(args, output_format),
+        Command::Serve(args) => service::serve(args).await,
+        Command::Migrate(args) => service::migrate(args, output_format),
+        Command::Init(args) => service::init(args, output_format),
         command => run_api_command(command, cli.url, cli.token, cli.config, output_format).await,
     }
 }
