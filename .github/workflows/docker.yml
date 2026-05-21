@@ -2,9 +2,29 @@ name: Docker
 
 on:
   push:
-    branches: [main]
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      platforms:
+        description: Image platforms to build
+        required: false
+        default: linux/amd64,linux/arm64
+      cargo-profile:
+        description: Cargo profile for the Rust binary
+        required: false
+        default: release
+  workflow_call:
+    inputs:
+      platforms:
+        description: Image platforms to build
+        required: false
+        type: string
+        default: linux/amd64
+      cargo-profile:
+        description: Cargo profile for the Rust binary
+        required: false
+        type: string
+        default: ci-release
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -14,6 +34,8 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/extrittio
   NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN || github.token }}
+  DOCKER_PLATFORMS: ${{ inputs.platforms || 'linux/amd64,linux/arm64' }}
+  CARGO_PROFILE: ${{ inputs.cargo-profile || 'release' }}
 
 jobs:
   app:
@@ -26,6 +48,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: docker/setup-qemu-action@v3
+        if: contains(env.DOCKER_PLATFORMS, 'arm64')
 
       - uses: docker/setup-buildx-action@v3
 
@@ -54,7 +77,7 @@ jobs:
         with:
           context: .
           file: backend/Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ env.DOCKER_PLATFORMS }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -62,6 +85,7 @@ jobs:
             EXTRITTIO_VERSION=${{ steps.meta.outputs.version }}
             EXTRITTIO_COMMIT_SHA=${{ github.sha }}
             EXTRITTIO_BUILD_TIMESTAMP=${{ steps.build.outputs.timestamp }}
+            CARGO_PROFILE=${{ env.CARGO_PROFILE }}
           secrets: |
             node_auth_token=${{ env.NODE_AUTH_TOKEN }}
           cache-from: type=gha

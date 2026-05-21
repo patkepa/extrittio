@@ -4,6 +4,9 @@
 FROM --platform=$BUILDPLATFORM rust:1.90-bookworm AS builder
 
 ARG TARGETARCH
+ARG CARGO_PROFILE=release
+
+ENV CARGO_INCREMENTAL=0
 
 RUN apt-get update && apt-get install -y \
     pkg-config \
@@ -49,11 +52,16 @@ RUN mkdir -p common/src && echo "fn main() {}" > common/src/lib.rs && \
     mkdir -p client/rust/simulator/src && echo "fn main() {}" > client/rust/simulator/src/main.rs
 
 # Determine Rust target triple from TARGETARCH
-RUN if [ "$TARGETARCH" = "arm64" ]; then \
-        PKG_CONFIG_ALLOW_CROSS=1 PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig \
-        cargo build --release --target aarch64-unknown-linux-gnu -p extrittio 2>/dev/null || true; \
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/app/target \
+    if [ "$TARGETARCH" = "arm64" ]; then \
+        PKG_CONFIG_ALLOW_CROSS=1 PKG_CONFIG_SYSROOT_DIR=/ \
+        PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig \
+        OPENSSL_LIB_DIR=/usr/lib/aarch64-linux-gnu OPENSSL_INCLUDE_DIR=/usr/include \
+        cargo build --profile "$CARGO_PROFILE" --target aarch64-unknown-linux-gnu -p extrittio 2>/dev/null || true; \
     else \
-        cargo build --release -p extrittio 2>/dev/null || true; \
+        cargo build --profile "$CARGO_PROFILE" -p extrittio 2>/dev/null || true; \
     fi
 
 # Copy actual source code
@@ -65,12 +73,19 @@ COPY extrittio/ extrittio/
 RUN touch common/src/lib.rs common/build.rs backend/src/main.rs backend/src/lib.rs extrittio/src/main.rs extrittio/src/lib.rs
 
 # Build the real binary
-RUN if [ "$TARGETARCH" = "arm64" ]; then \
-        PKG_CONFIG_ALLOW_CROSS=1 PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig \
-        cargo build --release --target aarch64-unknown-linux-gnu -p extrittio && \
-        cp target/aarch64-unknown-linux-gnu/release/extrittio target/release/extrittio; \
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/app/target \
+    mkdir -p /app/bin && \
+    if [ "$TARGETARCH" = "arm64" ]; then \
+        PKG_CONFIG_ALLOW_CROSS=1 PKG_CONFIG_SYSROOT_DIR=/ \
+        PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig \
+        OPENSSL_LIB_DIR=/usr/lib/aarch64-linux-gnu OPENSSL_INCLUDE_DIR=/usr/include \
+        cargo build --profile "$CARGO_PROFILE" --target aarch64-unknown-linux-gnu -p extrittio && \
+        cp "target/aarch64-unknown-linux-gnu/$CARGO_PROFILE/extrittio" /app/bin/extrittio; \
     else \
-        cargo build --release -p extrittio; \
+        cargo build --profile "$CARGO_PROFILE" -p extrittio && \
+        cp "target/$CARGO_PROFILE/extrittio" /app/bin/extrittio; \
     fi
 
 # Stage 2: Build the frontend assets served by the backend process
@@ -81,6 +96,7 @@ WORKDIR /frontend
 COPY frontend/package*.json ./
 COPY frontend/.npmrc ./
 RUN --mount=type=secret,id=node_auth_token,required=false \
+    --mount=type=cache,target=/root/.npm \
     if [ -f /run/secrets/node_auth_token ]; then \
         export NODE_AUTH_TOKEN="$(cat /run/secrets/node_auth_token)"; \
     fi; \
@@ -102,7 +118,7 @@ RUN useradd -r -s /bin/false extrittio
 
 WORKDIR /app
 
-COPY --from=builder /app/target/release/extrittio .
+COPY --from=builder /app/bin/extrittio .
 COPY --from=frontend-builder /frontend/dist ./frontend
 
 RUN mkdir -p /app/certs && chown -R extrittio:extrittio /app

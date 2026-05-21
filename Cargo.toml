@@ -17,3 +17,9 @@ lto = "fat"           # Full link-time optimization across all crates
 codegen-units = 1     # Single codegen unit for maximum optimization
 strip = true          # Strip debug symbols — smaller binary
 panic = "abort"       # No unwinding overhead — smaller + faster
+
+# Faster image builds for main-branch CI. Tagged releases still use `release`.
+[profile.ci-release]
+inherits = "release"
+lto = "thin"
+codegen-units = 16

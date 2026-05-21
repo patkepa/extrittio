@@ -3,8 +3,14 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
   pull_request:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -37,10 +43,12 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
           components: clippy
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y protobuf-compiler libsqlite3-dev
+          sudo apt-get install -y protobuf-compiler libpq-dev libssl-dev
       - run: >
           cargo clippy --workspace --exclude extrittio-macos --all-targets --
           -D warnings
@@ -72,17 +80,21 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      DATABASE_URL: postgres://extrittio:extrittio@localhost/extrittio
+      DATABASE_URL: postgres://extrittio:extrittio@127.0.0.1:5432/extrittio?connect_timeout=2
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ env.RUST_VERSION }}
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y protobuf-compiler libsqlite3-dev
+          sudo apt-get install -y protobuf-compiler libpq-dev libssl-dev postgresql-client
+      - name: Check PostgreSQL
+        run: pg_isready -h 127.0.0.1 -p 5432 -U extrittio -d extrittio
       - run: cargo test --workspace --exclude extrittio-macos
 
   frontend:
@@ -103,3 +115,16 @@ jobs:
       - run: npm ci
       - name: TypeScript check & build
         run: npm run build
+
+  docker:
+    name: Docker Image
+    needs: [backend-fmt, backend-clippy, backend-test, frontend]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/docker.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      platforms: linux/amd64
+      cargo-profile: ci-release
+
