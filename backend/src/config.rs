@@ -44,6 +44,7 @@ pub struct AppConfig {
     pub ui_dir: Option<PathBuf>,
     pub enable_api_docs: bool,
     pub cookie_secure: bool,
+    pub health_token: Option<String>,
     pub max_zenoh_payload_size_bytes: usize,
     pub auto_register_devices: bool,
     pub trusted_proxies: Vec<String>,
@@ -151,6 +152,9 @@ impl AppConfig {
             ui_dir: read_env("EXTRITTIO_UI_DIR").map(PathBuf::from),
             enable_api_docs: env_bool(&read_env, "EXTRITTIO_ENABLE_API_DOCS").unwrap_or(false),
             cookie_secure,
+            health_token: read_env("EXTRITTIO_HEALTH_TOKEN")
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty()),
             max_zenoh_payload_size_bytes: max_zenoh_payload_kb.saturating_mul(1024),
             auto_register_devices: env_bool(&read_env, "EXTRITTIO_AUTO_REGISTER_DEVICES")
                 .unwrap_or(false),
@@ -226,6 +230,7 @@ mod tests {
             config.max_zenoh_payload_size_bytes,
             super::DEFAULT_ZENOH_MAX_PAYLOAD_KB * 1024
         );
+        assert_eq!(config.health_token, None);
         assert!(!config.auto_register_devices);
         assert!(config.trusted_proxies.is_empty());
     }
@@ -259,6 +264,7 @@ mod tests {
             ("APP_METRICS_FLUSH_INTERVAL_SECS", "120"),
             ("METRICS_RETENTION_HOURS", "6"),
             ("ZENOH_MAX_PAYLOAD_KB", "512"),
+            ("EXTRITTIO_HEALTH_TOKEN", "ready-secret"),
             ("EXTRITTIO_AUTO_REGISTER_DEVICES", "true"),
             ("EXTRITTIO_TRUSTED_PROXIES", "127.0.0.1, 172.30.0.3"),
         ]);
@@ -272,6 +278,7 @@ mod tests {
         assert_eq!(config.app_metrics_flush_interval_secs, 120);
         assert_eq!(config.metrics_retention_hours, 6);
         assert_eq!(config.max_zenoh_payload_size_bytes, 512 * 1024);
+        assert_eq!(config.health_token.as_deref(), Some("ready-secret"));
         assert!(config.auto_register_devices);
         assert_eq!(
             config.trusted_proxies,

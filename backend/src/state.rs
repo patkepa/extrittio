@@ -83,6 +83,7 @@ pub struct AppState {
     pub jwt_secret: String,
     pub public_url: String,
     pub cookie_secure: bool,
+    pub health_token: Option<String>,
     pub api_rate_limiter: RateLimiter,
     pub login_rate_limiter: RateLimiter,
     pub trusted_proxies: Vec<TrustedProxy>,

@@ -69,6 +69,7 @@ pub async fn initialize_state(config: &AppConfig) -> anyhow::Result<Arc<AppState
         jwt_secret,
         public_url: config.public_url.clone(),
         cookie_secure: config.cookie_secure,
+        health_token: config.health_token.clone(),
         api_rate_limiter: RateLimiter::new(100, 60),
         login_rate_limiter: RateLimiter::new(5, 60),
         trusted_proxies: parse_trusted_proxies(&config.trusted_proxies),

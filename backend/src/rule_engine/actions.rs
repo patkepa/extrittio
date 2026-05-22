@@ -151,7 +151,7 @@ pub async fn execute_action(
     action: PendingAction,
     db_pool: &DbPool,
     rule_cache: &Arc<RwLock<RuleCache>>,
-    http_client: &reqwest::Client,
+    _http_client: &reqwest::Client,
     zenoh_session: &Arc<zenoh::Session>,
     zenoh_metrics: &Arc<ZenohMetrics>,
 ) -> Result<(), String> {
@@ -268,8 +268,18 @@ pub async fn execute_action(
         } => {
             let parsed_url = crate::security::validate_public_https_url(&url, "webhook url")
                 .map_err(|e| e.to_string())?;
-            crate::security::validate_resolved_public_target(&parsed_url).await?;
-            let mut req = http_client.post(&url).json(&payload);
+            let resolved_addrs =
+                crate::security::validate_resolved_public_target(&parsed_url).await?;
+            let host = parsed_url
+                .host_str()
+                .ok_or_else(|| "webhook url must include a host".to_string())?;
+            let pinned_client = reqwest::Client::builder()
+                .timeout(Duration::from_secs(10))
+                .redirect(reqwest::redirect::Policy::none())
+                .resolve_to_addrs(host, &resolved_addrs)
+                .build()
+                .map_err(|e| e.to_string())?;
+            let mut req = pinned_client.post(&url).json(&payload);
             for (key, value) in &headers {
                 req = req.header(key, value);
             }

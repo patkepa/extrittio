@@ -69,6 +69,18 @@ pub fn seed_default_device_types(conn: &mut PgConnection) -> anyhow::Result<()> 
 /// Initialize JWT secret from the database, or generate one if not present.
 /// Falls back to the `JWT_SECRET` environment variable if set.
 pub fn init_jwt_secret(conn: &mut PgConnection) -> anyhow::Result<String> {
+    if let Some(secret) = std::env::var("JWT_SECRET")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    {
+        return Ok(secret);
+    }
+
+    if env_bool("EXTRITTIO_REQUIRE_ENV_SECRETS") {
+        anyhow::bail!("JWT_SECRET must be set when EXTRITTIO_REQUIRE_ENV_SECRETS=true");
+    }
+
     let jwt_secret = {
         let existing: Option<ServerConfigEntry> = server_config::table
             .find("jwt_secret")
@@ -101,7 +113,18 @@ pub fn init_jwt_secret(conn: &mut PgConnection) -> anyhow::Result<String> {
         }
     };
 
-    Ok(std::env::var("JWT_SECRET").unwrap_or(jwt_secret))
+    Ok(jwt_secret)
+}
+
+fn env_bool(key: &str) -> bool {
+    std::env::var(key)
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
 }
 
 /// Seed the first owner user if explicitly configured.

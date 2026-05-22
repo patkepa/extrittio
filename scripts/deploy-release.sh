@@ -36,10 +36,14 @@ docker compose --env-file "$env_file" -f "$compose_file" up -d
 docker compose --env-file "$env_file" -f "$compose_file" ps
 
 domain="$(sed -n 's/^EXTRITTIO_DOMAIN=//p' "$env_file" | tail -1)"
+health_token="$(sed -n 's/^EXTRITTIO_HEALTH_TOKEN=//p' "$env_file" | tail -1)"
 if [[ -n "$domain" ]]; then
   curl -fsS -H "Host: $domain" http://127.0.0.1/health >/dev/null
-  curl -fsS -H "Host: $domain" http://127.0.0.1/ready >/dev/null
+  if [[ -n "$health_token" ]]; then
+    curl -fsS -H "Host: $domain" -H "X-Extrittio-Health-Token: $health_token" http://127.0.0.1/ready >/dev/null
+  else
+    curl -fsS -H "Host: $domain" http://127.0.0.1/ready >/dev/null
+  fi
 fi
 
 echo "deployed Extrittio $version"
-

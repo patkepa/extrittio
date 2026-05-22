@@ -20,7 +20,6 @@ pub async fn auth_middleware(
         || path == "/api/v1/auth/logout"
         || path == "/health"
         || path == "/ready"
-        || path == "/api/v1/system/version"
         || path == "/api/v1/firmware-updates/ci"
     {
         return Ok(next.run(request).await);

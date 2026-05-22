@@ -1,4 +1,4 @@
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 use crate::error::AppError;
 
@@ -29,7 +29,9 @@ pub fn validate_public_https_url(
     Ok(url)
 }
 
-pub async fn validate_resolved_public_target(url: &reqwest::Url) -> Result<(), String> {
+pub async fn validate_resolved_public_target(
+    url: &reqwest::Url,
+) -> Result<Vec<SocketAddr>, String> {
     let host = url
         .host_str()
         .ok_or_else(|| "webhook URL must include a host".to_string())?;
@@ -40,6 +42,7 @@ pub async fn validate_resolved_public_target(url: &reqwest::Url) -> Result<(), S
         .map_err(|e| format!("failed to resolve webhook host {host}: {e}"))?;
 
     let mut saw_addr = false;
+    let mut addrs = Vec::new();
     for addr in resolved {
         saw_addr = true;
         if is_blocked_ip(addr.ip()) {
@@ -47,6 +50,7 @@ pub async fn validate_resolved_public_target(url: &reqwest::Url) -> Result<(), S
                 "webhook host {host} resolves to a private, loopback, or link-local address"
             ));
         }
+        addrs.push(addr);
     }
 
     if !saw_addr {
@@ -55,7 +59,7 @@ pub async fn validate_resolved_public_target(url: &reqwest::Url) -> Result<(), S
         ));
     }
 
-    Ok(())
+    Ok(addrs)
 }
 
 pub fn is_blocked_ip(ip: IpAddr) -> bool {

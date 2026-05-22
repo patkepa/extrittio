@@ -59,7 +59,7 @@ wait_for_postgres() {
 wait_for_backend() {
   log "Waiting for backend readiness..."
   for _ in {1..90}; do
-    if compose exec -T backend curl -fsS http://127.0.0.1:8080/ready >/dev/null 2>&1; then
+    if compose exec -T backend sh -c 'curl -fsS -H "X-Extrittio-Health-Token: ${EXTRITTIO_HEALTH_TOKEN:-}" http://127.0.0.1:8080/ready >/dev/null' >/dev/null 2>&1; then
       return 0
     fi
     sleep 2

@@ -36,8 +36,10 @@ fn runtime_version() -> String {
     get,
     path = "/api/v1/system/version",
     tag = "system",
+    security(("bearer_auth" = [])),
     responses(
         (status = 200, description = "Runtime version metadata", body = SystemVersionResponse),
+        (status = 401, description = "Unauthorized"),
     ),
 )]
 pub(crate) async fn get_version(State(state): State<Arc<AppState>>) -> Json<SystemVersionResponse> {

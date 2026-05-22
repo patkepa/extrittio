@@ -31,6 +31,8 @@ services:
       - EXTRITTIO_COOKIE_SECURE=true
       - EXTRITTIO_SERVE_UI=false
       - EXTRITTIO_KEY_ENCRYPTION_SECRET=${EXTRITTIO_KEY_ENCRYPTION_SECRET:?set EXTRITTIO_KEY_ENCRYPTION_SECRET}
+      - EXTRITTIO_HEALTH_TOKEN=${EXTRITTIO_HEALTH_TOKEN:?set EXTRITTIO_HEALTH_TOKEN}
+      - EXTRITTIO_REQUIRE_ENV_SECRETS=true
       - EXTRITTIO_TRUSTED_PROXIES=${EXTRITTIO_TRUSTED_PROXIES:-172.30.0.3}
       - EXTRITTIO_ENABLE_API_DOCS=false
       - EXTRITTIO_BOOTSTRAP_ADMIN_USERNAME=${EXTRITTIO_BOOTSTRAP_ADMIN_USERNAME:-admin}
@@ -44,7 +46,7 @@ services:
       - app
       - zenoh
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/ready >/dev/null"]
+      test: ["CMD-SHELL", "curl -fsS -H \"X-Extrittio-Health-Token: $${EXTRITTIO_HEALTH_TOKEN}\" http://127.0.0.1:8080/ready >/dev/null"]
       interval: 10s
       timeout: 5s
       retries: 12
