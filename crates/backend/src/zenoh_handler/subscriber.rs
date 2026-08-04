@@ -3,6 +3,7 @@ use std::sync::RwLock;
 use std::sync::atomic::Ordering;
 use tracing::{info, warn};
 
+use crate::persistence::Persistence;
 use crate::rule_engine::cache::RuleCache;
 use crate::state::{DbPool, ZenohMetrics};
 
@@ -26,6 +27,7 @@ use super::handlers;
 pub async fn run_subscriber(
     session: Arc<zenoh::Session>,
     db_pool: DbPool,
+    persistence: Persistence,
     zenoh_metrics: Arc<ZenohMetrics>,
     rule_cache: Arc<RwLock<RuleCache>>,
     max_payload_size_bytes: usize,
@@ -95,6 +97,7 @@ pub async fn run_subscriber(
 
     // Spawn shadow report handler
     let shadow_report_pool = db_pool.clone();
+    let shadow_report_persistence = persistence.clone();
     let shadow_report_metrics = zenoh_metrics.clone();
     subscriber_tasks.spawn(async move {
         loop {
@@ -108,10 +111,12 @@ pub async fn run_subscriber(
                     ) else {
                         continue;
                     };
-                    let pool = shadow_report_pool.clone();
-                    let _ = tokio::task::spawn_blocking(move || {
-                        handlers::shadow::handle_shadow_report(&pool, &topic_device_id, &payload);
-                    })
+                    handlers::shadow::handle_shadow_report(
+                        &shadow_report_pool,
+                        &shadow_report_persistence,
+                        &topic_device_id,
+                        &payload,
+                    )
                     .await;
                     shadow_report_metrics
                         .messages_in
@@ -129,6 +134,7 @@ pub async fn run_subscriber(
 
     // Spawn shadow get handler (async — DB part uses spawn_blocking internally)
     let shadow_get_pool = db_pool.clone();
+    let shadow_get_persistence = persistence;
     let shadow_get_session = session.clone();
     let shadow_get_metrics = zenoh_metrics.clone();
     subscriber_tasks.spawn(async move {
@@ -145,6 +151,7 @@ pub async fn run_subscriber(
                     };
                     handlers::shadow::handle_shadow_get(
                         &shadow_get_pool,
+                        &shadow_get_persistence,
                         &shadow_get_session,
                         &topic_device_id,
                         &payload,

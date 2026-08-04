@@ -1,59 +1,161 @@
-use diesel::PgConnection;
-use std::collections::HashMap;
-
 use crate::auth::context::RequestContext;
 use crate::auth::policy::{self, Permission};
-use crate::db::models::{ApiKey, NewApiKey};
+use crate::domains::identity::api_key_repository::ApiKeyRepository;
+use crate::domains::identity::api_key_types::{ApiKeyRecord, ApiKeySummary, CreateApiKeyRecord};
 use crate::error::AppError;
-use crate::repositories::{api_key_repo, device_type_repo};
 
-/// Insert a new API key.
-pub fn create(
+pub async fn create(
     ctx: &RequestContext,
-    conn: &mut PgConnection,
-    new_key: &NewApiKey,
-) -> Result<ApiKey, AppError> {
+    repository: &dyn ApiKeyRepository,
+    record: CreateApiKeyRecord,
+) -> Result<ApiKeyRecord, AppError> {
     policy::require(ctx, Permission::ManageApiKeys)?;
-    Ok(api_key_repo::insert_api_key(
-        conn,
-        ctx.tenant_id_str(),
-        new_key,
-    )?)
-}
-
-/// List all API keys with their device type names resolved.
-/// Returns tuples of (ApiKey, Option<device_type_name>).
-pub fn list_with_type_names(
-    ctx: &RequestContext,
-    conn: &mut PgConnection,
-) -> Result<Vec<(ApiKey, Option<String>)>, AppError> {
-    policy::require(ctx, Permission::ManageApiKeys)?;
-
-    let keys = api_key_repo::list_api_keys(conn, ctx.tenant_id_str())?;
-    let all_device_types = device_type_repo::list_all_device_types(conn, ctx.tenant_id_str())?;
-    let dt_map: HashMap<i32, String> = all_device_types
-        .into_iter()
-        .map(|dt| (dt.id, dt.name))
-        .collect();
-
-    let results = keys
-        .into_iter()
-        .map(|k| {
-            let dt_name = k.device_type_id.and_then(|id| dt_map.get(&id).cloned());
-            (k, dt_name)
-        })
-        .collect();
-
-    Ok(results)
-}
-
-/// Delete an API key by ID. Returns error if not found.
-pub fn delete(ctx: &RequestContext, conn: &mut PgConnection, id: i32) -> Result<(), AppError> {
-    policy::require(ctx, Permission::ManageApiKeys)?;
-
-    let deleted = api_key_repo::delete_api_key(conn, ctx.tenant_id_str(), id)?;
-    if deleted == 0 {
-        return Err(AppError::NotFound("API key not found".into()));
+    if record.name.trim().is_empty() {
+        return Err(AppError::UnprocessableEntity("name is required".into()));
     }
-    Ok(())
+    Ok(repository.create(ctx.tenant_id(), record).await?)
+}
+
+pub async fn list(
+    ctx: &RequestContext,
+    repository: &dyn ApiKeyRepository,
+) -> Result<Vec<ApiKeySummary>, AppError> {
+    policy::require(ctx, Permission::ManageApiKeys)?;
+    Ok(repository.list(ctx.tenant_id()).await?)
+}
+
+pub async fn delete(
+    ctx: &RequestContext,
+    repository: &dyn ApiKeyRepository,
+    id: i32,
+) -> Result<(), AppError> {
+    policy::require(ctx, Permission::ManageApiKeys)?;
+    if repository.delete(ctx.tenant_id(), id).await? {
+        Ok(())
+    } else {
+        Err(AppError::NotFound("API key not found".into()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
+
+    use async_trait::async_trait;
+    use chrono::{TimeZone, Utc};
+
+    use super::*;
+    use crate::auth::Claims;
+    use crate::persistence::PersistenceError;
+    use crate::tenancy::TenantId;
+
+    #[derive(Default)]
+    struct RecordingRepository {
+        calls: Mutex<Vec<(String, TenantId)>>,
+    }
+
+    impl RecordingRepository {
+        fn record(&self, operation: &str, tenant: &TenantId) {
+            self.calls
+                .lock()
+                .unwrap()
+                .push((operation.to_string(), tenant.clone()));
+        }
+    }
+
+    #[async_trait]
+    impl ApiKeyRepository for RecordingRepository {
+        async fn create(
+            &self,
+            tenant: &TenantId,
+            record: CreateApiKeyRecord,
+        ) -> Result<ApiKeyRecord, PersistenceError> {
+            self.record("create", tenant);
+            Ok(ApiKeyRecord {
+                id: 1,
+                name: record.name,
+                key_prefix: record.key_prefix,
+                device_type_id: record.device_type_id,
+                created_at: Utc.timestamp_opt(1, 0).unwrap(),
+                last_used_at: None,
+            })
+        }
+
+        async fn list(&self, tenant: &TenantId) -> Result<Vec<ApiKeySummary>, PersistenceError> {
+            self.record("list", tenant);
+            Ok(Vec::new())
+        }
+
+        async fn delete(&self, tenant: &TenantId, _id: i32) -> Result<bool, PersistenceError> {
+            self.record("delete", tenant);
+            Ok(true)
+        }
+    }
+
+    fn context(role: &str, tenant_id: &str) -> RequestContext {
+        RequestContext::from_claims(Claims {
+            sub: 1,
+            username: "operator".to_string(),
+            role: role.to_string(),
+            tenant_id: Some(tenant_id.to_string()),
+            scopes: Vec::new(),
+            permission_version: 1,
+            exp: 0,
+        })
+    }
+
+    fn create_record(name: &str) -> CreateApiKeyRecord {
+        CreateApiKeyRecord {
+            name: name.to_string(),
+            key_hash: "hash".to_string(),
+            key_prefix: "extr_test".to_string(),
+            device_type_id: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn passes_tenant_identity_to_every_operation() {
+        let repository = RecordingRepository::default();
+        let context = context("admin", "tenant-a");
+
+        create(&context, &repository, create_record("CI"))
+            .await
+            .unwrap();
+        list(&context, &repository).await.unwrap();
+        delete(&context, &repository, 1).await.unwrap();
+
+        let tenant = TenantId::new("tenant-a").unwrap();
+        assert_eq!(
+            repository.calls.lock().unwrap().as_slice(),
+            &[
+                ("create".to_string(), tenant.clone()),
+                ("list".to_string(), tenant.clone()),
+                ("delete".to_string(), tenant),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn authorization_and_validation_happen_before_persistence() {
+        let repository = RecordingRepository::default();
+
+        let error = create(
+            &context("viewer", "tenant-a"),
+            &repository,
+            create_record("CI"),
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(error, AppError::Forbidden(_)));
+
+        let error = create(
+            &context("admin", "tenant-a"),
+            &repository,
+            create_record("   "),
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(error, AppError::UnprocessableEntity(_)));
+        assert!(repository.calls.lock().unwrap().is_empty());
+    }
 }

@@ -11,10 +11,10 @@ use utoipa::ToSchema;
 
 use crate::auth::context::RequestContext;
 use crate::auth::create_token_with_scopes;
-use crate::db::models::Role;
+use crate::domains::identity::role_types::RoleRecord;
 use crate::error::AppError;
 use crate::services::user_service;
-use crate::state::{AppState, run_db};
+use crate::state::AppState;
 use crate::tenancy::{DEFAULT_TENANT_ID, TenantId};
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -82,11 +82,14 @@ pub(crate) async fn login(
         .filter(|tenant_id| !tenant_id.is_empty())
         .unwrap_or(DEFAULT_TENANT_ID)
         .to_string();
-    TenantId::new(tenant_id.clone()).map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let tenant_id = TenantId::new(tenant_id).map_err(|e| AppError::BadRequest(e.to_string()))?;
 
-    let user = run_db(&state.db_pool, move |conn| {
-        user_service::authenticate(conn, &tenant_id, &body.username, &body.password)
-    })
+    let user = user_service::authenticate(
+        state.persistence.users.as_ref(),
+        &tenant_id,
+        &body.username,
+        &body.password,
+    )
     .await?;
 
     let token = create_token_with_scopes(
@@ -166,10 +169,7 @@ pub(crate) async fn me(
     State(state): State<Arc<AppState>>,
     Extension(ctx): Extension<RequestContext>,
 ) -> Result<Json<UserResponse>, AppError> {
-    let user = run_db(&state.db_pool, move |conn| {
-        user_service::current_user(&ctx, conn)
-    })
-    .await?;
+    let user = user_service::current_user(&ctx, state.persistence.users.as_ref()).await?;
 
     Ok(Json(user_response(
         user.id,
@@ -181,7 +181,7 @@ pub(crate) async fn me(
     )))
 }
 
-pub fn role_summary(role: Role) -> RoleSummary {
+pub fn role_summary(role: RoleRecord) -> RoleSummary {
     RoleSummary {
         id: role.id,
         name: role.name,
@@ -194,7 +194,7 @@ pub fn user_response(
     id: i32,
     username: String,
     role: String,
-    roles: Vec<Role>,
+    roles: Vec<RoleRecord>,
     permissions: Vec<String>,
     permission_version: i32,
 ) -> UserResponse {

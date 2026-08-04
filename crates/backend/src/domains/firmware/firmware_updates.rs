@@ -15,8 +15,9 @@ use crate::auth::context::RequestContext;
 use crate::db::models::{NewFirmwareBlob, NewFirmwareUpdate};
 use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse};
+use crate::repositories::device_type_repo;
 use crate::security;
-use crate::services::{device_type_service, firmware_service};
+use crate::services::firmware_service;
 use crate::state::{AppState, run_db};
 
 // ---------------------------------------------------------------------------
@@ -275,7 +276,11 @@ pub(crate) async fn create_firmware_update(
 
     let response = run_db(&state.db_pool, move |conn| {
         // Verify device type exists
-        let dt = device_type_service::find_by_id(&ctx, conn, body.device_type_id)?;
+        let dt = device_type_repo::find_device_type_by_id(
+            conn,
+            ctx.tenant_id_str(),
+            body.device_type_id,
+        )?;
 
         // Auto-generate version if not provided
         let version = match body.version {
@@ -451,7 +456,8 @@ pub(crate) async fn upload_firmware_update(
 
     let response = run_db(&state.db_pool, move |conn| {
         // Verify device type exists
-        let dt = device_type_service::find_by_id(&ctx, conn, device_type_id)?;
+        let dt =
+            device_type_repo::find_device_type_by_id(conn, ctx.tenant_id_str(), device_type_id)?;
 
         // Auto-generate version if not provided
         let version = match version {

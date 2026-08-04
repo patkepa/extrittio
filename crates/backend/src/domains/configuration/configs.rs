@@ -12,7 +12,7 @@ use utoipa::ToSchema;
 use crate::auth::context::RequestContext;
 use crate::error::AppError;
 use crate::services::config_service;
-use crate::state::{AppState, run_db};
+use crate::state::AppState;
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -64,26 +64,23 @@ pub(crate) async fn get_config(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<ConfigResponse>, AppError> {
-    let response = run_db(&state.db_pool, move |conn| {
-        let config = config_service::get_config(&ctx, conn, &id)?;
-
-        match config {
-            Some(c) => Ok(ConfigResponse {
-                device_id: c.device_id,
-                config: c.config,
-                updated_at: c.updated_at.and_utc().to_rfc3339(),
-            }),
-            None => {
-                // Return empty config if none exists yet
-                Ok(ConfigResponse {
-                    device_id: id,
-                    config: Value::Object(serde_json::Map::default()),
-                    updated_at: Utc::now().to_rfc3339(),
-                })
+    let config =
+        config_service::get_config(&ctx, state.persistence.configuration.as_ref(), &id).await?;
+    let response = match config {
+        Some(config) => ConfigResponse {
+            device_id: config.device_id,
+            config: config.config,
+            updated_at: config.updated_at.to_rfc3339(),
+        },
+        None => {
+            // Return empty config if none exists yet.
+            ConfigResponse {
+                device_id: id,
+                config: Value::Object(serde_json::Map::default()),
+                updated_at: Utc::now().to_rfc3339(),
             }
         }
-    })
-    .await?;
+    };
 
     Ok(Json(response))
 }
@@ -107,16 +104,18 @@ pub(crate) async fn update_config(
     Path(id): Path<String>,
     Json(body): Json<UpdateConfigRequest>,
 ) -> Result<Json<ConfigResponse>, AppError> {
-    let response = run_db(&state.db_pool, move |conn| {
-        let updated = config_service::merge_and_update(&ctx, conn, &id, &body.entries)?;
-
-        Ok(ConfigResponse {
-            device_id: updated.device_id,
-            config: updated.config,
-            updated_at: updated.updated_at.and_utc().to_rfc3339(),
-        })
-    })
+    let updated = config_service::merge_and_update(
+        &ctx,
+        state.persistence.configuration.as_ref(),
+        &id,
+        &body.entries,
+    )
     .await?;
+    let response = ConfigResponse {
+        device_id: updated.device_id,
+        config: updated.config,
+        updated_at: updated.updated_at.to_rfc3339(),
+    };
 
     Ok(Json(response))
 }

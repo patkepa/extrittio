@@ -71,7 +71,12 @@ pub(crate) async fn ready(
         ));
     }
 
-    let database_ready = state.db_pool.get().is_ok();
+    let database_ready = state
+        .persistence
+        .bootstrap
+        .health()
+        .await
+        .is_ok_and(|health| health.reachable);
     let snapshot = state.readiness.snapshot();
     let workers_ready = snapshot.workers.values().all(|ready| *ready);
     let ready =

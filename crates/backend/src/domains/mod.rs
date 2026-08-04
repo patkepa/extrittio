@@ -22,14 +22,22 @@ pub mod commands {
 }
 
 pub mod configuration {
+    #[path = "repository.rs"]
+    pub mod repository;
+    #[path = "types.rs"]
+    pub mod types;
+
     pub use crate::api::configs as api;
-    pub use crate::repositories::config_repo as repository;
     pub use crate::services::config_service as service;
 }
 
 pub mod dashboard {
+    #[path = "repository.rs"]
+    pub mod repository;
+    #[path = "types.rs"]
+    pub mod types;
+
     pub use crate::api::dashboard as api;
-    pub use crate::repositories::dashboard_repo as repository;
     pub use crate::services::dashboard_service as service;
 }
 
@@ -42,8 +50,12 @@ pub mod devices {
 }
 
 pub mod device_types {
+    #[path = "repository.rs"]
+    pub mod repository;
+    #[path = "types.rs"]
+    pub mod types;
+
     pub use crate::api::device_types as api;
-    pub use crate::repositories::device_type_repo as repository;
     pub use crate::services::device_type_service as service;
 }
 
@@ -60,12 +72,29 @@ pub mod firmware {
 pub mod firmware_store;
 
 pub mod fleets {
+    #[path = "repository.rs"]
+    pub mod repository;
+    #[path = "types.rs"]
+    pub mod types;
+
     pub use crate::api::fleets as api;
-    pub use crate::repositories::fleet_repo as repository;
     pub use crate::services::fleet_service as service;
 }
 
 pub mod identity {
+    #[path = "api_key_repository.rs"]
+    pub mod api_key_repository;
+    #[path = "api_key_types.rs"]
+    pub mod api_key_types;
+    #[path = "role_repository.rs"]
+    pub mod role_repository;
+    #[path = "role_types.rs"]
+    pub mod role_types;
+    #[path = "user_repository.rs"]
+    pub mod user_repository;
+    #[path = "user_types.rs"]
+    pub mod user_types;
+
     pub use crate::api::{api_keys, auth_routes, certificates, roles, users};
     pub use crate::repositories::{api_key_repo, cert_repo, role_repo, user_repo};
     pub use crate::services::{api_key_service, cert_service, role_service, user_service};
@@ -91,8 +120,12 @@ pub mod rules {
 }
 
 pub mod shadows {
+    #[path = "repository.rs"]
+    pub mod repository;
+    #[path = "types.rs"]
+    pub mod types;
+
     pub use crate::api::shadows as api;
-    pub use crate::repositories::shadow_repo as repository;
     pub use crate::services::shadow_service as service;
 }
 

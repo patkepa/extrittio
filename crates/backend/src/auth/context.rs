@@ -69,8 +69,14 @@ impl RequestContext {
 
     #[must_use]
     pub fn tenant_id_str(&self) -> &str {
+        self.tenant_id().as_str()
+    }
+
+    /// Tenant identity required by tenant-scoped persistence ports.
+    #[must_use]
+    pub fn tenant_id(&self) -> &TenantId {
         self.tenant_id
             .as_ref()
-            .map_or(DEFAULT_TENANT_ID, TenantId::as_str)
+            .expect("request contexts always contain a validated tenant identity")
     }
 }

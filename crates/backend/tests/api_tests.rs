@@ -94,6 +94,7 @@ async fn setup_app_with_context(
 
     let state = Arc::new(extrittio_backend::state::AppState {
         db_pool: db_pool.clone(),
+        persistence: extrittio_backend::persistence::postgres::create_persistence(db_pool.clone()),
         zenoh_session: Arc::new(zenoh_session),
         jwt_secret: "test-secret-key".to_string(),
         public_url: "http://localhost:8080".to_string(),
@@ -126,6 +127,24 @@ async fn setup_app() -> axum::Router {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_ready_checks_persistence_health() {
+    let _guard = TEST_DB_LOCK.lock().await;
+    let app = setup_app().await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/ready")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_list_devices_empty() {
     let _guard = TEST_DB_LOCK.lock().await;
     let app = setup_app().await;
@@ -145,6 +164,387 @@ async fn test_list_devices_empty() {
     let result: Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(result["total"], 0);
     assert!(result["data"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_fleet_lifecycle_uses_tenant_scoped_persistence() {
+    let _guard = TEST_DB_LOCK.lock().await;
+    let (app, pool) = setup_app_with_context(test_context()).await;
+
+    {
+        let mut conn = pool.get().unwrap();
+        diesel::sql_query(
+            "INSERT INTO organizations (id, name) VALUES ('tenant-b', 'Tenant B') ON CONFLICT DO NOTHING",
+        )
+        .execute(&mut conn)
+        .unwrap();
+        diesel::sql_query(
+            "INSERT INTO fleets (tenant_id, name) VALUES ('tenant-b', 'Hidden Fleet')",
+        )
+        .execute(&mut conn)
+        .unwrap();
+    }
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/fleets")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({ "name": "Production" })).unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let created: Value = serde_json::from_slice(&body).unwrap();
+    let fleet_id = created["id"].as_i64().unwrap();
+    assert_eq!(created["name"], "Production");
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/api/v1/fleets/{fleet_id}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({ "name": "Renamed" })).unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/fleets")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let listed: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(listed["total"], 1);
+    assert_eq!(listed["data"][0]["id"], fleet_id);
+    assert_eq!(listed["data"][0]["name"], "Renamed");
+    assert_eq!(listed["data"][0]["device_count"], 0);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/api/v1/fleets/{fleet_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/fleets")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let listed: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(listed["total"], 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_device_type_lifecycle_uses_tenant_scoped_persistence() {
+    let _guard = TEST_DB_LOCK.lock().await;
+    let (app, pool) = setup_app_with_context(test_context()).await;
+
+    {
+        let mut conn = pool.get().unwrap();
+        diesel::sql_query(
+            "INSERT INTO organizations (id, name) VALUES ('tenant-b', 'Tenant B') ON CONFLICT DO NOTHING",
+        )
+        .execute(&mut conn)
+        .unwrap();
+        diesel::sql_query(
+            "INSERT INTO device_types (tenant_id, name, icon, color_hex) VALUES ('tenant-b', 'Hidden Type', 'cube', '#8ABBFF')",
+        )
+        .execute(&mut conn)
+        .unwrap();
+    }
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/device-types")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "name": "  Air Sensor  ",
+                        "icon": "air-quality",
+                        "color_hex": "#aabbcc"
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let created: Value = serde_json::from_slice(&body).unwrap();
+    let device_type_id = created["id"].as_i64().unwrap();
+    assert_eq!(created["name"], "Air Sensor");
+    assert_eq!(created["color_hex"], "#AABBCC");
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/api/v1/device-types/{device_type_id}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({ "name": "Environment" })).unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let updated: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(updated["name"], "Environment");
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/device-types")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let listed: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(listed["total"], 3);
+    assert!(
+        listed["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|record| record["id"] == device_type_id && record["name"] == "Environment")
+    );
+    assert!(
+        listed["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|record| record["name"] != "Hidden Type")
+    );
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/api/v1/device-types/{device_type_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_device_configuration_merges_atomically() {
+    let _guard = TEST_DB_LOCK.lock().await;
+    let app = setup_app().await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/devices")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "name": "Config Device",
+                        "device_type_id": 1
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let created: Value = serde_json::from_slice(&body).unwrap();
+    let device_id = created["id"].as_str().unwrap();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/devices/{device_id}/config"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let empty: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(empty["config"], serde_json::json!({}));
+
+    for patch in [
+        serde_json::json!({ "enabled": true, "interval": 10 }),
+        serde_json::json!({ "enabled": null, "interval": 20 }),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri(format!("/api/v1/devices/{device_id}/config"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&patch).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/devices/{device_id}/config"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let config: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(config["config"], serde_json::json!({ "interval": 20 }));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_device_shadow_mutations_return_the_committed_state() {
+    let _guard = TEST_DB_LOCK.lock().await;
+    let app = setup_app().await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/devices")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "name": "Shadow Device",
+                        "device_type_id": 1
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let created: Value = serde_json::from_slice(&body).unwrap();
+    let device_id = created["id"].as_str().unwrap();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!("/api/v1/devices/{device_id}/shadow/desired"))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"sample_rate":10}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let desired: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(desired["desired"], serde_json::json!({ "sample_rate": 10 }));
+    assert_eq!(desired["delta"], serde_json::json!({ "sample_rate": 10 }));
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!("/api/v1/devices/{device_id}/shadow/reported"))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"sample_rate":10}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let reported: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+        reported["reported"],
+        serde_json::json!({ "sample_rate": 10 })
+    );
+    assert_eq!(reported["delta"], serde_json::json!({}));
+    assert_eq!(
+        reported["version"],
+        desired["version"].as_i64().unwrap() + 1
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/api/v1/devices/{device_id}/shadow"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/devices/{device_id}/shadow"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let reset: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(reset["desired"], serde_json::json!({}));
+    assert_eq!(reset["reported"], serde_json::json!({}));
+    assert_eq!(reset["delta"], serde_json::json!({}));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -712,6 +1112,7 @@ async fn test_ci_ingest_success() {
 
     let state = Arc::new(AppState {
         db_pool: db_pool.clone(),
+        persistence: extrittio_backend::persistence::postgres::create_persistence(db_pool.clone()),
         zenoh_session: Arc::new(zenoh_session),
         jwt_secret: "test-secret-key".to_string(),
         public_url: "http://localhost:8080".to_string(),

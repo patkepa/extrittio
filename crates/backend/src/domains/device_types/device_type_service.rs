@@ -1,29 +1,24 @@
-use diesel::PgConnection;
-
 use crate::auth::context::RequestContext;
 use crate::auth::policy::{self, Permission};
-use crate::db::models::{DeviceType, NewDeviceType, UpdateDeviceType};
+use crate::domains::device_types::repository::DeviceTypeRepository;
+use crate::domains::device_types::types::{
+    CreateDeviceTypeRecord, DeleteDeviceTypeOutcome, DeviceTypeRecord, UpdateDeviceTypeRecord,
+};
 use crate::error::AppError;
-use crate::repositories::device_type_repo;
-use crate::tenancy::DEFAULT_TENANT_ID;
-
-pub fn list(
-    ctx: &RequestContext,
-    conn: &mut PgConnection,
-    limit: i64,
-    offset: i64,
-) -> Result<(Vec<DeviceType>, i64), AppError> {
-    policy::require(ctx, Permission::ReadDeviceTypes)?;
-    Ok(device_type_repo::list_device_types(
-        conn,
-        ctx.tenant_id_str(),
-        limit,
-        offset,
-    )?)
-}
 
 const DEFAULT_ICON: &str = "cube";
 const DEFAULT_COLOR_HEX: &str = "#8ABBFF";
+
+pub async fn list(
+    ctx: &RequestContext,
+    repository: &dyn DeviceTypeRepository,
+    limit: i64,
+    offset: i64,
+) -> Result<(Vec<DeviceTypeRecord>, i64), AppError> {
+    policy::require(ctx, Permission::ReadDeviceTypes)?;
+    let result = repository.list(ctx.tenant_id(), limit, offset).await?;
+    Ok((result.records, result.total))
+}
 
 fn validate_name(name: &str) -> Result<String, AppError> {
     let trimmed = name.trim();
@@ -66,62 +61,53 @@ fn validate_color_hex(color_hex: &str) -> Result<String, AppError> {
     Ok(trimmed.to_ascii_uppercase())
 }
 
-pub fn create(
+pub async fn create(
     ctx: &RequestContext,
-    conn: &mut PgConnection,
+    repository: &dyn DeviceTypeRepository,
     name: &str,
     icon: Option<&str>,
     color_hex: Option<&str>,
-) -> Result<DeviceType, AppError> {
+) -> Result<DeviceTypeRecord, AppError> {
     policy::require(ctx, Permission::ManageDeviceTypes)?;
 
-    let name = validate_name(name)?;
-    let icon = validate_icon(icon.unwrap_or(DEFAULT_ICON))?;
-    let color_hex = validate_color_hex(color_hex.unwrap_or(DEFAULT_COLOR_HEX))?;
-
-    Ok(device_type_repo::insert_device_type(
-        conn,
-        ctx.tenant_id_str(),
-        &NewDeviceType {
-            tenant_id: ctx.tenant_id_str().to_string(),
-            name,
-            icon,
-            color_hex,
-        },
-    )?)
+    let record = CreateDeviceTypeRecord {
+        name: validate_name(name)?,
+        icon: validate_icon(icon.unwrap_or(DEFAULT_ICON))?,
+        color_hex: validate_color_hex(color_hex.unwrap_or(DEFAULT_COLOR_HEX))?,
+    };
+    Ok(repository.create(ctx.tenant_id(), record).await?)
 }
 
-pub fn update(
+pub async fn update(
     ctx: &RequestContext,
-    conn: &mut PgConnection,
+    repository: &dyn DeviceTypeRepository,
     id: i32,
     name: Option<&str>,
     icon: Option<&str>,
     color_hex: Option<&str>,
-) -> Result<DeviceType, AppError> {
+) -> Result<DeviceTypeRecord, AppError> {
     policy::require(ctx, Permission::ManageDeviceTypes)?;
 
-    let changes = UpdateDeviceType {
+    let changes = UpdateDeviceTypeRecord {
         name: name.map(validate_name).transpose()?,
         icon: icon.map(validate_icon).transpose()?,
         color_hex: color_hex.map(validate_color_hex).transpose()?,
     };
 
-    if changes.name.is_none() && changes.icon.is_none() && changes.color_hex.is_none() {
-        return find_by_id(ctx, conn, id);
-    }
-
-    device_type_repo::update_device_type(conn, ctx.tenant_id_str(), id, &changes).map_err(|e| {
-        match e {
-            diesel::result::Error::NotFound => {
-                AppError::NotFound(format!("Device type {id} not found"))
-            }
-            other => AppError::Database(other),
-        }
-    })
+    let record = if changes.name.is_none() && changes.icon.is_none() && changes.color_hex.is_none()
+    {
+        repository.get_by_id(ctx.tenant_id(), id).await?
+    } else {
+        repository.update(ctx.tenant_id(), id, changes).await?
+    };
+    record.ok_or_else(|| AppError::NotFound(format!("Device type {id} not found")))
 }
 
-pub fn delete(ctx: &RequestContext, conn: &mut PgConnection, id: i32) -> Result<(), AppError> {
+pub async fn delete(
+    ctx: &RequestContext,
+    repository: &dyn DeviceTypeRepository,
+    id: i32,
+) -> Result<(), AppError> {
     policy::require(ctx, Permission::ManageDeviceTypes)?;
 
     if id == 1 {
@@ -130,38 +116,196 @@ pub fn delete(ctx: &RequestContext, conn: &mut PgConnection, id: i32) -> Result<
         ));
     }
 
-    let count = device_type_repo::count_devices_for_type(conn, ctx.tenant_id_str(), id)?;
-    if count > 0 {
-        return Err(AppError::Conflict(format!(
-            "Cannot delete device type: {count} device(s) still reference it"
-        )));
+    match repository.delete_if_unused(ctx.tenant_id(), id).await? {
+        DeleteDeviceTypeOutcome::Deleted => Ok(()),
+        DeleteDeviceTypeOutcome::NotFound => {
+            Err(AppError::NotFound(format!("Device type {id} not found")))
+        }
+        DeleteDeviceTypeOutcome::InUse { device_count } => Err(AppError::Conflict(format!(
+            "Cannot delete device type: {device_count} device(s) still reference it"
+        ))),
     }
-
-    let deleted = device_type_repo::delete_device_type(conn, ctx.tenant_id_str(), id)?;
-    if !deleted {
-        return Err(AppError::NotFound(format!("Device type {id} not found")));
-    }
-    Ok(())
 }
 
-pub fn find_by_id(
-    ctx: &RequestContext,
-    conn: &mut PgConnection,
-    id: i32,
-) -> Result<DeviceType, AppError> {
-    device_type_repo::find_device_type_by_id(conn, ctx.tenant_id_str(), id).map_err(|e| match e {
-        diesel::result::Error::NotFound => {
-            AppError::NotFound(format!("Device type {id} not found"))
-        }
-        other => AppError::Database(other),
-    })
-}
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
 
-pub fn find_default_by_id(conn: &mut PgConnection, id: i32) -> Result<DeviceType, AppError> {
-    device_type_repo::find_device_type_by_id(conn, DEFAULT_TENANT_ID, id).map_err(|e| match e {
-        diesel::result::Error::NotFound => {
-            AppError::NotFound(format!("Device type {id} not found"))
+    use async_trait::async_trait;
+
+    use super::*;
+    use crate::auth::Claims;
+    use crate::domains::device_types::types::DeviceTypeList;
+    use crate::persistence::PersistenceError;
+    use crate::tenancy::TenantId;
+
+    struct RecordingRepository {
+        calls: Mutex<Vec<(String, TenantId)>>,
+        delete_outcome: DeleteDeviceTypeOutcome,
+    }
+
+    impl RecordingRepository {
+        fn new(delete_outcome: DeleteDeviceTypeOutcome) -> Self {
+            Self {
+                calls: Mutex::new(Vec::new()),
+                delete_outcome,
+            }
         }
-        other => AppError::Database(other),
-    })
+
+        fn record(&self, operation: &str, tenant: &TenantId) {
+            self.calls
+                .lock()
+                .unwrap()
+                .push((operation.to_string(), tenant.clone()));
+        }
+    }
+
+    #[async_trait]
+    impl DeviceTypeRepository for RecordingRepository {
+        async fn list(
+            &self,
+            tenant: &TenantId,
+            _limit: i64,
+            _offset: i64,
+        ) -> Result<DeviceTypeList, PersistenceError> {
+            self.record("list", tenant);
+            Ok(DeviceTypeList {
+                records: Vec::new(),
+                total: 0,
+            })
+        }
+
+        async fn create(
+            &self,
+            tenant: &TenantId,
+            record: CreateDeviceTypeRecord,
+        ) -> Result<DeviceTypeRecord, PersistenceError> {
+            self.record("create", tenant);
+            Ok(DeviceTypeRecord {
+                id: 2,
+                name: record.name,
+                icon: record.icon,
+                color_hex: record.color_hex,
+            })
+        }
+
+        async fn update(
+            &self,
+            tenant: &TenantId,
+            id: i32,
+            record: UpdateDeviceTypeRecord,
+        ) -> Result<Option<DeviceTypeRecord>, PersistenceError> {
+            self.record("update", tenant);
+            Ok(Some(DeviceTypeRecord {
+                id,
+                name: record.name.unwrap_or_else(|| "Type".to_string()),
+                icon: record.icon.unwrap_or_else(|| DEFAULT_ICON.to_string()),
+                color_hex: record
+                    .color_hex
+                    .unwrap_or_else(|| DEFAULT_COLOR_HEX.to_string()),
+            }))
+        }
+
+        async fn get_by_id(
+            &self,
+            tenant: &TenantId,
+            id: i32,
+        ) -> Result<Option<DeviceTypeRecord>, PersistenceError> {
+            self.record("get", tenant);
+            Ok(Some(DeviceTypeRecord {
+                id,
+                name: "Type".to_string(),
+                icon: DEFAULT_ICON.to_string(),
+                color_hex: DEFAULT_COLOR_HEX.to_string(),
+            }))
+        }
+
+        async fn delete_if_unused(
+            &self,
+            tenant: &TenantId,
+            _id: i32,
+        ) -> Result<DeleteDeviceTypeOutcome, PersistenceError> {
+            self.record("delete", tenant);
+            Ok(self.delete_outcome.clone())
+        }
+    }
+
+    fn context(role: &str, tenant_id: &str) -> RequestContext {
+        RequestContext::from_claims(Claims {
+            sub: 1,
+            username: "operator".to_string(),
+            role: role.to_string(),
+            tenant_id: Some(tenant_id.to_string()),
+            scopes: Vec::new(),
+            permission_version: 1,
+            exp: 0,
+        })
+    }
+
+    #[tokio::test]
+    async fn passes_tenant_and_normalized_values_to_the_repository() {
+        let repository = RecordingRepository::new(DeleteDeviceTypeOutcome::Deleted);
+        let context = context("admin", "tenant-a");
+
+        let created = create(
+            &context,
+            &repository,
+            "  Sensor  ",
+            Some("air-quality"),
+            Some("#aabbcc"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(created.name, "Sensor");
+        assert_eq!(created.color_hex, "#AABBCC");
+        assert_eq!(
+            repository.calls.lock().unwrap().as_slice(),
+            &[("create".to_string(), TenantId::new("tenant-a").unwrap())]
+        );
+    }
+
+    #[tokio::test]
+    async fn authorization_validation_and_default_protection_precede_persistence() {
+        let repository = RecordingRepository::new(DeleteDeviceTypeOutcome::Deleted);
+
+        let error = create(
+            &context("viewer", "tenant-a"),
+            &repository,
+            "Sensor",
+            None,
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(error, AppError::Forbidden(_)));
+
+        let error = create(
+            &context("admin", "tenant-a"),
+            &repository,
+            "Sensor",
+            Some("INVALID"),
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(error, AppError::BadRequest(_)));
+
+        let error = delete(&context("admin", "tenant-a"), &repository, 1)
+            .await
+            .unwrap_err();
+        assert!(matches!(error, AppError::UnprocessableEntity(_)));
+        assert!(repository.calls.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn maps_atomic_in_use_outcome_to_conflict() {
+        let repository =
+            RecordingRepository::new(DeleteDeviceTypeOutcome::InUse { device_count: 3 });
+
+        let error = delete(&context("admin", "tenant-a"), &repository, 2)
+            .await
+            .unwrap_err();
+
+        assert!(matches!(error, AppError::Conflict(message) if message.contains('3')));
+    }
 }

@@ -6,6 +6,7 @@ use tracing::info;
 use crate::config::AppConfig;
 use crate::domains::firmware_store::FirmwareObjectStore;
 use crate::init;
+use crate::persistence::postgres;
 use crate::rate_limit::{ApiKeyRateLimiter, RateLimiter, parse_trusted_proxies};
 use crate::repositories::cert_repo;
 use crate::services;
@@ -14,6 +15,7 @@ use crate::state::{AppState, MetricsAccumulator, ReadinessRegistry, ZenohMetrics
 /// Initialize infrastructure and shared application state.
 pub async fn initialize_state(config: &AppConfig) -> anyhow::Result<Arc<AppState>> {
     let db_pool = init::create_db_pool(&config.database_url, config.db_pool_size)?;
+    let persistence = postgres::create_persistence(db_pool.clone());
     info!("DB connection pool: max_size={}", config.db_pool_size);
 
     let (jwt_secret, device_certificate_ids) = {
@@ -77,6 +79,7 @@ pub async fn initialize_state(config: &AppConfig) -> anyhow::Result<Arc<AppState
 
     Ok(Arc::new(AppState {
         db_pool,
+        persistence,
         zenoh_session,
         jwt_secret,
         public_url: config.public_url.clone(),

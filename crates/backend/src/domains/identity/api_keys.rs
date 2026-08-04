@@ -5,9 +5,10 @@ use utoipa::ToSchema;
 
 use crate::api_key_util;
 use crate::auth::context::RequestContext;
+use crate::domains::identity::api_key_types::CreateApiKeyRecord;
 use crate::error::AppError;
 use crate::services::api_key_service;
-use crate::state::{AppState, run_db};
+use crate::state::AppState;
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateApiKeyRequest {
@@ -61,18 +62,15 @@ pub(crate) async fn create_api_key(
     let key_hash = api_key_util::hash_api_key(&plaintext_key);
     let key_prefix = api_key_util::key_prefix(&plaintext_key);
 
-    let new_key = crate::db::models::NewApiKey {
-        tenant_id: ctx.tenant_id_str().to_string(),
+    let new_key = CreateApiKeyRecord {
         name: body.name.clone(),
         key_hash,
         key_prefix: key_prefix.clone(),
         device_type_id: body.device_type_id,
     };
 
-    let api_key = run_db(&state.db_pool, move |conn| {
-        api_key_service::create(&ctx, conn, &new_key)
-    })
-    .await?;
+    let api_key =
+        api_key_service::create(&ctx, state.persistence.api_keys.as_ref(), new_key).await?;
 
     Ok((
         StatusCode::CREATED,
@@ -94,26 +92,29 @@ pub(crate) async fn list_api_keys(
     State(state): State<Arc<AppState>>,
     Extension(ctx): Extension<RequestContext>,
 ) -> Result<Json<Vec<ApiKeyResponse>>, AppError> {
-    let keys = run_db(&state.db_pool, move |conn| {
-        let keys_with_names = api_key_service::list_with_type_names(&ctx, conn)?;
-
-        let responses: Vec<ApiKeyResponse> = keys_with_names
-            .into_iter()
-            .map(|(k, dt_name)| ApiKeyResponse {
-                id: k.id,
-                name: k.name,
-                key_prefix: k.key_prefix,
-                device_type_id: k.device_type_id,
-                device_type_name: dt_name,
-                created_at: k.created_at.format("%Y-%m-%dT%H:%M:%S").to_string(),
-                last_used_at: k
-                    .last_used_at
-                    .map(|t| t.format("%Y-%m-%dT%H:%M:%S").to_string()),
-            })
-            .collect();
-        Ok(responses)
-    })
-    .await?;
+    let keys = api_key_service::list(&ctx, state.persistence.api_keys.as_ref()).await?;
+    let keys = keys
+        .into_iter()
+        .map(|summary| ApiKeyResponse {
+            id: summary.key.id,
+            name: summary.key.name,
+            key_prefix: summary.key.key_prefix,
+            device_type_id: summary.key.device_type_id,
+            device_type_name: summary.device_type_name,
+            created_at: summary
+                .key
+                .created_at
+                .naive_utc()
+                .format("%Y-%m-%dT%H:%M:%S")
+                .to_string(),
+            last_used_at: summary.key.last_used_at.map(|timestamp| {
+                timestamp
+                    .naive_utc()
+                    .format("%Y-%m-%dT%H:%M:%S")
+                    .to_string()
+            }),
+        })
+        .collect();
 
     Ok(Json(keys))
 }
@@ -127,10 +128,7 @@ pub(crate) async fn delete_api_key(
     Extension(ctx): Extension<RequestContext>,
     axum::extract::Path(id): axum::extract::Path<i32>,
 ) -> Result<StatusCode, AppError> {
-    run_db(&state.db_pool, move |conn| {
-        api_key_service::delete(&ctx, conn, id)
-    })
-    .await?;
+    api_key_service::delete(&ctx, state.persistence.api_keys.as_ref(), id).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

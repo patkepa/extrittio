@@ -21,6 +21,7 @@ pub mod init;
 pub mod middleware;
 pub mod observability;
 pub mod pagination;
+pub mod persistence;
 pub mod rate_limit;
 pub mod repositories;
 #[path = "domains/rules/rule_engine/mod.rs"]

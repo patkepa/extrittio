@@ -142,6 +142,10 @@ impl Default for MetricsAccumulator {
 
 pub struct AppState {
     pub db_pool: DbPool,
+    /// Backend-neutral ports for migrated domains. `db_pool` remains only as a
+    /// temporary compatibility path until the PostgreSQL adapter extraction is
+    /// complete.
+    pub persistence: crate::persistence::Persistence,
     pub zenoh_session: Arc<zenoh::Session>,
     pub jwt_secret: String,
     pub public_url: String,

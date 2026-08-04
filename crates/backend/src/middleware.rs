@@ -178,11 +178,8 @@ pub async fn auth_middleware(
         tracing::warn!(path, %error, "security.authentication_rejected");
         AppError::Unauthorized
     })?;
-    let claims_for_context = claims.clone();
-    let ctx = run_db(&state.db_pool, move |conn| {
-        user_service::context_from_claims(conn, claims_for_context)
-    })
-    .await?;
+    let ctx =
+        user_service::context_from_claims(state.persistence.users.as_ref(), claims.clone()).await?;
 
     request.extensions_mut().insert(ctx);
     request.extensions_mut().insert(claims);

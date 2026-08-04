@@ -10,9 +10,10 @@ use utoipa::ToSchema;
 
 use crate::auth::context::RequestContext;
 use crate::auth::policy::{self, Permission};
+use crate::domains::identity::role_types::RoleDetails;
 use crate::error::AppError;
 use crate::services::role_service;
-use crate::state::{AppState, run_db};
+use crate::state::AppState;
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct RoleResponse {
@@ -65,7 +66,7 @@ pub(crate) async fn list_roles(
     State(state): State<Arc<AppState>>,
     axum::Extension(ctx): axum::Extension<RequestContext>,
 ) -> Result<Json<Vec<RoleResponse>>, AppError> {
-    let roles = run_db(&state.db_pool, move |conn| role_service::list(&ctx, conn)).await?;
+    let roles = role_service::list(&ctx, state.persistence.roles.as_ref()).await?;
     Ok(Json(roles.into_iter().map(role_response).collect()))
 }
 
@@ -109,9 +110,13 @@ pub(crate) async fn create_role(
     axum::Extension(ctx): axum::Extension<RequestContext>,
     Json(body): Json<CreateRoleRequest>,
 ) -> Result<(StatusCode, Json<RoleResponse>), AppError> {
-    let role = run_db(&state.db_pool, move |conn| {
-        role_service::create(&ctx, conn, &body.name, body.description, &body.permissions)
-    })
+    let role = role_service::create(
+        &ctx,
+        state.persistence.roles.as_ref(),
+        &body.name,
+        body.description,
+        &body.permissions,
+    )
     .await?;
 
     Ok((StatusCode::CREATED, Json(role_response(role))))
@@ -138,16 +143,14 @@ pub(crate) async fn update_role(
     Path(id): Path<i32>,
     Json(body): Json<UpdateRoleRequest>,
 ) -> Result<Json<RoleResponse>, AppError> {
-    let role = run_db(&state.db_pool, move |conn| {
-        role_service::update(
-            &ctx,
-            conn,
-            id,
-            body.name,
-            body.description.map(Some),
-            body.permissions,
-        )
-    })
+    let role = role_service::update(
+        &ctx,
+        state.persistence.roles.as_ref(),
+        id,
+        body.name,
+        body.description.map(Some),
+        body.permissions,
+    )
     .await?;
 
     Ok(Json(role_response(role)))
@@ -172,14 +175,11 @@ pub(crate) async fn delete_role(
     axum::Extension(ctx): axum::Extension<RequestContext>,
     Path(id): Path<i32>,
 ) -> Result<StatusCode, AppError> {
-    run_db(&state.db_pool, move |conn| {
-        role_service::delete(&ctx, conn, id)
-    })
-    .await?;
+    role_service::delete(&ctx, state.persistence.roles.as_ref(), id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
-fn role_response(role: role_service::RoleWithPermissions) -> RoleResponse {
+fn role_response(role: RoleDetails) -> RoleResponse {
     RoleResponse {
         id: role.role.id,
         name: role.role.name,

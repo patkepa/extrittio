@@ -1,79 +1,162 @@
 use chrono::Utc;
-use diesel::PgConnection;
 use serde_json::{Map, Value};
 
 use crate::auth::context::RequestContext;
 use crate::auth::policy::{self, Permission};
-use crate::db::models::DeviceConfig;
+use crate::domains::configuration::repository::DeviceConfigRepository;
+use crate::domains::configuration::types::{
+    DeviceConfigRecord, GetDeviceConfigOutcome, MergeDeviceConfigOutcome,
+};
 use crate::error::AppError;
-use crate::repositories::{config_repo, device_repo};
 
-/// Get the current configuration for a device, or None if not set.
-/// Returns 404 if the device does not exist.
-pub fn get_config(
+/// Get the current configuration for a device, or `None` if it has not been
+/// set. A missing tenant-scoped device remains a 404.
+pub async fn get_config(
     ctx: &RequestContext,
-    conn: &mut PgConnection,
+    repository: &dyn DeviceConfigRepository,
     device_id: &str,
-) -> Result<Option<DeviceConfig>, AppError> {
+) -> Result<Option<DeviceConfigRecord>, AppError> {
     policy::require(ctx, Permission::ReadDevices)?;
 
-    if device_repo::find_device_for_tenant(conn, ctx.tenant_id_str(), device_id).is_err() {
-        return Err(AppError::NotFound(format!(
+    match repository
+        .get_for_device(ctx.tenant_id(), device_id)
+        .await?
+    {
+        GetDeviceConfigOutcome::DeviceNotFound => Err(AppError::NotFound(format!(
             "Device '{device_id}' not found"
-        )));
+        ))),
+        GetDeviceConfigOutcome::Found(config) => Ok(config),
     }
-    Ok(config_repo::find_config(
-        conn,
-        ctx.tenant_id_str(),
-        device_id,
-    )?)
 }
 
-/// Merge a JSON patch into the device's configuration.
-/// Merge semantics: null values remove keys, all other values upsert.
-/// Returns 404 if the device does not exist.
-pub fn merge_and_update(
+/// Atomically merge a JSON patch into the latest device configuration. Null
+/// values remove keys; all other values replace or add keys.
+pub async fn merge_and_update(
     ctx: &RequestContext,
-    conn: &mut PgConnection,
+    repository: &dyn DeviceConfigRepository,
     device_id: &str,
     patch: &Map<String, Value>,
-) -> Result<DeviceConfig, AppError> {
+) -> Result<DeviceConfigRecord, AppError> {
     policy::require(ctx, Permission::ManageDevices)?;
 
-    if device_repo::find_device_for_tenant(conn, ctx.tenant_id_str(), device_id).is_err() {
-        return Err(AppError::NotFound(format!(
+    match repository
+        .merge_for_device(ctx.tenant_id(), device_id, patch.clone(), Utc::now())
+        .await?
+    {
+        MergeDeviceConfigOutcome::DeviceNotFound => Err(AppError::NotFound(format!(
             "Device '{device_id}' not found"
-        )));
+        ))),
+        MergeDeviceConfigOutcome::Updated(config) => Ok(config),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
+
+    use async_trait::async_trait;
+    use chrono::{DateTime, Utc};
+    use serde_json::json;
+
+    use super::*;
+    use crate::auth::Claims;
+    use crate::persistence::PersistenceError;
+    use crate::tenancy::TenantId;
+
+    #[derive(Default)]
+    struct RecordingRepository {
+        calls: Mutex<Vec<(String, TenantId, String)>>,
     }
 
-    let existing = config_repo::find_config(conn, ctx.tenant_id_str(), device_id)?;
-    let current: Value = existing
-        .as_ref()
-        .map_or(Value::Object(Map::default()), |c| {
-            if c.config.is_object() {
-                c.config.clone()
-            } else {
-                Value::Object(Map::default())
-            }
-        });
-
-    let mut obj = current.as_object().cloned().unwrap_or_default();
-    for (key, val) in patch {
-        if val.is_null() {
-            obj.remove(key);
-        } else {
-            obj.insert(key.clone(), val.clone());
+    impl RecordingRepository {
+        fn record(&self, operation: &str, tenant: &TenantId, device_id: &str) {
+            self.calls.lock().unwrap().push((
+                operation.to_string(),
+                tenant.clone(),
+                device_id.to_string(),
+            ));
         }
     }
 
-    let merged = Value::Object(obj);
-    let now = Utc::now().naive_utc();
+    #[async_trait]
+    impl DeviceConfigRepository for RecordingRepository {
+        async fn get_for_device(
+            &self,
+            tenant: &TenantId,
+            device_id: &str,
+        ) -> Result<GetDeviceConfigOutcome, PersistenceError> {
+            self.record("get", tenant, device_id);
+            Ok(GetDeviceConfigOutcome::Found(None))
+        }
 
-    Ok(config_repo::upsert_config(
-        conn,
-        ctx.tenant_id_str(),
-        device_id,
-        &merged,
-        now,
-    )?)
+        async fn merge_for_device(
+            &self,
+            tenant: &TenantId,
+            device_id: &str,
+            patch: Map<String, Value>,
+            updated_at: DateTime<Utc>,
+        ) -> Result<MergeDeviceConfigOutcome, PersistenceError> {
+            self.record("merge", tenant, device_id);
+            Ok(MergeDeviceConfigOutcome::Updated(DeviceConfigRecord {
+                device_id: device_id.to_string(),
+                config: Value::Object(patch),
+                updated_at,
+            }))
+        }
+    }
+
+    fn context(role: &str, tenant_id: &str) -> RequestContext {
+        RequestContext::from_claims(Claims {
+            sub: 1,
+            username: "operator".to_string(),
+            role: role.to_string(),
+            tenant_id: Some(tenant_id.to_string()),
+            scopes: Vec::new(),
+            permission_version: 1,
+            exp: 0,
+        })
+    }
+
+    #[tokio::test]
+    async fn passes_tenant_identity_to_get_and_atomic_merge() {
+        let repository = RecordingRepository::default();
+        let context = context("admin", "tenant-a");
+
+        get_config(&context, &repository, "device-1").await.unwrap();
+        merge_and_update(
+            &context,
+            &repository,
+            "device-1",
+            json!({ "enabled": true }).as_object().unwrap(),
+        )
+        .await
+        .unwrap();
+
+        let tenant = TenantId::new("tenant-a").unwrap();
+        assert_eq!(
+            repository.calls.lock().unwrap().as_slice(),
+            &[
+                ("get".to_string(), tenant.clone(), "device-1".to_string()),
+                ("merge".to_string(), tenant, "device-1".to_string()),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn authorization_happens_before_persistence() {
+        let repository = RecordingRepository::default();
+        let patch = Map::default();
+
+        let error = merge_and_update(
+            &context("viewer", "tenant-a"),
+            &repository,
+            "device-1",
+            &patch,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(error, AppError::Forbidden(_)));
+        assert!(repository.calls.lock().unwrap().is_empty());
+    }
 }

@@ -10,10 +10,10 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 use crate::auth::context::RequestContext;
-use crate::db::models::DeviceShadow;
+use crate::domains::shadows::types::ShadowRecord;
 use crate::error::AppError;
 use crate::services::shadow_service;
-use crate::state::{AppState, run_db};
+use crate::state::AppState;
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -42,14 +42,14 @@ pub struct UpdateShadowRequest {
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn to_shadow_response(shadow: DeviceShadow) -> ShadowResponse {
+fn to_shadow_response(shadow: ShadowRecord) -> ShadowResponse {
     ShadowResponse {
         device_id: shadow.device_id,
         desired: shadow.desired,
         reported: shadow.reported,
         delta: shadow.delta,
         version: shadow.version,
-        updated_at: shadow.updated_at.to_string(),
+        updated_at: shadow.updated_at.naive_utc().to_string(),
     }
 }
 
@@ -94,11 +94,8 @@ pub(crate) async fn get_shadow(
     Extension(ctx): Extension<RequestContext>,
     Path(id): Path<String>,
 ) -> Result<Json<ShadowResponse>, AppError> {
-    let response = run_db(&state.db_pool, move |conn| {
-        let shadow = shadow_service::get_shadow(&ctx, conn, &id)?;
-        Ok(to_shadow_response(shadow))
-    })
-    .await?;
+    let shadow = shadow_service::get_shadow(&ctx, state.persistence.shadows.as_ref(), &id).await?;
+    let response = to_shadow_response(shadow);
 
     Ok(Json(response))
 }
@@ -122,22 +119,16 @@ pub(crate) async fn update_desired(
     Path(id): Path<String>,
     Json(body): Json<UpdateShadowRequest>,
 ) -> Result<Json<ShadowResponse>, AppError> {
-    shadow_service::update_desired(
+    let updated = shadow_service::update_desired(
         &ctx,
-        &state.db_pool,
+        state.persistence.shadows.as_ref(),
         &state.zenoh_session,
         &id,
         &body.state,
         &state.zenoh_metrics,
     )
     .await?;
-
-    let id_clone = id;
-    let response = run_db(&state.db_pool, move |conn| {
-        let updated = shadow_service::get_shadow(&ctx, conn, &id_clone)?;
-        Ok(to_shadow_response(updated))
-    })
-    .await?;
+    let response = to_shadow_response(updated);
 
     Ok(Json(response))
 }
@@ -161,12 +152,10 @@ pub(crate) async fn update_reported(
     Path(id): Path<String>,
     Json(body): Json<UpdateShadowRequest>,
 ) -> Result<Json<ShadowResponse>, AppError> {
-    let response = run_db(&state.db_pool, move |conn| {
-        shadow_service::update_reported(conn, ctx.tenant_id_str(), &id, &body.state)?;
-        let updated = shadow_service::get_shadow(&ctx, conn, &id)?;
-        Ok(to_shadow_response(updated))
-    })
-    .await?;
+    let updated =
+        shadow_service::update_reported(&ctx, state.persistence.shadows.as_ref(), &id, &body.state)
+            .await?;
+    let response = to_shadow_response(updated);
 
     Ok(Json(response))
 }
@@ -188,10 +177,7 @@ pub(crate) async fn delete_shadow(
     Extension(ctx): Extension<RequestContext>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
-    run_db(&state.db_pool, move |conn| {
-        shadow_service::delete_shadow(&ctx, conn, &id)
-    })
-    .await?;
+    shadow_service::delete_shadow(&ctx, state.persistence.shadows.as_ref(), &id).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

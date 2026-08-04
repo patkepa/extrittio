@@ -1,22 +1,18 @@
-use diesel::Connection;
-use diesel::PgConnection;
-
 use crate::auth::Claims;
 use crate::auth::context::RequestContext;
 use crate::auth::policy::{self, Permission};
 use crate::auth::{hash_password, verify_password};
-use crate::db::models::{NewUser, Role, User};
+use crate::domains::identity::role_types::RoleRecord;
+use crate::domains::identity::user_repository::UserRepository;
+use crate::domains::identity::user_types::{
+    CreateUserOutcome, CreateUserRecord, DeleteUserOutcome, SetUserRolesOutcome, UserDetails,
+    UserList,
+};
 use crate::error::AppError;
-use crate::repositories::{role_repo, user_repo};
-use crate::services::role_service;
+use crate::persistence::PersistenceError;
+use crate::tenancy::TenantId;
 
 pub const MIN_PASSWORD_LEN: usize = 12;
-
-#[derive(Debug, Clone)]
-pub struct UserWithRoles {
-    pub user: User,
-    pub roles: Vec<Role>,
-}
 
 #[derive(Debug, Clone)]
 pub struct AuthenticatedUser {
@@ -24,211 +20,229 @@ pub struct AuthenticatedUser {
     pub tenant_id: String,
     pub username: String,
     pub role: String,
-    pub roles: Vec<Role>,
+    pub roles: Vec<RoleRecord>,
     pub permissions: Vec<String>,
     pub permission_version: i32,
 }
 
-pub fn list(
+pub async fn list(
     ctx: &RequestContext,
-    conn: &mut PgConnection,
+    repository: &dyn UserRepository,
     limit: i64,
     offset: i64,
-) -> Result<(Vec<UserWithRoles>, i64), AppError> {
+) -> Result<UserList, AppError> {
     policy::require(ctx, Permission::ReadUsers)?;
-    let (users, total) = user_repo::list_users(conn, ctx.tenant_id_str(), limit, offset)?;
-    let users = users
-        .into_iter()
-        .map(|user| {
-            let roles = role_service::roles_for_user(conn, ctx.tenant_id_str(), user.id)?;
-            Ok(UserWithRoles { user, roles })
-        })
-        .collect::<Result<Vec<_>, AppError>>()?;
-
-    Ok((users, total))
+    Ok(repository.list(ctx.tenant_id(), limit, offset).await?)
 }
 
-pub fn create(
+pub async fn create(
     ctx: &RequestContext,
-    conn: &mut PgConnection,
+    repository: &dyn UserRepository,
     username: &str,
     password: &str,
     role_ids: Option<&[i32]>,
-) -> Result<User, AppError> {
+) -> Result<UserDetails, AppError> {
     policy::require(ctx, Permission::ManageUsers)?;
-
-    if username.trim().is_empty() {
+    let username = username.trim();
+    if username.is_empty() {
         return Err(AppError::BadRequest("Username must not be empty".into()));
     }
     validate_password(password)?;
+    if role_ids.is_some_and(<[i32]>::is_empty) {
+        return Err(AppError::BadRequest("At least one role is required".into()));
+    }
 
-    let tenant_id = ctx.tenant_id_str().to_string();
-    conn.transaction(|conn| {
-        let assigned_roles = resolve_roles_for_new_user(conn, &tenant_id, role_ids)?;
-        let primary_role = primary_role_name(&assigned_roles).unwrap_or(role_service::VIEWER_ROLE);
-        let password_hash = hash_password(password).map_err(|e| AppError::Auth(e.to_string()))?;
-        let new_user = NewUser {
-            tenant_id: tenant_id.clone(),
-            username: username.to_string(),
-            password_hash,
-            role: primary_role.to_string(),
-        };
-
-        let user = user_repo::insert_user(conn, &new_user).map_err(|e| match e {
-            diesel::result::Error::DatabaseError(
-                diesel::result::DatabaseErrorKind::UniqueViolation,
-                _,
-            ) => AppError::Conflict(format!("Username '{username}' already exists")),
-            other => AppError::Database(other),
-        })?;
-
-        let role_ids: Vec<i32> = assigned_roles.iter().map(|role| role.id).collect();
-        role_repo::set_user_roles(conn, &tenant_id, user.id, &role_ids)?;
-        user_repo::find_user_by_id(conn, &tenant_id, user.id).map_err(AppError::Database)
-    })
+    let password_hash = hash_password_async(password.to_string()).await?;
+    let outcome = repository
+        .create(
+            ctx.tenant_id(),
+            CreateUserRecord {
+                username: username.to_string(),
+                password_hash,
+                role_ids: role_ids.map(<[i32]>::to_vec),
+            },
+        )
+        .await
+        .map_err(|error| map_user_write_error(error, username))?;
+    match outcome {
+        CreateUserOutcome::Created(user) => Ok(user),
+        CreateUserOutcome::RolesNotFound => Err(AppError::NotFound(
+            "One or more roles were not found".into(),
+        )),
+    }
 }
 
-pub fn change_password(
+pub async fn change_password(
     ctx: &RequestContext,
-    conn: &mut PgConnection,
+    repository: &dyn UserRepository,
     user_id: i32,
     new_password: &str,
 ) -> Result<(), AppError> {
     policy::require(ctx, Permission::ManageUsers)?;
-
     validate_password(new_password)?;
-
-    user_repo::find_user_by_id(conn, ctx.tenant_id_str(), user_id)?;
-
-    let password_hash = hash_password(new_password).map_err(|e| AppError::Auth(e.to_string()))?;
-    user_repo::update_password(conn, ctx.tenant_id_str(), user_id, &password_hash)?;
-    Ok(())
-}
-
-pub fn delete(ctx: &RequestContext, conn: &mut PgConnection, id: i32) -> Result<(), AppError> {
-    policy::require(ctx, Permission::ManageUsers)?;
-
-    if role_repo::user_has_role_name(conn, ctx.tenant_id_str(), id, role_service::OWNER_ROLE)?
-        && role_repo::count_users_with_role_name(
-            conn,
-            ctx.tenant_id_str(),
-            role_service::OWNER_ROLE,
-        )? <= 1
+    let password_hash = hash_password_async(new_password.to_string()).await?;
+    if repository
+        .change_password(ctx.tenant_id(), user_id, password_hash)
+        .await?
     {
-        return Err(AppError::Conflict(
-            "Cannot delete the last owner from the tenant".into(),
-        ));
+        Ok(())
+    } else {
+        Err(AppError::NotFound(format!("User {user_id} not found")))
     }
-
-    let deleted = user_repo::delete_user_for_tenant(conn, ctx.tenant_id_str(), id)?;
-    if !deleted {
-        return Err(AppError::NotFound(format!("User {id} not found")));
-    }
-    Ok(())
 }
 
-/// Authenticate a user by username and password.
-/// Returns (user_id, username, role) on success.
-pub fn authenticate(
-    conn: &mut PgConnection,
-    tenant_id: &str,
+pub async fn delete(
+    ctx: &RequestContext,
+    repository: &dyn UserRepository,
+    id: i32,
+) -> Result<(), AppError> {
+    policy::require(ctx, Permission::ManageUsers)?;
+    match repository.delete(ctx.tenant_id(), id).await? {
+        DeleteUserOutcome::Deleted => Ok(()),
+        DeleteUserOutcome::NotFound => Err(AppError::NotFound(format!("User {id} not found"))),
+        DeleteUserOutcome::WouldDeleteLastOwner => Err(AppError::Conflict(
+            "Cannot delete the last owner from the tenant".into(),
+        )),
+    }
+}
+
+pub async fn authenticate(
+    repository: &dyn UserRepository,
+    tenant: &TenantId,
     username: &str,
     password: &str,
 ) -> Result<AuthenticatedUser, AppError> {
-    let user =
-        user_repo::find_user_by_username(conn, tenant_id, username).map_err(|e| match e {
-            diesel::result::Error::NotFound => AppError::Unauthorized,
-            other => AppError::Database(other),
-        })?;
-
-    if !user.is_active || !verify_password(password, &user.password_hash) {
+    let credentials = repository
+        .find_credentials_by_username(tenant, username)
+        .await?
+        .ok_or(AppError::Unauthorized)?;
+    if !credentials.details.user.is_active {
+        return Err(AppError::Unauthorized);
+    }
+    if !verify_password_async(password.to_string(), credentials.password_hash).await? {
         return Err(AppError::Unauthorized);
     }
 
-    user_repo::update_last_login_at(conn, tenant_id, user.id)?;
-    authenticated_user_from_user(conn, user)
+    let _ = repository
+        .record_successful_login(tenant, credentials.details.user.id, chrono::Utc::now())
+        .await?;
+    Ok(authenticated_user_from_details(credentials.details))
 }
 
-pub fn context_from_claims(
-    conn: &mut PgConnection,
+pub async fn context_from_claims(
+    repository: &dyn UserRepository,
     claims: Claims,
 ) -> Result<RequestContext, AppError> {
-    let base_ctx = RequestContext::from_claims(claims.clone());
-    let user = user_repo::find_user_by_id(conn, base_ctx.tenant_id_str(), claims.sub).map_err(
-        |e| match e {
-            diesel::result::Error::NotFound => AppError::Unauthorized,
-            other => AppError::Database(other),
-        },
-    )?;
-
-    if !user.is_active {
-        return Err(AppError::Unauthorized);
-    }
-    if user.permission_version != claims.permission_version {
+    let base_context = RequestContext::from_claims(claims.clone());
+    let details = repository
+        .get_details(base_context.tenant_id(), claims.sub)
+        .await?
+        .ok_or(AppError::Unauthorized)?;
+    if !details.user.is_active || details.user.permission_version != claims.permission_version {
         return Err(AppError::Unauthorized);
     }
 
-    let authenticated = authenticated_user_from_user(conn, user)?;
+    let authenticated = authenticated_user_from_details(details);
     let permissions = Permission::from_keys(&authenticated.permissions);
-
     Ok(RequestContext {
         user_id: authenticated.id,
         username: authenticated.username,
         role: authenticated.role,
-        tenant_id: base_ctx.tenant_id,
+        tenant_id: base_context.tenant_id,
         scopes: authenticated.permissions,
         permissions,
     })
 }
 
-pub fn set_roles(
+pub async fn set_roles(
     ctx: &RequestContext,
-    conn: &mut PgConnection,
+    repository: &dyn UserRepository,
     user_id: i32,
     role_ids: &[i32],
-) -> Result<UserWithRoles, AppError> {
-    let roles = role_service::assign_roles_to_user(ctx, conn, user_id, role_ids)?;
-    let user = user_repo::find_user_by_id(conn, ctx.tenant_id_str(), user_id)?;
-    Ok(UserWithRoles { user, roles })
+) -> Result<UserDetails, AppError> {
+    policy::require(ctx, Permission::ManageUsers)?;
+    if role_ids.is_empty() {
+        return Err(AppError::BadRequest("At least one role is required".into()));
+    }
+    match repository
+        .set_roles(ctx.tenant_id(), user_id, role_ids.to_vec())
+        .await?
+    {
+        SetUserRolesOutcome::Updated(user) => Ok(user),
+        SetUserRolesOutcome::UserNotFound => {
+            Err(AppError::NotFound(format!("User {user_id} not found")))
+        }
+        SetUserRolesOutcome::RolesNotFound => Err(AppError::NotFound(
+            "One or more roles were not found".into(),
+        )),
+        SetUserRolesOutcome::WouldRemoveLastOwner => Err(AppError::Conflict(
+            "Cannot remove the last owner from the tenant".into(),
+        )),
+    }
 }
 
-pub fn current_user(
+pub async fn current_user(
     ctx: &RequestContext,
-    conn: &mut PgConnection,
+    repository: &dyn UserRepository,
 ) -> Result<AuthenticatedUser, AppError> {
-    let user =
-        user_repo::find_user_by_id(conn, ctx.tenant_id_str(), ctx.user_id).map_err(
-            |e| match e {
-                diesel::result::Error::NotFound => AppError::Unauthorized,
-                other => AppError::Database(other),
-            },
-        )?;
-
-    if !user.is_active {
+    let details = repository
+        .get_details(ctx.tenant_id(), ctx.user_id)
+        .await?
+        .ok_or(AppError::Unauthorized)?;
+    if !details.user.is_active {
         return Err(AppError::Unauthorized);
     }
-
-    authenticated_user_from_user(conn, user)
+    Ok(authenticated_user_from_details(details))
 }
 
-fn authenticated_user_from_user(
-    conn: &mut PgConnection,
-    user: User,
-) -> Result<AuthenticatedUser, AppError> {
-    let roles = role_service::roles_for_user(conn, &user.tenant_id, user.id)?;
-    let permissions = role_service::permission_keys_for_user(conn, &user.tenant_id, user.id)?;
-
-    let role = primary_role_name(&roles).unwrap_or(&user.role).to_string();
-
-    Ok(AuthenticatedUser {
-        id: user.id,
-        tenant_id: user.tenant_id,
-        username: user.username,
+fn authenticated_user_from_details(details: UserDetails) -> AuthenticatedUser {
+    let role = primary_role_name(&details.roles)
+        .unwrap_or(&details.user.role)
+        .to_string();
+    AuthenticatedUser {
+        id: details.user.id,
+        tenant_id: details.user.tenant_id,
+        username: details.user.username,
         role,
-        roles,
-        permissions,
-        permission_version: user.permission_version,
-    })
+        roles: details.roles,
+        permissions: details.permissions,
+        permission_version: details.user.permission_version,
+    }
+}
+
+fn primary_role_name(roles: &[RoleRecord]) -> Option<&str> {
+    roles
+        .iter()
+        .find(|role| role.name == super::role_service::OWNER_ROLE)
+        .or_else(|| {
+            roles
+                .iter()
+                .find(|role| role.name == super::role_service::ADMIN_ROLE)
+        })
+        .or_else(|| roles.first())
+        .map(|role| role.name.as_str())
+}
+
+async fn hash_password_async(password: String) -> Result<String, AppError> {
+    tokio::task::spawn_blocking(move || hash_password(&password))
+        .await
+        .map_err(|error| AppError::Internal(format!("password task failed: {error}")))?
+        .map_err(|error| AppError::Auth(error.to_string()))
+}
+
+async fn verify_password_async(password: String, hash: String) -> Result<bool, AppError> {
+    tokio::task::spawn_blocking(move || verify_password(&password, &hash))
+        .await
+        .map_err(|error| AppError::Internal(format!("password task failed: {error}")))
+}
+
+fn map_user_write_error(error: PersistenceError, username: &str) -> AppError {
+    match error {
+        PersistenceError::UniqueViolation { .. } => {
+            AppError::Conflict(format!("Username '{username}' already exists"))
+        }
+        other => AppError::Persistence(other),
+    }
 }
 
 pub fn validate_password(password: &str) -> Result<(), AppError> {
@@ -238,54 +252,21 @@ pub fn validate_password(password: &str) -> Result<(), AppError> {
         )));
     }
 
-    let has_lower = password.chars().any(|c| c.is_ascii_lowercase());
-    let has_upper = password.chars().any(|c| c.is_ascii_uppercase());
-    let has_digit = password.chars().any(|c| c.is_ascii_digit());
-    let has_symbol = password.chars().any(|c| !c.is_ascii_alphanumeric());
+    let has_lower = password
+        .chars()
+        .any(|character| character.is_ascii_lowercase());
+    let has_upper = password
+        .chars()
+        .any(|character| character.is_ascii_uppercase());
+    let has_digit = password.chars().any(|character| character.is_ascii_digit());
+    let has_symbol = password
+        .chars()
+        .any(|character| !character.is_ascii_alphanumeric());
 
     if !(has_lower && has_upper && has_digit && has_symbol) {
         return Err(AppError::BadRequest(
             "Password must include lowercase, uppercase, number, and symbol characters".into(),
         ));
     }
-
     Ok(())
-}
-
-fn resolve_roles_for_new_user(
-    conn: &mut PgConnection,
-    tenant_id: &str,
-    role_ids: Option<&[i32]>,
-) -> Result<Vec<Role>, AppError> {
-    match role_ids {
-        Some([]) => Err(AppError::BadRequest("At least one role is required".into())),
-        Some(role_ids) => {
-            let roles = role_repo::find_roles_by_ids(conn, tenant_id, role_ids)?;
-            let unique_count = role_ids
-                .iter()
-                .copied()
-                .collect::<std::collections::HashSet<_>>()
-                .len();
-            if roles.len() != unique_count {
-                return Err(AppError::NotFound(
-                    "One or more roles were not found".into(),
-                ));
-            }
-            Ok(roles)
-        }
-        None => Ok(vec![role_service::default_viewer_role(conn, tenant_id)?]),
-    }
-}
-
-fn primary_role_name(roles: &[Role]) -> Option<&str> {
-    roles
-        .iter()
-        .find(|role| role.name == role_service::OWNER_ROLE)
-        .or_else(|| {
-            roles
-                .iter()
-                .find(|role| role.name == role_service::ADMIN_ROLE)
-        })
-        .or_else(|| roles.first())
-        .map(|role| role.name.as_str())
 }

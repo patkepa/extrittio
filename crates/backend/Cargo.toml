@@ -8,6 +8,9 @@ repository.workspace = true
 homepage.workspace = true
 publish.workspace = true
 
+[features]
+phase0-turso = ["dep:turso"]
+
 [dependencies]
 extrittio-common = { version = "0.1.0", path = "../common" }
 axum = { version = "0.8", features = ["multipart"] }
@@ -44,13 +47,16 @@ sysinfo = "0.33"
 dashmap = "6"
 reqwest = { version = "0.12", features = ["json"] }
 anyhow = "1"
+async-trait = "0.1"
 dotenvy = "0.15"
 base64 = "0.22"
 ring = "0.17"
+turso = { version = "=0.7.2", default-features = false, optional = true }
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
 tikv-jemallocator = "0.6"
 
 [dev-dependencies]
 http-body-util = "0.1"
+tempfile = "3"
 tower = { version = "0.5", features = ["util"] }

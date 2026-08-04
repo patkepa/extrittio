@@ -82,6 +82,7 @@ async fn setup_app_with_ca() -> (axum::Router, Pool<ConnectionManager<PgConnecti
 
     let state = Arc::new(extrittio_backend::state::AppState {
         db_pool: db_pool.clone(),
+        persistence: extrittio_backend::persistence::postgres::create_persistence(db_pool.clone()),
         zenoh_session: Arc::new(zenoh_session),
         jwt_secret: "test-secret-key".to_string(),
         public_url: "http://localhost:8080".to_string(),

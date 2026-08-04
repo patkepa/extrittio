@@ -12,7 +12,7 @@ use crate::auth::context::RequestContext;
 use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse, PaginationParams};
 use crate::services::fleet_service;
-use crate::state::{AppState, run_db};
+use crate::state::AppState;
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct FleetResponse {
@@ -57,22 +57,17 @@ pub(crate) async fn list_fleets(
     Query(params): Query<PaginationParams>,
 ) -> Result<Json<PaginatedResponse<FleetResponse>>, AppError> {
     let (limit, offset) = pagination::clamp(params.limit, params.offset);
-
-    let response = run_db(&state.db_pool, move |conn| {
-        let (enriched, total) = fleet_service::list(&ctx, conn, limit, offset)?;
-
-        let data = enriched
-            .into_iter()
-            .map(|fwc| FleetResponse {
-                id: fwc.fleet.id,
-                name: fwc.fleet.name,
-                device_count: fwc.device_count,
-            })
-            .collect();
-
-        Ok(PaginatedResponse::new(data, total, limit, offset))
-    })
-    .await?;
+    let (enriched, total) =
+        fleet_service::list(&ctx, state.persistence.fleets.as_ref(), limit, offset).await?;
+    let data = enriched
+        .into_iter()
+        .map(|fleet| FleetResponse {
+            id: fleet.fleet.id,
+            name: fleet.fleet.name,
+            device_count: fleet.device_count,
+        })
+        .collect();
+    let response = PaginatedResponse::new(data, total, limit, offset);
 
     Ok(Json(response))
 }
@@ -94,15 +89,13 @@ pub(crate) async fn create_fleet(
     Extension(ctx): Extension<RequestContext>,
     Json(body): Json<NewFleetRequest>,
 ) -> Result<(StatusCode, Json<FleetResponse>), AppError> {
-    let response = run_db(&state.db_pool, move |conn| {
-        let created = fleet_service::create(&ctx, conn, &body.name)?;
-        Ok(FleetResponse {
-            id: created.id,
-            name: created.name,
-            device_count: 0,
-        })
-    })
-    .await?;
+    let created =
+        fleet_service::create(&ctx, state.persistence.fleets.as_ref(), &body.name).await?;
+    let response = FleetResponse {
+        id: created.id,
+        name: created.name,
+        device_count: 0,
+    };
 
     Ok((StatusCode::CREATED, Json(response)))
 }
@@ -127,15 +120,13 @@ pub(crate) async fn update_fleet(
     Path(id): Path<i32>,
     Json(body): Json<UpdateFleetRequest>,
 ) -> Result<Json<FleetResponse>, AppError> {
-    let response = run_db(&state.db_pool, move |conn| {
-        let updated = fleet_service::rename(&ctx, conn, id, &body.name)?;
-        Ok(FleetResponse {
-            id: updated.id,
-            name: updated.name,
-            device_count: 0, // caller can refetch the full list for counts
-        })
-    })
-    .await?;
+    let updated =
+        fleet_service::rename(&ctx, state.persistence.fleets.as_ref(), id, &body.name).await?;
+    let response = FleetResponse {
+        id: updated.id,
+        name: updated.name,
+        device_count: 0, // caller can refetch the full list for counts
+    };
 
     Ok(Json(response))
 }
@@ -157,10 +148,7 @@ pub(crate) async fn delete_fleet(
     Extension(ctx): Extension<RequestContext>,
     Path(id): Path<i32>,
 ) -> Result<StatusCode, AppError> {
-    run_db(&state.db_pool, move |conn| {
-        fleet_service::delete(&ctx, conn, id)
-    })
-    .await?;
+    fleet_service::delete(&ctx, state.persistence.fleets.as_ref(), id).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

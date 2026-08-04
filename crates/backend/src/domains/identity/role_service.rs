@@ -1,50 +1,32 @@
-use diesel::{Connection, PgConnection};
-use std::collections::HashSet;
-
 use crate::auth::context::RequestContext;
 use crate::auth::policy::{self, Permission};
-use crate::db::models::{NewRole, Role};
+use crate::domains::identity::role_repository::RoleRepository;
+use crate::domains::identity::role_types::{
+    CreateRoleRecord, DeleteRoleOutcome, RoleDetails, UpdateRoleOutcome, UpdateRoleRecord,
+};
 use crate::error::AppError;
-use crate::repositories::{role_repo, user_repo};
+use crate::persistence::PersistenceError;
 
 pub const OWNER_ROLE: &str = "owner";
 pub const ADMIN_ROLE: &str = "admin";
 pub const OPERATOR_ROLE: &str = "operator";
 pub const VIEWER_ROLE: &str = "viewer";
 
-#[derive(Debug, Clone)]
-pub struct RoleWithPermissions {
-    pub role: Role,
-    pub permissions: Vec<String>,
-    pub user_count: i64,
-}
-
-pub fn list(
+pub async fn list(
     ctx: &RequestContext,
-    conn: &mut PgConnection,
-) -> Result<Vec<RoleWithPermissions>, AppError> {
+    repository: &dyn RoleRepository,
+) -> Result<Vec<RoleDetails>, AppError> {
     policy::require(ctx, Permission::ReadRoles)?;
-    list_for_tenant(conn, ctx.tenant_id_str())
+    Ok(repository.list(ctx.tenant_id()).await?)
 }
 
-pub fn list_for_tenant(
-    conn: &mut PgConnection,
-    tenant_id: &str,
-) -> Result<Vec<RoleWithPermissions>, AppError> {
-    let roles = role_repo::list_roles(conn, tenant_id)?;
-    roles
-        .into_iter()
-        .map(|role| hydrate_role(conn, tenant_id, role))
-        .collect()
-}
-
-pub fn create(
+pub async fn create(
     ctx: &RequestContext,
-    conn: &mut PgConnection,
+    repository: &dyn RoleRepository,
     name: &str,
     description: Option<String>,
     permissions: &[String],
-) -> Result<RoleWithPermissions, AppError> {
+) -> Result<RoleDetails, AppError> {
     policy::require(ctx, Permission::ManageRoles)?;
 
     let name = normalize_role_name(name)?;
@@ -54,184 +36,86 @@ pub fn create(
         )));
     }
     let permissions = validate_permission_keys(permissions)?;
-
-    let role = role_repo::insert_role(
-        conn,
-        &NewRole {
-            tenant_id: ctx.tenant_id_str().to_string(),
-            name,
-            description,
-            is_system: false,
-        },
-    )
-    .map_err(map_unique_role_error)?;
-
-    role_repo::replace_role_permissions(conn, role.id, &permissions)?;
-    hydrate_role(conn, ctx.tenant_id_str(), role)
+    repository
+        .create(
+            ctx.tenant_id(),
+            CreateRoleRecord {
+                name,
+                description,
+                permissions,
+            },
+        )
+        .await
+        .map_err(map_role_write_error)
 }
 
-pub fn update(
+pub async fn update(
     ctx: &RequestContext,
-    conn: &mut PgConnection,
+    repository: &dyn RoleRepository,
     id: i32,
     name: Option<String>,
     description: Option<Option<String>>,
     permissions: Option<Vec<String>>,
-) -> Result<RoleWithPermissions, AppError> {
+) -> Result<RoleDetails, AppError> {
     policy::require(ctx, Permission::ManageRoles)?;
 
-    let existing = role_repo::find_role(conn, ctx.tenant_id_str(), id)?;
-    if existing.is_system {
-        return Err(AppError::BadRequest(
-            "Built-in roles cannot be modified".into(),
-        ));
-    }
-
-    let next_name = match name {
-        Some(name) => normalize_role_name(&name)?,
-        None => existing.name.clone(),
-    };
-    if is_builtin_role_name(&next_name) {
+    let name = name.map(|name| normalize_role_name(&name)).transpose()?;
+    if name.as_deref().is_some_and(is_builtin_role_name) {
         return Err(AppError::BadRequest(format!(
-            "'{next_name}' is reserved for a built-in role"
+            "'{}' is reserved for a built-in role",
+            name.as_deref().unwrap_or_default()
         )));
     }
+    let permissions = permissions
+        .map(|permissions| validate_permission_keys(&permissions))
+        .transpose()?;
 
-    let next_description = description.unwrap_or(existing.description.clone());
-    let role = conn.transaction(|conn| {
-        let role = role_repo::update_role(
-            conn,
-            ctx.tenant_id_str(),
+    match repository
+        .update(
+            ctx.tenant_id(),
             id,
-            &next_name,
-            next_description.as_deref(),
+            UpdateRoleRecord {
+                name,
+                description,
+                permissions,
+            },
         )
-        .map_err(map_unique_role_error)?;
-
-        if let Some(permissions) = permissions {
-            let permissions = validate_permission_keys(&permissions)?;
-            role_repo::replace_role_permissions(conn, role.id, &permissions)?;
-            role_repo::bump_permission_versions_for_role(conn, ctx.tenant_id_str(), role.id)?;
-        }
-
-        Ok::<Role, AppError>(role)
-    })?;
-
-    hydrate_role(conn, ctx.tenant_id_str(), role)
+        .await
+        .map_err(map_role_write_error)?
+    {
+        UpdateRoleOutcome::Updated(role) => Ok(role),
+        UpdateRoleOutcome::NotFound => Err(AppError::NotFound(format!("Role {id} not found"))),
+        UpdateRoleOutcome::SystemRole => Err(AppError::BadRequest(
+            "Built-in roles cannot be modified".into(),
+        )),
+    }
 }
 
-pub fn delete(ctx: &RequestContext, conn: &mut PgConnection, id: i32) -> Result<(), AppError> {
+pub async fn delete(
+    ctx: &RequestContext,
+    repository: &dyn RoleRepository,
+    id: i32,
+) -> Result<(), AppError> {
     policy::require(ctx, Permission::ManageRoles)?;
 
-    let role = role_repo::find_role(conn, ctx.tenant_id_str(), id)?;
-    if role.is_system {
-        return Err(AppError::BadRequest(
+    match repository.delete(ctx.tenant_id(), id).await? {
+        DeleteRoleOutcome::Deleted => Ok(()),
+        DeleteRoleOutcome::NotFound => Err(AppError::NotFound(format!("Role {id} not found"))),
+        DeleteRoleOutcome::SystemRole => Err(AppError::BadRequest(
             "Built-in roles cannot be deleted".into(),
-        ));
+        )),
+        DeleteRoleOutcome::InUse { name, user_count } => Err(AppError::Conflict(format!(
+            "Role '{name}' is assigned to {user_count} user(s)"
+        ))),
     }
-
-    let user_count = role_repo::count_users_for_role(conn, ctx.tenant_id_str(), id)?;
-    if user_count > 0 {
-        return Err(AppError::Conflict(format!(
-            "Role '{}' is assigned to {user_count} user(s)",
-            role.name
-        )));
-    }
-
-    if !role_repo::delete_role(conn, ctx.tenant_id_str(), id)? {
-        return Err(AppError::NotFound(format!("Role {id} not found")));
-    }
-
-    Ok(())
 }
 
-pub fn roles_for_user(
-    conn: &mut PgConnection,
-    tenant_id: &str,
-    user_id: i32,
-) -> Result<Vec<Role>, AppError> {
-    Ok(role_repo::roles_for_user(conn, tenant_id, user_id)?)
-}
-
-pub fn assign_roles_to_user(
-    ctx: &RequestContext,
-    conn: &mut PgConnection,
-    user_id: i32,
-    role_ids: &[i32],
-) -> Result<Vec<Role>, AppError> {
-    policy::require(ctx, Permission::ManageUsers)?;
-    assign_roles_to_user_for_tenant(conn, ctx.tenant_id_str(), user_id, role_ids)
-}
-
-pub fn assign_roles_to_user_for_tenant(
-    conn: &mut PgConnection,
-    tenant_id: &str,
-    user_id: i32,
-    role_ids: &[i32],
-) -> Result<Vec<Role>, AppError> {
-    if role_ids.is_empty() {
-        return Err(AppError::BadRequest("At least one role is required".into()));
-    }
-
-    user_repo::find_user_by_id(conn, tenant_id, user_id)?;
-
-    let next_roles = role_repo::find_roles_by_ids(conn, tenant_id, role_ids)?;
-    let unique_count = role_ids.iter().copied().collect::<HashSet<_>>().len();
-    if next_roles.len() != unique_count {
-        return Err(AppError::NotFound(
-            "One or more roles were not found".into(),
-        ));
-    }
-
-    let currently_owner = role_repo::user_has_role_name(conn, tenant_id, user_id, OWNER_ROLE)?;
-    let remains_owner = next_roles.iter().any(|role| role.name == OWNER_ROLE);
-    if currently_owner && !remains_owner {
-        ensure_not_last_owner(conn, tenant_id)?;
-    }
-
-    Ok(role_repo::set_user_roles(
-        conn, tenant_id, user_id, role_ids,
-    )?)
-}
-
-pub fn default_viewer_role(conn: &mut PgConnection, tenant_id: &str) -> Result<Role, AppError> {
-    Ok(role_repo::find_role_by_name(conn, tenant_id, VIEWER_ROLE)?)
-}
-
-pub fn owner_role(conn: &mut PgConnection, tenant_id: &str) -> Result<Role, AppError> {
-    Ok(role_repo::find_role_by_name(conn, tenant_id, OWNER_ROLE)?)
-}
-
-pub fn permission_keys_for_user(
-    conn: &mut PgConnection,
-    tenant_id: &str,
-    user_id: i32,
-) -> Result<Vec<String>, AppError> {
-    Ok(role_repo::permissions_for_user(conn, tenant_id, user_id)?)
-}
-
-fn hydrate_role(
-    conn: &mut PgConnection,
-    tenant_id: &str,
-    role: Role,
-) -> Result<RoleWithPermissions, AppError> {
-    let permissions = role_repo::permissions_for_role(conn, role.id)?;
-    let user_count = role_repo::count_users_for_role(conn, tenant_id, role.id)?;
-    Ok(RoleWithPermissions {
-        role,
-        permissions,
-        user_count,
-    })
-}
-
-fn ensure_not_last_owner(conn: &mut PgConnection, tenant_id: &str) -> Result<(), AppError> {
-    let owner_count = role_repo::count_users_with_role_name(conn, tenant_id, OWNER_ROLE)?;
-    if owner_count <= 1 {
-        Err(AppError::Conflict(
-            "Cannot remove the last owner from the tenant".into(),
-        ))
-    } else {
-        Ok(())
+fn map_role_write_error(error: PersistenceError) -> AppError {
+    match error {
+        PersistenceError::UniqueViolation { .. } => {
+            AppError::Conflict("Role name already exists".into())
+        }
+        other => AppError::Persistence(other),
     }
 }
 
@@ -278,12 +162,159 @@ fn is_builtin_role_name(name: &str) -> bool {
     matches!(name, OWNER_ROLE | ADMIN_ROLE | OPERATOR_ROLE | VIEWER_ROLE)
 }
 
-fn map_unique_role_error(error: diesel::result::Error) -> AppError {
-    match error {
-        diesel::result::Error::DatabaseError(
-            diesel::result::DatabaseErrorKind::UniqueViolation,
-            _,
-        ) => AppError::Conflict("Role name already exists".into()),
-        other => AppError::Database(other),
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
+
+    use async_trait::async_trait;
+    use chrono::{TimeZone, Utc};
+
+    use super::*;
+    use crate::auth::Claims;
+    use crate::domains::identity::role_types::RoleRecord;
+    use crate::tenancy::TenantId;
+
+    struct RecordingRepository {
+        calls: Mutex<Vec<(String, TenantId)>>,
+        delete_outcome: DeleteRoleOutcome,
+    }
+
+    impl RecordingRepository {
+        fn new(delete_outcome: DeleteRoleOutcome) -> Self {
+            Self {
+                calls: Mutex::new(Vec::new()),
+                delete_outcome,
+            }
+        }
+
+        fn details(name: &str, permissions: Vec<String>) -> RoleDetails {
+            RoleDetails {
+                role: RoleRecord {
+                    id: 10,
+                    name: name.to_string(),
+                    description: None,
+                    is_system: false,
+                    created_at: Utc.timestamp_opt(1, 0).unwrap(),
+                    updated_at: Utc.timestamp_opt(1, 0).unwrap(),
+                },
+                permissions,
+                user_count: 0,
+            }
+        }
+
+        fn record(&self, operation: &str, tenant: &TenantId) {
+            self.calls
+                .lock()
+                .unwrap()
+                .push((operation.to_string(), tenant.clone()));
+        }
+    }
+
+    #[async_trait]
+    impl RoleRepository for RecordingRepository {
+        async fn list(&self, tenant: &TenantId) -> Result<Vec<RoleDetails>, PersistenceError> {
+            self.record("list", tenant);
+            Ok(Vec::new())
+        }
+
+        async fn create(
+            &self,
+            tenant: &TenantId,
+            record: CreateRoleRecord,
+        ) -> Result<RoleDetails, PersistenceError> {
+            self.record("create", tenant);
+            Ok(Self::details(&record.name, record.permissions))
+        }
+
+        async fn update(
+            &self,
+            tenant: &TenantId,
+            _id: i32,
+            record: UpdateRoleRecord,
+        ) -> Result<UpdateRoleOutcome, PersistenceError> {
+            self.record("update", tenant);
+            Ok(UpdateRoleOutcome::Updated(Self::details(
+                record.name.as_deref().unwrap_or("custom"),
+                record.permissions.unwrap_or_default(),
+            )))
+        }
+
+        async fn delete(
+            &self,
+            tenant: &TenantId,
+            _id: i32,
+        ) -> Result<DeleteRoleOutcome, PersistenceError> {
+            self.record("delete", tenant);
+            Ok(self.delete_outcome.clone())
+        }
+    }
+
+    fn context(role: &str, tenant_id: &str) -> RequestContext {
+        RequestContext::from_claims(Claims {
+            sub: 1,
+            username: "operator".to_string(),
+            role: role.to_string(),
+            tenant_id: Some(tenant_id.to_string()),
+            scopes: Vec::new(),
+            permission_version: 1,
+            exp: 0,
+        })
+    }
+
+    #[tokio::test]
+    async fn normalizes_role_input_and_passes_tenant_identity() {
+        let repository = RecordingRepository::new(DeleteRoleOutcome::Deleted);
+        let created = create(
+            &context("admin", "tenant-a"),
+            &repository,
+            "  Support_Team ",
+            None,
+            &["devices.read".to_string(), "devices.read".to_string()],
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(created.role.name, "support_team");
+        assert_eq!(created.permissions, vec!["devices.read"]);
+        assert_eq!(
+            repository.calls.lock().unwrap().as_slice(),
+            &[("create".to_string(), TenantId::new("tenant-a").unwrap())]
+        );
+    }
+
+    #[tokio::test]
+    async fn authorization_and_reserved_name_checks_precede_persistence() {
+        let repository = RecordingRepository::new(DeleteRoleOutcome::Deleted);
+
+        let error = list(&context("viewer", "tenant-a"), &repository)
+            .await
+            .unwrap_err();
+        assert!(matches!(error, AppError::Forbidden(_)));
+
+        let error = create(
+            &context("admin", "tenant-a"),
+            &repository,
+            "owner",
+            None,
+            &[],
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(error, AppError::BadRequest(_)));
+        assert!(repository.calls.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn maps_atomic_in_use_delete_outcome_to_conflict() {
+        let repository = RecordingRepository::new(DeleteRoleOutcome::InUse {
+            name: "support".to_string(),
+            user_count: 2,
+        });
+
+        let error = delete(&context("admin", "tenant-a"), &repository, 10)
+            .await
+            .unwrap_err();
+
+        assert!(matches!(error, AppError::Conflict(message) if message.contains('2')));
     }
 }

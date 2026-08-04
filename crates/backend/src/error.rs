@@ -70,6 +70,9 @@ pub enum AppError {
     #[error("Connection pool error: {0}")]
     Pool(#[from] diesel::r2d2::PoolError),
 
+    #[error("Persistence error: {0}")]
+    Persistence(#[from] crate::persistence::PersistenceError),
+
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
 
@@ -129,6 +132,42 @@ impl IntoResponse for AppError {
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "service_unavailable",
                     "Service temporarily unavailable".to_string(),
+                )
+            }
+            AppError::Persistence(crate::persistence::PersistenceError::NotFound) => (
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "Resource not found".to_string(),
+            ),
+            AppError::Persistence(
+                error @ (crate::persistence::PersistenceError::UniqueViolation { .. }
+                | crate::persistence::PersistenceError::ForeignKeyViolation { .. }
+                | crate::persistence::PersistenceError::CheckViolation { .. }),
+            ) => {
+                tracing::warn!(error = %error, "Persistence constraint rejected a request");
+                (
+                    StatusCode::CONFLICT,
+                    "conflict",
+                    "The request conflicts with existing data".to_string(),
+                )
+            }
+            AppError::Persistence(
+                error @ (crate::persistence::PersistenceError::Busy { .. }
+                | crate::persistence::PersistenceError::Unavailable(_)),
+            ) => {
+                tracing::warn!(error = %error, "Persistence is temporarily unavailable");
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "service_unavailable",
+                    "Service temporarily unavailable".to_string(),
+                )
+            }
+            AppError::Persistence(error) => {
+                tracing::error!(error = %error, "Persistence operation failed");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "database_error",
+                    "Internal server error".to_string(),
                 )
             }
             AppError::Serialization(e) => {
