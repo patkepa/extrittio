@@ -1,0 +1,48 @@
+server {
+    listen 80 default_server;
+    server_name _;
+    server_tokens off;
+    return 444;
+}
+
+server {
+    listen 80;
+    server_name ${EXTRITTIO_DOMAIN};
+    server_tokens off;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+
+    location /api-docs/ {
+        return 404;
+    }
+
+    location = /api-docs {
+        return 404;
+    }
+
+    location /swagger-ui/ {
+        return 404;
+    }
+
+    location = /swagger-ui {
+        return 404;
+    }
+
+    location / {
+        proxy_pass http://extrittio:8080;
+        proxy_hide_header Strict-Transport-Security;
+        proxy_hide_header X-Content-Type-Options;
+        proxy_hide_header X-Frame-Options;
+        proxy_hide_header Referrer-Policy;
+        proxy_hide_header Permissions-Policy;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        # This proxy is intended to sit behind the required TLS ingress.
+        proxy_set_header X-Forwarded-Proto https;
+    }
+}

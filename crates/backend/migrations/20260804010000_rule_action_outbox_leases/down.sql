@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS idx_rule_action_outbox_processing_lease;

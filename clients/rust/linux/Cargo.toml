@@ -1,0 +1,18 @@
+[package]
+name = "extrittio-client"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish.workspace = true
+
+[dependencies]
+extrittio-common = { version = "0.1.0", path = "../../../crates/common" }
+extrittio-sdk = { version = "0.1.0", path = "../sdk" }
+extrittio-client-runtime = { version = "0.1.0", path = "../runtime" }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+clap = { version = "4", features = ["derive"] }
+rand = "0.9"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

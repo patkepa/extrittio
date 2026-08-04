@@ -1,0 +1,196 @@
+use axum::{
+    Extension, Json, Router,
+    extract::{Query, State},
+    routing::{get, post},
+};
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use utoipa::ToSchema;
+
+use crate::auth::context::RequestContext;
+use crate::auth::policy::{self, Permission};
+use crate::error::AppError;
+use crate::repositories::rule_action_outbox_repo;
+use crate::state::{AppState, run_db};
+
+#[derive(Serialize, ToSchema)]
+pub struct RuleActionOutboxSummaryResponse {
+    pub pending_count: i64,
+    pub processing_count: i64,
+    pub failed_count: i64,
+    pub dead_letter_count: i64,
+    pub succeeded_count: i64,
+    pub oldest_pending_at: Option<String>,
+    pub oldest_pending_age_seconds: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DeadLetterQuery {
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct DeadLetterEventResponse {
+    pub id: String,
+    pub event_type: String,
+    pub aggregate_type: String,
+    pub aggregate_id: String,
+    pub payload: serde_json::Value,
+    pub attempts: i32,
+    pub max_attempts: i32,
+    pub last_error: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct DeadLetterListResponse {
+    pub data: Vec<DeadLetterEventResponse>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ReplayDeadLettersRequest {
+    #[serde(default)]
+    pub event_ids: Vec<String>,
+    #[serde(default)]
+    pub replay_all: bool,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct ReplayDeadLettersResponse {
+    pub replayed_count: usize,
+}
+
+pub fn router() -> Router<Arc<AppState>> {
+    Router::new()
+        .route("/api/v1/server/outbox/rule-actions", get(get_summary))
+        .route(
+            "/api/v1/server/outbox/rule-actions/dead-letters",
+            get(list_dead_letters),
+        )
+        .route(
+            "/api/v1/server/outbox/rule-actions/dead-letters/replay",
+            post(replay_dead_letters),
+        )
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/server/outbox/rule-actions/dead-letters",
+    tag = "server-metrics",
+    security(("bearer_auth" = [])),
+    params(
+        ("limit" = Option<i64>, Query, description = "Maximum rows, from 1 to 200"),
+        ("offset" = Option<i64>, Query, description = "Pagination offset"),
+    ),
+    responses(
+        (status = 200, description = "Tenant dead-letter events", body = DeadLetterListResponse),
+    ),
+)]
+pub(crate) async fn list_dead_letters(
+    Extension(ctx): Extension<RequestContext>,
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<DeadLetterQuery>,
+) -> Result<Json<DeadLetterListResponse>, AppError> {
+    let limit = query.limit.unwrap_or(50).clamp(1, 200);
+    let offset = query.offset.unwrap_or(0).max(0);
+    let events = run_db(&state.db_pool, move |conn| {
+        policy::require(&ctx, Permission::ReadServerMetrics)?;
+        let rows =
+            rule_action_outbox_repo::list_dead_letters(conn, ctx.tenant_id_str(), limit, offset)?;
+        Ok(rows
+            .into_iter()
+            .map(|event| DeadLetterEventResponse {
+                id: event.id,
+                event_type: event.event_type,
+                aggregate_type: event.aggregate_type,
+                aggregate_id: event.aggregate_id,
+                payload: event.payload,
+                attempts: event.attempts,
+                max_attempts: event.max_attempts,
+                last_error: event.last_error,
+                created_at: event.created_at.and_utc().to_rfc3339(),
+                updated_at: event.updated_at.and_utc().to_rfc3339(),
+            })
+            .collect())
+    })
+    .await?;
+
+    Ok(Json(DeadLetterListResponse { data: events }))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/server/outbox/rule-actions/dead-letters/replay",
+    tag = "server-metrics",
+    security(("bearer_auth" = [])),
+    request_body = ReplayDeadLettersRequest,
+    responses(
+        (status = 200, description = "Dead-letter events scheduled for replay", body = ReplayDeadLettersResponse),
+        (status = 400, description = "No replay target was selected", body = crate::error::ErrorBody),
+    ),
+)]
+pub(crate) async fn replay_dead_letters(
+    Extension(ctx): Extension<RequestContext>,
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<ReplayDeadLettersRequest>,
+) -> Result<Json<ReplayDeadLettersResponse>, AppError> {
+    if !request.replay_all && request.event_ids.is_empty() {
+        return Err(AppError::BadRequest(
+            "provide event_ids or set replay_all to true".to_string(),
+        ));
+    }
+    if request.replay_all && !request.event_ids.is_empty() {
+        return Err(AppError::BadRequest(
+            "event_ids and replay_all are mutually exclusive".to_string(),
+        ));
+    }
+
+    let replayed_count = run_db(&state.db_pool, move |conn| {
+        policy::require(&ctx, Permission::ManageRules)?;
+        let ids = (!request.replay_all).then_some(request.event_ids.as_slice());
+        Ok(rule_action_outbox_repo::replay_dead_letters(
+            conn,
+            ctx.tenant_id_str(),
+            ids,
+        )?)
+    })
+    .await?;
+
+    Ok(Json(ReplayDeadLettersResponse { replayed_count }))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/server/outbox/rule-actions",
+    tag = "server-metrics",
+    security(("bearer_auth" = [])),
+    responses(
+        (status = 200, description = "Rule action outbox summary", body = RuleActionOutboxSummaryResponse),
+    ),
+)]
+pub(crate) async fn get_summary(
+    Extension(ctx): Extension<RequestContext>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<RuleActionOutboxSummaryResponse>, AppError> {
+    let response = run_db(&state.db_pool, move |conn| {
+        policy::require(&ctx, Permission::ReadServerMetrics)?;
+        let summary = rule_action_outbox_repo::summarize_for_tenant(conn, ctx.tenant_id_str())?;
+
+        Ok(RuleActionOutboxSummaryResponse {
+            pending_count: summary.pending_count,
+            processing_count: summary.processing_count,
+            failed_count: summary.failed_count,
+            dead_letter_count: summary.dead_letter_count,
+            succeeded_count: summary.succeeded_count,
+            oldest_pending_at: summary
+                .oldest_pending_at
+                .map(|dt| dt.and_utc().to_rfc3339()),
+            oldest_pending_age_seconds: summary.oldest_pending_age_seconds,
+        })
+    })
+    .await?;
+
+    Ok(Json(response))
+}

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-COMPOSE_FILE="$ROOT_DIR/docker/docker-compose.yml"
+COMPOSE_FILE="$ROOT_DIR/deploy/docker/docker-compose.yml"
 DATABASE_URL="${DATABASE_URL:-postgres://extrittio:extrittio@localhost/extrittio}"
 RUST_LOG="${RUST_LOG:-extrittio_backend=info}"
 POSTGRES_PORT="${POSTGRES_PORT:-}"
@@ -150,9 +150,9 @@ if [[ "${RUN_MIGRATIONS:-1}" != "0" ]]; then
   (cd "$ROOT_DIR" && DATABASE_URL="$DATABASE_URL" cargo run -p extrittio -- migrate)
 fi
 
-if [[ ! -d "$ROOT_DIR/frontend/node_modules" ]]; then
+if [[ ! -d "$ROOT_DIR/apps/frontend/node_modules" ]]; then
   log "Installing frontend dependencies..."
-  (cd "$ROOT_DIR/frontend" && npm install)
+  (cd "$ROOT_DIR/apps/frontend" && npm install)
 fi
 
 if port_is_listening 8080; then
@@ -196,7 +196,7 @@ fi
 
 log "Starting frontend on http://localhost:5173"
 (
-  cd "$ROOT_DIR/frontend"
+  cd "$ROOT_DIR/apps/frontend"
   exec npm run dev -- --host 127.0.0.1 --strictPort
 ) &
 FRONTEND_PID=$!

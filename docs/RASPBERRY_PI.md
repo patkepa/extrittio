@@ -131,7 +131,7 @@ sudo apt install zram-tools
 Do not run the Vite dev server on the Pi. Build the frontend once:
 
 ```bash
-cd frontend
+cd apps/frontend
 npm ci
 npm run build
 ```

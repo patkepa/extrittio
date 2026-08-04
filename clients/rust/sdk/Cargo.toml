@@ -1,0 +1,19 @@
+[package]
+name = "extrittio-sdk"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish.workspace = true
+
+[features]
+default = ["std"]
+std = ["extrittio-common/std", "dep:serde_json", "serde_json?/std"]
+alloc = ["extrittio-common/alloc", "dep:serde_json", "serde_json?/alloc"]
+
+[dependencies]
+extrittio-common = { version = "0.1.0", path = "../../../crates/common", default-features = false }
+serde_json = { version = "1", default-features = false, optional = true }
+libm = "0.2"

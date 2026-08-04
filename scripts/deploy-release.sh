@@ -9,7 +9,7 @@ fi
 version="$1"
 deploy_dir="${2:-/opt/extrittio-deploy}"
 env_file="$deploy_dir/.env"
-compose_file="$deploy_dir/docker-compose.release.yml"
+compose_file="$deploy_dir/docker-compose.production.yml"
 
 if [[ ! -f "$env_file" ]]; then
   echo "missing $env_file" >&2

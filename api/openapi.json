@@ -3,12 +3,563 @@
   "info": {
     "title": "Extrittio API",
     "description": "IoT Hub platform REST API",
+    "contact": {
+      "name": "Extrittio contributors"
+    },
     "license": {
       "name": ""
     },
     "version": "1.0.0"
   },
   "paths": {
+    "/api/v1/alerts": {
+      "get": {
+        "tags": [
+          "alerts"
+        ],
+        "operationId": "list_alerts",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "severity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "device_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "rule_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_AlertResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/alerts/bulk-acknowledge": {
+      "put": {
+        "tags": [
+          "alerts"
+        ],
+        "operationId": "bulk_acknowledge",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkAlertIds"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/alerts/bulk-reactivate": {
+      "put": {
+        "tags": [
+          "alerts"
+        ],
+        "operationId": "bulk_reactivate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkAlertIds"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/alerts/bulk-resolve": {
+      "put": {
+        "tags": [
+          "alerts"
+        ],
+        "operationId": "bulk_resolve",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkAlertIds"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/alerts/summary": {
+      "get": {
+        "tags": [
+          "alerts"
+        ],
+        "operationId": "get_summary",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertSummary"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/alerts/{id}": {
+      "get": {
+        "tags": [
+          "alerts"
+        ],
+        "operationId": "get_alert",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/alerts/{id}/acknowledge": {
+      "put": {
+        "tags": [
+          "alerts"
+        ],
+        "operationId": "acknowledge_alert",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/alerts/{id}/reactivate": {
+      "put": {
+        "tags": [
+          "alerts"
+        ],
+        "operationId": "reactivate_alert_handler",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/alerts/{id}/resolve": {
+      "put": {
+        "tags": [
+          "alerts"
+        ],
+        "operationId": "resolve_alert_handler",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/api-keys": {
+      "get": {
+        "tags": [
+          "api-keys"
+        ],
+        "operationId": "list_api_keys",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ApiKeyResponse"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "api-keys"
+        ],
+        "operationId": "create_api_key",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateApiKeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateApiKeyResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/api-keys/{id}": {
+      "delete": {
+        "tags": [
+          "api-keys"
+        ],
+        "operationId": "delete_api_key",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/audit-events": {
+      "get": {
+        "tags": [
+          "audit"
+        ],
+        "operationId": "list_audit_events",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum rows, from 1 to 200",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Pagination offset",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant audit events",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditEventListResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
     "/api/v1/auth/login": {
       "post": {
         "tags": [
@@ -43,6 +594,20 @@
         }
       }
     },
+    "/api/v1/auth/logout": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Clear the current browser session cookie.",
+        "operationId": "logout",
+        "responses": {
+          "204": {
+            "description": "Browser session cleared"
+          }
+        }
+      }
+    },
     "/api/v1/auth/me": {
       "get": {
         "tags": [
@@ -68,6 +633,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -97,6 +665,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -123,6 +694,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -175,6 +749,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       },
@@ -212,6 +789,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -252,6 +832,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       },
@@ -304,6 +887,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -390,6 +976,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       },
@@ -430,6 +1019,165 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices/bulk/delete": {
+      "post": {
+        "tags": [
+          "devices"
+        ],
+        "summary": "Bulk delete multiple devices.",
+        "operationId": "bulk_delete_devices",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkDeviceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkAffectedResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices/bulk/fleet": {
+      "post": {
+        "tags": [
+          "devices"
+        ],
+        "summary": "Bulk change fleet assignment for multiple devices.",
+        "operationId": "bulk_change_fleet",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkFleetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkAffectedResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices/bulk/ota": {
+      "post": {
+        "tags": [
+          "devices"
+        ],
+        "summary": "Bulk trigger OTA firmware update on multiple devices.",
+        "operationId": "bulk_trigger_ota",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkOtaRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkResultResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices/bulk/restart": {
+      "post": {
+        "tags": [
+          "devices"
+        ],
+        "summary": "Bulk restart multiple devices.",
+        "operationId": "bulk_restart_devices",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkDeviceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkResultResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -470,6 +1218,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       },
@@ -524,6 +1275,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       },
@@ -555,6 +1309,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -599,6 +1356,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -639,6 +1399,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -686,6 +1449,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -754,6 +1520,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       },
@@ -805,6 +1574,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -845,6 +1617,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       },
@@ -893,6 +1668,56 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices/{id}/location/latest": {
+      "get": {
+        "tags": [
+          "devices"
+        ],
+        "summary": "Get the latest location recorded for a device.",
+        "operationId": "get_device_latest_location",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Latest location or null",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LocationResponse"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -973,6 +1798,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -1016,6 +1844,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -1080,6 +1911,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -1113,6 +1947,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -1153,6 +1990,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       },
@@ -1184,6 +2024,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -1234,6 +2077,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -1284,6 +2130,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -1364,6 +2213,135 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices/{id}/telemetry/hourly": {
+      "get": {
+        "tags": [
+          "telemetry"
+        ],
+        "summary": "Get hourly telemetry aggregates for a device.",
+        "operationId": "get_hourly_device_telemetry",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of records to return (default 50, max 1000).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "description": "Only return records after this timestamp (RFC 3339 or YYYY-MM-DDTHH:MM:SS).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "description": "Only return records before this timestamp (RFC 3339 or YYYY-MM-DDTHH:MM:SS).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Hourly telemetry aggregates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/HourlyTelemetryResponse"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Device not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices/{id}/telemetry/latest": {
+      "get": {
+        "tags": [
+          "telemetry"
+        ],
+        "summary": "Get the most recently received telemetry sample for a device.",
+        "operationId": "get_latest_device_telemetry",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Latest telemetry sample",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelemetryResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Device or telemetry sample not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -1429,6 +2407,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       },
@@ -1472,8 +2453,47 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
+      }
+    },
+    "/api/v1/firmware-updates/ci": {
+      "post": {
+        "tags": [
+          "firmware"
+        ],
+        "operationId": "ci_ingest",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CiIngestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CiIngestResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          }
+        }
       }
     },
     "/api/v1/firmware-updates/next-version/{device_type_id}": {
@@ -1510,6 +2530,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -1551,6 +2574,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -1585,6 +2611,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -1622,6 +2651,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -1674,6 +2706,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       },
@@ -1711,6 +2746,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -1745,6 +2783,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       },
@@ -1797,6 +2838,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -1861,6 +2905,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -1890,6 +2937,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       },
@@ -1930,6 +2980,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -1959,6 +3012,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -2016,6 +3072,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       },
@@ -2054,6 +3113,360 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/rules": {
+      "get": {
+        "tags": [
+          "rules"
+        ],
+        "operationId": "list_rules",
+        "parameters": [
+          {
+            "name": "enabled",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trigger_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "target_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RuleResponse"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "rules"
+        ],
+        "operationId": "create_rule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRuleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuleResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/rules/{id}": {
+      "get": {
+        "tags": [
+          "rules"
+        ],
+        "operationId": "get_rule",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuleResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "rules"
+        ],
+        "operationId": "update_rule_handler",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRuleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuleResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "rules"
+        ],
+        "operationId": "delete_rule_handler",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/rules/{id}/enabled": {
+      "put": {
+        "tags": [
+          "rules"
+        ],
+        "operationId": "toggle_rule",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnabledInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuleResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/server/metrics/current": {
+      "get": {
+        "tags": [
+          "server-metrics"
+        ],
+        "summary": "Get the latest server and application metrics snapshot.",
+        "operationId": "get_current_metrics",
+        "responses": {
+          "200": {
+            "description": "Current metrics snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentMetricsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/server/metrics/history": {
+      "get": {
+        "tags": [
+          "server-metrics"
+        ],
+        "summary": "Get server and application metrics history over a time range.",
+        "operationId": "get_metrics_history",
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "description": "Start of the time range (ISO 8601). Defaults to 1 hour ago.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "resolution",
+            "in": "query",
+            "description": "Bucket size in seconds for downsampling. Defaults to 10 (raw data).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Metrics time-series",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricsHistoryResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -2079,6 +3492,107 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/server/outbox/rule-actions/dead-letters": {
+      "get": {
+        "tags": [
+          "server-metrics"
+        ],
+        "operationId": "list_dead_letters",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum rows, from 1 to 200",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Pagination offset",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant dead-letter events",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeadLetterListResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/server/outbox/rule-actions/dead-letters/replay": {
+      "post": {
+        "tags": [
+          "server-metrics"
+        ],
+        "operationId": "replay_dead_letters",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplayDeadLettersRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Dead-letter events scheduled for replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplayDeadLettersResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No replay target was selected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -2100,8 +3614,19 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
-        }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
       }
     },
     "/api/v1/users": {
@@ -2152,6 +3677,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       },
@@ -2192,6 +3720,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -2226,6 +3757,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -2273,6 +3807,9 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -2330,6 +3867,198 @@
         "security": [
           {
             "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/zones": {
+      "get": {
+        "tags": [
+          "zones"
+        ],
+        "operationId": "list_zones",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ZoneResponse"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "zones"
+        ],
+        "operationId": "create_zone",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateZoneRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ZoneResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/zones/{zone_id}": {
+      "get": {
+        "tags": [
+          "zones"
+        ],
+        "operationId": "get_zone",
+        "parameters": [
+          {
+            "name": "zone_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ZoneResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "zones"
+        ],
+        "operationId": "update_zone",
+        "parameters": [
+          {
+            "name": "zone_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateZoneRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ZoneResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "zones"
+        ],
+        "operationId": "delete_zone",
+        "parameters": [
+          {
+            "name": "zone_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -2389,6 +4118,486 @@
   },
   "components": {
     "schemas": {
+      "ActionInput": {
+        "type": "object",
+        "required": [
+          "action_type",
+          "config"
+        ],
+        "properties": {
+          "action_type": {
+            "type": "string"
+          },
+          "config": {}
+        }
+      },
+      "ActionResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "action_type",
+          "config"
+        ],
+        "properties": {
+          "action_type": {
+            "type": "string"
+          },
+          "config": {},
+          "id": {
+            "type": "string"
+          }
+        }
+      },
+      "AlertResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "device_id",
+          "severity",
+          "status",
+          "message",
+          "created_at"
+        ],
+        "properties": {
+          "acknowledged_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "resolved_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rule_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "severity": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "triggered_value": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "AlertSeverityCounts": {
+        "type": "object",
+        "required": [
+          "info",
+          "warning",
+          "critical"
+        ],
+        "properties": {
+          "critical": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "info": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "warning": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "AlertSummary": {
+        "type": "object",
+        "required": [
+          "active",
+          "acknowledged",
+          "total_active"
+        ],
+        "properties": {
+          "acknowledged": {
+            "$ref": "#/components/schemas/AlertSeverityCounts"
+          },
+          "active": {
+            "$ref": "#/components/schemas/AlertSeverityCounts"
+          },
+          "total_active": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ApiKeyResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "key_prefix",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "device_type_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "device_type_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "key_prefix": {
+            "type": "string"
+          },
+          "last_used_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "AppMetricsSnapshot": {
+        "type": "object",
+        "required": [
+          "request_count",
+          "error_count",
+          "avg_latency_ms",
+          "p95_latency_ms",
+          "db_pool_active",
+          "db_pool_idle",
+          "zenoh_messages_in",
+          "zenoh_messages_out",
+          "recorded_at"
+        ],
+        "properties": {
+          "avg_latency_ms": {
+            "type": "number",
+            "format": "float"
+          },
+          "db_pool_active": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "db_pool_idle": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "error_count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "p95_latency_ms": {
+            "type": "number",
+            "format": "float"
+          },
+          "recorded_at": {
+            "type": "string"
+          },
+          "request_count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "zenoh_messages_in": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "zenoh_messages_out": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "AuditEventListResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditEventResponse"
+            }
+          }
+        }
+      },
+      "AuditEventResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "actor_type",
+          "action",
+          "resource_type",
+          "outcome",
+          "request_id",
+          "metadata",
+          "occurred_at"
+        ],
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "actor_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "actor_type": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "metadata": {},
+          "occurred_at": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "resource_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resource_type": {
+            "type": "string"
+          }
+        }
+      },
+      "BulkAffectedResponse": {
+        "type": "object",
+        "required": [
+          "affected"
+        ],
+        "properties": {
+          "affected": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "BulkAlertIds": {
+        "type": "object",
+        "required": [
+          "ids"
+        ],
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "BulkDeviceFilters": {
+        "type": "object",
+        "properties": {
+          "fleet_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "default": null
+          },
+          "search": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        }
+      },
+      "BulkDeviceRequest": {
+        "type": "object",
+        "properties": {
+          "device_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "filters": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BulkDeviceFilters"
+              }
+            ]
+          },
+          "select_all": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      },
+      "BulkFleetRequest": {
+        "type": "object",
+        "properties": {
+          "device_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "filters": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BulkDeviceFilters"
+              }
+            ]
+          },
+          "fleet_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "select_all": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      },
+      "BulkOperationError": {
+        "type": "object",
+        "required": [
+          "device_id",
+          "error"
+        ],
+        "properties": {
+          "device_id": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "BulkOtaRequest": {
+        "type": "object",
+        "required": [
+          "firmware_update_id"
+        ],
+        "properties": {
+          "device_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "filters": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BulkDeviceFilters"
+              }
+            ]
+          },
+          "firmware_update_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "select_all": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      },
+      "BulkResultResponse": {
+        "type": "object",
+        "required": [
+          "succeeded",
+          "failed",
+          "errors"
+        ],
+        "properties": {
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BulkOperationError"
+            }
+          },
+          "failed": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "succeeded": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "CaCertificateResponse": {
         "type": "object",
         "required": [
@@ -2415,6 +4624,87 @@
         ],
         "properties": {
           "password": {
+            "type": "string"
+          }
+        }
+      },
+      "CiIngestRequest": {
+        "type": "object",
+        "required": [
+          "device_type",
+          "version",
+          "artifact_url"
+        ],
+        "properties": {
+          "artifact_url": {
+            "type": "string"
+          },
+          "branch": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "build_timestamp": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "changelog": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ci_run_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "commit_sha": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "device_type": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "CiIngestResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "version",
+          "device_type"
+        ],
+        "properties": {
+          "device_type": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "version": {
             "type": "string"
           }
         }
@@ -2468,6 +4758,48 @@
           }
         }
       },
+      "ConditionInput": {
+        "type": "object",
+        "required": [
+          "field",
+          "operator",
+          "value"
+        ],
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "operator": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      },
+      "ConditionResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "field",
+          "operator",
+          "value"
+        ],
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "operator": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      },
       "ConfigResponse": {
         "type": "object",
         "required": [
@@ -2487,6 +4819,55 @@
             "type": "string"
           },
           "updated_at": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateApiKeyRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "device_type_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateApiKeyResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "key",
+          "key_prefix"
+        ],
+        "properties": {
+          "device_type_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "key": {
+            "type": "string"
+          },
+          "key_prefix": {
+            "type": "string"
+          },
+          "name": {
             "type": "string"
           }
         }
@@ -2515,6 +4896,58 @@
           }
         }
       },
+      "CreateRuleRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "trigger_type",
+          "target_type",
+          "conditions",
+          "actions"
+        ],
+        "properties": {
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActionInput"
+            }
+          },
+          "conditions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConditionInput"
+            }
+          },
+          "cooldown_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "target_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target_type": {
+            "type": "string"
+          },
+          "trigger_type": {
+            "type": "string"
+          }
+        }
+      },
       "CreateUserRequest": {
         "type": "object",
         "required": [
@@ -2537,6 +4970,60 @@
           },
           "username": {
             "type": "string"
+          }
+        }
+      },
+      "CreateZoneRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "geometry_type",
+          "geometry_json"
+        ],
+        "properties": {
+          "color": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "geometry_json": {},
+          "geometry_type": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "CurrentMetricsResponse": {
+        "type": "object",
+        "properties": {
+          "app": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AppMetricsSnapshot"
+              }
+            ]
+          },
+          "system": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SystemMetricsSnapshot"
+              }
+            ]
           }
         }
       },
@@ -2564,6 +5051,69 @@
           "total_messages": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "DeadLetterEventResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "event_type",
+          "aggregate_type",
+          "aggregate_id",
+          "payload",
+          "attempts",
+          "max_attempts",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "aggregate_id": {
+            "type": "string"
+          },
+          "aggregate_type": {
+            "type": "string"
+          },
+          "attempts": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "event_type": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "max_attempts": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "payload": {},
+          "updated_at": {
+            "type": "string"
+          }
+        }
+      },
+      "DeadLetterListResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeadLetterEventResponse"
+            }
           }
         }
       },
@@ -2801,15 +5351,43 @@
           }
         }
       },
+      "EnabledInput": {
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          }
+        }
+      },
       "ErrorBody": {
         "type": "object",
         "description": "Standard error response body.",
         "required": [
-          "error"
+          "code",
+          "message",
+          "error",
+          "request_id"
         ],
         "properties": {
+          "code": {
+            "type": "string",
+            "description": "Stable machine-readable error category."
+          },
+          "details": {},
           "error": {
-            "type": "string"
+            "type": "string",
+            "description": "Compatibility alias for clients using the legacy response shape."
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable error description."
+          },
+          "request_id": {
+            "type": "string",
+            "description": "Correlates the response with structured request logs."
           }
         }
       },
@@ -3020,6 +5598,131 @@
           }
         }
       },
+      "HourlyTelemetryResponse": {
+        "type": "object",
+        "required": [
+          "device_id",
+          "bucket_start",
+          "sample_count"
+        ],
+        "properties": {
+          "avg_battery_level": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "avg_humidity": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "avg_temperature": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "bucket_start": {
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "max_battery_level": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "max_humidity": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "max_temperature": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "min_battery_level": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "min_humidity": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "min_temperature": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "sample_count": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "LocationResponse": {
+        "type": "object",
+        "required": [
+          "latitude",
+          "longitude",
+          "timestamp"
+        ],
+        "properties": {
+          "altitude": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "heading": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "latitude": {
+            "type": "number",
+            "format": "double"
+          },
+          "longitude": {
+            "type": "number",
+            "format": "double"
+          },
+          "speed": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
       "LogResponse": {
         "type": "object",
         "required": [
@@ -3055,6 +5758,10 @@
           "password"
         ],
         "properties": {
+          "issue_token": {
+            "type": "boolean",
+            "description": "Return a bearer token for non-browser clients. Browser clients should\nuse the HttpOnly session cookie and leave this false."
+          },
           "password": {
             "type": "string"
           },
@@ -3072,15 +5779,38 @@
       "LoginResponse": {
         "type": "object",
         "required": [
-          "token",
           "user"
         ],
         "properties": {
           "token": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "user": {
             "$ref": "#/components/schemas/UserResponse"
+          }
+        }
+      },
+      "MetricsHistoryResponse": {
+        "type": "object",
+        "required": [
+          "system",
+          "app"
+        ],
+        "properties": {
+          "app": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AppMetricsSnapshot"
+            }
+          },
+          "system": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SystemMetricsSnapshot"
+            }
           }
         }
       },
@@ -3234,6 +5964,87 @@
           },
           "status": {
             "type": "string"
+          }
+        }
+      },
+      "PaginatedResponse_AlertResponse": {
+        "type": "object",
+        "required": [
+          "data",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "device_id",
+                "severity",
+                "status",
+                "message",
+                "created_at"
+              ],
+              "properties": {
+                "acknowledged_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "created_at": {
+                  "type": "string"
+                },
+                "device_id": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "resolved_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "rule_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "severity": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "triggered_value": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -3850,14 +6661,58 @@
         "type": "object",
         "required": [
           "status",
-          "database"
+          "database",
+          "migrations",
+          "zenoh",
+          "workers"
         ],
         "properties": {
           "database": {
             "type": "string"
           },
+          "migrations": {
+            "type": "string"
+          },
           "status": {
             "type": "string"
+          },
+          "workers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "zenoh": {
+            "type": "string"
+          }
+        }
+      },
+      "ReplayDeadLettersRequest": {
+        "type": "object",
+        "properties": {
+          "event_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "replay_all": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ReplayDeadLettersResponse": {
+        "type": "object",
+        "required": [
+          "replayed_count"
+        ],
+        "properties": {
+          "replayed_count": {
+            "type": "integer",
+            "minimum": 0
           }
         }
       },
@@ -3970,6 +6825,72 @@
           }
         }
       },
+      "RuleResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "enabled",
+          "trigger_type",
+          "target_type",
+          "cooldown_seconds",
+          "conditions",
+          "actions",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActionResponse"
+            }
+          },
+          "conditions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConditionResponse"
+            }
+          },
+          "cooldown_seconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "target_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target_type": {
+            "type": "string"
+          },
+          "trigger_type": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        }
+      },
       "SendCommandRequest": {
         "type": "object",
         "required": [
@@ -4049,6 +6970,67 @@
           "version": {
             "type": "integer",
             "format": "int32"
+          }
+        }
+      },
+      "SystemMetricsSnapshot": {
+        "type": "object",
+        "required": [
+          "cpu_usage_percent",
+          "memory_used_bytes",
+          "memory_total_bytes",
+          "disk_used_bytes",
+          "disk_total_bytes",
+          "network_rx_bytes_delta",
+          "network_tx_bytes_delta",
+          "load_avg_1m",
+          "load_avg_5m",
+          "load_avg_15m",
+          "recorded_at"
+        ],
+        "properties": {
+          "cpu_usage_percent": {
+            "type": "number",
+            "format": "float"
+          },
+          "disk_total_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "disk_used_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "load_avg_15m": {
+            "type": "number",
+            "format": "float"
+          },
+          "load_avg_1m": {
+            "type": "number",
+            "format": "float"
+          },
+          "load_avg_5m": {
+            "type": "number",
+            "format": "float"
+          },
+          "memory_total_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "memory_used_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "network_rx_bytes_delta": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "network_tx_bytes_delta": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "recorded_at": {
+            "type": "string"
           }
         }
       },
@@ -4260,6 +7242,96 @@
           }
         }
       },
+      "UpdateRuleRequest": {
+        "type": "object",
+        "properties": {
+          "actions": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ActionInput"
+            }
+          },
+          "conditions": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ConditionInput"
+            }
+          },
+          "cooldown_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trigger_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "UpdateZoneRequest": {
+        "type": "object",
+        "properties": {
+          "color": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "geometry_json": {},
+          "geometry_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "UserResponse": {
         "type": "object",
         "required": [
@@ -4298,13 +7370,57 @@
             "type": "string"
           }
         }
+      },
+      "ZoneResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "geometry_type",
+          "geometry_json",
+          "color",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "color": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "geometry_json": {},
+          "geometry_type": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        }
       }
     },
     "securitySchemes": {
       "bearer_auth": {
         "type": "http",
         "scheme": "bearer",
-        "bearerFormat": "JWT"
+        "bearerFormat": "JWT",
+        "description": "JWT bearer authentication for explicitly enabled non-browser clients"
+      },
+      "session_cookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "extrittio_session",
+        "description": "HTTP-only browser session cookie issued by POST /api/v1/auth/login"
       }
     }
   },
@@ -4318,8 +7434,28 @@
       "description": "Authentication"
     },
     {
+      "name": "api-keys",
+      "description": "API key management"
+    },
+    {
+      "name": "alerts",
+      "description": "Alert operations"
+    },
+    {
+      "name": "rules",
+      "description": "Rule engine configuration"
+    },
+    {
+      "name": "zones",
+      "description": "Geofence zone management"
+    },
+    {
       "name": "dashboard",
       "description": "Dashboard statistics"
+    },
+    {
+      "name": "audit",
+      "description": "Security and administrative audit trail"
     },
     {
       "name": "users",

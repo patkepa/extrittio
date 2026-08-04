@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-COMPOSE_FILE="${COMPOSE_FILE:-$ROOT_DIR/docker/docker-compose.prod.yml}"
+COMPOSE_FILE="${COMPOSE_FILE:-$ROOT_DIR/deploy/docker/docker-compose.production.yml}"
 BACKUP_DIR="${BACKUP_DIR:-$ROOT_DIR/backups}"
 TARGET_VERSION="${EXTRITTIO_VERSION:-}"
 SKIP_BACKUP=0
@@ -28,7 +28,7 @@ Options:
   -h, --help         Show this help text.
 
 Environment:
-  COMPOSE_FILE       Compose file path. Defaults to docker/docker-compose.prod.yml.
+  COMPOSE_FILE       Compose file path. Defaults to deploy/docker/docker-compose.production.yml.
   BACKUP_DIR         Local backup directory. Defaults to ./backups.
   EXTRITTIO_VERSION  Target version if --to is not provided.
 USAGE
@@ -57,15 +57,15 @@ wait_for_postgres() {
 }
 
 wait_for_backend() {
-  log "Waiting for backend readiness..."
+  log "Waiting for Extrittio readiness..."
   for _ in {1..90}; do
-    if compose exec -T backend sh -c 'curl -fsS -H "X-Extrittio-Health-Token: ${EXTRITTIO_HEALTH_TOKEN:-}" http://127.0.0.1:8080/ready >/dev/null' >/dev/null 2>&1; then
+    if compose exec -T extrittio sh -c 'curl -fsS -H "X-Extrittio-Health-Token: ${EXTRITTIO_HEALTH_TOKEN:-}" http://127.0.0.1:8080/ready >/dev/null' >/dev/null 2>&1; then
       return 0
     fi
     sleep 2
   done
 
-  die "Backend did not become ready in time. Check: docker compose -f \"$COMPOSE_FILE\" logs backend"
+  die "Extrittio did not become ready in time. Check: docker compose -f \"$COMPOSE_FILE\" logs extrittio"
 }
 
 create_backup() {
@@ -127,17 +127,17 @@ else
   create_backup
 fi
 
-log "Pulling target backend and frontend images..."
-compose pull backend frontend
+log "Pulling the target application and proxy images..."
+compose pull extrittio proxy
 
 log "Stopping application services before migration..."
-compose stop frontend backend >/dev/null || true
+compose stop proxy extrittio >/dev/null || true
 
-log "Running database migrations with the target backend image..."
-compose run --rm --no-deps backend ./extrittio migrate
+log "Running database migrations with the target application image..."
+compose run --rm --no-deps extrittio ./extrittio migrate
 
 log "Starting application services..."
-compose up -d backend frontend
+compose up -d extrittio proxy
 
 wait_for_backend
 

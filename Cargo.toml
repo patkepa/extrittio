@@ -1,15 +1,25 @@
 [workspace]
 resolver = "2"
 members = [
-    "backend",
-    "extrittio",
-    "client/rust/linux",
-    "client/rust/macos",
-    "client/rust/rpi",
-    "client/rust/sdk",
-    "client/rust/simulator",
-    "common",
+    "apps/extrittio",
+    "crates/backend",
+    "crates/common",
+    "clients/rust/linux",
+    "clients/rust/macos",
+    "clients/rust/rpi",
+    "clients/rust/runtime",
+    "clients/rust/sdk",
+    "clients/rust/simulator",
 ]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+authors = ["Extrittio contributors"]
+repository = "https://github.com/extrittio/extrittio"
+homepage = "https://github.com/extrittio/extrittio"
+publish = false
 
 # Optimized release profile for production builds
 [profile.release]

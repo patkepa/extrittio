@@ -1,0 +1,103 @@
+services:
+  postgres:
+    image: docker.io/library/postgres:17@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: extrittio
+      POSTGRES_USER: extrittio
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - app
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U extrittio -d extrittio"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  extrittio:
+    image: ${EXTRITTIO_IMAGE:-ghcr.io/extrittio/extrittio}:${EXTRITTIO_VERSION:?set EXTRITTIO_VERSION}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://extrittio:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres/extrittio
+      PORT: "8080"
+      CORS_ORIGIN: ${CORS_ORIGIN:?set CORS_ORIGIN}
+      EXTRITTIO_PUBLIC_URL: ${EXTRITTIO_PUBLIC_URL:?set EXTRITTIO_PUBLIC_URL}
+      EXTRITTIO_COOKIE_SECURE: "true"
+      EXTRITTIO_SERVE_UI: "true"
+      EXTRITTIO_ENABLE_API_DOCS: "false"
+      EXTRITTIO_KEY_ENCRYPTION_SECRET: ${EXTRITTIO_KEY_ENCRYPTION_SECRET:?set EXTRITTIO_KEY_ENCRYPTION_SECRET}
+      EXTRITTIO_HEALTH_TOKEN: ${EXTRITTIO_HEALTH_TOKEN:?set EXTRITTIO_HEALTH_TOKEN}
+      EXTRITTIO_REQUIRE_ENV_SECRETS: "true"
+      EXTRITTIO_TRUSTED_PROXIES: ${EXTRITTIO_TRUSTED_PROXIES:-172.16.0.0/12}
+      EXTRITTIO_BOOTSTRAP_ADMIN_USERNAME: ${EXTRITTIO_BOOTSTRAP_ADMIN_USERNAME:-admin}
+      EXTRITTIO_BOOTSTRAP_ADMIN_PASSWORD: ${EXTRITTIO_BOOTSTRAP_ADMIN_PASSWORD:-}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+      ZENOH_TLS_ENABLED: ${ZENOH_TLS_ENABLED:-true}
+      ZENOH_LISTEN_HOST: ${ZENOH_LISTEN_HOST:-0.0.0.0}
+      ZENOH_MAX_PAYLOAD_KB: ${ZENOH_MAX_PAYLOAD_KB:-256}
+      RUST_LOG: ${RUST_LOG:-extrittio=info,extrittio_backend=info}
+      EXTRITTIO_LOG_FORMAT: ${EXTRITTIO_LOG_FORMAT:-json}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      FIRMWARE_STORAGE_BACKEND: ${FIRMWARE_STORAGE_BACKEND:-local}
+      FIRMWARE_STORAGE_PATH: ${FIRMWARE_STORAGE_PATH:-/app/data/firmware}
+      FIRMWARE_S3_BUCKET: ${FIRMWARE_S3_BUCKET:-}
+      FIRMWARE_S3_REGION: ${FIRMWARE_S3_REGION:-us-east-1}
+      FIRMWARE_S3_ENDPOINT: ${FIRMWARE_S3_ENDPOINT:-}
+      FIRMWARE_S3_ALLOW_HTTP: ${FIRMWARE_S3_ALLOW_HTTP:-false}
+      FIRMWARE_S3_VIRTUAL_HOSTED_STYLE: ${FIRMWARE_S3_VIRTUAL_HOSTED_STYLE:-false}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+    expose:
+      - "8080"
+    ports:
+      - "${ZENOH_PORT:-7447}:7447"
+    volumes:
+      - certs:/app/certs
+      - firmware:/app/data/firmware
+    networks:
+      - app
+      - zenoh
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -H \"X-Extrittio-Health-Token: $${EXTRITTIO_HEALTH_TOKEN}\" http://127.0.0.1:8080/ready >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  proxy:
+    image: docker.io/library/nginx:alpine@sha256:4a73073bd557c65b759505da037898b61f1be6cbcc3c2c3aeac22d2a470c1752
+    restart: unless-stopped
+    depends_on:
+      extrittio:
+        condition: service_healthy
+    environment:
+      EXTRITTIO_DOMAIN: ${EXTRITTIO_DOMAIN:?set EXTRITTIO_DOMAIN}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    volumes:
+      - ./nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+    networks:
+      - app
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --header=\"Host: ${EXTRITTIO_DOMAIN}\" -O /dev/null http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 5s
+
+volumes:
+  pgdata:
+  certs:
+  firmware:
+
+networks:
+  app:
+  zenoh:
+    driver: bridge

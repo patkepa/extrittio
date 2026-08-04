@@ -1,0 +1,20 @@
+[package]
+name = "extrittio-client-runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish.workspace = true
+
+[dependencies]
+extrittio-common = { version = "0.1.0", path = "../../../crates/common" }
+extrittio-sdk = { version = "0.1.0", path = "../sdk" }
+zenoh = { version = "1", default-features = false, features = ["transport_tcp", "transport_tls"] }
+prost = "0.13"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["stream"] }
+sha2 = "0.10"
+tracing = "0.1"
+serde_json = "1"

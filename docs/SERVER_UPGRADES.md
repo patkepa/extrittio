@@ -24,18 +24,18 @@ The professional upgrade model is:
 
 ## Current Deployment Shape
 
-The production Compose file now requires an explicit release tag:
+The production Compose file requires an explicit release tag for the combined
+API and web application image:
 
 ```yaml
-ghcr.io/patkepa/extrittio-backend:${EXTRITTIO_VERSION:?set EXTRITTIO_VERSION}
-ghcr.io/patkepa/extrittio-frontend:${EXTRITTIO_VERSION:?set EXTRITTIO_VERSION}
+ghcr.io/extrittio/extrittio:${EXTRITTIO_VERSION:?set EXTRITTIO_VERSION}
 ```
 
 Set `EXTRITTIO_VERSION` to a concrete release before running production Compose:
 
 ```bash
 export EXTRITTIO_VERSION=1.4.2
-docker compose -f docker/docker-compose.prod.yml up -d
+docker compose -f deploy/docker/docker-compose.production.yml up -d
 ```
 
 Pinned versions make upgrades explicit and make rollbacks possible. `latest` is
@@ -44,8 +44,8 @@ not the production contract.
 The production Compose file also includes:
 
 - PostgreSQL readiness checks with `pg_isready`.
-- Backend readiness checks against `/ready`.
-- Frontend health checks against the nginx-served UI.
+- Dependency-aware Extrittio readiness checks against `/ready`.
+- Edge-proxy health checks against the combined UI/API service.
 - `depends_on` health conditions so application services do not start before
   their dependencies are ready.
 
@@ -55,7 +55,7 @@ Extrittio already has useful primitives:
 - `extrittio health` checks backend liveness.
 - `extrittio ready` checks backend readiness, including database reachability.
 - `/health` is a liveness probe.
-- `/ready` checks database reachability.
+- `/ready` checks database, migration, Zenoh, and worker health.
 - `/api/v1/system/version` returns runtime version metadata and database status.
 - The backend currently also runs migrations during service initialization.
 
@@ -85,11 +85,11 @@ The script performs the current safe Compose upgrade sequence:
 2. Starts PostgreSQL if needed.
 3. Waits for PostgreSQL readiness.
 4. Creates a local `pg_dump -Fc` backup in `./backups`.
-5. Pulls target backend and frontend images.
-6. Stops frontend/backend.
-7. Runs `./extrittio migrate` once with the target backend image.
-8. Starts backend/frontend.
-9. Polls backend `/ready`.
+5. Pulls the target Extrittio image.
+6. Stops the proxy and application.
+7. Runs `./extrittio migrate` once with the target application image.
+8. Starts the application and proxy.
+9. Polls `/ready`.
 
 The equivalent manual flow is:
 
@@ -98,28 +98,28 @@ The equivalent manual flow is:
 export EXTRITTIO_VERSION=1.4.2
 
 # 2. Start and verify PostgreSQL.
-docker compose -f docker/docker-compose.prod.yml up -d postgres
-docker compose -f docker/docker-compose.prod.yml exec -T postgres \
+docker compose -f deploy/docker/docker-compose.production.yml up -d postgres
+docker compose -f deploy/docker/docker-compose.production.yml exec -T postgres \
   pg_isready -U extrittio -d extrittio
 
 # 3. Back up Postgres.
 mkdir -p backups
-docker compose -f docker/docker-compose.prod.yml exec -T postgres \
+docker compose -f deploy/docker/docker-compose.production.yml exec -T postgres \
   pg_dump -U extrittio -d extrittio -Fc > backups/extrittio-before-${EXTRITTIO_VERSION}.dump
 
 # 4. Pull the pinned images for the target release.
-docker compose -f docker/docker-compose.prod.yml pull backend frontend
+docker compose -f deploy/docker/docker-compose.production.yml pull extrittio proxy
 
 # 5. Stop application services and run migrations once.
-docker compose -f docker/docker-compose.prod.yml stop frontend backend
-docker compose -f docker/docker-compose.prod.yml run --rm --no-deps backend ./extrittio migrate
+docker compose -f deploy/docker/docker-compose.production.yml stop proxy extrittio
+docker compose -f deploy/docker/docker-compose.production.yml run --rm --no-deps extrittio ./extrittio migrate
 
 # 6. Restart application services.
-docker compose -f docker/docker-compose.prod.yml up -d backend frontend
+docker compose -f deploy/docker/docker-compose.production.yml up -d extrittio proxy
 
 # 7. Verify backend readiness from inside the backend container.
-docker compose -f docker/docker-compose.prod.yml exec -T backend \
-  curl -fsS http://127.0.0.1:8080/ready
+docker compose -f deploy/docker/docker-compose.production.yml exec -T extrittio \
+  curl -fsS -H "X-Extrittio-Health-Token: $EXTRITTIO_HEALTH_TOKEN" http://127.0.0.1:8080/ready
 ```
 
 The exact commands will evolve with packaging, but the ordering should not:
@@ -138,14 +138,13 @@ Example manifest:
   "channel": "stable",
   "released_at": "2026-05-15T12:00:00Z",
   "images": {
-    "backend": "ghcr.io/patkepa/extrittio-backend:1.4.2",
-    "frontend": "ghcr.io/patkepa/extrittio-frontend:1.4.2"
+    "application": "ghcr.io/extrittio/extrittio:1.4.2"
   },
-  "compose_url": "https://releases.extrittio.com/1.4.2/docker-compose.prod.yml",
+  "compose_url": "https://releases.extrittio.com/1.4.2/docker-compose.production.yml",
   "min_upgrade_from": "1.3.0",
   "requires_backup": true,
   "migration_risk": "normal",
-  "release_notes_url": "https://github.com/patkepa/extrittio/releases/tag/v1.4.2",
+  "release_notes_url": "https://github.com/extrittio/extrittio/releases/tag/v1.4.2",
   "signature": "base64-ed25519-signature"
 }
 ```
@@ -179,8 +178,8 @@ docker build \
   --build-arg EXTRITTIO_VERSION=1.4.2 \
   --build-arg EXTRITTIO_COMMIT_SHA="$(git rev-parse HEAD)" \
   --build-arg EXTRITTIO_BUILD_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  -f backend/Dockerfile \
-  -t ghcr.io/patkepa/extrittio-backend:1.4.2 \
+  -f deploy/docker/Dockerfile \
+  -t ghcr.io/extrittio/extrittio:1.4.2 \
   .
 ```
 
@@ -231,7 +230,7 @@ Application rollback and database rollback are different.
 If the new containers fail before migrations run, rollback is simple:
 
 ```bash
-docker compose -f docker/docker-compose.prod.yml up -d backend frontend
+docker compose -f deploy/docker/docker-compose.production.yml up -d extrittio proxy
 ```
 
 with the previous image tags restored in Compose.
@@ -293,7 +292,7 @@ a Helm chart with the same upgrade model:
 1. Pin chart and image versions.
 2. Run migrations as a Kubernetes Job.
 3. Use readiness probes before serving traffic.
-4. Use rolling deployments for frontend/backend.
+4. Use rolling deployments for the combined application image.
 5. Keep database backups outside the cluster lifecycle.
 
 Do not rely on every backend pod running migrations during boot in a

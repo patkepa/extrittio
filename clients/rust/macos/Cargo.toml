@@ -1,0 +1,31 @@
+[package]
+name = "extrittio-macos"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish.workspace = true
+
+[dependencies]
+extrittio-common = { version = "0.1.0", path = "../../../crates/common" }
+extrittio-sdk = { version = "0.1.0", path = "../sdk" }
+zenoh = { version = "1", default-features = false, features = ["transport_tcp", "transport_tls"] }
+prost = "0.13"
+tokio = { version = "1", features = ["full"] }
+clap = { version = "4", features = ["derive"] }
+reqwest = { version = "0.12", features = ["stream"] }
+sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+sysinfo = "0.34"
+battery = { package = "starship-battery", version = "0.11" }
+libc = "0.2"
+dirs = "6"
+objc2 = "0.6"
+objc2-foundation = "0.3"
+objc2-core-location = "0.3"

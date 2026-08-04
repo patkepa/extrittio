@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ["v*"]
     paths-ignore:
       - "docs/**"
       - "**/*.md"
@@ -22,12 +23,40 @@ env:
   RUST_VERSION: "1.90"
 
 jobs:
+  dependency-review:
+    name: Dependency Review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4
+
+  dependency-audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  dependency-policy:
+    name: Dependency Policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2
+        with:
+          command: check
+
   backend-fmt:
     name: Backend Format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
           toolchain: ${{ env.RUST_VERSION }}
           components: rustfmt
@@ -37,37 +66,26 @@ jobs:
     name: Backend Clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
           toolchain: ${{ env.RUST_VERSION }}
           components: clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           cache-on-failure: true
       - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler libpq-dev libssl-dev
-      - run: >
-          cargo clippy --workspace --exclude extrittio-macos --all-targets --
-          -D warnings
-          -A clippy::collapsible_if
-          -A clippy::derivable_impls
-          -A clippy::filter_map_bool_then
-          -A clippy::iter_kv_map
-          -A clippy::manual_range_contains
-          -A clippy::new_without_default
-          -A clippy::redundant_guards
-          -A clippy::too_many_arguments
-          -A clippy::type_complexity
+      - run: cargo clippy --workspace --exclude extrittio-macos --all-targets -- -D warnings
 
   backend-test:
     name: Backend Test
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        image: postgres:17@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d
         env:
           POSTGRES_USER: extrittio
           POSTGRES_PASSWORD: extrittio
@@ -82,11 +100,11 @@ jobs:
     env:
       DATABASE_URL: postgres://extrittio:extrittio@127.0.0.1:5432/extrittio?connect_timeout=2
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
           toolchain: ${{ env.RUST_VERSION }}
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           cache-on-failure: true
       - name: Install system dependencies
@@ -97,34 +115,88 @@ jobs:
         run: pg_isready -h 127.0.0.1 -p 5432 -U extrittio -d extrittio
       - run: cargo test --workspace --exclude extrittio-macos
 
+  clients-and-protocol:
+    name: Clients & Protocol
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          cache-on-failure: true
+      - name: Install native toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build protobuf-compiler libssl-dev python3-pip
+      - name: Check constrained Rust SDK features
+        run: |
+          cargo check -p extrittio-common --no-default-features --features alloc
+          cargo check -p extrittio-sdk --no-default-features --features alloc
+      - name: Test shared Rust protocol and client runtime
+        run: cargo test -p extrittio-common -p extrittio-sdk -p extrittio-client-runtime
+      - name: Verify nanopb output matches the canonical protocol
+        run: |
+          python3 -m pip install --disable-pip-version-check nanopb==0.4.9.1
+          clients/c/sdk-c/scripts/generate-proto.sh
+          git diff --exit-code -- clients/c/sdk-c/generated
+      - name: Build and test the C SDK
+        run: |
+          cmake -S clients/c/sdk-c -B build/c-sdk -G Ninja
+          cmake --build build/c-sdk
+          ctest --test-dir build/c-sdk --output-on-failure
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: frontend
+        working-directory: apps/frontend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: apps/frontend/package-lock.json
           registry-url: https://npm.pkg.github.com
           scope: "@extrittio"
       - run: npm ci
+      - name: Check formatting
+        run: npm run format:check
+      - name: Lint
+        run: npm run lint
+      - name: Unit tests
+        run: npm test
+      - name: Verify generated API contract
+        run: npm run generate-api
+      - name: Check generated files are committed
+        working-directory: ${{ github.workspace }}
+        run: git diff --exit-code -- api/openapi.json apps/frontend/src/types/openapi.ts
       - name: TypeScript check & build
         run: npm run build
 
   docker:
     name: Docker Image
-    needs: [backend-fmt, backend-clippy, backend-test, frontend]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - dependency-audit
+      - dependency-policy
+      - backend-fmt
+      - backend-clippy
+      - backend-test
+      - clients-and-protocol
+      - frontend
+    if: >-
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     uses: ./.github/workflows/docker.yml
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
     with:
-      platforms: linux/amd64
-      cargo-profile: ci-release
+      platforms: ${{ startsWith(github.ref, 'refs/tags/v') && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
+      cargo-profile: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'ci-release' }}
 

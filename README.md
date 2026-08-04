@@ -1,115 +1,105 @@
 # Extrittio
-Open-Source IoT Hub Platform - A self-hosted alternative to Azure IoT Hub
 
-Extrittio is a modern, scalable IoT platform built with Rust and React, designed for managing and monitoring IoT devices with enterprise-grade features, using high performance stack using zenoh and protobufs.
+Extrittio is a self-hosted IoT hub for provisioning, operating, and observing
+connected devices. It combines a Rust control plane, Zenoh device messaging,
+Protobuf contracts, PostgreSQL persistence, a React operations console, and a
+native SwiftUI companion app for iOS.
 
-## Prerequisites
+The platform supports multi-tenant device and fleet management, telemetry and
+logs, desired/reported shadows, commands, OTA firmware deployments, rules,
+alerts, audit events, operational metrics, and native/embedded client SDKs.
 
-### macOS
+## Architecture
 
-```bash
-# Protocol Buffers compiler (required — used by the common crate)
-brew install protobuf
-
-# PostgreSQL client library (required — used by Diesel/backend)
-brew install libpq
-
-# LLVM / lld (optional — enables faster incremental linking on Apple Silicon)
-brew install llvm
+```text
+Devices and gateways
+  -> Zenoh + Protobuf
+  -> supervised ingestion and rule processing
+  -> tenant-scoped services and PostgreSQL
+  -> Axum REST API / OpenAPI
+  -> React operations console and CLI
 ```
 
-After installing, add these to your `~/.zshrc` and run `source ~/.zshrc`:
+The Rust backend is organized as vertical domains under
+`crates/backend/src/domains`. Shared device contracts and topic builders live in
+`crates/common`; native clients share lifecycle, identity, shadow, and OTA logic
+through `clients/rust/runtime`.
+
+## Repository Layout
+
+| Path | Purpose |
+| --- | --- |
+| `apps/extrittio` | Server and administrative CLI |
+| `apps/frontend` | React/TypeScript operations console |
+| `apps/mobile-app-ios` | Native SwiftUI companion app |
+| `crates/backend` | API, services, repositories, workers, and Zenoh ingestion |
+| `crates/common` | Canonical Protobuf types, topics, shadows, OTA constants |
+| `clients/rust` | Shared SDK/runtime and Linux, macOS, RPi, ESP32 clients |
+| `clients/c` | C SDK and ESP-IDF examples |
+| `clients/arduino` | Arduino/PlatformIO client library |
+| `deploy/docker` | Development and production Compose definitions |
+| `api` | Committed OpenAPI contract |
+
+## Quick Start
+
+Required tools are Docker, the Rust toolchain declared in `rust-toolchain.toml`,
+Protobuf, PostgreSQL client libraries, and Node.js 22. The frontend consumes
+GitHub Packages under `@extrittio`; set `NODE_AUTH_TOKEN` to a token with package
+read access before running `npm ci`.
+
+On macOS, install native dependencies with:
 
 ```bash
-# Required: lets the linker find libpq when building the backend
+brew install protobuf libpq
 export LIBRARY_PATH="/opt/homebrew/opt/libpq/lib:$LIBRARY_PATH"
-
-# Optional: enables the faster lld linker (only if you installed llvm above)
-export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
 ```
 
 > **Note:** Without the `LIBRARY_PATH` export, the build will fail with `ld: library 'pq' not found` even after `brew install libpq`.
 
-### Other dependencies
+The native iOS app additionally requires Xcode 26.x with the iOS 26 SDK,
+XcodeGen, SwiftLint, and SwiftFormat. The expected tool versions are listed in
+`apps/mobile-app-ios/Tools/versions.env`.
 
-- **Rust** — install via [rustup](https://rustup.rs/)
-- **Docker** — required to run PostgreSQL locally (`docker compose -f docker/docker-compose.yml up -d postgres`)
-- **Node.js 18+** — required for the frontend (`npm install && npm run dev`)
-- **Xcode 26.x** — required for the native iOS app in `apps/mobile-app-ios/`
-- **diesel_cli** — optional for direct migration work in `backend/`:
-  ```bash
-  cargo install diesel_cli --no-default-features --features postgres
-  ```
-
-## Development Setup
+Start the full development stack:
 
 ```bash
-# Start PostgreSQL, run migrations when diesel_cli is installed, then start
-# the backend and frontend dev servers.
 ./start-dev.sh
 ```
 
-The frontend runs on http://localhost:5173 and proxies `/api` to the backend at http://localhost:8080.
-If port 5432 is already in use, the script will automatically publish Docker PostgreSQL on the next available port from 5433-5439 and pass that URL to the backend.
-
-Manual setup:
+Or run each part explicitly:
 
 ```bash
-# 1. Start PostgreSQL
-docker compose -f docker/docker-compose.yml up -d postgres
-
-# 2. Apply database migrations
-cargo run -p extrittio -- migrate
-
-# 3. Start the combined backend/UI service (in one terminal)
+docker compose -f deploy/docker/docker-compose.yml up -d postgres
 export DATABASE_URL=postgres://extrittio:extrittio@localhost/extrittio
-cargo run -p extrittio
+cargo run -p extrittio -- migrate
+cargo run -p extrittio -- serve
 
-# 4. Start the frontend (in another terminal)
-cd frontend && npm install && npm run dev
+cd apps/frontend
+npm ci
+npm run dev
 ```
+
+The backend listens on `http://localhost:8080`; Vite listens on
+`http://localhost:5173` and proxies `/api` to the backend. The production binary
+can serve the built SPA directly.
 
 ## CLI
 
 ```bash
-cargo install --path extrittio
-extrittio
-extrittio --help
-extrittio serve
-extrittio migrate
-extrittio init
-extrittio health
-extrittio ready
-```
-
-Running `extrittio` with no subcommand defaults to `extrittio serve`. It serves
-the backend API and, when a built UI exists, the React app from `frontend/dist`
-on the same port. Override the UI directory with `EXTRITTIO_UI_DIR` or
-`extrittio serve --ui-dir <path>`.
-
-During development, the same binary can be run through Cargo:
-
-```bash
 cargo run -p extrittio -- --help
-cargo run -p extrittio
 cargo run -p extrittio -- serve
 cargo run -p extrittio -- migrate
 cargo run -p extrittio -- init
 cargo run -p extrittio -- health
 cargo run -p extrittio -- ready
-cargo run -p extrittio -- auth login --username admin --password admin
+cargo run -p extrittio -- auth login --username admin
 cargo run -p extrittio -- device-types list
 cargo run -p extrittio -- fleets list
-cargo run -p extrittio -- provision \
-  --name sensor-001 \
-  --device-type-id 1 \
-  --firmware linux-0.1.0 \
-  --cert-dir ./provisioned/sensor-001
 ```
 
-The CLI stores its backend URL and JWT token in `~/.config/extrittio/cli.json`
-by default. Override the active connection with `--url`, `--token`,
-`EXTRITTIO_URL`, or `EXTRITTIO_TOKEN`.
+Browser authentication uses secure HTTP-only cookies. The CLI can opt into a
+bearer token stored in its local configuration; override its connection with
+`--url`, `--token`, `EXTRITTIO_URL`, or `EXTRITTIO_TOKEN`.
 
 ## iOS App
 
@@ -122,18 +112,46 @@ make build
 make test
 ```
 
-## Client Libraries
+## Verification
 
-- [Arduino ESP32 client](client/arduino/Extrittio/README.md) - Arduino/PlatformIO
-  library for telemetry, heartbeats, shadows, commands, logs, and FOTA over
-  Zenoh-Pico.
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace --exclude extrittio-macos --all-targets -- -D warnings
+cargo test --workspace --exclude extrittio-macos
 
-## Documentation
+cd apps/frontend
+npm run format:check
+npm run lint
+npm test
+npm run build
+```
 
-- [Server Upgrades](docs/SERVER_UPGRADES.md) - recommended model for versioned
-  self-hosted Extrittio upgrades, migrations, backups, health checks, release
-  manifests, rollback behavior, and future updater tooling.
-- [External Integration Opportunities](docs/INTEGRATIONS.md) - potential services and
-  open-source projects to plug into Extrittio around MQTT, observability, SSO,
-  analytics, object storage, automation, streaming, OTA, industrial gateways, and
-  cloud IoT interop.
+CI also verifies constrained Rust SDK feature sets, canonical Protobuf-to-nanopb
+generation, the C SDK, generated OpenAPI types, dependency changes, and dependency
+vulnerabilities. Release images include an SPDX SBOM, keyless signature, and
+provenance attestation. Reviewed, time-bounded dependency-policy exceptions are
+documented in [docs/DEPENDENCY_EXCEPTIONS.md](docs/DEPENDENCY_EXCEPTIONS.md).
+
+## Production and Operations
+
+Use the version-pinned stack in
+[`deploy/docker/docker-compose.production.yml`](deploy/docker/docker-compose.production.yml),
+not the development Compose file. Production configuration fails fast for unsafe
+origins, missing secrets, malformed URLs, and incompatible TLS settings.
+
+The service exposes liveness and dependency-aware readiness endpoints, structured
+request IDs and error responses, audit events, bounded rate limiting, JSON logs,
+and optional OTLP/HTTP tracing. See:
+
+- [Production deployment](docs/PRODUCTION_DEPLOYMENT.md)
+- [Server upgrades and rollback](docs/SERVER_UPGRADES.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
+- [Governance](GOVERNANCE.md)
+- [Code of conduct](CODE_OF_CONDUCT.md)
+
+## Private Project
+
+This is a private, proprietary project. No license or permission to use, copy,
+modify, publish, or redistribute the source is granted. All first-party Rust and
+frontend packages are explicitly marked as non-publishable.

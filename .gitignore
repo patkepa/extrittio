@@ -2,7 +2,7 @@
 # Rust / Cargo
 # ========================
 /target
-client/rust/esp32/target/
+clients/rust/esp32/target/
 debug
 **/*.rs.bk
 *.pdb
@@ -22,6 +22,7 @@ dist-ssr
 # ========================
 logs
 backups
+/data/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -70,10 +71,10 @@ Thumbs.db
 # ========================
 # C / CMake (sdk-c)
 # ========================
-client/c/sdk-c/build/
-client/c/*/.cache/
-client/c/*/build/
-client/c/*/managed_components/
-client/c/*/sdkconfig
-client/c/*/sdkconfig.old
-client/rust/esp32/.embuild/
+clients/c/sdk-c/build/
+clients/c/*/.cache/
+clients/c/*/build/
+clients/c/*/managed_components/
+clients/c/*/sdkconfig
+clients/c/*/sdkconfig.old
+clients/rust/esp32/.embuild/

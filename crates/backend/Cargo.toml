@@ -1,0 +1,56 @@
+[package]
+name = "extrittio-backend"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish.workspace = true
+
+[dependencies]
+extrittio-common = { version = "0.1.0", path = "../common" }
+axum = { version = "0.8", features = ["multipart"] }
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+diesel = { version = "2.2", features = ["postgres", "r2d2", "chrono", "serde_json"] }
+diesel_migrations = "2.2"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-opentelemetry = "0.33"
+opentelemetry = { version = "0.32", features = ["trace"] }
+opentelemetry_sdk = { version = "0.32", features = ["trace"] }
+opentelemetry-otlp = { version = "0.32", features = ["trace"] }
+object_store = { version = "0.14", features = ["aws"] }
+zenoh = { version = "1", default-features = false, features = ["transport_tcp", "transport_tls", "unstable"] }
+prost = "0.13"
+argon2 = "0.5"
+jsonwebtoken = "9"
+rand = "0.8"
+sha2 = "0.10"
+thiserror = "2"
+utoipa = { version = "5", features = ["axum_extras"] }
+utoipa-swagger-ui = { version = "9", features = ["axum"] }
+rcgen = { version = "0.14", features = ["pem", "x509-parser"] }
+time = "0.3"
+pem = "3"
+socket2 = "0.5"
+sysinfo = "0.33"
+dashmap = "6"
+reqwest = { version = "0.12", features = ["json"] }
+anyhow = "1"
+dotenvy = "0.15"
+base64 = "0.22"
+ring = "0.17"
+
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+tikv-jemallocator = "0.6"
+
+[dev-dependencies]
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }

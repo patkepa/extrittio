@@ -1,7 +1,8 @@
 target/
-frontend/node_modules/
-frontend/dist/
-frontend/.vite/
+apps/frontend/node_modules/
+apps/frontend/dist/
+apps/frontend/.vite/
+data/
 .git/
 docs/
 *.md

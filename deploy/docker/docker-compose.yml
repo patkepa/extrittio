@@ -1,0 +1,56 @@
+services:
+  postgres:
+    image: docker.io/library/postgres:17@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: extrittio
+      POSTGRES_USER: extrittio
+      POSTGRES_PASSWORD: extrittio
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - app
+
+  backend:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      - DATABASE_URL=postgres://extrittio:extrittio@postgres/extrittio
+      - PORT=8080
+      - CORS_ORIGIN=http://localhost:8081
+      - EXTRITTIO_AUTO_REGISTER_DEVICES=true
+      - FIRMWARE_STORAGE_PATH=/app/data/firmware
+      - RUST_LOG=extrittio=info,extrittio_backend=info
+      # - JWT_SECRET=change-me-in-production
+    networks:
+      - app
+      - zenoh
+    volumes:
+      - firmware:/app/data/firmware
+
+  frontend:
+    build:
+      context: ../../apps/frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    depends_on:
+      - backend
+    networks:
+      - app
+
+volumes:
+  pgdata:
+  firmware:
+
+networks:
+  app:
+  zenoh:
+    driver: bridge
