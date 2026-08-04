@@ -1,13 +1,15 @@
 use std::sync::Arc;
 
-use crate::persistence::{BackendDescriptor, Persistence};
+use crate::persistence::{BackendDescriptor, Persistence, PersistencePorts};
 use crate::state::DbPool;
 
 mod api_keys;
 mod bootstrap;
+mod certificates;
 mod configuration;
 mod dashboard;
 mod device_types;
+mod devices;
 pub mod executor;
 mod fleets;
 mod roles;
@@ -35,14 +37,18 @@ pub fn create_persistence(pool: DbPool) -> Persistence {
     let adapter = Arc::new(PostgresAdapter::new(pool));
     Persistence::new(
         BackendDescriptor::postgres(),
-        adapter.clone(),
-        adapter.clone(),
-        adapter.clone(),
-        adapter.clone(),
-        adapter.clone(),
-        adapter.clone(),
-        adapter.clone(),
-        adapter.clone(),
-        adapter,
+        PersistencePorts {
+            api_keys: adapter.clone(),
+            bootstrap: adapter.clone(),
+            certificates: adapter.clone(),
+            configuration: adapter.clone(),
+            dashboard: adapter.clone(),
+            device_types: adapter.clone(),
+            devices: adapter.clone(),
+            fleets: adapter.clone(),
+            roles: adapter.clone(),
+            shadows: adapter.clone(),
+            users: adapter,
+        },
     )
 }

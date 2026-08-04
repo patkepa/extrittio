@@ -4,18 +4,20 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::auth::context::RequestContext;
-use crate::db::models::{NewDevice, UpdateDevice};
+use crate::domains::devices::types::{
+    CreateDeviceRecord, DeviceDetails, DeviceListQuery, UpdateDeviceRecord,
+};
 use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse, PaginationParams};
 use crate::repositories::telemetry_repo;
-use crate::services::{command_service, device_service};
+use crate::services::{command_service, device_catalog_service, device_service};
 use crate::state::{AppState, run_db};
 
 // ---------------------------------------------------------------------------
@@ -164,11 +166,13 @@ pub struct BulkResultResponse {
 // ---------------------------------------------------------------------------
 
 fn to_device_response(
-    (device, device_type, fleet): device_service::DeviceWithJoins,
+    DeviceDetails {
+        device,
+        device_type,
+        fleet,
+    }: DeviceDetails,
 ) -> DeviceResponse {
-    let last_seen_at = device
-        .last_seen
-        .map(|dt| DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc).to_rfc3339());
+    let last_seen_at = device.last_seen.map(|dt| dt.to_rfc3339());
     let declared_connections =
         serde_json::from_value(device.declared_connections.clone()).unwrap_or_default();
 
@@ -182,8 +186,10 @@ fn to_device_response(
         fleet_id: fleet.as_ref().map(|f| f.id),
         fleet_name: fleet.map(|f| f.name),
         status: device.status,
-        last_seen: device_service::format_last_seen(device.last_seen)
-            .unwrap_or_else(|| "never".to_string()),
+        last_seen: device_service::format_last_seen(
+            device.last_seen.map(|value| value.naive_utc()),
+        )
+        .unwrap_or_else(|| "never".to_string()),
         last_seen_at,
         firmware: device.firmware,
         uptime: device_service::format_uptime(Some(device.uptime_seconds))
@@ -246,22 +252,20 @@ pub(crate) async fn list_devices(
 ) -> Result<Json<PaginatedResponse<DeviceResponse>>, AppError> {
     let (limit, offset) = pagination::clamp(params.limit, params.offset);
 
-    let response = run_db(&state.db_pool, move |conn| {
-        let (results, total) = device_service::list_devices(
-            &ctx,
-            conn,
-            params.status.as_deref(),
-            params.search.as_deref(),
-            params.fleet_id,
+    let (results, total) = device_catalog_service::list(
+        &ctx,
+        state.persistence.devices.as_ref(),
+        DeviceListQuery {
+            status: params.status,
+            search: params.search,
+            fleet_id: params.fleet_id,
             limit,
             offset,
-        )?;
-
-        let data = results.into_iter().map(to_device_response).collect();
-
-        Ok(PaginatedResponse::new(data, total, limit, offset))
-    })
+        },
+    )
     .await?;
+    let data = results.into_iter().map(to_device_response).collect();
+    let response = PaginatedResponse::new(data, total, limit, offset);
 
     Ok(Json(response))
 }
@@ -283,11 +287,9 @@ pub(crate) async fn get_device(
     Extension(ctx): Extension<RequestContext>,
     Path(id): Path<String>,
 ) -> Result<Json<DeviceResponse>, AppError> {
-    let response = run_db(&state.db_pool, move |conn| {
-        let joined = device_service::get_device(&ctx, conn, &id)?;
-        Ok(to_device_response(joined))
-    })
-    .await?;
+    let response = to_device_response(
+        device_catalog_service::get(&ctx, state.persistence.devices.as_ref(), &id).await?,
+    );
 
     Ok(Json(response))
 }
@@ -315,28 +317,20 @@ pub(crate) async fn create_device(
     }
 
     let new_id = uuid::Uuid::new_v4().to_string();
-    let id_for_read = new_id.clone();
-
-    let response = run_db(&state.db_pool, move |conn| {
-        let new_device = NewDevice {
+    let created = device_catalog_service::create(
+        &ctx,
+        state.persistence.devices.as_ref(),
+        state.persistence.certificates.as_ref(),
+        CreateDeviceRecord {
             id: new_id,
-            tenant_id: ctx.tenant_id_str().to_string(),
             name: body.name,
             device_type_id: body.device_type_id,
             fleet_id: body.fleet_id,
             firmware: body.firmware.unwrap_or_else(|| "unknown".to_string()),
-        };
-
-        device_service::create_device(&ctx, conn, &new_device)?;
-
-        let joined = device_service::get_device(&ctx, conn, &id_for_read)?;
-
-        Ok(to_device_response(joined))
-    })
-    .await
-    .map_err(map_unique_violation(
-        "A device with this name already exists",
-    ))?;
+        },
+    )
+    .await?;
+    let response = to_device_response(created);
 
     Ok((StatusCode::CREATED, Json(response)))
 }
@@ -368,24 +362,20 @@ pub(crate) async fn update_device(
         return Err(AppError::BadRequest("Device name must not be empty".into()));
     }
 
-    let response = run_db(&state.db_pool, move |conn| {
-        let changeset = UpdateDevice {
+    let updated = device_catalog_service::update(
+        &ctx,
+        state.persistence.devices.as_ref(),
+        &id,
+        UpdateDeviceRecord {
             name: body.name,
             device_type_id: body.device_type_id,
             fleet_id: body.fleet_id,
             firmware: body.firmware,
-            updated_at: Some(Utc::now().naive_utc()),
-            ..Default::default()
-        };
-
-        let joined = device_service::update_device(&ctx, conn, &id, &changeset)?;
-
-        Ok(to_device_response(joined))
-    })
-    .await
-    .map_err(map_unique_violation(
-        "A device with this name already exists",
-    ))?;
+            updated_at: Some(Utc::now()),
+        },
+    )
+    .await?;
+    let response = to_device_response(updated);
 
     Ok(Json(response))
 }
@@ -407,10 +397,7 @@ pub(crate) async fn delete_device(
     Extension(ctx): Extension<RequestContext>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
-    run_db(&state.db_pool, move |conn| {
-        device_service::delete_device(&ctx, conn, &id)
-    })
-    .await?;
+    device_catalog_service::delete(&ctx, state.persistence.devices.as_ref(), &id).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -491,25 +478,29 @@ pub(crate) async fn bulk_change_fleet(
         AppError::BadRequest("fleet_id is required (use null to unassign)".into())
     })?;
 
-    let response = run_db(&state.db_pool, move |conn| {
-        let ids = device_service::resolve_target_ids(
-            &ctx,
-            conn,
-            device_service::DeviceTargetSelection {
-                device_ids: body.device_ids.as_deref(),
-                select_all: body.select_all.unwrap_or(false),
-                status: body.filters.as_ref().and_then(|f| f.status.as_deref()),
-                search: body.filters.as_ref().and_then(|f| f.search.as_deref()),
-                fleet_id: body.filters.as_ref().and_then(|f| f.fleet_id),
-                max_size: MAX_BULK_SIZE,
-            },
-        )?;
-        let affected = device_service::bulk_change_fleet(&ctx, conn, &ids, target_fleet_id)?;
-        Ok(BulkAffectedResponse {
-            affected: affected as i64,
-        })
-    })
+    let ids = device_catalog_service::resolve_target_ids(
+        &ctx,
+        state.persistence.devices.as_ref(),
+        device_catalog_service::DeviceTargetSelection {
+            device_ids: body.device_ids.as_deref(),
+            select_all: body.select_all.unwrap_or(false),
+            status: body.filters.as_ref().and_then(|f| f.status.as_deref()),
+            search: body.filters.as_ref().and_then(|f| f.search.as_deref()),
+            fleet_id: body.filters.as_ref().and_then(|f| f.fleet_id),
+            max_size: MAX_BULK_SIZE,
+        },
+    )
     .await?;
+    let affected = device_catalog_service::bulk_assign_fleet(
+        &ctx,
+        state.persistence.devices.as_ref(),
+        ids,
+        target_fleet_id,
+    )
+    .await?;
+    let response = BulkAffectedResponse {
+        affected: affected as i64,
+    };
 
     Ok(Json(response))
 }
@@ -524,25 +515,24 @@ pub(crate) async fn bulk_delete_devices(
     Extension(ctx): Extension<RequestContext>,
     Json(body): Json<BulkDeviceRequest>,
 ) -> Result<Json<BulkAffectedResponse>, AppError> {
-    let response = run_db(&state.db_pool, move |conn| {
-        let ids = device_service::resolve_target_ids(
-            &ctx,
-            conn,
-            device_service::DeviceTargetSelection {
-                device_ids: body.device_ids.as_deref(),
-                select_all: body.select_all.unwrap_or(false),
-                status: body.filters.as_ref().and_then(|f| f.status.as_deref()),
-                search: body.filters.as_ref().and_then(|f| f.search.as_deref()),
-                fleet_id: body.filters.as_ref().and_then(|f| f.fleet_id),
-                max_size: MAX_BULK_SIZE,
-            },
-        )?;
-        let deleted = device_service::bulk_delete(&ctx, conn, &ids)?;
-        Ok(BulkAffectedResponse {
-            affected: deleted as i64,
-        })
-    })
+    let ids = device_catalog_service::resolve_target_ids(
+        &ctx,
+        state.persistence.devices.as_ref(),
+        device_catalog_service::DeviceTargetSelection {
+            device_ids: body.device_ids.as_deref(),
+            select_all: body.select_all.unwrap_or(false),
+            status: body.filters.as_ref().and_then(|f| f.status.as_deref()),
+            search: body.filters.as_ref().and_then(|f| f.search.as_deref()),
+            fleet_id: body.filters.as_ref().and_then(|f| f.fleet_id),
+            max_size: MAX_BULK_SIZE,
+        },
+    )
     .await?;
+    let deleted =
+        device_catalog_service::bulk_delete(&ctx, state.persistence.devices.as_ref(), ids).await?;
+    let response = BulkAffectedResponse {
+        affected: deleted as i64,
+    };
 
     Ok(Json(response))
 }
@@ -559,21 +549,18 @@ pub(crate) async fn bulk_restart_devices(
 ) -> Result<Json<BulkResultResponse>, AppError> {
     command_service::authorize_send_commands(&ctx)?;
 
-    let ctx_for_resolve = ctx.clone();
-    let ids = run_db(&state.db_pool, move |conn| {
-        device_service::resolve_target_ids(
-            &ctx_for_resolve,
-            conn,
-            device_service::DeviceTargetSelection {
-                device_ids: body.device_ids.as_deref(),
-                select_all: body.select_all.unwrap_or(false),
-                status: body.filters.as_ref().and_then(|f| f.status.as_deref()),
-                search: body.filters.as_ref().and_then(|f| f.search.as_deref()),
-                fleet_id: body.filters.as_ref().and_then(|f| f.fleet_id),
-                max_size: MAX_BULK_SIZE,
-            },
-        )
-    })
+    let ids = device_catalog_service::resolve_target_ids(
+        &ctx,
+        state.persistence.devices.as_ref(),
+        device_catalog_service::DeviceTargetSelection {
+            device_ids: body.device_ids.as_deref(),
+            select_all: body.select_all.unwrap_or(false),
+            status: body.filters.as_ref().and_then(|f| f.status.as_deref()),
+            search: body.filters.as_ref().and_then(|f| f.search.as_deref()),
+            fleet_id: body.filters.as_ref().and_then(|f| f.fleet_id),
+            max_size: MAX_BULK_SIZE,
+        },
+    )
     .await?;
 
     let mut succeeded: i64 = 0;
@@ -623,21 +610,18 @@ pub(crate) async fn bulk_trigger_ota(
     let firmware_update_id = body.firmware_update_id;
     device_service::authorize_deploy_firmware(&ctx)?;
 
-    let ctx_for_resolve = ctx.clone();
-    let ids = run_db(&state.db_pool, move |conn| {
-        device_service::resolve_target_ids(
-            &ctx_for_resolve,
-            conn,
-            device_service::DeviceTargetSelection {
-                device_ids: body.device_ids.as_deref(),
-                select_all: body.select_all.unwrap_or(false),
-                status: body.filters.as_ref().and_then(|f| f.status.as_deref()),
-                search: body.filters.as_ref().and_then(|f| f.search.as_deref()),
-                fleet_id: body.filters.as_ref().and_then(|f| f.fleet_id),
-                max_size: MAX_BULK_SIZE,
-            },
-        )
-    })
+    let ids = device_catalog_service::resolve_target_ids(
+        &ctx,
+        state.persistence.devices.as_ref(),
+        device_catalog_service::DeviceTargetSelection {
+            device_ids: body.device_ids.as_deref(),
+            select_all: body.select_all.unwrap_or(false),
+            status: body.filters.as_ref().and_then(|f| f.status.as_deref()),
+            search: body.filters.as_ref().and_then(|f| f.search.as_deref()),
+            fleet_id: body.filters.as_ref().and_then(|f| f.fleet_id),
+            max_size: MAX_BULK_SIZE,
+        },
+    )
     .await?;
 
     let mut succeeded: i64 = 0;
@@ -767,20 +751,4 @@ pub(crate) async fn get_device_latest_location(
     })
     .await?;
     Ok(Json(result))
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/// Map a `UniqueViolation` database error to `AppError::Conflict` with the
-/// given message, passing through all other errors unchanged.
-fn map_unique_violation(msg: &'static str) -> impl FnOnce(AppError) -> AppError {
-    move |e| match e {
-        AppError::Database(diesel::result::Error::DatabaseError(
-            diesel::result::DatabaseErrorKind::UniqueViolation,
-            _,
-        )) => AppError::Conflict(msg.into()),
-        other => other,
-    }
 }

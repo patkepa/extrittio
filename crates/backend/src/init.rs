@@ -10,6 +10,8 @@ use tracing::{debug, info, warn};
 
 use crate::db::models::{NewDeviceType, NewServerConfigEntry, NewUser, ServerConfigEntry};
 use crate::db::schema::{ca_certificates, device_types, server_config, users};
+use crate::domains::identity::certificate_types::NewCaCertificateRecord;
+use crate::persistence::{BootstrapOwner, BuiltinDeviceType, Persistence, SeedOwnerOutcome};
 use crate::repositories::{cert_repo, role_repo, user_repo};
 use crate::services::{cert_service, role_service, user_service};
 use crate::state::DbPool;
@@ -236,6 +238,172 @@ pub fn write_tls_certs(conn: &mut PgConnection, certs_dir: &str) -> anyhow::Resu
 
     info!("TLS certificates at {}", certs_dir);
     Ok(())
+}
+
+/// Run backend-specific migrations through the persistence facade.
+pub async fn run_persistence_migrations(persistence: &Persistence) -> anyhow::Result<()> {
+    persistence.bootstrap.run_migrations().await?;
+    info!("Database migrations completed successfully");
+    Ok(())
+}
+
+pub async fn seed_persistence_device_types(persistence: &Persistence) -> anyhow::Result<()> {
+    let tenant = crate::tenancy::TenantId::new(crate::tenancy::DEFAULT_TENANT_ID)
+        .expect("default tenant id is valid");
+    let records = [
+        ("default", "cube", "#8ABBFF"),
+        ("mac-device", "desktop", "#F7C948"),
+        ("network-analyzer", "antenna", "#36CFC9"),
+        ("OrganBath", "heatmap", "#E76A6E"),
+    ]
+    .into_iter()
+    .map(|(name, icon, color_hex)| BuiltinDeviceType {
+        name: name.to_string(),
+        icon: icon.to_string(),
+        color_hex: color_hex.to_string(),
+    })
+    .collect();
+    persistence
+        .bootstrap
+        .seed_builtin_device_types(&tenant, records)
+        .await?;
+    Ok(())
+}
+
+pub async fn init_persistence_jwt_secret(persistence: &Persistence) -> anyhow::Result<String> {
+    if let Some(secret) = std::env::var("JWT_SECRET")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    {
+        return Ok(secret);
+    }
+    if env_bool("EXTRITTIO_REQUIRE_ENV_SECRETS") {
+        anyhow::bail!("JWT_SECRET must be set when EXTRITTIO_REQUIRE_ENV_SECRETS=true");
+    }
+
+    use rand::Rng;
+    let generated: String = rand::thread_rng()
+        .sample_iter(&rand::distributions::Alphanumeric)
+        .take(64)
+        .map(char::from)
+        .collect();
+    persistence
+        .bootstrap
+        .get_or_create_server_config("jwt_secret", generated)
+        .await
+        .map_err(Into::into)
+}
+
+pub async fn seed_persistence_admin_user(persistence: &Persistence) -> anyhow::Result<()> {
+    if persistence.bootstrap.users_exist().await? {
+        return Ok(());
+    }
+    let Some(password) = std::env::var("EXTRITTIO_BOOTSTRAP_ADMIN_PASSWORD")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    else {
+        warn!(
+            "No users exist and EXTRITTIO_BOOTSTRAP_ADMIN_PASSWORD is not set; owner bootstrap skipped"
+        );
+        return Ok(());
+    };
+    user_service::validate_password(&password)
+        .map_err(|error| anyhow::anyhow!("Invalid bootstrap admin password: {error}"))?;
+    let username = std::env::var("EXTRITTIO_BOOTSTRAP_ADMIN_USERNAME")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "admin".to_string());
+    anyhow::ensure!(
+        password != "admin" && password != username,
+        "Bootstrap admin password must not be a default or match the username"
+    );
+    let password_hash = tokio::task::spawn_blocking(move || auth::hash_password(&password))
+        .await
+        .context("Bootstrap password task failed")?
+        .map_err(|error| anyhow::anyhow!("Failed to hash default password: {error}"))?;
+    let tenant = crate::tenancy::TenantId::new(crate::tenancy::DEFAULT_TENANT_ID)
+        .expect("default tenant id is valid");
+    let outcome = persistence
+        .bootstrap
+        .seed_owner_if_empty(
+            &tenant,
+            BootstrapOwner {
+                username: username.clone(),
+                password_hash,
+            },
+        )
+        .await?;
+    if outcome == SeedOwnerOutcome::Created {
+        info!("Bootstrap owner user created (username: {username})");
+    }
+    Ok(())
+}
+
+pub async fn init_persistence_ca_certificate(persistence: &Persistence) -> anyhow::Result<()> {
+    if persistence.certificates.get_ca().await?.is_some() {
+        return Ok(());
+    }
+    let ca = tokio::task::spawn_blocking(cert_service::generate_ca_certificate)
+        .await
+        .context("CA generation task failed")?
+        .context("Failed to generate CA certificate")?;
+    persistence
+        .certificates
+        .insert_ca_if_absent(NewCaCertificateRecord {
+            private_key_pem: ca.private_key_pem,
+            certificate_pem: ca.certificate_pem,
+        })
+        .await?;
+    info!("Generated new root CA certificate");
+    Ok(())
+}
+
+pub async fn write_persistence_tls_certs(
+    persistence: &Persistence,
+    certs_dir: &str,
+) -> anyhow::Result<()> {
+    let ca = persistence
+        .certificates
+        .get_ca()
+        .await?
+        .context("CA certificate must exist")?;
+    let certs_dir = certs_dir.to_string();
+    tokio::task::spawn_blocking(move || {
+        let legacy_ca = crate::db::models::CaCertificate {
+            id: ca.id,
+            private_key_pem: ca.private_key_pem,
+            certificate_pem: ca.certificate_pem,
+            created_at: ca.created_at.naive_utc(),
+        };
+        let certs_path = std::path::PathBuf::from(&certs_dir);
+        std::fs::create_dir_all(&certs_path).context("Failed to create certs directory")?;
+        std::fs::write(certs_path.join("ca.pem"), &legacy_ca.certificate_pem)
+            .context("Failed to write CA cert to disk")?;
+        let server_cert_path = certs_path.join("server.pem");
+        let server_key_path = certs_path.join("server-key.pem");
+        if !server_cert_path.exists() || !server_key_path.exists() {
+            let (certificate, private_key) = cert_service::generate_server_certificate(&legacy_ca)
+                .context("Failed to generate server certificate")?;
+            std::fs::write(&server_cert_path, certificate)
+                .context("Failed to write server cert to disk")?;
+            std::fs::write(&server_key_path, private_key)
+                .context("Failed to write server key to disk")?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&server_key_path, std::fs::Permissions::from_mode(0o600))
+                    .context("Failed to set server key permissions")?;
+            }
+            info!("Generated server TLS certificate");
+        }
+        info!("TLS certificates at {certs_dir}");
+        Ok::<(), anyhow::Error>(())
+    })
+    .await
+    .context("TLS certificate task failed")?
 }
 
 /// Configure and open a Zenoh session.

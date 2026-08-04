@@ -3,34 +3,28 @@ use std::sync::Arc;
 use tracing::{info, warn};
 
 use crate::persistence::Persistence;
-use crate::services::shadow_service;
+use crate::services::{device_catalog_service, shadow_service};
 use crate::state::{DbPool, ZenohMetrics};
 use crate::tenancy::DeviceIdentity;
 
 use extrittio_common::extrittio::{ShadowGet, ShadowReport};
 
 async fn resolve_identity(
-    db_pool: &DbPool,
+    persistence: &Persistence,
     message_type: &'static str,
     device_id: &str,
 ) -> Option<DeviceIdentity> {
-    let pool = db_pool.clone();
-    let device_id = device_id.to_string();
-    tokio::task::spawn_blocking(move || {
-        let mut connection = match pool.get() {
-            Ok(connection) => connection,
-            Err(error) => {
-                warn!("Failed to get DB connection: {error}");
-                return None;
-            }
-        };
-        super::resolve_ingress_identity(&mut connection, message_type, &device_id)
-    })
-    .await
-    .unwrap_or_else(|error| {
-        warn!("{message_type} identity task failed: {error}");
-        None
-    })
+    match device_catalog_service::resolve_identity(persistence.devices.as_ref(), device_id).await {
+        Ok(Some(identity)) => Some(identity),
+        Ok(None) => {
+            warn!("Dropping {message_type} from unregistered device: {device_id}");
+            None
+        }
+        Err(error) => {
+            warn!("Failed to resolve {message_type} device identity: {error}");
+            None
+        }
+    }
 }
 
 /// Decode a `ShadowReport`, atomically merge reported state, and then update
@@ -52,7 +46,8 @@ pub async fn handle_shadow_report(
         return;
     }
 
-    let Some(identity) = resolve_identity(db_pool, "shadow report", &report.device_id).await else {
+    let Some(identity) = resolve_identity(persistence, "shadow report", &report.device_id).await
+    else {
         return;
     };
     let reported: serde_json::Value = match serde_json::from_str(&report.state_json) {
@@ -132,7 +127,7 @@ pub async fn handle_shadow_get(
         return;
     }
 
-    let Some(identity) = resolve_identity(db_pool, "shadow get", &get_message.device_id).await
+    let Some(identity) = resolve_identity(persistence, "shadow get", &get_message.device_id).await
     else {
         return;
     };

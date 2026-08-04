@@ -42,9 +42,15 @@ pub mod dashboard {
 }
 
 pub mod devices {
+    #[path = "repository.rs"]
+    pub mod repository;
+    #[path = "types.rs"]
+    pub mod types;
+
     pub use crate::api::devices as api;
-    pub use crate::repositories::device_repo as repository;
+    pub use crate::repositories::device_repo as legacy_repository;
     pub use crate::repositories::network_observed_host_repo as observed_hosts;
+    pub use crate::services::device_catalog_service as catalog_service;
     pub use crate::services::device_connections as connections;
     pub use crate::services::device_service as service;
 }
@@ -86,6 +92,10 @@ pub mod identity {
     pub mod api_key_repository;
     #[path = "api_key_types.rs"]
     pub mod api_key_types;
+    #[path = "certificate_repository.rs"]
+    pub mod certificate_repository;
+    #[path = "certificate_types.rs"]
+    pub mod certificate_types;
     #[path = "role_repository.rs"]
     pub mod role_repository;
     #[path = "role_types.rs"]

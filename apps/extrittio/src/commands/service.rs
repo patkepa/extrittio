@@ -31,7 +31,7 @@ pub(crate) async fn serve(args: ServeArgs) -> Result<()> {
     observability_result
 }
 
-pub(crate) fn migrate(args: DatabaseArgs, output_format: OutputFormat) -> Result<()> {
+pub(crate) async fn migrate(args: DatabaseArgs, output_format: OutputFormat) -> Result<()> {
     load_dotenv();
     let _observability = observability::init("extrittio", "extrittio=info,extrittio_backend=info")?;
 
@@ -51,10 +51,8 @@ pub(crate) fn migrate(args: DatabaseArgs, output_format: OutputFormat) -> Result
     })?;
 
     let pool = backend_init::create_db_pool(&config.database_url, config.db_pool_size)?;
-    let mut conn = pool
-        .get()
-        .context("Failed to get DB connection for migrations")?;
-    backend_init::run_migrations(&mut conn)?;
+    let persistence = extrittio_backend::persistence::postgres::create_persistence(pool);
+    backend_init::run_persistence_migrations(&persistence).await?;
 
     let result = ServiceCommandResult {
         status: "ok",
@@ -65,7 +63,7 @@ pub(crate) fn migrate(args: DatabaseArgs, output_format: OutputFormat) -> Result
     })
 }
 
-pub(crate) fn init(args: InitArgs, output_format: OutputFormat) -> Result<()> {
+pub(crate) async fn init(args: InitArgs, output_format: OutputFormat) -> Result<()> {
     load_dotenv();
     let _observability = observability::init("extrittio", "extrittio=info,extrittio_backend=info")?;
 
@@ -75,16 +73,13 @@ pub(crate) fn init(args: InitArgs, output_format: OutputFormat) -> Result<()> {
         config.certs_dir = certs_dir;
     }
     let pool = backend_init::create_db_pool(&config.database_url, config.db_pool_size)?;
-    let mut conn = pool
-        .get()
-        .context("Failed to get DB connection for initialization")?;
-
-    backend_init::run_migrations(&mut conn)?;
-    backend_init::seed_default_device_types(&mut conn)?;
-    backend_init::init_jwt_secret(&mut conn)?;
-    backend_init::seed_admin_user(&mut conn)?;
-    backend_init::init_ca_certificate(&mut conn)?;
-    backend_init::write_tls_certs(&mut conn, &config.certs_dir)?;
+    let persistence = extrittio_backend::persistence::postgres::create_persistence(pool);
+    backend_init::run_persistence_migrations(&persistence).await?;
+    backend_init::seed_persistence_device_types(&persistence).await?;
+    backend_init::init_persistence_jwt_secret(&persistence).await?;
+    backend_init::seed_persistence_admin_user(&persistence).await?;
+    backend_init::init_persistence_ca_certificate(&persistence).await?;
+    backend_init::write_persistence_tls_certs(&persistence, &config.certs_dir).await?;
 
     let result = InitCommandResult {
         status: "ok",

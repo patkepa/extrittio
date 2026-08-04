@@ -8,7 +8,6 @@ use crate::domains::firmware_store::FirmwareObjectStore;
 use crate::init;
 use crate::persistence::postgres;
 use crate::rate_limit::{ApiKeyRateLimiter, RateLimiter, parse_trusted_proxies};
-use crate::repositories::cert_repo;
 use crate::services;
 use crate::state::{AppState, MetricsAccumulator, ReadinessRegistry, ZenohMetrics};
 
@@ -18,23 +17,20 @@ pub async fn initialize_state(config: &AppConfig) -> anyhow::Result<Arc<AppState
     let persistence = postgres::create_persistence(db_pool.clone());
     info!("DB connection pool: max_size={}", config.db_pool_size);
 
-    let (jwt_secret, device_certificate_ids) = {
-        let mut conn = db_pool
-            .get()
-            .context("Failed to get DB connection for initialization")?;
-        init::run_migrations(&mut conn)?;
-        init::seed_default_device_types(&mut conn)?;
-        let secret = init::init_jwt_secret(&mut conn)?;
-        init::seed_admin_user(&mut conn)?;
-        init::init_ca_certificate(&mut conn)?;
-        services::cert_service::encrypt_stored_private_keys(&mut conn)
-            .context("Failed to encrypt stored certificate private keys")?;
-        init::write_tls_certs(&mut conn, &config.certs_dir)?;
-        let device_certificate_ids =
-            cert_repo::list_active_device_certificate_device_ids(&mut conn)
-                .context("Failed to load active device certificate IDs for Zenoh ACL")?;
-        (secret, device_certificate_ids)
-    };
+    init::run_persistence_migrations(&persistence).await?;
+    init::seed_persistence_device_types(&persistence).await?;
+    let jwt_secret = init::init_persistence_jwt_secret(&persistence).await?;
+    init::seed_persistence_admin_user(&persistence).await?;
+    init::init_persistence_ca_certificate(&persistence).await?;
+    services::cert_service::encrypt_stored_private_keys(persistence.certificates.as_ref())
+        .await
+        .context("Failed to encrypt stored certificate private keys")?;
+    init::write_persistence_tls_certs(&persistence, &config.certs_dir).await?;
+    let device_certificate_ids = persistence
+        .certificates
+        .list_active_device_ids(chrono::Utc::now())
+        .await
+        .context("Failed to load active device certificate IDs for Zenoh ACL")?;
 
     let rule_cache = {
         let mut conn = db_pool

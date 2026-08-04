@@ -14,6 +14,8 @@ pub mod command_service;
 pub mod config_service;
 #[path = "../domains/dashboard/dashboard_service.rs"]
 pub mod dashboard_service;
+#[path = "../domains/devices/device_catalog_service.rs"]
+pub mod device_catalog_service;
 #[path = "../domains/devices/device_connections.rs"]
 pub mod device_connections;
 #[path = "../domains/devices/device_service.rs"]

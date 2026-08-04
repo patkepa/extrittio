@@ -11,9 +11,15 @@ use diesel::PgConnection;
 
 use crate::auth::context::RequestContext;
 use crate::auth::policy::{self, Permission};
-use crate::db::models::{CaCertificate, DeviceCertificate, NewCaCertificate, NewDeviceCertificate};
+use crate::db::models::{CaCertificate, NewCaCertificate, NewDeviceCertificate};
+use crate::domains::identity::certificate_repository::CertificateRepository;
+use crate::domains::identity::certificate_types::{
+    CaCertificateRecord, CertificateMaterialOutcome, CertificateStatusOutcome,
+    DeviceCertificateRecord, NewDeviceCertificateRecord, ReplaceCertificateOutcome,
+    StoredPrivateKeyRecord,
+};
 use crate::error::AppError;
-use crate::repositories::{cert_repo, device_repo};
+use crate::repositories::cert_repo;
 use crate::tenancy::DEFAULT_TENANT_ID;
 
 const ENCRYPTED_KEY_PREFIX: &str = "enc:v1:";
@@ -156,30 +162,33 @@ pub fn generate_server_certificate(ca: &CaCertificate) -> Result<(String, String
     Ok((server_cert.pem(), server_key_pair.serialize_pem()))
 }
 
-pub fn encrypt_stored_private_keys(conn: &mut PgConnection) -> Result<(), AppError> {
+pub async fn encrypt_stored_private_keys(
+    repository: &dyn CertificateRepository,
+) -> Result<(), AppError> {
     if key_encryption_secret().is_none() {
         return Ok(());
     }
 
-    if let Some(ca) = cert_repo::get_ca_certificate(conn)?
-        && !ca.private_key_pem.is_empty()
-        && !is_protected_private_key(&ca.private_key_pem)
-    {
-        let protected = protect_private_key(&ca.private_key_pem)?;
-        cert_repo::update_ca_private_key(conn, ca.id, &protected)?;
-    }
-
-    for cert in cert_repo::list_device_certificates_with_private_keys(conn)? {
-        if is_protected_private_key(&cert.private_key_pem) {
-            continue;
+    for record in repository.list_stored_private_keys().await? {
+        match record {
+            StoredPrivateKeyRecord::Ca { id, value } if !is_protected_private_key(&value) => {
+                let protected = protect_private_key(&value)?;
+                repository
+                    .replace_ca_private_key_if_matches(id, value, protected)
+                    .await?;
+            }
+            StoredPrivateKeyRecord::Device {
+                tenant_id,
+                id,
+                value,
+            } if !is_protected_private_key(&value) => {
+                let protected = protect_private_key(&value)?;
+                repository
+                    .replace_device_private_key_if_matches(tenant_id, id, value, protected)
+                    .await?;
+            }
+            StoredPrivateKeyRecord::Ca { .. } | StoredPrivateKeyRecord::Device { .. } => {}
         }
-        let protected = protect_private_key(&cert.private_key_pem)?;
-        cert_repo::update_device_private_key_for_tenant(
-            conn,
-            &cert.tenant_id,
-            cert.id,
-            &protected,
-        )?;
     }
 
     Ok(())
@@ -203,35 +212,47 @@ pub fn fingerprint_from_pem(pem_str: &str) -> Result<String, AppError> {
 
 /// Bundle returned from certificate retrieval.
 pub struct CertBundle {
-    pub device_cert: DeviceCertificate,
+    pub device_cert: DeviceCertificateRecord,
     pub ca_cert_pem: String,
     pub private_key_pem: Option<String>,
 }
 
 /// Get the device certificate bundle. One-time private key download.
-pub fn get_device_certificate_bundle(
+pub async fn get_device_certificate_bundle(
     ctx: &RequestContext,
-    conn: &mut PgConnection,
+    repository: &dyn CertificateRepository,
     device_id: &str,
 ) -> Result<CertBundle, AppError> {
     policy::require(ctx, Permission::ManageDevices)?;
+    let (cert, ca) = match repository
+        .get_download_material(ctx.tenant_id(), device_id)
+        .await?
+    {
+        CertificateMaterialOutcome::Found { device, ca } => (device, ca),
+        CertificateMaterialOutcome::DeviceNotFound => {
+            return Err(AppError::NotFound(format!(
+                "Device '{device_id}' not found"
+            )));
+        }
+        CertificateMaterialOutcome::CertificateNotFound => {
+            return Err(AppError::NotFound(format!(
+                "No certificate found for device '{device_id}'"
+            )));
+        }
+        CertificateMaterialOutcome::CaNotFound => {
+            return Err(AppError::Internal("CA certificate not found".into()));
+        }
+    };
 
-    device_repo::find_device_for_tenant(conn, ctx.tenant_id_str(), device_id)?;
-
-    let cert = cert_repo::get_device_certificate_for_tenant(conn, ctx.tenant_id_str(), device_id)?
-        .ok_or_else(|| {
-            AppError::NotFound(format!("No certificate found for device '{device_id}'"))
-        })?;
-
-    let ca = cert_repo::get_ca_certificate(conn)?
-        .ok_or_else(|| AppError::Internal("CA certificate not found".into()))?;
-
-    let private_key = if !cert.private_key_pem.is_empty() {
-        let private_key_pem = unprotect_private_key(&cert.private_key_pem)?;
-        cert_repo::clear_device_private_key_for_tenant(conn, ctx.tenant_id_str(), cert.id)?;
-        Some(private_key_pem)
-    } else {
+    let private_key = if cert.private_key_pem.is_empty() {
         None
+    } else {
+        let stored_value = cert.private_key_pem.clone();
+        let private_key = unprotect_private_key(&stored_value)?;
+        repository
+            .consume_private_key(ctx.tenant_id(), cert.id, stored_value)
+            .await?
+            .then_some(private_key)
     };
 
     Ok(CertBundle {
@@ -242,19 +263,18 @@ pub fn get_device_certificate_bundle(
 }
 
 /// Get certificate status (metadata only, no private key).
-pub fn get_device_certificate_status(
+pub async fn get_device_certificate_status(
     ctx: &RequestContext,
-    conn: &mut PgConnection,
+    repository: &dyn CertificateRepository,
     device_id: &str,
-) -> Result<Option<DeviceCertificate>, AppError> {
+) -> Result<Option<DeviceCertificateRecord>, AppError> {
     policy::require(ctx, Permission::ReadDevices)?;
-
-    device_repo::find_device_for_tenant(conn, ctx.tenant_id_str(), device_id)?;
-    Ok(cert_repo::get_device_certificate_for_tenant(
-        conn,
-        ctx.tenant_id_str(),
-        device_id,
-    )?)
+    match repository.get_status(ctx.tenant_id(), device_id).await? {
+        CertificateStatusOutcome::Found(certificate) => Ok(certificate),
+        CertificateStatusOutcome::DeviceNotFound => Err(AppError::NotFound(format!(
+            "Device '{device_id}' not found"
+        ))),
+    }
 }
 
 /// Get the CA certificate, if one has been initialized.
@@ -263,32 +283,54 @@ pub fn get_ca_certificate(conn: &mut PgConnection) -> Result<Option<CaCertificat
 }
 
 /// Get the CA certificate for an authenticated request.
-pub fn get_ca_certificate_for_request(
+pub async fn get_ca_certificate_for_request(
     ctx: &RequestContext,
-    conn: &mut PgConnection,
-) -> Result<Option<CaCertificate>, AppError> {
+    repository: &dyn CertificateRepository,
+) -> Result<Option<CaCertificateRecord>, AppError> {
     policy::require(ctx, Permission::ReadDevices)?;
-    get_ca_certificate(conn)
+    Ok(repository.get_ca().await?)
 }
 
 /// Delete old certificates and generate a new one.
-pub fn regenerate_device_certificate_bundle(
+pub async fn regenerate_device_certificate_bundle(
     ctx: &RequestContext,
-    conn: &mut PgConnection,
+    repository: &dyn CertificateRepository,
     device_id: &str,
 ) -> Result<CertBundle, AppError> {
     policy::require(ctx, Permission::ManageDevices)?;
-
-    device_repo::find_device_for_tenant(conn, ctx.tenant_id_str(), device_id)?;
-
-    let ca = cert_repo::get_ca_certificate(conn)?
+    let ca = repository
+        .get_ca()
+        .await?
         .ok_or_else(|| AppError::Internal("CA certificate not found".into()))?;
-
-    cert_repo::delete_device_certificates_for_tenant(conn, ctx.tenant_id_str(), device_id)?;
-    let new_cert = generate_device_certificate_for_tenant(ctx.tenant_id_str(), device_id, &ca)?;
+    let legacy_ca = CaCertificate {
+        id: ca.id,
+        private_key_pem: ca.private_key_pem.clone(),
+        certificate_pem: ca.certificate_pem.clone(),
+        created_at: ca.created_at.naive_utc(),
+    };
+    let new_cert =
+        generate_device_certificate_for_tenant(ctx.tenant_id_str(), device_id, &legacy_ca)?;
     let private_key_pem = unprotect_private_key(&new_cert.private_key_pem)?;
-    let cert = cert_repo::insert_device_certificate(conn, &new_cert)?;
-    cert_repo::clear_device_private_key_for_tenant(conn, ctx.tenant_id_str(), cert.id)?;
+    let outcome = repository
+        .replace_device_certificate(
+            ctx.tenant_id(),
+            NewDeviceCertificateRecord {
+                device_id: new_cert.device_id,
+                private_key_pem: new_cert.private_key_pem,
+                certificate_pem: new_cert.certificate_pem,
+                fingerprint: new_cert.fingerprint,
+                expires_at: new_cert.expires_at.and_utc(),
+            },
+        )
+        .await?;
+    let cert = match outcome {
+        ReplaceCertificateOutcome::Replaced(certificate) => certificate,
+        ReplaceCertificateOutcome::DeviceNotFound => {
+            return Err(AppError::NotFound(format!(
+                "Device '{device_id}' not found"
+            )));
+        }
+    };
 
     Ok(CertBundle {
         device_cert: cert,

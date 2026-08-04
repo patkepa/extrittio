@@ -11,7 +11,7 @@ use utoipa::ToSchema;
 use crate::auth::context::RequestContext;
 use crate::error::AppError;
 use crate::services::cert_service;
-use crate::state::{AppState, run_db};
+use crate::state::AppState;
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct CaCertificateResponse {
@@ -69,19 +69,15 @@ pub(crate) async fn get_ca_certificate(
     Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<CaCertificateResponse>, AppError> {
-    let response = run_db(&state.db_pool, move |conn| {
-        let ca = cert_service::get_ca_certificate_for_request(&ctx, conn)?
+    let ca =
+        cert_service::get_ca_certificate_for_request(&ctx, state.persistence.certificates.as_ref())
+            .await?
             .ok_or_else(|| AppError::NotFound("CA certificate not initialized".into()))?;
-
-        let fingerprint = cert_service::fingerprint_from_pem(&ca.certificate_pem)?;
-
-        Ok(CaCertificateResponse {
-            fingerprint,
-            certificate_pem: ca.certificate_pem,
-            created_at: ca.created_at.to_string(),
-        })
-    })
-    .await?;
+    let response = CaCertificateResponse {
+        fingerprint: cert_service::fingerprint_from_pem(&ca.certificate_pem)?,
+        certificate_pem: ca.certificate_pem,
+        created_at: ca.created_at.naive_utc().to_string(),
+    };
 
     Ok(Json(response))
 }
@@ -109,26 +105,25 @@ pub(crate) async fn get_device_certificate(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<DeviceCertificateResponse>, AppError> {
-    let response = run_db(&state.db_pool, move |conn| {
-        let bundle = cert_service::get_device_certificate_bundle(&ctx, conn, &id)?;
-
-        let private_key_pem = bundle.private_key_pem.ok_or_else(|| {
-            AppError::BadRequest(
-                "Private key already downloaded. Use /regenerate to issue a new certificate."
-                    .into(),
-            )
-        })?;
-
-        Ok(DeviceCertificateResponse {
-            certificate_pem: bundle.device_cert.certificate_pem,
-            private_key_pem,
-            ca_pem: bundle.ca_cert_pem,
-            fingerprint: bundle.device_cert.fingerprint,
-            expires_at: bundle.device_cert.expires_at.to_string(),
-            created_at: bundle.device_cert.created_at.to_string(),
-        })
-    })
+    let bundle = cert_service::get_device_certificate_bundle(
+        &ctx,
+        state.persistence.certificates.as_ref(),
+        &id,
+    )
     .await?;
+    let private_key_pem = bundle.private_key_pem.ok_or_else(|| {
+        AppError::BadRequest(
+            "Private key already downloaded. Use /regenerate to issue a new certificate.".into(),
+        )
+    })?;
+    let response = DeviceCertificateResponse {
+        certificate_pem: bundle.device_cert.certificate_pem,
+        private_key_pem,
+        ca_pem: bundle.ca_cert_pem,
+        fingerprint: bundle.device_cert.fingerprint,
+        expires_at: bundle.device_cert.expires_at.naive_utc().to_string(),
+        created_at: bundle.device_cert.created_at.naive_utc().to_string(),
+    };
 
     Ok(Json(response))
 }
@@ -150,22 +145,23 @@ pub(crate) async fn regenerate_device_certificate(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<(StatusCode, Json<DeviceCertificateResponse>), AppError> {
-    let response = run_db(&state.db_pool, move |conn| {
-        let bundle = cert_service::regenerate_device_certificate_bundle(&ctx, conn, &id)?;
-        let private_key_pem = bundle.private_key_pem.ok_or_else(|| {
-            AppError::Internal("Regenerated certificate private key was not returned".into())
-        })?;
-
-        Ok(DeviceCertificateResponse {
-            certificate_pem: bundle.device_cert.certificate_pem,
-            private_key_pem,
-            ca_pem: bundle.ca_cert_pem,
-            fingerprint: bundle.device_cert.fingerprint,
-            expires_at: bundle.device_cert.expires_at.to_string(),
-            created_at: bundle.device_cert.created_at.to_string(),
-        })
-    })
+    let bundle = cert_service::regenerate_device_certificate_bundle(
+        &ctx,
+        state.persistence.certificates.as_ref(),
+        &id,
+    )
     .await?;
+    let private_key_pem = bundle.private_key_pem.ok_or_else(|| {
+        AppError::Internal("Regenerated certificate private key was not returned".into())
+    })?;
+    let response = DeviceCertificateResponse {
+        certificate_pem: bundle.device_cert.certificate_pem,
+        private_key_pem,
+        ca_pem: bundle.ca_cert_pem,
+        fingerprint: bundle.device_cert.fingerprint,
+        expires_at: bundle.device_cert.expires_at.naive_utc().to_string(),
+        created_at: bundle.device_cert.created_at.naive_utc().to_string(),
+    };
 
     Ok((StatusCode::CREATED, Json(response)))
 }
@@ -187,16 +183,17 @@ pub(crate) async fn get_device_certificate_status(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<Option<DeviceCertificateStatusResponse>>, AppError> {
-    let response = run_db(&state.db_pool, move |conn| {
-        let cert = cert_service::get_device_certificate_status(&ctx, conn, &id)?;
-
-        Ok(cert.map(|c| DeviceCertificateStatusResponse {
-            fingerprint: c.fingerprint,
-            expires_at: c.expires_at.to_string(),
-            created_at: c.created_at.to_string(),
-        }))
-    })
+    let cert = cert_service::get_device_certificate_status(
+        &ctx,
+        state.persistence.certificates.as_ref(),
+        &id,
+    )
     .await?;
+    let response = cert.map(|certificate| DeviceCertificateStatusResponse {
+        fingerprint: certificate.fingerprint,
+        expires_at: certificate.expires_at.naive_utc().to_string(),
+        created_at: certificate.created_at.naive_utc().to_string(),
+    });
 
     Ok(Json(response))
 }
