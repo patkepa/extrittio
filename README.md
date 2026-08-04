@@ -35,6 +35,7 @@ export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
 - **Rust** — install via [rustup](https://rustup.rs/)
 - **Docker** — required to run PostgreSQL locally (`docker compose -f docker/docker-compose.yml up -d postgres`)
 - **Node.js 18+** — required for the frontend (`npm install && npm run dev`)
+- **Xcode 26.x** — required for the native iOS app in `apps/mobile-app-ios/`
 - **diesel_cli** — optional for direct migration work in `backend/`:
   ```bash
   cargo install diesel_cli --no-default-features --features postgres
@@ -109,6 +110,17 @@ cargo run -p extrittio -- provision \
 The CLI stores its backend URL and JWT token in `~/.config/extrittio/cli.json`
 by default. Override the active connection with `--url`, `--token`,
 `EXTRITTIO_URL`, or `EXTRITTIO_TOKEN`.
+
+## iOS App
+
+The native SwiftUI companion app lives in [`apps/mobile-app-ios`](apps/mobile-app-ios/README.md).
+
+```bash
+cd apps/mobile-app-ios
+make bootstrap
+make build
+make test
+```
 
 ## Client Libraries
 

@@ -1,0 +1,7 @@
+#include "Base.xcconfig"
+
+APP_BUNDLE_IDENTIFIER = com.extrittio.ios
+API_SCHEME = https
+API_PORT =
+API_ALLOWS_INSECURE_HTTP = NO
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = RELEASE $(inherited)

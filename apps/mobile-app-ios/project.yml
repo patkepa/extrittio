@@ -1,0 +1,79 @@
+name: Extrittio
+options:
+  bundleIdPrefix: com.extrittio
+  deploymentTarget:
+    iOS: "26.0"
+  xcodeVersion: "26"
+  defaultConfig: Debug
+configs:
+  Debug: debug
+  Staging: release
+  Release: release
+configFiles:
+  Debug: Config/Debug.xcconfig
+  Staging: Config/Staging.xcconfig
+  Release: Config/Release.xcconfig
+settings:
+  SWIFT_VERSION: "6"
+targets:
+  Extrittio:
+    type: application
+    platform: iOS
+    sources:
+      - path: Extrittio
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_IDENTIFIER)
+      GENERATE_INFOPLIST_FILE: NO
+      INFOPLIST_FILE: Extrittio/Resources/Info.plist
+      TARGETED_DEVICE_FAMILY: "1,2"
+      SWIFT_STRICT_CONCURRENCY: complete
+  ExtrittioTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: ExtrittioTests
+    dependencies:
+      - target: Extrittio
+    settings:
+      GENERATE_INFOPLIST_FILE: YES
+schemes:
+  Extrittio:
+    build:
+      targets:
+        Extrittio: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - ExtrittioTests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
+  Extrittio-Staging:
+    build:
+      targets:
+        Extrittio: all
+    run:
+      config: Staging
+    test:
+      config: Debug
+      targets:
+        - ExtrittioTests
+    profile:
+      config: Staging
+    analyze:
+      config: Debug
+    archive:
+      config: Staging
+  ExtrittioTests:
+    build:
+      targets:
+        ExtrittioTests: [test]
+    test:
+      config: Debug
+      targets:
+        - ExtrittioTests

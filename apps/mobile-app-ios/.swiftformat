@@ -1,0 +1,7 @@
+--swiftversion 6.0
+--indent 4
+--semicolons never
+--commas inline
+--wraparguments before-first
+--wrapcollections before-first
+--exclude Extrittio.xcodeproj,DerivedData,build,.build,.git

@@ -1,0 +1,28 @@
+included:
+  - Extrittio
+  - ExtrittioTests
+
+excluded:
+  - Extrittio.xcodeproj
+  - DerivedData
+  - build
+  - .build
+
+disabled_rules:
+  - cyclomatic_complexity
+  - file_length
+  - function_body_length
+  - identifier_name
+  - line_length
+  - todo
+  - type_body_length
+
+opt_in_rules:
+  - empty_count
+  - empty_string
+  - fatal_error_message
+  - first_where
+  - sorted_imports
+  - unneeded_parentheses_in_closure_argument
+
+reporter: xcode

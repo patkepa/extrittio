@@ -1,0 +1,7 @@
+#include "Base.xcconfig"
+
+APP_BUNDLE_IDENTIFIER = com.extrittio.ios.debug
+API_SCHEME = http
+API_PORT = 8080
+API_ALLOWS_INSECURE_HTTP = YES
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG $(inherited)
