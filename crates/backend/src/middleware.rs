@@ -12,9 +12,11 @@ use tracing::Instrument;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::auth::validate_token;
+use crate::domains::audit::types::NewAuditEventRecord;
 use crate::error::AppError;
 use crate::services::user_service;
-use crate::state::{AppState, run_db};
+use crate::state::AppState;
+use crate::tenancy::{DEFAULT_TENANT_ID, TenantId};
 
 #[derive(Debug, Clone)]
 pub struct RequestId(pub String);
@@ -97,8 +99,10 @@ pub async fn audit_middleware(
 
     let tenant_id = context
         .as_ref()
-        .map_or(crate::tenancy::DEFAULT_TENANT_ID, |ctx| ctx.tenant_id_str())
-        .to_string();
+        .map(|ctx| ctx.tenant_id().clone())
+        .unwrap_or_else(|| {
+            TenantId::new(DEFAULT_TENANT_ID).expect("default tenant ID must be valid")
+        });
     let actor_id = context.as_ref().map(|ctx| ctx.user_id.to_string());
     let actor_type = if context.is_some() {
         "user"
@@ -106,9 +110,8 @@ pub async fn audit_middleware(
         "anonymous"
     };
     let action = format!("{}.{}", resource_type, method.as_str().to_ascii_lowercase());
-    let event = crate::db::models::NewAuditEvent {
+    let event = NewAuditEventRecord {
         id: uuid::Uuid::new_v4().to_string(),
-        tenant_id,
         actor_type: actor_type.to_string(),
         actor_id,
         action,
@@ -127,10 +130,9 @@ pub async fn audit_middleware(
             "status": status.as_u16(),
         }),
     };
-    if let Err(error) = run_db(&state.db_pool, move |conn| {
-        crate::services::audit_service::record(conn, event)
-    })
-    .await
+    if let Err(error) =
+        crate::services::audit_service::record(state.persistence.audit.as_ref(), &tenant_id, event)
+            .await
     {
         tracing::error!(%error, "failed to persist audit event");
     }

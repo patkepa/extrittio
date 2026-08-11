@@ -8,10 +8,10 @@ use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::auth::context::RequestContext;
-use crate::db::models::DeviceLog;
+use crate::domains::logs::types::{LogQuery, LogRecord};
 use crate::error::AppError;
 use crate::services::log_service;
-use crate::state::{AppState, run_db};
+use crate::state::AppState;
 use crate::util;
 
 // ---------------------------------------------------------------------------
@@ -41,8 +41,8 @@ pub struct LogsQuery {
 // Conversions
 // ---------------------------------------------------------------------------
 
-impl From<DeviceLog> for LogResponse {
-    fn from(r: DeviceLog) -> Self {
+impl From<LogRecord> for LogResponse {
+    fn from(r: LogRecord) -> Self {
         Self {
             id: r.id,
             device_id: r.device_id,
@@ -89,16 +89,18 @@ pub(crate) async fn get_device_logs(
     // Parse timestamp filter before entering the blocking closure
     let since = util::parse_timestamp(params.since.as_deref())?;
 
-    let response = run_db(&state.db_pool, move |conn| {
-        let limit = params.limit.unwrap_or(100).clamp(1, 1000);
-
-        let level = params.level.as_deref().map(str::to_uppercase);
-
-        let results = log_service::list(&ctx, conn, &id, level.as_deref(), since, limit)?;
-
-        Ok(results.into_iter().map(LogResponse::from).collect())
-    })
+    let results = log_service::list_with_repository(
+        &ctx,
+        state.persistence.logs.as_ref(),
+        &id,
+        LogQuery {
+            limit: params.limit.unwrap_or(100).clamp(1, 1000),
+            level: params.level.map(|level| level.to_uppercase()),
+            since,
+        },
+    )
     .await?;
+    let response = results.into_iter().map(LogResponse::from).collect();
 
     Ok(Json(response))
 }

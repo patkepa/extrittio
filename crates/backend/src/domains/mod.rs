@@ -4,12 +4,22 @@
 //! compatibility aliases while callers migrate to these cohesive boundaries.
 
 pub mod alerts {
+    #[path = "repository.rs"]
+    pub mod port;
+    #[path = "types.rs"]
+    pub mod types;
+
     pub use crate::api::alerts as api;
     pub use crate::repositories::alert_repo as repository;
     pub use crate::services::alert_service as service;
 }
 
 pub mod audit {
+    #[path = "repository.rs"]
+    pub mod port;
+    #[path = "types.rs"]
+    pub mod types;
+
     pub use crate::api::audit as api;
     pub use crate::repositories::audit_repo as repository;
     pub use crate::services::audit_service as service;
@@ -72,6 +82,11 @@ pub mod device_types {
 }
 
 pub mod firmware {
+    #[path = "repository.rs"]
+    pub mod port;
+    #[path = "types.rs"]
+    pub mod types;
+
     pub use super::firmware_store as storage;
     pub use crate::api::ci_pipeline as ci_api;
     pub use crate::api::firmware_updates as api;
@@ -162,6 +177,11 @@ pub mod telemetry {
 }
 
 pub mod zones {
+    #[path = "repository.rs"]
+    pub mod port;
+    #[path = "types.rs"]
+    pub mod types;
+
     pub use crate::api::zones as api;
     pub use crate::repositories::zone_repo as repository;
     pub use crate::services::zone_service as service;

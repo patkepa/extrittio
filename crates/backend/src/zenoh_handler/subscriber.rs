@@ -5,7 +5,7 @@ use tracing::{info, warn};
 
 use crate::persistence::Persistence;
 use crate::rule_engine::cache::RuleCache;
-use crate::state::{DbPool, ZenohMetrics};
+use crate::state::ZenohMetrics;
 
 use super::handlers;
 
@@ -17,16 +17,14 @@ use super::handlers;
 /// handler in the current task. All loop indefinitely, receiving messages and
 /// dispatching them to the appropriate handler function.
 ///
-/// Synchronous handler functions (DB-touching) are dispatched via
-/// `spawn_blocking` to avoid starving the Tokio runtime, except where the
-/// handler manages `spawn_blocking` internally (e.g. `shadow_get`).
+/// Persistence calls use backend-neutral async ports. The PostgreSQL adapter
+/// owns its blocking boundary internally.
 ///
 /// # Errors
 ///
 /// Returns an error if any Zenoh subscriber declaration fails.
 pub async fn run_subscriber(
     session: Arc<zenoh::Session>,
-    db_pool: DbPool,
     persistence: Persistence,
     zenoh_metrics: Arc<ZenohMetrics>,
     rule_cache: Arc<RwLock<RuleCache>>,
@@ -100,7 +98,6 @@ pub async fn run_subscriber(
     });
 
     // Spawn shadow report handler
-    let shadow_report_pool = db_pool.clone();
     let shadow_report_persistence = persistence.clone();
     let shadow_report_metrics = zenoh_metrics.clone();
     subscriber_tasks.spawn(async move {
@@ -116,7 +113,6 @@ pub async fn run_subscriber(
                         continue;
                     };
                     handlers::shadow::handle_shadow_report(
-                        &shadow_report_pool,
                         &shadow_report_persistence,
                         &topic_device_id,
                         &payload,

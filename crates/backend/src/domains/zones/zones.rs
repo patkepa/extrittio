@@ -10,10 +10,10 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 use crate::auth::context::RequestContext;
-use crate::db::models::Zone;
+use crate::domains::zones::types::ZoneRecord;
 use crate::error::AppError;
 use crate::services::zone_service;
-use crate::state::{AppState, run_db};
+use crate::state::AppState;
 
 // ---------------------------------------------------------------------------
 // Request / Response DTOs
@@ -53,10 +53,10 @@ pub struct ZoneResponse {
 // Conversions
 // ---------------------------------------------------------------------------
 
-impl TryFrom<Zone> for ZoneResponse {
+impl TryFrom<ZoneRecord> for ZoneResponse {
     type Error = AppError;
 
-    fn try_from(zone: Zone) -> Result<Self, Self::Error> {
+    fn try_from(zone: ZoneRecord) -> Result<Self, Self::Error> {
         Ok(ZoneResponse {
             id: zone.id,
             name: zone.name,
@@ -103,10 +103,7 @@ pub(crate) async fn list_zones(
     Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<ZoneResponse>>, AppError> {
-    let zones = run_db(&state.db_pool, move |conn| {
-        zone_service::list_zones(&ctx, conn)
-    })
-    .await?;
+    let zones = zone_service::list_zones(&ctx, state.persistence.zones.as_ref()).await?;
 
     let responses = zones
         .into_iter()
@@ -125,10 +122,7 @@ pub(crate) async fn get_zone(
     State(state): State<Arc<AppState>>,
     Path(zone_id): Path<String>,
 ) -> Result<Json<ZoneResponse>, AppError> {
-    let zone = run_db(&state.db_pool, move |conn| {
-        zone_service::get_zone(&ctx, conn, &zone_id)
-    })
-    .await?;
+    let zone = zone_service::get_zone(&ctx, state.persistence.zones.as_ref(), &zone_id).await?;
 
     Ok(Json(ZoneResponse::try_from(zone)?))
 }
@@ -145,17 +139,15 @@ pub(crate) async fn create_zone(
     let description = body.description.unwrap_or_default();
     let color = body.color.unwrap_or_else(|| "#4A90D9".to_string());
 
-    let zone = run_db(&state.db_pool, move |conn| {
-        zone_service::create_zone(
-            &ctx,
-            conn,
-            body.name,
-            description,
-            body.geometry_type,
-            body.geometry_json,
-            color,
-        )
-    })
+    let zone = zone_service::create_zone(
+        &ctx,
+        state.persistence.zones.as_ref(),
+        body.name,
+        description,
+        body.geometry_type,
+        body.geometry_json,
+        color,
+    )
     .await?;
 
     Ok((StatusCode::CREATED, Json(ZoneResponse::try_from(zone)?)))
@@ -172,20 +164,18 @@ pub(crate) async fn update_zone(
     Path(zone_id): Path<String>,
     Json(body): Json<UpdateZoneRequest>,
 ) -> Result<Json<ZoneResponse>, AppError> {
-    let zone = run_db(&state.db_pool, move |conn| {
-        zone_service::update_zone(
-            &ctx,
-            conn,
-            &zone_id,
-            zone_service::ZoneUpdate {
-                name: body.name,
-                description: body.description,
-                geometry_type: body.geometry_type,
-                geometry_json: body.geometry_json,
-                color: body.color,
-            },
-        )
-    })
+    let zone = zone_service::update_zone(
+        &ctx,
+        state.persistence.zones.as_ref(),
+        &zone_id,
+        zone_service::ZoneUpdate {
+            name: body.name,
+            description: body.description,
+            geometry_type: body.geometry_type,
+            geometry_json: body.geometry_json,
+            color: body.color,
+        },
+    )
     .await?;
 
     Ok(Json(ZoneResponse::try_from(zone)?))
@@ -200,10 +190,7 @@ pub(crate) async fn delete_zone(
     State(state): State<Arc<AppState>>,
     Path(zone_id): Path<String>,
 ) -> Result<StatusCode, AppError> {
-    run_db(&state.db_pool, move |conn| {
-        zone_service::delete_zone(&ctx, conn, &zone_id)
-    })
-    .await?;
+    zone_service::delete_zone(&ctx, state.persistence.zones.as_ref(), &zone_id).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

@@ -12,13 +12,14 @@ use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::auth::context::RequestContext;
-use crate::db::models::{NewFirmwareBlob, NewFirmwareUpdate};
+use crate::domains::firmware::types::{
+    FirmwareRecord, GlobalOtaDeploymentRecord, NewFirmwareBlobRecord, NewFirmwareRecord,
+};
 use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse};
-use crate::repositories::device_type_repo;
 use crate::security;
 use crate::services::firmware_service;
-use crate::state::{AppState, run_db};
+use crate::state::AppState;
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -94,6 +95,54 @@ pub struct GlobalOtaDeploymentResponse {
     pub completed_at: Option<String>,
 }
 
+impl From<FirmwareRecord> for FirmwareUpdateResponse {
+    fn from(firmware: FirmwareRecord) -> Self {
+        Self {
+            id: firmware.id,
+            device_type_id: firmware.device_type_id,
+            device_type_name: firmware.device_type_name,
+            version: firmware.version,
+            url: firmware.url,
+            sha256: firmware.sha256,
+            description: firmware.description,
+            created_at: firmware.created_at.to_string(),
+            has_blob: firmware.file_size.is_some(),
+            file_size: firmware.file_size,
+            filename: firmware.filename,
+            commit_sha: firmware.commit_sha,
+            branch: firmware.branch,
+            ci_run_url: firmware.ci_run_url,
+            build_timestamp: firmware
+                .build_timestamp
+                .map(|timestamp| timestamp.format("%Y-%m-%dT%H:%M:%S").to_string()),
+            changelog: firmware.changelog,
+            source: firmware.source,
+        }
+    }
+}
+
+impl From<GlobalOtaDeploymentRecord> for GlobalOtaDeploymentResponse {
+    fn from(deployment: GlobalOtaDeploymentRecord) -> Self {
+        Self {
+            id: deployment.id,
+            device_id: deployment.device_id,
+            device_name: deployment.device_name,
+            device_status: deployment.device_status,
+            current_firmware: deployment.current_firmware,
+            device_type_id: deployment.device_type_id,
+            device_type_name: deployment.device_type_name,
+            fleet_id: deployment.fleet_id,
+            fleet_name: deployment.fleet_name,
+            firmware_update_id: deployment.firmware_update_id,
+            firmware_version: deployment.firmware_version,
+            status: deployment.status,
+            error_message: deployment.error_message,
+            initiated_at: deployment.initiated_at.to_string(),
+            completed_at: deployment.completed_at.map(|time| time.to_string()),
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
@@ -146,40 +195,20 @@ pub(crate) async fn list_firmware_updates(
 ) -> Result<Json<PaginatedResponse<FirmwareUpdateResponse>>, AppError> {
     let (limit, offset) = pagination::clamp(params.limit, params.offset);
 
-    let response = run_db(&state.db_pool, move |conn| {
-        let (results, total) =
-            firmware_service::list(&ctx, conn, params.device_type_id, limit, offset)?;
-
-        let data = results
-            .into_iter()
-            .map(
-                |(fw, dt, blob_size, blob_filename)| FirmwareUpdateResponse {
-                    id: fw.id,
-                    device_type_id: fw.device_type_id,
-                    device_type_name: dt.name,
-                    version: fw.version,
-                    url: fw.url,
-                    sha256: fw.sha256,
-                    description: fw.description,
-                    created_at: fw.created_at.to_string(),
-                    has_blob: blob_size.is_some(),
-                    file_size: blob_size,
-                    filename: blob_filename,
-                    commit_sha: fw.commit_sha,
-                    branch: fw.branch,
-                    ci_run_url: fw.ci_run_url,
-                    build_timestamp: fw
-                        .build_timestamp
-                        .map(|ts| ts.format("%Y-%m-%dT%H:%M:%S").to_string()),
-                    changelog: fw.changelog,
-                    source: fw.source,
-                },
-            )
-            .collect();
-
-        Ok(PaginatedResponse::new(data, total, limit, offset))
-    })
+    let page = firmware_service::list_with_repository(
+        &ctx,
+        state.persistence.firmware.as_ref(),
+        params.device_type_id,
+        limit,
+        offset,
+    )
     .await?;
+    let response = PaginatedResponse::new(
+        page.records.into_iter().map(Into::into).collect(),
+        page.total,
+        limit,
+        offset,
+    );
 
     Ok(Json(response))
 }
@@ -202,39 +231,20 @@ pub(crate) async fn list_all_ota_deployments(
 ) -> Result<Json<PaginatedResponse<GlobalOtaDeploymentResponse>>, AppError> {
     let (limit, offset) = pagination::clamp(params.limit, params.offset);
 
-    let response = run_db(&state.db_pool, move |conn| {
-        let (results, total) = firmware_service::list_all_ota_deployments(
-            &ctx,
-            conn,
-            params.status.as_deref(),
-            limit,
-            offset,
-        )?;
-
-        let data = results
-            .into_iter()
-            .map(|(dep, fw, device, dt, fleet)| GlobalOtaDeploymentResponse {
-                id: dep.id,
-                device_id: dep.device_id,
-                device_name: device.name,
-                device_status: device.status,
-                current_firmware: device.firmware,
-                device_type_id: dt.id,
-                device_type_name: dt.name,
-                fleet_id: fleet.as_ref().map(|f| f.id),
-                fleet_name: fleet.map(|f| f.name),
-                firmware_update_id: dep.firmware_update_id,
-                firmware_version: fw.version,
-                status: dep.status,
-                error_message: dep.error_message,
-                initiated_at: dep.initiated_at.to_string(),
-                completed_at: dep.completed_at.map(|t| t.to_string()),
-            })
-            .collect();
-
-        Ok(PaginatedResponse::new(data, total, limit, offset))
-    })
+    let page = firmware_service::list_all_deployments_with_repository(
+        &ctx,
+        state.persistence.firmware.as_ref(),
+        params.status,
+        limit,
+        offset,
+    )
     .await?;
+    let response = PaginatedResponse::new(
+        page.records.into_iter().map(Into::into).collect(),
+        page.total,
+        limit,
+        offset,
+    );
 
     Ok(Json(response))
 }
@@ -274,24 +284,23 @@ pub(crate) async fn create_firmware_update(
         ));
     }
 
-    let response = run_db(&state.db_pool, move |conn| {
-        // Verify device type exists
-        let dt = device_type_repo::find_device_type_by_id(
-            conn,
-            ctx.tenant_id_str(),
-            body.device_type_id,
-        )?;
-
-        // Auto-generate version if not provided
-        let version = match body.version {
-            Some(v) if !v.trim().is_empty() => v.trim().to_string(),
-            _ => firmware_service::next_version_for_type(&ctx, conn, body.device_type_id)?,
-        };
-
-        let new_fw = NewFirmwareUpdate {
-            tenant_id: ctx.tenant_id_str().to_string(),
+    let version = match body.version {
+        Some(version) if !version.trim().is_empty() => version.trim().to_string(),
+        _ => {
+            firmware_service::next_version_with_repository(
+                &ctx,
+                state.persistence.firmware.as_ref(),
+                body.device_type_id,
+            )
+            .await?
+        }
+    };
+    let created = firmware_service::create_with_repository(
+        &ctx,
+        state.persistence.firmware.as_ref(),
+        NewFirmwareRecord {
             device_type_id: body.device_type_id,
-            version: version.clone(),
+            version,
             url: body.url,
             sha256: body.sha256,
             description: body.description,
@@ -301,35 +310,11 @@ pub(crate) async fn create_firmware_update(
             build_timestamp: None,
             changelog: None,
             source: None,
-        };
-
-        let created = firmware_service::register_firmware(&ctx, conn, &new_fw).map_err(
-            map_unique_violation("Firmware version already exists for this device type"),
-        )?;
-
-        Ok(FirmwareUpdateResponse {
-            id: created.id,
-            device_type_id: created.device_type_id,
-            device_type_name: dt.name,
-            version: created.version,
-            url: created.url,
-            sha256: created.sha256,
-            description: created.description,
-            created_at: created.created_at.to_string(),
-            has_blob: false,
-            file_size: None,
-            filename: None,
-            commit_sha: created.commit_sha,
-            branch: created.branch,
-            ci_run_url: created.ci_run_url,
-            build_timestamp: created
-                .build_timestamp
-                .map(|ts| ts.format("%Y-%m-%dT%H:%M:%S").to_string()),
-            changelog: created.changelog,
-            source: created.source,
-        })
-    })
+        },
+        None,
+    )
     .await?;
+    let response = created.into();
 
     Ok((StatusCode::CREATED, Json(response)))
 }
@@ -437,6 +422,18 @@ pub(crate) async fn upload_firmware_update(
     #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
     let file_size = file_data.len() as i32;
 
+    let version = match version {
+        Some(version) => version,
+        None => {
+            firmware_service::next_version_with_repository(
+                &ctx,
+                state.persistence.firmware.as_ref(),
+                device_type_id,
+            )
+            .await?
+        }
+    };
+
     let storage_key = state
         .firmware_store
         .allocate_key(ctx.tenant_id_str(), &filename);
@@ -449,27 +446,13 @@ pub(crate) async fn upload_firmware_update(
             AppError::Internal("Firmware storage is unavailable".to_string())
         })?;
 
-    let sha256_for_response = sha256_hex.clone();
-    let filename_for_response = filename.clone();
-    let storage_key_for_db = storage_key.clone();
     let storage_backend = state.firmware_store.backend().to_string();
-
-    let response = run_db(&state.db_pool, move |conn| {
-        // Verify device type exists
-        let dt =
-            device_type_repo::find_device_type_by_id(conn, ctx.tenant_id_str(), device_type_id)?;
-
-        // Auto-generate version if not provided
-        let version = match version {
-            Some(v) => v,
-            None => firmware_service::next_version_for_type(&ctx, conn, device_type_id)?,
-        };
-
-        // Insert firmware update (with placeholder URL) and blob via service
-        let new_fw = NewFirmwareUpdate {
-            tenant_id: ctx.tenant_id_str().to_string(),
+    let response = firmware_service::create_with_repository(
+        &ctx,
+        state.persistence.firmware.as_ref(),
+        NewFirmwareRecord {
             device_type_id,
-            version: version.clone(),
+            version,
             url: String::new(),
             sha256: Some(sha256_hex),
             description,
@@ -479,45 +462,16 @@ pub(crate) async fn upload_firmware_update(
             build_timestamp: None,
             changelog: None,
             source: None,
-        };
-
-        let blob = NewFirmwareBlob {
-            firmware_update_id: 0, // overwritten inside upload_firmware
-            tenant_id: ctx.tenant_id_str().to_string(),
-            data: None,
+        },
+        Some(NewFirmwareBlobRecord {
             size: file_size,
             filename,
-            storage_key: Some(storage_key_for_db),
+            storage_key: storage_key.clone(),
             storage_backend,
-        };
-
-        let updated = firmware_service::upload_firmware(&ctx, conn, &new_fw, blob).map_err(
-            map_unique_violation("Firmware version already exists for this device type"),
-        )?;
-
-        Ok(FirmwareUpdateResponse {
-            id: updated.id,
-            device_type_id: updated.device_type_id,
-            device_type_name: dt.name,
-            version: updated.version,
-            url: updated.url,
-            sha256: updated.sha256,
-            description: updated.description,
-            created_at: updated.created_at.to_string(),
-            has_blob: true,
-            file_size: Some(file_size),
-            filename: Some(filename_for_response),
-            commit_sha: updated.commit_sha,
-            branch: updated.branch,
-            ci_run_url: updated.ci_run_url,
-            build_timestamp: updated
-                .build_timestamp
-                .map(|ts| ts.format("%Y-%m-%dT%H:%M:%S").to_string()),
-            changelog: updated.changelog,
-            source: updated.source,
-        })
-    })
-    .await;
+        }),
+    )
+    .await
+    .map(FirmwareUpdateResponse::from);
 
     let response = match response {
         Ok(response) => response,
@@ -528,10 +482,6 @@ pub(crate) async fn upload_firmware_update(
             return Err(error);
         }
     };
-
-    // Override sha256 from the computed value (may differ from DB if DB stored None)
-    let mut response = response;
-    response.sha256 = Some(sha256_for_response);
 
     Ok((StatusCode::CREATED, Json(response)))
 }
@@ -553,10 +503,9 @@ pub(crate) async fn download_firmware_blob(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i32>,
 ) -> Result<Response, AppError> {
-    let blob = run_db(&state.db_pool, move |conn| {
-        firmware_service::download_blob(&ctx, conn, id)
-    })
-    .await?;
+    let blob =
+        firmware_service::get_blob_with_repository(&ctx, state.persistence.firmware.as_ref(), id)
+            .await?;
 
     let data = match (blob.data, blob.storage_key.as_deref()) {
         (Some(data), _) => data,
@@ -632,10 +581,9 @@ pub(crate) async fn delete_firmware_update(
     Extension(ctx): Extension<RequestContext>,
     Path(id): Path<i32>,
 ) -> Result<StatusCode, AppError> {
-    let blob = run_db(&state.db_pool, move |conn| {
-        firmware_service::delete(&ctx, conn, id)
-    })
-    .await?;
+    let blob =
+        firmware_service::delete_with_repository(&ctx, state.persistence.firmware.as_ref(), id)
+            .await?;
 
     if let Some(blob) = blob
         && let Some(storage_key) = blob.storage_key
@@ -677,28 +625,14 @@ pub(crate) async fn get_next_version(
     Extension(ctx): Extension<RequestContext>,
     Path(device_type_id): Path<i32>,
 ) -> Result<Json<NextVersionResponse>, AppError> {
-    let version = run_db(&state.db_pool, move |conn| {
-        firmware_service::next_version_for_type(&ctx, conn, device_type_id)
-    })
+    let version = firmware_service::next_version_with_repository(
+        &ctx,
+        state.persistence.firmware.as_ref(),
+        device_type_id,
+    )
     .await?;
 
     Ok(Json(NextVersionResponse {
         next_version: version,
     }))
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/// Map a `UniqueViolation` database error to `AppError::Conflict` with the
-/// given message, passing through all other errors unchanged.
-fn map_unique_violation(msg: &'static str) -> impl FnOnce(AppError) -> AppError {
-    move |e| match e {
-        AppError::Database(diesel::result::Error::DatabaseError(
-            diesel::result::DatabaseErrorKind::UniqueViolation,
-            _,
-        )) => AppError::Conflict(msg.into()),
-        other => other,
-    }
 }

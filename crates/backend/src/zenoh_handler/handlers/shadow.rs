@@ -4,7 +4,7 @@ use tracing::{info, warn};
 
 use crate::persistence::Persistence;
 use crate::services::{device_catalog_service, shadow_service};
-use crate::state::{DbPool, ZenohMetrics};
+use crate::state::ZenohMetrics;
 use crate::tenancy::DeviceIdentity;
 
 use extrittio_common::extrittio::{ShadowGet, ShadowReport};
@@ -30,7 +30,6 @@ async fn resolve_identity(
 /// Decode a `ShadowReport`, atomically merge reported state, and then update
 /// legacy OTA status bookkeeping until that write set moves to its own port.
 pub async fn handle_shadow_report(
-    db_pool: &DbPool,
     persistence: &Persistence,
     topic_device_id: &str,
     payload: &[u8],
@@ -91,19 +90,14 @@ pub async fn handle_shadow_report(
         report.device_id, shadow.version
     );
 
-    let pool = db_pool.clone();
-    let tenant_id = identity.tenant_id_str().to_string();
-    let device_id = identity.device_id().to_string();
-    let reported = shadow.reported;
-    match tokio::task::spawn_blocking(move || {
-        let mut connection = pool.get().map_err(crate::error::AppError::Pool)?;
-        shadow_service::process_ota_from_report(&mut connection, &tenant_id, &device_id, &reported)
-    })
+    if let Err(error) = shadow_service::process_ota_from_report_with_repository(
+        persistence.firmware.as_ref(),
+        &identity,
+        &shadow.reported,
+    )
     .await
     {
-        Ok(Ok(())) => {}
-        Ok(Err(error)) => warn!("Failed to process OTA from shadow report: {error}"),
-        Err(error) => warn!("Shadow report OTA task failed: {error}"),
+        warn!("Failed to process OTA from shadow report: {error}");
     }
 }
 

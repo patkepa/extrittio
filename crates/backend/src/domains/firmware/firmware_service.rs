@@ -1,149 +1,154 @@
 // Firmware service — business logic for firmware updates
 
-use diesel::Connection;
-use diesel::PgConnection;
-
 use crate::auth::context::RequestContext;
 use crate::auth::policy::{self, Permission};
-use crate::db::models::{FirmwareBlob, FirmwareUpdate, NewFirmwareBlob, NewFirmwareUpdate};
+use crate::domains::firmware::port::FirmwareRepository;
+use crate::domains::firmware::types::{
+    FirmwareBlobRecord, FirmwarePage, FirmwareRecord, GlobalOtaDeploymentPage,
+    NewFirmwareBlobRecord, NewFirmwareRecord, OtaDeploymentPage, TriggerOtaOutcome,
+};
 use crate::error::AppError;
-use crate::repositories::firmware_repo;
+use crate::persistence::PersistenceError;
+use crate::state::ZenohMetrics;
 
-/// Register a firmware update with a URL (no file upload).
-pub fn register_firmware(
+pub async fn list_with_repository(
     ctx: &RequestContext,
-    conn: &mut PgConnection,
-    new_fw: &NewFirmwareUpdate,
-) -> Result<FirmwareUpdate, AppError> {
-    policy::require(ctx, Permission::ManageFirmware)?;
-
-    let fw = firmware_repo::insert_firmware_update(conn, ctx.tenant_id_str(), new_fw)?;
-    Ok(fw)
-}
-
-/// Upload a firmware file: create metadata, store the blob, and update the URL
-/// to point to the download endpoint. All writes are atomic.
-pub fn upload_firmware(
-    ctx: &RequestContext,
-    conn: &mut PgConnection,
-    new_fw: &NewFirmwareUpdate,
-    blob: NewFirmwareBlob,
-) -> Result<FirmwareUpdate, AppError> {
-    policy::require(ctx, Permission::ManageFirmware)?;
-
-    conn.transaction(|conn| {
-        let fw = firmware_repo::insert_firmware_update(conn, ctx.tenant_id_str(), new_fw)?;
-
-        let blob_with_id = NewFirmwareBlob {
-            firmware_update_id: fw.id,
-            ..blob
-        };
-        firmware_repo::insert_firmware_blob(conn, &blob_with_id)?;
-
-        // Update URL to point to download endpoint
-        let url = format!("/api/v1/firmware-updates/{}/download", fw.id);
-        firmware_repo::update_firmware_url(conn, ctx.tenant_id_str(), fw.id, &url)?;
-
-        // Re-read to get updated URL
-        let updated = firmware_repo::find_firmware_update(conn, ctx.tenant_id_str(), fw.id)?;
-        Ok(updated)
-    })
-}
-
-/// Generate the next semantic version for a device type.
-pub fn next_version_for_type(
-    ctx: &RequestContext,
-    conn: &mut PgConnection,
-    device_type_id: i32,
-) -> Result<String, AppError> {
-    policy::require(ctx, Permission::ReadFirmware)?;
-
-    let latest = firmware_repo::find_next_version(conn, ctx.tenant_id_str(), device_type_id)?;
-    Ok(match latest {
-        Some(v) => increment_version(&v),
-        None => "1.0.0".to_string(),
-    })
-}
-
-/// Increment the patch component of a semver string.
-pub fn increment_version(version: &str) -> String {
-    let parts: Vec<&str> = version.split('.').collect();
-    if parts.len() == 3
-        && let Ok(patch) = parts[2].parse::<u32>()
-    {
-        return format!("{}.{}.{}", parts[0], parts[1], patch + 1);
-    }
-    format!("{version}.1")
-}
-
-/// List firmware updates with pagination and optional type filter.
-pub fn list(
-    ctx: &RequestContext,
-    conn: &mut PgConnection,
+    repository: &dyn FirmwareRepository,
     device_type_id: Option<i32>,
     limit: i64,
     offset: i64,
-) -> Result<(Vec<firmware_repo::FirmwareUpdateRow>, i64), AppError> {
+) -> Result<FirmwarePage, AppError> {
     policy::require(ctx, Permission::ReadFirmware)?;
-
-    Ok(firmware_repo::list_firmware_updates(
-        conn,
-        ctx.tenant_id_str(),
-        device_type_id,
-        limit,
-        offset,
-    )?)
+    Ok(repository
+        .list(ctx.tenant_id(), device_type_id, limit, offset)
+        .await?)
 }
 
-/// List OTA deployments across all devices with optional status filtering.
-pub fn list_all_ota_deployments(
+pub async fn list_all_deployments_with_repository(
     ctx: &RequestContext,
-    conn: &mut PgConnection,
-    status: Option<&str>,
+    repository: &dyn FirmwareRepository,
+    status: Option<String>,
     limit: i64,
     offset: i64,
-) -> Result<(Vec<firmware_repo::OtaDeploymentGlobalRow>, i64), AppError> {
+) -> Result<GlobalOtaDeploymentPage, AppError> {
     policy::require(ctx, Permission::ReadFirmware)?;
-
-    Ok(firmware_repo::list_all_ota_deployments(
-        conn,
-        ctx.tenant_id_str(),
-        status,
-        limit,
-        offset,
-    )?)
+    Ok(repository
+        .list_all_deployments(ctx.tenant_id(), status, limit, offset)
+        .await?)
 }
 
-/// Delete a firmware update by ID.
-pub fn delete(
+pub async fn create_with_repository(
     ctx: &RequestContext,
-    conn: &mut PgConnection,
-    id: i32,
-) -> Result<Option<FirmwareBlob>, AppError> {
+    repository: &dyn FirmwareRepository,
+    record: NewFirmwareRecord,
+    blob: Option<NewFirmwareBlobRecord>,
+) -> Result<FirmwareRecord, AppError> {
     policy::require(ctx, Permission::ManageFirmware)?;
+    repository
+        .create(ctx.tenant_id(), record, blob)
+        .await
+        .map_err(|error| match error {
+            PersistenceError::UniqueViolation { .. } => {
+                AppError::Conflict("Firmware version already exists for this device type".into())
+            }
+            other => AppError::Persistence(other),
+        })?
+        .ok_or_else(|| AppError::NotFound("Device type not found".into()))
+}
 
-    conn.transaction(|conn| {
-        let blob = firmware_repo::find_optional_firmware_blob(conn, ctx.tenant_id_str(), id)?;
-        let deleted = firmware_repo::delete_firmware_update(conn, ctx.tenant_id_str(), id)?;
-        if !deleted {
+pub async fn next_version_with_repository(
+    ctx: &RequestContext,
+    repository: &dyn FirmwareRepository,
+    device_type_id: i32,
+) -> Result<String, AppError> {
+    policy::require(ctx, Permission::ReadFirmware)?;
+    Ok(repository
+        .next_version(ctx.tenant_id(), device_type_id)
+        .await?)
+}
+
+pub async fn get_blob_with_repository(
+    ctx: &RequestContext,
+    repository: &dyn FirmwareRepository,
+    firmware_update_id: i32,
+) -> Result<FirmwareBlobRecord, AppError> {
+    policy::require(ctx, Permission::ReadFirmware)?;
+    repository
+        .get_blob(ctx.tenant_id(), firmware_update_id)
+        .await?
+        .ok_or_else(|| {
+            AppError::NotFound(format!(
+                "Firmware blob for update {firmware_update_id} not found"
+            ))
+        })
+}
+
+pub async fn delete_with_repository(
+    ctx: &RequestContext,
+    repository: &dyn FirmwareRepository,
+    firmware_update_id: i32,
+) -> Result<Option<FirmwareBlobRecord>, AppError> {
+    policy::require(ctx, Permission::ManageFirmware)?;
+    repository
+        .delete(ctx.tenant_id(), firmware_update_id)
+        .await?
+        .ok_or_else(|| {
+            AppError::NotFound(format!("Firmware update {firmware_update_id} not found"))
+        })
+}
+
+pub async fn list_device_deployments_with_repository(
+    ctx: &RequestContext,
+    repository: &dyn FirmwareRepository,
+    device_id: &str,
+    limit: i64,
+    offset: i64,
+) -> Result<OtaDeploymentPage, AppError> {
+    policy::require(ctx, Permission::ReadDevices)?;
+    repository
+        .list_device_deployments(ctx.tenant_id(), device_id, limit, offset)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Device '{device_id}' not found")))
+}
+
+pub async fn trigger_ota_with_repository(
+    ctx: &RequestContext,
+    repository: &dyn FirmwareRepository,
+    zenoh_session: &std::sync::Arc<zenoh::Session>,
+    device_id: &str,
+    firmware_update_id: i32,
+    public_url: &str,
+    zenoh_metrics: &ZenohMetrics,
+) -> Result<(), AppError> {
+    policy::require(ctx, Permission::DeployFirmware)?;
+    let outcome = repository
+        .trigger_ota(ctx.tenant_id(), device_id, firmware_update_id, public_url)
+        .await?;
+    let (delta, version) = match outcome {
+        TriggerOtaOutcome::DeviceNotFound => {
             return Err(AppError::NotFound(format!(
-                "Firmware update {id} not found"
+                "Device '{device_id}' not found"
             )));
         }
-        Ok(blob)
-    })
-}
-
-/// Download a firmware blob by firmware update ID.
-pub fn download_blob(
-    ctx: &RequestContext,
-    conn: &mut PgConnection,
-    firmware_update_id: i32,
-) -> Result<FirmwareBlob, AppError> {
-    policy::require(ctx, Permission::ReadFirmware)?;
-    Ok(firmware_repo::find_firmware_blob(
-        conn,
-        ctx.tenant_id_str(),
-        firmware_update_id,
-    )?)
+        TriggerOtaOutcome::FirmwareNotFound => {
+            return Err(AppError::NotFound(format!(
+                "Firmware update {firmware_update_id} not found"
+            )));
+        }
+        TriggerOtaOutcome::Incompatible => {
+            return Err(AppError::BadRequest(
+                "Firmware device type does not match device".into(),
+            ));
+        }
+        TriggerOtaOutcome::Ready { delta, version } => (delta, version),
+    };
+    crate::services::shadow_service::publish_delta_if_nonempty(
+        zenoh_session,
+        device_id,
+        &delta,
+        version,
+        zenoh_metrics,
+    )
+    .await;
+    Ok(())
 }

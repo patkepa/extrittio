@@ -7,11 +7,14 @@ use tracing::warn;
 use crate::auth::context::RequestContext;
 use crate::auth::policy::{self, Permission};
 use crate::db::models::UpdateShadow;
+use crate::domains::firmware::port::FirmwareRepository;
+use crate::domains::firmware::types::OtaStatusUpdate;
 use crate::domains::shadows::repository::ShadowRepository;
 use crate::domains::shadows::types::ShadowRecord;
 use crate::error::AppError;
 use crate::repositories::{firmware_repo, shadow_repo};
 use crate::state::ZenohMetrics;
+use crate::tenancy::DeviceIdentity;
 use crate::tenancy::TenantId;
 use extrittio_common::shadow::{compute_delta as compute_shadow_delta, merge_json};
 
@@ -234,6 +237,47 @@ pub fn process_ota_from_report(
         )?;
     }
 
+    Ok(())
+}
+
+pub async fn process_ota_from_report_with_repository(
+    repository: &dyn FirmwareRepository,
+    identity: &DeviceIdentity,
+    reported: &serde_json::Value,
+) -> Result<(), AppError> {
+    use extrittio_common::ota::{fields as ota_fields, status as ota_status_consts};
+
+    let Some(serde_json::Value::Object(ota)) = reported.get(ota_fields::SHADOW_KEY) else {
+        return Ok(());
+    };
+    let Some(status_raw) = ota
+        .get(ota_fields::STATUS)
+        .and_then(serde_json::Value::as_str)
+    else {
+        return Ok(());
+    };
+    let status = status_raw.to_lowercase();
+    let firmware_update_id = ota
+        .get(ota_fields::FIRMWARE_UPDATE_ID)
+        .and_then(serde_json::Value::as_i64)
+        .and_then(|id| i32::try_from(id).ok());
+    let error_message = ota
+        .get(ota_fields::ERROR)
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+    let completed_at =
+        ota_status_consts::is_terminal(&status).then(|| chrono::Utc::now().naive_utc());
+    repository
+        .apply_ota_status(
+            identity,
+            OtaStatusUpdate {
+                firmware_update_id,
+                status,
+                error_message,
+                completed_at,
+            },
+        )
+        .await?;
     Ok(())
 }
 

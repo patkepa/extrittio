@@ -1,10 +1,13 @@
 use std::sync::Arc;
 
+use crate::domains::alerts::port::AlertRepository;
+use crate::domains::audit::port::AuditRepository;
 use crate::domains::commands::port::CommandRepository;
 use crate::domains::configuration::repository::DeviceConfigRepository;
 use crate::domains::dashboard::repository::DashboardReadRepository;
 use crate::domains::device_types::repository::DeviceTypeRepository;
 use crate::domains::devices::repository::DeviceRepository;
+use crate::domains::firmware::port::FirmwareRepository;
 use crate::domains::fleets::repository::FleetRepository;
 use crate::domains::identity::api_key_repository::ApiKeyRepository;
 use crate::domains::identity::certificate_repository::CertificateRepository;
@@ -13,6 +16,7 @@ use crate::domains::identity::user_repository::UserRepository;
 use crate::domains::logs::port::LogRepository;
 use crate::domains::shadows::repository::ShadowRepository;
 use crate::domains::telemetry::port::TelemetryRepository;
+use crate::domains::zones::port::ZoneRepository;
 
 pub mod backend;
 pub mod bootstrap;
@@ -32,6 +36,8 @@ pub use error::{ConstraintName, PersistenceError};
 pub struct Persistence {
     pub backend: BackendDescriptor,
     pub api_keys: Arc<dyn ApiKeyRepository>,
+    pub alerts: Arc<dyn AlertRepository>,
+    pub audit: Arc<dyn AuditRepository>,
     pub bootstrap: Arc<dyn BootstrapRepository>,
     pub certificates: Arc<dyn CertificateRepository>,
     pub commands: Arc<dyn CommandRepository>,
@@ -40,15 +46,19 @@ pub struct Persistence {
     pub device_types: Arc<dyn DeviceTypeRepository>,
     pub devices: Arc<dyn DeviceRepository>,
     pub fleets: Arc<dyn FleetRepository>,
+    pub firmware: Arc<dyn FirmwareRepository>,
     pub logs: Arc<dyn LogRepository>,
     pub roles: Arc<dyn RoleRepository>,
     pub shadows: Arc<dyn ShadowRepository>,
     pub telemetry: Arc<dyn TelemetryRepository>,
     pub users: Arc<dyn UserRepository>,
+    pub zones: Arc<dyn ZoneRepository>,
 }
 
 pub struct PersistencePorts {
     pub api_keys: Arc<dyn ApiKeyRepository>,
+    pub alerts: Arc<dyn AlertRepository>,
+    pub audit: Arc<dyn AuditRepository>,
     pub bootstrap: Arc<dyn BootstrapRepository>,
     pub certificates: Arc<dyn CertificateRepository>,
     pub commands: Arc<dyn CommandRepository>,
@@ -57,11 +67,13 @@ pub struct PersistencePorts {
     pub device_types: Arc<dyn DeviceTypeRepository>,
     pub devices: Arc<dyn DeviceRepository>,
     pub fleets: Arc<dyn FleetRepository>,
+    pub firmware: Arc<dyn FirmwareRepository>,
     pub logs: Arc<dyn LogRepository>,
     pub roles: Arc<dyn RoleRepository>,
     pub shadows: Arc<dyn ShadowRepository>,
     pub telemetry: Arc<dyn TelemetryRepository>,
     pub users: Arc<dyn UserRepository>,
+    pub zones: Arc<dyn ZoneRepository>,
 }
 
 impl Persistence {
@@ -70,6 +82,8 @@ impl Persistence {
         Self {
             backend,
             api_keys: ports.api_keys,
+            alerts: ports.alerts,
+            audit: ports.audit,
             bootstrap: ports.bootstrap,
             certificates: ports.certificates,
             commands: ports.commands,
@@ -78,11 +92,13 @@ impl Persistence {
             device_types: ports.device_types,
             devices: ports.devices,
             fleets: ports.fleets,
+            firmware: ports.firmware,
             logs: ports.logs,
             roles: ports.roles,
             shadows: ports.shadows,
             telemetry: ports.telemetry,
             users: ports.users,
+            zones: ports.zones,
         }
     }
 }

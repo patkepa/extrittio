@@ -9,8 +9,8 @@ use object_store::{ObjectStore, ObjectStoreExt, PutPayload};
 use uuid::Uuid;
 
 use crate::config::FirmwareStorageConfig;
-use crate::repositories::firmware_repo;
-use crate::state::{DbPool, ReadinessRegistry};
+use crate::persistence::Persistence;
+use crate::state::ReadinessRegistry;
 
 #[derive(Clone)]
 pub struct FirmwareObjectStore {
@@ -145,40 +145,25 @@ impl FirmwareObjectStore {
 /// Incrementally move pre-object-storage BYTEA rows out of PostgreSQL. The key
 /// is deterministic so concurrent application replicas can safely converge on
 /// the same object and conditional database update.
-pub async fn run_legacy_blob_migrator(db_pool: DbPool, store: FirmwareObjectStore) {
+pub async fn run_legacy_blob_migrator(persistence: Persistence, store: FirmwareObjectStore) {
     loop {
-        let pool = db_pool.clone();
-        let next_blob = tokio::task::spawn_blocking(move || {
-            let mut conn = pool.get().map_err(|error| error.to_string())?;
-            firmware_repo::list_legacy_firmware_blobs(&mut conn, 1)
-                .map(|mut blobs| blobs.pop())
-                .map_err(|error| error.to_string())
-        })
-        .await;
+        let next_blob = persistence.firmware.next_legacy_blob().await;
 
         let blob = match next_blob {
-            Ok(Ok(Some(blob))) => blob,
-            Ok(Ok(None)) => {
+            Ok(Some(blob)) => blob,
+            Ok(None) => {
                 tokio::time::sleep(std::time::Duration::from_secs(300)).await;
                 continue;
             }
-            Ok(Err(error)) => {
+            Err(error) => {
                 tracing::warn!(%error, "Failed to query legacy firmware blobs");
                 tokio::time::sleep(std::time::Duration::from_secs(30)).await;
                 continue;
             }
-            Err(error) => {
-                tracing::warn!(%error, "Legacy firmware migration task panicked");
-                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-                continue;
-            }
         };
 
-        let Some(data) = blob.data else {
-            continue;
-        };
         let key = store.legacy_key(&blob.tenant_id, blob.firmware_update_id, &blob.filename);
-        if let Err(error) = store.put(&key, data).await {
+        if let Err(error) = store.put(&key, blob.data).await {
             tracing::warn!(
                 %error,
                 firmware_update_id = blob.firmware_update_id,
@@ -188,46 +173,28 @@ pub async fn run_legacy_blob_migrator(db_pool: DbPool, store: FirmwareObjectStor
             continue;
         }
 
-        let pool = db_pool.clone();
         let tenant_id = blob.tenant_id;
         let backend = store.backend();
-        let key_for_db = key.clone();
         let firmware_update_id = blob.firmware_update_id;
-        let result = tokio::task::spawn_blocking(move || {
-            let mut conn = pool.get().map_err(|error| error.to_string())?;
-            firmware_repo::move_firmware_blob_to_object_storage(
-                &mut conn,
-                &tenant_id,
-                firmware_update_id,
-                backend,
-                &key_for_db,
-            )
-            .map_err(|error| error.to_string())
-        })
-        .await;
+        let result = persistence
+            .firmware
+            .mark_blob_migrated(&tenant_id, firmware_update_id, backend, &key)
+            .await;
 
         match result {
-            Ok(Ok(true)) => tracing::info!(
+            Ok(true) => tracing::info!(
                 firmware_update_id,
                 backend,
                 "Migrated legacy firmware blob to object storage"
             ),
-            Ok(Ok(false)) => {
+            Ok(false) => {
                 tracing::debug!(firmware_update_id, "Firmware blob was already migrated");
-            }
-            Ok(Err(error)) => {
-                tracing::warn!(
-                    %error,
-                    firmware_update_id,
-                    "Firmware object stored but metadata migration failed"
-                );
-                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
             }
             Err(error) => {
                 tracing::warn!(
                     %error,
                     firmware_update_id,
-                    "Firmware metadata migration task panicked"
+                    "Firmware object stored but metadata migration failed"
                 );
                 tokio::time::sleep(std::time::Duration::from_secs(30)).await;
             }

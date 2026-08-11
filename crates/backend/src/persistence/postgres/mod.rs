@@ -3,7 +3,9 @@ use std::sync::Arc;
 use crate::persistence::{BackendDescriptor, Persistence, PersistencePorts};
 use crate::state::DbPool;
 
+mod alerts;
 mod api_keys;
+mod audit;
 mod bootstrap;
 mod certificates;
 mod commands;
@@ -12,12 +14,14 @@ mod dashboard;
 mod device_types;
 mod devices;
 pub mod executor;
+mod firmware;
 mod fleets;
 mod logs;
 mod roles;
 mod shadows;
 mod telemetry;
 mod users;
+mod zones;
 
 /// Shared PostgreSQL adapter object. It implements multiple domain ports while
 /// owning one executor/pool boundary.
@@ -42,6 +46,8 @@ pub fn create_persistence(pool: DbPool) -> Persistence {
         BackendDescriptor::postgres(),
         PersistencePorts {
             api_keys: adapter.clone(),
+            alerts: adapter.clone(),
+            audit: adapter.clone(),
             bootstrap: adapter.clone(),
             certificates: adapter.clone(),
             commands: adapter.clone(),
@@ -50,11 +56,13 @@ pub fn create_persistence(pool: DbPool) -> Persistence {
             device_types: adapter.clone(),
             devices: adapter.clone(),
             fleets: adapter.clone(),
+            firmware: adapter.clone(),
             logs: adapter.clone(),
             roles: adapter.clone(),
             shadows: adapter.clone(),
             telemetry: adapter.clone(),
-            users: adapter,
+            users: adapter.clone(),
+            zones: adapter,
         },
     )
 }

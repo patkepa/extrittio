@@ -57,7 +57,6 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
     let cancellation = CancellationToken::new();
     let mut workers = JoinSet::new();
 
-    let subscriber_pool = state.db_pool.clone();
     let subscriber_persistence = state.persistence.clone();
     let subscriber_session = state.zenoh_session.clone();
     let subscriber_metrics = state.zenoh_metrics.clone();
@@ -72,7 +71,6 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         async move {
             zenoh_handler::subscriber::run_subscriber(
                 subscriber_session,
-                subscriber_pool,
                 subscriber_persistence,
                 subscriber_metrics,
                 sub_cache,
@@ -101,7 +99,7 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         },
     );
 
-    let firmware_migration_pool = state.db_pool.clone();
+    let firmware_migration_persistence = state.persistence.clone();
     let firmware_store = state.firmware_store.clone();
     spawn_worker(
         &mut workers,
@@ -110,7 +108,7 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         "firmware-object-migrator",
         async move {
             crate::domains::firmware_store::run_legacy_blob_migrator(
-                firmware_migration_pool,
+                firmware_migration_persistence,
                 firmware_store,
             )
             .await;

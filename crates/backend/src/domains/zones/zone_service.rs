@@ -1,15 +1,13 @@
-// Zone service — business logic for zone management
-
-use diesel::PgConnection;
-use diesel::prelude::*;
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
 use crate::auth::context::RequestContext;
 use crate::auth::policy::{self, Permission};
-use crate::db::models::{NewZone, UpdateZone, Zone};
+use crate::domains::zones::port::ZoneRepository;
+use crate::domains::zones::types::{
+    DeleteZoneOutcome, NewZoneRecord, UpdateZoneRecord, ZoneRecord,
+};
 use crate::error::AppError;
-use crate::repositories::zone_repo;
 
 #[derive(Debug)]
 pub struct ZoneUpdate {
@@ -20,130 +18,105 @@ pub struct ZoneUpdate {
     pub color: Option<String>,
 }
 
-pub fn list_zones(ctx: &RequestContext, conn: &mut PgConnection) -> Result<Vec<Zone>, AppError> {
-    policy::require(ctx, Permission::ReadZones)?;
-    Ok(zone_repo::list_zones(conn, ctx.tenant_id_str())?)
-}
-
-pub fn get_zone(
+pub async fn list_zones(
     ctx: &RequestContext,
-    conn: &mut PgConnection,
-    zone_id: &str,
-) -> Result<Zone, AppError> {
+    repository: &dyn ZoneRepository,
+) -> Result<Vec<ZoneRecord>, AppError> {
     policy::require(ctx, Permission::ReadZones)?;
-    get_zone_for_tenant(conn, ctx.tenant_id_str(), zone_id)
+    Ok(repository.list(ctx.tenant_id()).await?)
 }
 
-fn get_zone_for_tenant(
-    conn: &mut PgConnection,
-    tenant_id: &str,
-    zone_id: &str,
-) -> Result<Zone, AppError> {
-    zone_repo::get_zone(conn, tenant_id, zone_id).map_err(|e| match e {
-        diesel::result::Error::NotFound => {
-            AppError::NotFound(format!("Zone '{zone_id}' not found"))
-        }
-        other => AppError::Database(other),
-    })
-}
-
-pub fn create_zone(
+pub async fn get_zone(
     ctx: &RequestContext,
-    conn: &mut PgConnection,
+    repository: &dyn ZoneRepository,
+    zone_id: &str,
+) -> Result<ZoneRecord, AppError> {
+    policy::require(ctx, Permission::ReadZones)?;
+    repository
+        .get(ctx.tenant_id(), zone_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Zone '{zone_id}' not found")))
+}
+
+pub async fn create_zone(
+    ctx: &RequestContext,
+    repository: &dyn ZoneRepository,
     name: String,
     description: String,
     geometry_type: String,
     geometry_json: JsonValue,
     color: String,
-) -> Result<Zone, AppError> {
+) -> Result<ZoneRecord, AppError> {
     policy::require(ctx, Permission::ManageZones)?;
     validate_geometry(&geometry_type, &geometry_json)?;
-
-    let zone_id = Uuid::new_v4().to_string();
-
-    let new_zone = NewZone {
-        id: zone_id,
-        tenant_id: ctx.tenant_id_str().to_string(),
-        name,
-        description,
-        geometry_type,
-        geometry_json,
-        color,
-    };
-
-    Ok(zone_repo::insert_zone(
-        conn,
-        ctx.tenant_id_str(),
-        &new_zone,
-    )?)
+    Ok(repository
+        .create(
+            ctx.tenant_id(),
+            NewZoneRecord {
+                id: Uuid::new_v4().to_string(),
+                name,
+                description,
+                geometry_type,
+                geometry_json,
+                color,
+            },
+        )
+        .await?)
 }
 
-pub fn update_zone(
+pub async fn update_zone(
     ctx: &RequestContext,
-    conn: &mut PgConnection,
+    repository: &dyn ZoneRepository,
     zone_id: &str,
     update: ZoneUpdate,
-) -> Result<Zone, AppError> {
+) -> Result<ZoneRecord, AppError> {
     policy::require(ctx, Permission::ManageZones)?;
-
-    // Verify zone exists first
-    let existing = get_zone_for_tenant(conn, ctx.tenant_id_str(), zone_id)?;
-    let effective_geometry_type = update
-        .geometry_type
-        .as_deref()
-        .unwrap_or(existing.geometry_type.as_str());
-    let effective_geometry_json = update
-        .geometry_json
-        .as_ref()
-        .unwrap_or(&existing.geometry_json);
-    validate_geometry(effective_geometry_type, effective_geometry_json)?;
-
-    let changeset = UpdateZone {
-        name: update.name,
-        description: update.description,
-        geometry_type: update.geometry_type,
-        geometry_json: update.geometry_json,
-        color: update.color,
-        updated_at: Some(chrono::Utc::now().naive_utc()),
-    };
-
-    Ok(zone_repo::update_zone(
-        conn,
-        ctx.tenant_id_str(),
-        zone_id,
-        &changeset,
-    )?)
+    let existing = repository
+        .get(ctx.tenant_id(), zone_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Zone '{zone_id}' not found")))?;
+    validate_geometry(
+        update
+            .geometry_type
+            .as_deref()
+            .unwrap_or(&existing.geometry_type),
+        update
+            .geometry_json
+            .as_ref()
+            .unwrap_or(&existing.geometry_json),
+    )?;
+    repository
+        .update(
+            ctx.tenant_id(),
+            zone_id,
+            UpdateZoneRecord {
+                name: update.name,
+                description: update.description,
+                geometry_type: update.geometry_type,
+                geometry_json: update.geometry_json,
+                color: update.color,
+                updated_at: chrono::Utc::now().naive_utc(),
+            },
+        )
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Zone '{zone_id}' not found")))
 }
 
-pub fn delete_zone(
+pub async fn delete_zone(
     ctx: &RequestContext,
-    conn: &mut PgConnection,
+    repository: &dyn ZoneRepository,
     zone_id: &str,
 ) -> Result<(), AppError> {
     policy::require(ctx, Permission::ManageZones)?;
-
-    // Verify zone exists first
-    get_zone_for_tenant(conn, ctx.tenant_id_str(), zone_id)?;
-
-    // Check if any rule_conditions reference this zone
-    use crate::db::schema::rule_conditions;
-    let count: i64 = rule_conditions::table
-        .filter(rule_conditions::tenant_id.eq(ctx.tenant_id_str()))
-        .filter(rule_conditions::zone_id.eq(zone_id))
-        .count()
-        .get_result(conn)?;
-    if count > 0 {
-        return Err(AppError::Conflict(
+    match repository.delete(ctx.tenant_id(), zone_id).await? {
+        DeleteZoneOutcome::NotFound => {
+            Err(AppError::NotFound(format!("Zone '{zone_id}' not found")))
+        }
+        DeleteZoneOutcome::InUse => Err(AppError::Conflict(
             "Cannot delete zone: referenced by rules".into(),
-        ));
+        )),
+        DeleteZoneOutcome::Deleted => Ok(()),
     }
-
-    let rows = zone_repo::delete_zone(conn, ctx.tenant_id_str(), zone_id)?;
-    if rows == 0 {
-        return Err(AppError::NotFound(format!("Zone '{zone_id}' not found")));
-    }
-
-    Ok(())
 }
 
 fn validate_geometry(geometry_type: &str, geometry_json: &JsonValue) -> Result<(), AppError> {

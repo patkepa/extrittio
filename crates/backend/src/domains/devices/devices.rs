@@ -16,8 +16,8 @@ use crate::domains::devices::types::{
 };
 use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse, PaginationParams};
-use crate::services::{command_service, device_catalog_service, device_service};
-use crate::state::{AppState, run_db};
+use crate::services::{command_service, device_catalog_service, device_service, firmware_service};
+use crate::state::AppState;
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -418,9 +418,9 @@ pub(crate) async fn restart_device(
     Extension(ctx): Extension<RequestContext>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
-    command_service::send_command_as_user(
+    command_service::send_command_as_user_with_repository(
         &ctx,
-        &state.db_pool,
+        state.persistence.commands.as_ref(),
         &state.zenoh_session,
         &id,
         "restart",
@@ -450,9 +450,9 @@ pub(crate) async fn trigger_ota(
     Path(id): Path<String>,
     Json(body): Json<TriggerOtaRequest>,
 ) -> Result<StatusCode, AppError> {
-    device_service::trigger_ota(
+    firmware_service::trigger_ota_with_repository(
         &ctx,
-        &state.db_pool,
+        state.persistence.firmware.as_ref(),
         &state.zenoh_session,
         &id,
         body.firmware_update_id,
@@ -567,9 +567,9 @@ pub(crate) async fn bulk_restart_devices(
     let mut errors = Vec::new();
 
     for device_id in &ids {
-        match command_service::send_command_as_user(
+        match command_service::send_command_as_user_with_repository(
             &ctx,
-            &state.db_pool,
+            state.persistence.commands.as_ref(),
             &state.zenoh_session,
             device_id,
             "restart",
@@ -628,9 +628,9 @@ pub(crate) async fn bulk_trigger_ota(
     let mut errors = Vec::new();
 
     for device_id in &ids {
-        match device_service::trigger_ota(
+        match firmware_service::trigger_ota_with_repository(
             &ctx,
-            &state.db_pool,
+            state.persistence.firmware.as_ref(),
             &state.zenoh_session,
             device_id,
             firmware_update_id,
@@ -696,27 +696,29 @@ pub(crate) async fn list_ota_deployments(
 ) -> Result<Json<PaginatedResponse<OtaDeploymentResponse>>, AppError> {
     let (limit, offset) = pagination::clamp(params.limit, params.offset);
 
-    let response = run_db(&state.db_pool, move |conn| {
-        let (results, total) =
-            device_service::list_ota_deployments(&ctx, conn, &id, limit, offset)?;
-
-        let data = results
-            .into_iter()
-            .map(|(dep, fw)| OtaDeploymentResponse {
-                id: dep.id,
-                device_id: dep.device_id,
-                firmware_update_id: dep.firmware_update_id,
-                firmware_version: fw.version,
-                status: dep.status,
-                error_message: dep.error_message,
-                initiated_at: dep.initiated_at.to_string(),
-                completed_at: dep.completed_at.map(|t| t.to_string()),
-            })
-            .collect();
-
-        Ok(PaginatedResponse::new(data, total, limit, offset))
-    })
+    let page = firmware_service::list_device_deployments_with_repository(
+        &ctx,
+        state.persistence.firmware.as_ref(),
+        &id,
+        limit,
+        offset,
+    )
     .await?;
+    let data = page
+        .records
+        .into_iter()
+        .map(|deployment| OtaDeploymentResponse {
+            id: deployment.id,
+            device_id: deployment.device_id,
+            firmware_update_id: deployment.firmware_update_id,
+            firmware_version: deployment.firmware_version,
+            status: deployment.status,
+            error_message: deployment.error_message,
+            initiated_at: deployment.initiated_at.to_string(),
+            completed_at: deployment.completed_at.map(|time| time.to_string()),
+        })
+        .collect();
+    let response = PaginatedResponse::new(data, page.total, limit, offset);
 
     Ok(Json(response))
 }
