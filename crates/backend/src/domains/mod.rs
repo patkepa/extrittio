@@ -16,6 +16,11 @@ pub mod audit {
 }
 
 pub mod commands {
+    #[path = "repository.rs"]
+    pub mod port;
+    #[path = "types.rs"]
+    pub mod types;
+
     pub use crate::api::commands as api;
     pub use crate::repositories::command_repo as repository;
     pub use crate::services::command_service as service;
@@ -52,6 +57,7 @@ pub mod devices {
     pub use crate::repositories::network_observed_host_repo as observed_hosts;
     pub use crate::services::device_catalog_service as catalog_service;
     pub use crate::services::device_connections as connections;
+    pub use crate::services::device_ingress_service as ingress_service;
     pub use crate::services::device_service as service;
 }
 
@@ -111,6 +117,11 @@ pub mod identity {
 }
 
 pub mod logs {
+    #[path = "../log_repository.rs"]
+    pub mod port;
+    #[path = "../log_types.rs"]
+    pub mod types;
+
     pub use crate::api::logs as api;
     pub use crate::repositories::log_repo as repository;
     pub use crate::services::log_service as service;
@@ -140,6 +151,11 @@ pub mod shadows {
 }
 
 pub mod telemetry {
+    #[path = "repository.rs"]
+    pub mod port;
+    #[path = "types.rs"]
+    pub mod types;
+
     pub use crate::api::telemetry as api;
     pub use crate::repositories::telemetry_repo as repository;
     pub use crate::services::telemetry_service as service;

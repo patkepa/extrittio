@@ -1,5 +1,9 @@
+use chrono::NaiveDateTime;
 use chrono::{DateTime, Utc};
 use serde_json::Value;
+
+use crate::rule_engine::types::PendingAction;
+use crate::tenancy::DeviceIdentity;
 
 use crate::domains::device_types::types::DeviceTypeRecord;
 use crate::domains::fleets::types::FleetRecord;
@@ -64,4 +68,47 @@ pub struct UpdateDeviceRecord {
     pub fleet_id: Option<Option<i32>>,
     pub firmware: Option<String>,
     pub updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DeviceIngressContext {
+    pub identity: DeviceIdentity,
+    pub device_type_id: i32,
+    pub fleet_id: Option<i32>,
+    pub status: String,
+}
+
+#[derive(Debug, Clone)]
+pub enum AutoRegisterOutcome {
+    Existing(DeviceIngressContext),
+    Created(DeviceIngressContext),
+    NoDeviceType,
+}
+
+#[derive(Debug, Clone)]
+pub struct HeartbeatWrite {
+    pub expected_status: String,
+    pub status: String,
+    pub firmware: String,
+    pub uptime_seconds: i32,
+    pub observed_at: NaiveDateTime,
+    pub pending_actions: Vec<PendingAction>,
+}
+
+#[derive(Debug, Clone)]
+pub struct OfflineTransition {
+    pub context: DeviceIngressContext,
+    pub pending_actions: Vec<PendingAction>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DeviceWriteOutcome {
+    pub applied: bool,
+    pub actions_enqueued: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OfflineWriteOutcome {
+    pub devices_updated: usize,
+    pub actions_enqueued: usize,
 }

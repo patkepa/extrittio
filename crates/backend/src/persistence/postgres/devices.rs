@@ -10,22 +10,25 @@ use serde_json::Value;
 
 use crate::db::models::{
     Device, DeviceCertificate, DeviceType, Fleet, NetworkObservedHost, NewDevice,
-    NewDeviceCertificate, NewDeviceShadow, UpdateDevice,
+    NewDeviceCertificate, NewDeviceLog, NewDeviceShadow, UpdateDevice,
 };
 use crate::db::schema::{
-    device_certificates, device_shadows, device_types, devices, fleets, network_observed_hosts,
+    device_certificates, device_logs, device_shadows, device_types, devices, fleets,
+    network_observed_hosts,
 };
 use crate::domains::device_types::types::DeviceTypeRecord;
 use crate::domains::devices::repository::DeviceRepository;
 use crate::domains::devices::types::{
-    CreateDeviceRecord, DeviceDetails, DeviceFilter, DeviceList, DeviceListQuery, DeviceRecord,
-    UpdateDeviceRecord,
+    AutoRegisterOutcome, CreateDeviceRecord, DeviceDetails, DeviceFilter, DeviceIngressContext,
+    DeviceList, DeviceListQuery, DeviceRecord, DeviceWriteOutcome, HeartbeatWrite,
+    OfflineTransition, OfflineWriteOutcome, UpdateDeviceRecord,
 };
 use crate::domains::fleets::types::FleetRecord;
 use crate::domains::identity::certificate_types::NewDeviceCertificateRecord;
 use crate::persistence::PersistenceError;
 use crate::services::device_connections;
 use crate::tenancy::{DeviceIdentity, TenantId};
+use crate::{error::AppError, rule_engine::actions::enqueue_pending_actions};
 
 use super::PostgresAdapter;
 use super::executor::map_diesel_error;
@@ -225,6 +228,26 @@ fn to_details((device, device_type, fleet): JoinedDevice) -> DeviceDetails {
     }
 }
 
+fn to_ingress_context(device: Device) -> Result<DeviceIngressContext, PersistenceError> {
+    let identity = DeviceIdentity::new(device.tenant_id, device.id).map_err(|error| {
+        PersistenceError::CorruptData(format!("invalid persisted device identity: {error}"))
+    })?;
+    Ok(DeviceIngressContext {
+        identity,
+        device_type_id: device.device_type_id,
+        fleet_id: device.fleet_id,
+        status: device.status,
+    })
+}
+
+fn map_app_error(error: AppError) -> PersistenceError {
+    match error {
+        AppError::Database(error) => map_diesel_error(error),
+        AppError::Persistence(error) => error,
+        other => PersistenceError::Internal(other.to_string()),
+    }
+}
+
 #[async_trait]
 impl DeviceRepository for PostgresAdapter {
     async fn resolve_identity(
@@ -248,6 +271,249 @@ impl DeviceRepository for PostgresAdapter {
                     })
                 })
                 .transpose()
+            })
+            .await
+    }
+
+    async fn ingress_context(
+        &self,
+        identity: &DeviceIdentity,
+    ) -> Result<Option<DeviceIngressContext>, PersistenceError> {
+        let tenant_id = identity.tenant_id_str().to_owned();
+        let device_id = identity.device_id().to_owned();
+        self.executor
+            .run(move |connection| {
+                devices::table
+                    .filter(devices::tenant_id.eq(tenant_id))
+                    .filter(devices::id.eq(device_id))
+                    .select(Device::as_select())
+                    .first::<Device>(connection)
+                    .optional()
+                    .map_err(map_diesel_error)?
+                    .map(to_ingress_context)
+                    .transpose()
+            })
+            .await
+    }
+
+    async fn auto_register(
+        &self,
+        tenant: &TenantId,
+        device_id: &str,
+        firmware: &str,
+        preferred_device_type: &str,
+    ) -> Result<AutoRegisterOutcome, PersistenceError> {
+        let tenant_id = tenant.as_str().to_owned();
+        let device_id = device_id.to_owned();
+        let firmware = firmware.to_owned();
+        let preferred_device_type = preferred_device_type.to_owned();
+        self.executor
+            .run(move |connection| {
+                connection
+                    .transaction::<_, diesel::result::Error, _>(|connection| {
+                        if let Some(existing) = devices::table
+                            .filter(devices::id.eq(&device_id))
+                            .select(Device::as_select())
+                            .first::<Device>(connection)
+                            .optional()?
+                        {
+                            return to_ingress_context(existing)
+                                .map(AutoRegisterOutcome::Existing)
+                                .map_err(|error| {
+                                    diesel::result::Error::DeserializationError(Box::new(error))
+                                });
+                        }
+
+                        let preferred = device_types::table
+                            .filter(device_types::tenant_id.eq(&tenant_id))
+                            .filter(device_types::name.eq(&preferred_device_type))
+                            .select(device_types::id)
+                            .first::<i32>(connection)
+                            .optional()?;
+                        let device_type_id = match preferred {
+                            Some(id) => Some(id),
+                            None => device_types::table
+                                .filter(device_types::tenant_id.eq(&tenant_id))
+                                .filter(device_types::name.eq("default"))
+                                .select(device_types::id)
+                                .first::<i32>(connection)
+                                .optional()?,
+                        };
+                        let Some(device_type_id) = device_type_id else {
+                            return Ok(AutoRegisterOutcome::NoDeviceType);
+                        };
+
+                        let device = diesel::insert_into(devices::table)
+                            .values(NewDevice {
+                                id: device_id.clone(),
+                                tenant_id: tenant_id.clone(),
+                                name: device_id.clone(),
+                                device_type_id,
+                                fleet_id: None,
+                                firmware,
+                            })
+                            .returning(Device::as_returning())
+                            .get_result::<Device>(connection)?;
+                        diesel::insert_into(device_shadows::table)
+                            .values(NewDeviceShadow {
+                                device_id: device_id.clone(),
+                                tenant_id: tenant_id.clone(),
+                            })
+                            .execute(connection)?;
+                        diesel::insert_into(device_logs::table)
+                            .values(NewDeviceLog {
+                                tenant_id,
+                                device_id,
+                                level: "INFO".to_string(),
+                                message: "Device registered and came online".to_string(),
+                            })
+                            .execute(connection)?;
+                        to_ingress_context(device)
+                            .map(AutoRegisterOutcome::Created)
+                            .map_err(|error| {
+                                diesel::result::Error::DeserializationError(Box::new(error))
+                            })
+                    })
+                    .map_err(map_diesel_error)
+            })
+            .await
+    }
+
+    async fn apply_heartbeat(
+        &self,
+        identity: &DeviceIdentity,
+        write: HeartbeatWrite,
+    ) -> Result<DeviceWriteOutcome, PersistenceError> {
+        let tenant_id = identity.tenant_id_str().to_owned();
+        let device_id = identity.device_id().to_owned();
+        self.executor
+            .run(move |connection| {
+                connection
+                    .transaction::<_, AppError, _>(|connection| {
+                        let current_status = devices::table
+                            .filter(devices::tenant_id.eq(&tenant_id))
+                            .filter(devices::id.eq(&device_id))
+                            .select(devices::status)
+                            .for_update()
+                            .first::<String>(connection)
+                            .optional()?;
+                        if current_status.as_deref() != Some(write.expected_status.as_str()) {
+                            return Ok(DeviceWriteOutcome {
+                                applied: false,
+                                actions_enqueued: 0,
+                            });
+                        }
+                        diesel::update(
+                            devices::table
+                                .filter(devices::tenant_id.eq(&tenant_id))
+                                .filter(devices::id.eq(&device_id)),
+                        )
+                        .set((
+                            devices::status.eq(&write.status),
+                            devices::firmware.eq(write.firmware),
+                            devices::uptime_seconds.eq(write.uptime_seconds),
+                            devices::last_seen.eq(write.observed_at),
+                            devices::updated_at.eq(write.observed_at),
+                        ))
+                        .execute(connection)?;
+                        if write.expected_status != write.status {
+                            diesel::insert_into(device_logs::table)
+                                .values(NewDeviceLog {
+                                    tenant_id: tenant_id.clone(),
+                                    device_id: device_id.clone(),
+                                    level: "INFO".to_string(),
+                                    message: format!(
+                                        "Device status changed from {} to {}",
+                                        write.expected_status, write.status
+                                    ),
+                                })
+                                .execute(connection)?;
+                        }
+                        let actions_enqueued =
+                            enqueue_pending_actions(connection, &write.pending_actions)?;
+                        Ok(DeviceWriteOutcome {
+                            applied: true,
+                            actions_enqueued,
+                        })
+                    })
+                    .map_err(map_app_error)
+            })
+            .await
+    }
+
+    async fn offline_candidates(
+        &self,
+        cutoff: chrono::NaiveDateTime,
+    ) -> Result<Vec<DeviceIngressContext>, PersistenceError> {
+        self.executor
+            .run(move |connection| {
+                devices::table
+                    .filter(devices::status.ne("offline"))
+                    .filter(devices::last_seen.lt(cutoff))
+                    .select(Device::as_select())
+                    .load::<Device>(connection)
+                    .map_err(map_diesel_error)?
+                    .into_iter()
+                    .map(to_ingress_context)
+                    .collect()
+            })
+            .await
+    }
+
+    async fn apply_offline_transitions(
+        &self,
+        cutoff: chrono::NaiveDateTime,
+        transitions: Vec<OfflineTransition>,
+    ) -> Result<OfflineWriteOutcome, PersistenceError> {
+        self.executor
+            .run(move |connection| {
+                connection
+                    .transaction::<_, AppError, _>(|connection| {
+                        let mut devices_updated = 0;
+                        let mut actions_enqueued = 0;
+                        for transition in transitions {
+                            let tenant_id = transition.context.identity.tenant_id_str();
+                            let device_id = transition.context.identity.device_id();
+                            let current = devices::table
+                                .filter(devices::tenant_id.eq(tenant_id))
+                                .filter(devices::id.eq(device_id))
+                                .select((devices::status, devices::last_seen))
+                                .for_update()
+                                .first::<(String, Option<chrono::NaiveDateTime>)>(connection)
+                                .optional()?;
+                            let eligible = current.is_some_and(|(status, last_seen)| {
+                                status == transition.context.status
+                                    && status != "offline"
+                                    && last_seen.is_some_and(|seen| seen < cutoff)
+                            });
+                            if !eligible {
+                                continue;
+                            }
+                            diesel::update(
+                                devices::table
+                                    .filter(devices::tenant_id.eq(tenant_id))
+                                    .filter(devices::id.eq(device_id)),
+                            )
+                            .set(devices::status.eq("offline"))
+                            .execute(connection)?;
+                            diesel::insert_into(device_logs::table)
+                                .values(NewDeviceLog {
+                                    tenant_id: tenant_id.to_string(),
+                                    device_id: device_id.to_string(),
+                                    level: "WARN".to_string(),
+                                    message: "Device went offline (no heartbeat)".to_string(),
+                                })
+                                .execute(connection)?;
+                            devices_updated += 1;
+                            actions_enqueued +=
+                                enqueue_pending_actions(connection, &transition.pending_actions)?;
+                        }
+                        Ok(OfflineWriteOutcome {
+                            devices_updated,
+                            actions_enqueued,
+                        })
+                    })
+                    .map_err(map_app_error)
             })
             .await
     }

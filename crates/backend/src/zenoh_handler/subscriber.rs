@@ -56,7 +56,7 @@ pub async fn run_subscriber(
     let mut subscriber_tasks = tokio::task::JoinSet::new();
 
     // Spawn heartbeat handler in a background task
-    let heartbeat_pool = db_pool.clone();
+    let heartbeat_persistence = persistence.clone();
     let heartbeat_metrics = zenoh_metrics.clone();
     let heartbeat_cache = rule_cache.clone();
     subscriber_tasks.spawn(async move {
@@ -71,17 +71,21 @@ pub async fn run_subscriber(
                     ) else {
                         continue;
                     };
-                    let pool = heartbeat_pool.clone();
-                    let cache = heartbeat_cache.clone();
-                    let _ = tokio::task::spawn_blocking(move || {
-                        handlers::heartbeat::handle_heartbeat(
-                            &pool,
-                            &topic_device_id,
-                            &payload,
-                            &cache,
-                            allow_auto_register,
-                        )
-                    })
+                    let identity = handlers::resolve_ingress_identity(
+                        &heartbeat_persistence,
+                        "heartbeat",
+                        &topic_device_id,
+                        !allow_auto_register,
+                    )
+                    .await;
+                    handlers::heartbeat::handle_heartbeat(
+                        &heartbeat_persistence,
+                        identity,
+                        &topic_device_id,
+                        &payload,
+                        &heartbeat_cache,
+                        allow_auto_register,
+                    )
                     .await;
                     heartbeat_metrics
                         .messages_in
@@ -133,8 +137,7 @@ pub async fn run_subscriber(
     });
 
     // Spawn shadow get handler (async — DB part uses spawn_blocking internally)
-    let shadow_get_pool = db_pool.clone();
-    let shadow_get_persistence = persistence;
+    let shadow_get_persistence = persistence.clone();
     let shadow_get_session = session.clone();
     let shadow_get_metrics = zenoh_metrics.clone();
     subscriber_tasks.spawn(async move {
@@ -150,7 +153,6 @@ pub async fn run_subscriber(
                         continue;
                     };
                     handlers::shadow::handle_shadow_get(
-                        &shadow_get_pool,
                         &shadow_get_persistence,
                         &shadow_get_session,
                         &topic_device_id,
@@ -171,7 +173,7 @@ pub async fn run_subscriber(
     });
 
     // Spawn log handler
-    let log_pool = db_pool.clone();
+    let log_persistence = persistence.clone();
     let log_metrics = zenoh_metrics.clone();
     subscriber_tasks.spawn(async move {
         loop {
@@ -185,10 +187,22 @@ pub async fn run_subscriber(
                     ) else {
                         continue;
                     };
-                    let pool = log_pool.clone();
-                    let _ = tokio::task::spawn_blocking(move || {
-                        handlers::log::handle_device_log(&pool, &topic_device_id, &payload);
-                    })
+                    let Some(identity) = handlers::resolve_ingress_identity(
+                        &log_persistence,
+                        "device log",
+                        &topic_device_id,
+                        true,
+                    )
+                    .await
+                    else {
+                        continue;
+                    };
+                    handlers::log::handle_device_log(
+                        &log_persistence,
+                        &identity,
+                        &topic_device_id,
+                        &payload,
+                    )
                     .await;
                     log_metrics.messages_in.fetch_add(1, Ordering::Relaxed);
                 }
@@ -201,7 +215,7 @@ pub async fn run_subscriber(
     });
 
     // Spawn command response handler
-    let cmd_response_pool = db_pool.clone();
+    let cmd_response_persistence = persistence.clone();
     let cmd_response_metrics = zenoh_metrics.clone();
     subscriber_tasks.spawn(async move {
         loop {
@@ -215,14 +229,22 @@ pub async fn run_subscriber(
                     ) else {
                         continue;
                     };
-                    let pool = cmd_response_pool.clone();
-                    let _ = tokio::task::spawn_blocking(move || {
-                        handlers::command_response::handle_command_response(
-                            &pool,
-                            &topic_device_id,
-                            &payload,
-                        );
-                    })
+                    let Some(identity) = handlers::resolve_ingress_identity(
+                        &cmd_response_persistence,
+                        "command response",
+                        &topic_device_id,
+                        true,
+                    )
+                    .await
+                    else {
+                        continue;
+                    };
+                    handlers::command_response::handle_command_response(
+                        &cmd_response_persistence,
+                        &identity,
+                        &topic_device_id,
+                        &payload,
+                    )
                     .await;
                     cmd_response_metrics
                         .messages_in
@@ -261,16 +283,23 @@ pub async fn run_subscriber(
                         ) else {
                             continue;
                         };
-                        let pool = db_pool.clone();
-                        let cache = rule_cache.clone();
-                        let _ = tokio::task::spawn_blocking(move || {
-                            handlers::telemetry::handle_telemetry(
-                                &pool,
-                                &topic_device_id,
-                                &payload,
-                                &cache,
-                            )
-                        })
+                        let Some(identity) = handlers::resolve_ingress_identity(
+                            &persistence,
+                            "telemetry",
+                            &topic_device_id,
+                            true,
+                        )
+                        .await
+                        else {
+                            continue;
+                        };
+                        handlers::telemetry::handle_telemetry(
+                            &persistence,
+                            &identity,
+                            &topic_device_id,
+                            &payload,
+                            &rule_cache,
+                        )
                         .await;
                         zenoh_metrics.messages_in.fetch_add(1, Ordering::Relaxed);
                     }

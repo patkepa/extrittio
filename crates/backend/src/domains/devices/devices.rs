@@ -16,7 +16,6 @@ use crate::domains::devices::types::{
 };
 use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse, PaginationParams};
-use crate::repositories::telemetry_repo;
 use crate::services::{command_service, device_catalog_service, device_service};
 use crate::state::{AppState, run_db};
 
@@ -738,17 +737,18 @@ pub(crate) async fn get_device_latest_location(
     Extension(ctx): Extension<RequestContext>,
     Path(device_id): Path<String>,
 ) -> Result<Json<Option<LocationResponse>>, AppError> {
-    let result = run_db(&state.db_pool, move |conn| {
-        let record = telemetry_repo::get_latest_location(conn, ctx.tenant_id_str(), &device_id)?;
-        Ok(record.map(|r| LocationResponse {
+    let result = state
+        .persistence
+        .telemetry
+        .latest_location(ctx.tenant_id(), &device_id)
+        .await?
+        .map(|r| LocationResponse {
             latitude: r.latitude.unwrap_or(0.0),
             longitude: r.longitude.unwrap_or(0.0),
             speed: r.speed,
             altitude: r.altitude,
             heading: r.heading,
             timestamp: r.received_at.and_utc().to_rfc3339(),
-        }))
-    })
-    .await?;
+        });
     Ok(Json(result))
 }

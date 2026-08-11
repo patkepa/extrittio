@@ -10,11 +10,50 @@ use crate::auth::policy::{self, Permission};
 use crate::db::models::{
     Device, NewTelemetryRecord, TelemetryRecord, TelemetryRollupHourly, UpdateDevice,
 };
+use crate::domains::telemetry::port::TelemetryRepository;
+use crate::domains::telemetry::types::{
+    TelemetryQuery, TelemetryRecord as PortTelemetryRecord, TelemetryRollup,
+};
 use crate::error::AppError;
 use crate::repositories::{device_repo, network_observed_host_repo, telemetry_repo};
 use crate::services::device_connections::ObservedNetworkHost;
 
 const NETWORK_OBSERVED_HOST_RETENTION_DAYS: i64 = 30;
+
+pub async fn list_with_repository(
+    ctx: &RequestContext,
+    repository: &dyn TelemetryRepository,
+    device_id: &str,
+    query: TelemetryQuery,
+) -> Result<Vec<PortTelemetryRecord>, AppError> {
+    policy::require(ctx, Permission::ReadTelemetry)?;
+    repository
+        .list(ctx.tenant_id(), device_id, query)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Device '{device_id}' not found")))
+}
+
+pub async fn latest_with_repository(
+    ctx: &RequestContext,
+    repository: &dyn TelemetryRepository,
+    device_id: &str,
+) -> Result<Option<PortTelemetryRecord>, AppError> {
+    policy::require(ctx, Permission::ReadTelemetry)?;
+    Ok(repository.latest(ctx.tenant_id(), device_id).await?)
+}
+
+pub async fn list_hourly_with_repository(
+    ctx: &RequestContext,
+    repository: &dyn TelemetryRepository,
+    device_id: &str,
+    query: TelemetryQuery,
+) -> Result<Vec<TelemetryRollup>, AppError> {
+    policy::require(ctx, Permission::ReadTelemetry)?;
+    repository
+        .list_hourly(ctx.tenant_id(), device_id, query)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Device '{device_id}' not found")))
+}
 
 pub fn list(
     ctx: &RequestContext,

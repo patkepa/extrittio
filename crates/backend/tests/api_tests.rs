@@ -740,12 +740,21 @@ async fn test_device_ingress_resolves_the_persisted_tenant_identity() {
     };
     let rule_cache =
         std::sync::RwLock::new(extrittio_backend::rule_engine::cache::RuleCache::default());
+    let persistence = extrittio_backend::persistence::postgres::create_persistence(pool.clone());
+    let identity = persistence
+        .devices
+        .resolve_identity("tenant-b-ingress")
+        .await
+        .unwrap()
+        .unwrap();
     extrittio_backend::zenoh_handler::handlers::telemetry::handle_telemetry(
-        &pool,
+        &persistence,
+        &identity,
         "tenant-b-ingress",
         &telemetry.encode_to_vec(),
         &rule_cache,
-    );
+    )
+    .await;
 
     let mut conn = pool.get().unwrap();
     let tenant_id = extrittio_backend::db::schema::telemetry::table

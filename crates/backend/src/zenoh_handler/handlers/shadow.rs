@@ -109,7 +109,6 @@ pub async fn handle_shadow_report(
 
 /// Decode a `ShadowGet` and publish the currently committed delta if non-empty.
 pub async fn handle_shadow_get(
-    db_pool: &DbPool,
     persistence: &Persistence,
     session: &Arc<zenoh::Session>,
     topic_device_id: &str,

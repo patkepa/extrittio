@@ -1,14 +1,20 @@
 use prost::Message;
 use tracing::{info, warn};
 
+use crate::persistence::Persistence;
 use crate::services::command_service;
-use crate::state::DbPool;
+use crate::tenancy::DeviceIdentity;
 
 use extrittio_common::extrittio::DeviceCommandResponse;
 
 /// Decode a `DeviceCommandResponse` protobuf message and update the corresponding
 /// command record's status and response payload.
-pub fn handle_command_response(db_pool: &DbPool, topic_device_id: &str, payload: &[u8]) {
+pub async fn handle_command_response(
+    persistence: &Persistence,
+    identity: &DeviceIdentity,
+    topic_device_id: &str,
+    payload: &[u8],
+) {
     let response = match DeviceCommandResponse::decode(payload) {
         Ok(msg) => msg,
         Err(e) => {
@@ -25,32 +31,21 @@ pub fn handle_command_response(db_pool: &DbPool, topic_device_id: &str, payload:
         return;
     }
 
-    let mut conn = match db_pool.get() {
-        Ok(c) => c,
-        Err(e) => {
-            warn!("Failed to get DB connection: {}", e);
-            return;
-        }
-    };
-    let Some(identity) =
-        super::resolve_ingress_identity(&mut conn, "command response", &response.device_id)
-    else {
-        return;
-    };
-
     let response_payload = if response.payload.is_empty() {
         None
     } else {
         Some(response.payload.as_str())
     };
 
-    match command_service::handle_response(
-        &mut conn,
-        &identity,
+    match command_service::handle_response_with_repository(
+        persistence.commands.as_ref(),
+        identity,
         &response.correlation_id,
         &response.status,
         response_payload,
-    ) {
+    )
+    .await
+    {
         Ok(Some(new_status)) => {
             info!(
                 "Command {} for device {} -> {}",

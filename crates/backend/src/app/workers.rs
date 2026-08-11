@@ -196,7 +196,7 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         },
     );
 
-    let checker_pool = state.db_pool.clone();
+    let checker_persistence = state.persistence.clone();
     let checker_cache = state.rule_cache.clone();
     let offline_timeout = config.offline_timeout_secs;
     spawn_worker(
@@ -205,7 +205,8 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         &state.readiness,
         "offline-checker",
         async move {
-            background::run_offline_checker(checker_pool, offline_timeout, checker_cache).await;
+            background::run_offline_checker(checker_persistence, offline_timeout, checker_cache)
+                .await;
             Ok(())
         },
     );
@@ -223,7 +224,7 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         },
     );
 
-    let log_retention_pool = state.db_pool.clone();
+    let log_retention_persistence = state.persistence.clone();
     let log_retention_days = config.log_retention_days;
     spawn_worker(
         &mut workers,
@@ -231,12 +232,12 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         &state.readiness,
         "log-retention",
         async move {
-            background::run_log_retention(log_retention_pool, log_retention_days).await;
+            background::run_log_retention(log_retention_persistence, log_retention_days).await;
             Ok(())
         },
     );
 
-    let command_pool = state.db_pool.clone();
+    let command_persistence = state.persistence.clone();
     let command_timeout = config.command_timeout_secs;
     spawn_worker(
         &mut workers,
@@ -244,12 +245,12 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         &state.readiness,
         "command-timeout",
         async move {
-            background::run_command_timeout_checker(command_pool, command_timeout).await;
+            background::run_command_timeout_checker(command_persistence, command_timeout).await;
             Ok(())
         },
     );
 
-    let telemetry_pool = state.db_pool.clone();
+    let telemetry_persistence = state.persistence.clone();
     let telemetry_retention_days = config.telemetry_retention_days;
     spawn_worker(
         &mut workers,
@@ -258,7 +259,7 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         "telemetry-retention",
         async move {
             background::run_telemetry_rollup_and_retention(
-                telemetry_pool,
+                telemetry_persistence,
                 telemetry_retention_days,
             )
             .await;

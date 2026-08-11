@@ -10,10 +10,10 @@ use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::auth::context::RequestContext;
-use crate::db::models::CommandRecord;
+use crate::domains::commands::types::{CommandQuery, CommandRecord};
 use crate::error::AppError;
 use crate::services::command_service;
-use crate::state::{AppState, run_db};
+use crate::state::AppState;
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -106,9 +106,9 @@ pub(crate) async fn send_command(
     }
 
     let params = body.params.unwrap_or_default();
-    let record = command_service::send_command_as_user(
+    let record = command_service::send_command_as_user_with_repository(
         &ctx,
-        &state.db_pool,
+        state.persistence.commands.as_ref(),
         &state.zenoh_session,
         &id,
         &body.command,
@@ -140,15 +140,17 @@ pub(crate) async fn list_commands(
     Path(id): Path<String>,
     Query(params): Query<CommandsQuery>,
 ) -> Result<Json<Vec<CommandResponse>>, AppError> {
-    let response = run_db(&state.db_pool, move |conn| {
-        let limit = params.limit.unwrap_or(50).min(500);
-
-        let records =
-            command_service::list_commands(&ctx, conn, &id, params.status.as_deref(), limit)?;
-
-        Ok(records.into_iter().map(to_command_response).collect())
-    })
+    let records = command_service::list_commands_with_repository(
+        &ctx,
+        state.persistence.commands.as_ref(),
+        &id,
+        CommandQuery {
+            limit: params.limit.unwrap_or(50).min(500),
+            status: params.status,
+        },
+    )
     .await?;
+    let response = records.into_iter().map(to_command_response).collect();
 
     Ok(Json(response))
 }

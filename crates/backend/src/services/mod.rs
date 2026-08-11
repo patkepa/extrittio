@@ -18,6 +18,8 @@ pub mod dashboard_service;
 pub mod device_catalog_service;
 #[path = "../domains/devices/device_connections.rs"]
 pub mod device_connections;
+#[path = "../domains/devices/device_ingress_service.rs"]
+pub mod device_ingress_service;
 #[path = "../domains/devices/device_service.rs"]
 pub mod device_service;
 #[path = "../domains/device_types/device_type_service.rs"]

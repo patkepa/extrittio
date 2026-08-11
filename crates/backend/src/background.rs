@@ -3,16 +3,12 @@ use std::sync::RwLock;
 use std::time::Duration;
 
 use chrono::Timelike;
-use diesel::Connection;
 use tracing::{info, warn};
 
-use crate::error::AppError;
-use crate::repositories::{device_repo, network_observed_host_repo};
-use crate::rule_engine::actions::enqueue_pending_actions;
+use crate::persistence::Persistence;
+use crate::repositories::network_observed_host_repo;
 use crate::rule_engine::cache::RuleCache;
-use crate::rule_engine::evaluate::evaluate_status_change_for_tenant;
-use crate::rule_engine::types::StatusChange;
-use crate::services::{command_service, device_service, log_service, telemetry_service};
+use crate::services::{command_service, device_ingress_service, log_service};
 use crate::state::DbPool;
 
 /// Compute a backoff sleep duration based on consecutive failures.
@@ -24,7 +20,7 @@ fn backoff_duration(base: Duration, consecutive_failures: u32, max: Duration) ->
 }
 
 pub async fn run_offline_checker(
-    db_pool: DbPool,
+    persistence: Persistence,
     timeout_secs: u64,
     rule_cache: Arc<RwLock<RuleCache>>,
 ) {
@@ -41,66 +37,27 @@ pub async fn run_offline_checker(
         };
         tokio::time::sleep(sleep_dur).await;
 
-        let pool = db_pool.clone();
-        let cache = rule_cache.clone();
-        let result = tokio::task::spawn_blocking(move || {
-            let mut conn = pool.get().map_err(|e| e.to_string())?;
-            conn.transaction::<(usize, usize), AppError, _>(|conn| {
-                // Device transitions, transition logs, and rule outbox events
-                // share one commit boundary.
-                #[allow(clippy::cast_possible_wrap)]
-                let cutoff = chrono::Utc::now().naive_utc()
-                    - chrono::TimeDelta::seconds(timeout_secs as i64);
-                let going_offline = device_repo::find_devices_going_offline(conn, cutoff)?;
-                let count = device_service::mark_devices_offline(conn, &going_offline)?;
-
-                let mut device_records = Vec::new();
-                for identity in &going_offline {
-                    device_records.push(device_repo::find_device_for_tenant(
-                        conn,
-                        identity.tenant_id_str(),
-                        identity.device_id(),
-                    )?);
-                }
-
-                let cache_guard = cache.read().map_err(|error| {
-                    AppError::Internal(format!("failed to read-lock rule cache: {error}"))
-                })?;
-                let mut all_actions = Vec::new();
-                for device in &device_records {
-                    let change = StatusChange {
-                        old_status: "online".to_string(),
-                        new_status: "offline".to_string(),
-                    };
-                    let actions = evaluate_status_change_for_tenant(
-                        &device.tenant_id,
-                        &device.id,
-                        device.device_type_id,
-                        device.fleet_id,
-                        &change,
-                        &cache_guard,
-                    );
-                    all_actions.extend(actions);
-                }
-
-                let enqueued = enqueue_pending_actions(conn, &all_actions)?;
-                Ok((count, enqueued))
-            })
-            .map_err(|error| error.to_string())
-        })
+        #[allow(clippy::cast_possible_wrap)]
+        let cutoff =
+            chrono::Utc::now().naive_utc() - chrono::TimeDelta::seconds(timeout_secs as i64);
+        let result = device_ingress_service::mark_offline_devices(
+            persistence.devices.as_ref(),
+            cutoff,
+            &rule_cache,
+        )
         .await;
 
         match result {
-            Ok(Ok((count, enqueued))) => {
+            Ok(outcome) => {
                 consecutive_failures = 0;
-                if count > 0 {
+                if outcome.devices_updated > 0 {
                     info!(
                         "Marked {} devices as offline and enqueued {} rule action(s)",
-                        count, enqueued
+                        outcome.devices_updated, outcome.actions_enqueued
                     );
                 }
             }
-            Ok(Err(msg)) => {
+            Err(error) => {
                 consecutive_failures = consecutive_failures.saturating_add(1);
                 if consecutive_failures >= 5 {
                     tracing::error!(
@@ -108,31 +65,17 @@ pub async fn run_offline_checker(
                         consecutive_failures,
                         backoff_duration(base_interval, consecutive_failures, max_backoff)
                             .as_secs(),
-                        msg,
+                        error,
                     );
                 } else {
-                    warn!("Offline checker error: {}", msg);
-                }
-            }
-            Err(e) => {
-                consecutive_failures = consecutive_failures.saturating_add(1);
-                if consecutive_failures >= 5 {
-                    tracing::error!(
-                        "Offline checker: {} consecutive failures (next retry in {}s): task panicked: {}",
-                        consecutive_failures,
-                        backoff_duration(base_interval, consecutive_failures, max_backoff)
-                            .as_secs(),
-                        e,
-                    );
-                } else {
-                    warn!("Offline checker task panicked: {}", e);
+                    warn!("Offline checker error: {}", error);
                 }
             }
         }
     }
 }
 
-pub async fn run_command_timeout_checker(db_pool: DbPool, timeout_secs: u64) {
+pub async fn run_command_timeout_checker(persistence: Persistence, timeout_secs: u64) {
     let base_interval = Duration::from_secs(30);
     let max_backoff = Duration::from_secs(300); // 5 minutes
     let mut consecutive_failures: u32 = 0;
@@ -149,21 +92,20 @@ pub async fn run_command_timeout_checker(db_pool: DbPool, timeout_secs: u64) {
         };
         tokio::time::sleep(sleep_dur).await;
 
-        let pool = db_pool.clone();
-        let result = tokio::task::spawn_blocking(move || {
-            let mut conn = pool.get().map_err(|e| e.to_string())?;
-            command_service::timeout_stale(&mut conn, timeout_secs).map_err(|e| e.to_string())
-        })
+        let result = command_service::timeout_stale_with_repository(
+            persistence.commands.as_ref(),
+            timeout_secs,
+        )
         .await;
 
         match result {
-            Ok(Ok(count)) => {
+            Ok(count) => {
                 consecutive_failures = 0;
                 if count > 0 {
                     info!("Marked {} commands as timed_out", count);
                 }
             }
-            Ok(Err(msg)) => {
+            Err(error) => {
                 consecutive_failures = consecutive_failures.saturating_add(1);
                 if consecutive_failures >= 5 {
                     tracing::error!(
@@ -171,24 +113,10 @@ pub async fn run_command_timeout_checker(db_pool: DbPool, timeout_secs: u64) {
                         consecutive_failures,
                         backoff_duration(base_interval, consecutive_failures, max_backoff)
                             .as_secs(),
-                        msg,
+                        error,
                     );
                 } else {
-                    warn!("Command timeout checker error: {}", msg);
-                }
-            }
-            Err(e) => {
-                consecutive_failures = consecutive_failures.saturating_add(1);
-                if consecutive_failures >= 5 {
-                    tracing::error!(
-                        "Command timeout checker: {} consecutive failures (next retry in {}s): task panicked: {}",
-                        consecutive_failures,
-                        backoff_duration(base_interval, consecutive_failures, max_backoff)
-                            .as_secs(),
-                        e,
-                    );
-                } else {
-                    warn!("Command timeout checker task panicked: {}", e);
+                    warn!("Command timeout checker error: {}", error);
                 }
             }
         }
@@ -285,7 +213,7 @@ pub async fn run_alert_retention(db_pool: DbPool, retention_days: u64) {
     }
 }
 
-pub async fn run_log_retention(db_pool: DbPool, retention_days: u64) {
+pub async fn run_log_retention(persistence: Persistence, retention_days: u64) {
     let base_interval = Duration::from_secs(3600);
     let max_backoff = Duration::from_secs(7200);
     let mut consecutive_failures: u32 = 0;
@@ -299,24 +227,19 @@ pub async fn run_log_retention(db_pool: DbPool, retention_days: u64) {
         };
         tokio::time::sleep(sleep_dur).await;
 
-        let pool = db_pool.clone();
-        let result = tokio::task::spawn_blocking(move || {
-            let mut conn = pool.get().map_err(|e| e.to_string())?;
-            #[allow(clippy::cast_possible_wrap)]
-            let cutoff =
-                chrono::Utc::now().naive_utc() - chrono::Duration::days(retention_days as i64);
-            log_service::delete_older_than(&mut conn, cutoff).map_err(|e| e.to_string())
-        })
-        .await;
+        #[allow(clippy::cast_possible_wrap)]
+        let cutoff = chrono::Utc::now().naive_utc() - chrono::Duration::days(retention_days as i64);
+        let result =
+            log_service::delete_older_than_with_repository(persistence.logs.as_ref(), cutoff).await;
 
         match result {
-            Ok(Ok(count)) => {
+            Ok(count) => {
                 consecutive_failures = 0;
                 if count > 0 {
                     info!("Log retention: deleted {} device log rows", count);
                 }
             }
-            Ok(Err(msg)) => {
+            Err(error) => {
                 consecutive_failures = consecutive_failures.saturating_add(1);
                 if consecutive_failures >= 5 {
                     tracing::error!(
@@ -324,31 +247,17 @@ pub async fn run_log_retention(db_pool: DbPool, retention_days: u64) {
                         consecutive_failures,
                         backoff_duration(base_interval, consecutive_failures, max_backoff)
                             .as_secs(),
-                        msg,
+                        error,
                     );
                 } else {
-                    warn!("Log retention error: {}", msg);
-                }
-            }
-            Err(e) => {
-                consecutive_failures = consecutive_failures.saturating_add(1);
-                if consecutive_failures >= 5 {
-                    tracing::error!(
-                        "Log retention: {} consecutive failures (next retry in {}s): task panicked: {}",
-                        consecutive_failures,
-                        backoff_duration(base_interval, consecutive_failures, max_backoff)
-                            .as_secs(),
-                        e,
-                    );
-                } else {
-                    warn!("Log retention task panicked: {}", e);
+                    warn!("Log retention error: {}", error);
                 }
             }
         }
     }
 }
 
-pub async fn run_telemetry_rollup_and_retention(db_pool: DbPool, retention_days: u64) {
+pub async fn run_telemetry_rollup_and_retention(persistence: Persistence, retention_days: u64) {
     let base_interval = Duration::from_secs(3600);
     let max_backoff = Duration::from_secs(7200);
     let mut consecutive_failures: u32 = 0;
@@ -365,53 +274,42 @@ pub async fn run_telemetry_rollup_and_retention(db_pool: DbPool, retention_days:
         };
         tokio::time::sleep(sleep_dur).await;
 
-        let pool = db_pool.clone();
-        let result = tokio::task::spawn_blocking(move || {
-            let mut conn = pool.get().map_err(|e| e.to_string())?;
-            let now = chrono::Utc::now().naive_utc();
-            let current_hour = now
-                - chrono::Duration::minutes(i64::from(now.minute()))
-                - chrono::Duration::seconds(i64::from(now.second()))
-                - chrono::Duration::nanoseconds(i64::from(now.nanosecond()));
-            let since = current_hour - chrono::Duration::hours(25);
-
-            let rollup_count =
-                telemetry_service::upsert_hourly_rollups(&mut conn, since, current_hour)
-                    .map_err(|e| e.to_string())?;
-
-            #[allow(clippy::cast_possible_wrap)]
-            let cutoff = now - chrono::Duration::days(retention_days as i64);
-            let partition_result = telemetry_service::maintain_partitions(&mut conn, 3, cutoff)
-                .map_err(|e| e.to_string())?;
-            let deleted_count = telemetry_service::delete_older_than(&mut conn, cutoff)
-                .map_err(|e| e.to_string())?;
-
-            Ok::<(usize, usize, i32, i32), String>((
-                rollup_count,
-                deleted_count,
-                partition_result.created_count,
-                partition_result.dropped_count,
-            ))
-        })
-        .await;
+        let now = chrono::Utc::now().naive_utc();
+        let current_hour = now
+            - chrono::Duration::minutes(i64::from(now.minute()))
+            - chrono::Duration::seconds(i64::from(now.second()))
+            - chrono::Duration::nanoseconds(i64::from(now.nanosecond()));
+        let since = current_hour - chrono::Duration::hours(25);
+        #[allow(clippy::cast_possible_wrap)]
+        let cutoff = now - chrono::Duration::days(retention_days as i64);
+        let result = persistence
+            .telemetry
+            .maintain(since, current_hour, cutoff)
+            .await;
 
         match result {
-            Ok(Ok((rollup_count, deleted_count, created_partitions, dropped_partitions))) => {
+            Ok(outcome) => {
                 consecutive_failures = 0;
-                if rollup_count > 0 {
-                    info!("Telemetry rollup: upserted {} hourly buckets", rollup_count);
-                }
-                if created_partitions > 0 || dropped_partitions > 0 {
+                if outcome.rollups_upserted > 0 {
                     info!(
-                        "Telemetry partitions: created {}, dropped {}",
-                        created_partitions, dropped_partitions
+                        "Telemetry rollup: upserted {} hourly buckets",
+                        outcome.rollups_upserted
                     );
                 }
-                if deleted_count > 0 {
-                    info!("Telemetry retention: deleted {} raw rows", deleted_count);
+                if outcome.partitions.created_count > 0 || outcome.partitions.dropped_count > 0 {
+                    info!(
+                        "Telemetry partitions: created {}, dropped {}",
+                        outcome.partitions.created_count, outcome.partitions.dropped_count
+                    );
+                }
+                if outcome.rows_deleted > 0 {
+                    info!(
+                        "Telemetry retention: deleted {} raw rows",
+                        outcome.rows_deleted
+                    );
                 }
             }
-            Ok(Err(msg)) => {
+            Err(error) => {
                 consecutive_failures = consecutive_failures.saturating_add(1);
                 if consecutive_failures >= 5 {
                     tracing::error!(
@@ -419,24 +317,10 @@ pub async fn run_telemetry_rollup_and_retention(db_pool: DbPool, retention_days:
                         consecutive_failures,
                         backoff_duration(base_interval, consecutive_failures, max_backoff)
                             .as_secs(),
-                        msg,
+                        error,
                     );
                 } else {
-                    warn!("Telemetry rollup/retention error: {}", msg);
-                }
-            }
-            Err(e) => {
-                consecutive_failures = consecutive_failures.saturating_add(1);
-                if consecutive_failures >= 5 {
-                    tracing::error!(
-                        "Telemetry rollup/retention: {} consecutive failures (next retry in {}s): task panicked: {}",
-                        consecutive_failures,
-                        backoff_duration(base_interval, consecutive_failures, max_backoff)
-                            .as_secs(),
-                        e,
-                    );
-                } else {
-                    warn!("Telemetry rollup/retention task panicked: {}", e);
+                    warn!("Telemetry rollup/retention error: {}", error);
                 }
             }
         }

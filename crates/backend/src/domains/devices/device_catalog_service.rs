@@ -202,7 +202,10 @@ mod tests {
 
     use super::*;
     use crate::auth::Claims;
-    use crate::domains::devices::types::DeviceList;
+    use crate::domains::devices::types::{
+        AutoRegisterOutcome, DeviceIngressContext, DeviceList, DeviceWriteOutcome, HeartbeatWrite,
+        OfflineTransition, OfflineWriteOutcome,
+    };
     use crate::tenancy::TenantId;
 
     #[derive(Default)]
@@ -226,6 +229,52 @@ mod tests {
             _device_id: &str,
         ) -> Result<Option<crate::tenancy::DeviceIdentity>, PersistenceError> {
             Ok(None)
+        }
+
+        async fn ingress_context(
+            &self,
+            _identity: &crate::tenancy::DeviceIdentity,
+        ) -> Result<Option<DeviceIngressContext>, PersistenceError> {
+            Ok(None)
+        }
+
+        async fn auto_register(
+            &self,
+            _tenant: &TenantId,
+            _device_id: &str,
+            _firmware: &str,
+            _preferred_device_type: &str,
+        ) -> Result<AutoRegisterOutcome, PersistenceError> {
+            Ok(AutoRegisterOutcome::NoDeviceType)
+        }
+
+        async fn apply_heartbeat(
+            &self,
+            _identity: &crate::tenancy::DeviceIdentity,
+            _write: HeartbeatWrite,
+        ) -> Result<DeviceWriteOutcome, PersistenceError> {
+            Ok(DeviceWriteOutcome {
+                applied: false,
+                actions_enqueued: 0,
+            })
+        }
+
+        async fn offline_candidates(
+            &self,
+            _cutoff: chrono::NaiveDateTime,
+        ) -> Result<Vec<DeviceIngressContext>, PersistenceError> {
+            Ok(Vec::new())
+        }
+
+        async fn apply_offline_transitions(
+            &self,
+            _cutoff: chrono::NaiveDateTime,
+            _transitions: Vec<OfflineTransition>,
+        ) -> Result<OfflineWriteOutcome, PersistenceError> {
+            Ok(OfflineWriteOutcome {
+                devices_updated: 0,
+                actions_enqueued: 0,
+            })
         }
 
         async fn list(

@@ -7,8 +7,9 @@ use crate::tenancy::DeviceIdentity;
 use crate::tenancy::TenantId;
 
 use super::types::{
-    CreateDeviceRecord, DeviceDetails, DeviceFilter, DeviceList, DeviceListQuery,
-    UpdateDeviceRecord,
+    AutoRegisterOutcome, CreateDeviceRecord, DeviceDetails, DeviceFilter, DeviceIngressContext,
+    DeviceList, DeviceListQuery, DeviceWriteOutcome, HeartbeatWrite, OfflineTransition,
+    OfflineWriteOutcome, UpdateDeviceRecord,
 };
 
 #[async_trait]
@@ -19,6 +20,42 @@ pub trait DeviceRepository: Send + Sync {
         &self,
         device_id: &str,
     ) -> Result<Option<DeviceIdentity>, PersistenceError>;
+
+    async fn ingress_context(
+        &self,
+        identity: &DeviceIdentity,
+    ) -> Result<Option<DeviceIngressContext>, PersistenceError>;
+
+    /// Atomically creates a device, initial shadow, and registration log, or
+    /// returns the existing globally unique device identity.
+    async fn auto_register(
+        &self,
+        tenant: &TenantId,
+        device_id: &str,
+        firmware: &str,
+        preferred_device_type: &str,
+    ) -> Result<AutoRegisterOutcome, PersistenceError>;
+
+    /// Updates heartbeat state and enqueues status-rule actions in one commit.
+    /// `applied=false` requests a caller retry after concurrent state change.
+    async fn apply_heartbeat(
+        &self,
+        identity: &DeviceIdentity,
+        write: HeartbeatWrite,
+    ) -> Result<DeviceWriteOutcome, PersistenceError>;
+
+    async fn offline_candidates(
+        &self,
+        cutoff: chrono::NaiveDateTime,
+    ) -> Result<Vec<DeviceIngressContext>, PersistenceError>;
+
+    /// Rechecks cutoff and expected status, then commits offline transitions,
+    /// logs, and rule actions atomically.
+    async fn apply_offline_transitions(
+        &self,
+        cutoff: chrono::NaiveDateTime,
+        transitions: Vec<OfflineTransition>,
+    ) -> Result<OfflineWriteOutcome, PersistenceError>;
 
     async fn list(
         &self,

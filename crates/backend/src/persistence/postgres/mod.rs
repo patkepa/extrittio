@@ -6,14 +6,17 @@ use crate::state::DbPool;
 mod api_keys;
 mod bootstrap;
 mod certificates;
+mod commands;
 mod configuration;
 mod dashboard;
 mod device_types;
 mod devices;
 pub mod executor;
 mod fleets;
+mod logs;
 mod roles;
 mod shadows;
+mod telemetry;
 mod users;
 
 /// Shared PostgreSQL adapter object. It implements multiple domain ports while
@@ -41,13 +44,16 @@ pub fn create_persistence(pool: DbPool) -> Persistence {
             api_keys: adapter.clone(),
             bootstrap: adapter.clone(),
             certificates: adapter.clone(),
+            commands: adapter.clone(),
             configuration: adapter.clone(),
             dashboard: adapter.clone(),
             device_types: adapter.clone(),
             devices: adapter.clone(),
             fleets: adapter.clone(),
+            logs: adapter.clone(),
             roles: adapter.clone(),
             shadows: adapter.clone(),
+            telemetry: adapter.clone(),
             users: adapter,
         },
     )

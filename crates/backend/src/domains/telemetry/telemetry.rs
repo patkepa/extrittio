@@ -8,10 +8,12 @@ use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::auth::context::RequestContext;
-use crate::db::models::{TelemetryRecord, TelemetryRollupHourly};
+use crate::domains::telemetry::types::{
+    TelemetryQuery as PortTelemetryQuery, TelemetryRecord, TelemetryRollup,
+};
 use crate::error::AppError;
 use crate::services::telemetry_service;
-use crate::state::{AppState, run_db};
+use crate::state::AppState;
 use crate::util;
 
 // ---------------------------------------------------------------------------
@@ -84,8 +86,8 @@ impl From<TelemetryRecord> for TelemetryResponse {
     }
 }
 
-impl From<TelemetryRollupHourly> for HourlyTelemetryResponse {
-    fn from(rollup: TelemetryRollupHourly) -> Self {
+impl From<TelemetryRollup> for HourlyTelemetryResponse {
+    fn from(rollup: TelemetryRollup) -> Self {
         Self {
             device_id: rollup.device_id,
             bucket_start: rollup.bucket_start.and_utc().to_rfc3339(),
@@ -137,12 +139,11 @@ pub(crate) async fn get_latest_device_telemetry(
     Extension(ctx): Extension<RequestContext>,
     Path(id): Path<String>,
 ) -> Result<Json<TelemetryResponse>, AppError> {
-    let response = run_db(&state.db_pool, move |conn| {
-        telemetry_service::latest(&ctx, conn, &id)?
+    let response =
+        telemetry_service::latest_with_repository(&ctx, state.persistence.telemetry.as_ref(), &id)
+            .await?
             .map(TelemetryResponse::from)
-            .ok_or_else(|| AppError::NotFound(format!("No telemetry found for device {id}")))
-    })
-    .await?;
+            .ok_or_else(|| AppError::NotFound(format!("No telemetry found for device {id}")))?;
 
     Ok(Json(response))
 }
@@ -172,14 +173,21 @@ pub(crate) async fn get_hourly_device_telemetry(
     let before = util::parse_timestamp(params.before.as_deref())?;
     let limit = params.limit.unwrap_or(168).clamp(1, 10_000);
 
-    let response = run_db(&state.db_pool, move |conn| {
-        let results = telemetry_service::list_hourly(&ctx, conn, &id, since, before, limit)?;
-        Ok(results
-            .into_iter()
-            .map(HourlyTelemetryResponse::from)
-            .collect())
-    })
+    let results = telemetry_service::list_hourly_with_repository(
+        &ctx,
+        state.persistence.telemetry.as_ref(),
+        &id,
+        PortTelemetryQuery {
+            since,
+            before,
+            limit,
+        },
+    )
     .await?;
+    let response = results
+        .into_iter()
+        .map(HourlyTelemetryResponse::from)
+        .collect();
 
     Ok(Json(response))
 }
@@ -213,14 +221,18 @@ pub(crate) async fn get_device_telemetry(
     let since = util::parse_timestamp(params.since.as_deref())?;
     let before = util::parse_timestamp(params.before.as_deref())?;
 
-    let response = run_db(&state.db_pool, move |conn| {
-        let limit = params.limit.unwrap_or(50).clamp(1, 1000);
-
-        let results = telemetry_service::list(&ctx, conn, &id, since, before, limit)?;
-
-        Ok(results.into_iter().map(TelemetryResponse::from).collect())
-    })
+    let results = telemetry_service::list_with_repository(
+        &ctx,
+        state.persistence.telemetry.as_ref(),
+        &id,
+        PortTelemetryQuery {
+            since,
+            before,
+            limit: params.limit.unwrap_or(50).clamp(1, 1000),
+        },
+    )
     .await?;
+    let response = results.into_iter().map(TelemetryResponse::from).collect();
 
     Ok(Json(response))
 }

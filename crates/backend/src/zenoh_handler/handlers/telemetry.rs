@@ -1,187 +1,142 @@
-use diesel::prelude::*;
 use prost::Message;
 use tracing::{info, warn};
 
-use crate::db::models::NewTelemetryRecord;
-use crate::error::AppError;
-use crate::rule_engine::actions::enqueue_pending_actions;
+use crate::domains::telemetry::types::TelemetryWrite;
+use crate::persistence::Persistence;
 use crate::rule_engine::cache::RuleCache;
 use crate::rule_engine::evaluate::{evaluate_geofence_for_tenant, evaluate_telemetry_for_tenant};
 use crate::rule_engine::types::TelemetryData;
-use crate::services::{device_connections, telemetry_service};
-use crate::state::DbPool;
+use crate::services::device_connections;
+use crate::tenancy::DeviceIdentity;
 
 use extrittio_common::extrittio::DeviceTelemetry;
 
-/// Decode a `DeviceTelemetry` protobuf message, insert a telemetry record, and
-/// update the device's `last_seen` timestamp.
-///
-/// Telemetry, latest device state, and resulting rule actions are committed in
-/// one transaction so a crash cannot persist the measurement while losing its
-/// durable outbox events.
-///
-/// Logs and drops messages from unregistered devices or malformed payloads.
-pub fn handle_telemetry(
-    db_pool: &DbPool,
+const MAX_OPTIMISTIC_RETRIES: usize = 3;
+
+/// Decode and atomically persist telemetry, latest state, device projections,
+/// observed hosts, and resulting durable rule actions.
+pub async fn handle_telemetry(
+    persistence: &Persistence,
+    identity: &DeviceIdentity,
     topic_device_id: &str,
     payload: &[u8],
     rule_cache: &std::sync::RwLock<RuleCache>,
 ) -> usize {
-    let telemetry_msg = match DeviceTelemetry::decode(payload) {
-        Ok(msg) => msg,
-        Err(e) => {
-            warn!("Failed to decode DeviceTelemetry: {}", e);
+    let telemetry = match DeviceTelemetry::decode(payload) {
+        Ok(message) => message,
+        Err(error) => {
+            warn!("Failed to decode DeviceTelemetry: {error}");
             return 0;
         }
     };
-    if !super::validate_topic_device("telemetry", topic_device_id, &telemetry_msg.device_id) {
+    if !super::validate_topic_device("telemetry", topic_device_id, &telemetry.device_id) {
         return 0;
     }
 
-    let mut conn = match db_pool.get() {
-        Ok(c) => c,
-        Err(e) => {
-            warn!("Failed to get DB connection: {}", e);
-            return 0;
-        }
-    };
-    let Some(identity) =
-        super::resolve_ingress_identity(&mut conn, "telemetry", &telemetry_msg.device_id)
-    else {
-        return 0;
-    };
-
-    // Build custom_json from metadata map (if non-empty)
-    let custom_json = if telemetry_msg.metadata.is_empty() {
+    let custom_json = if telemetry.metadata.is_empty() {
         None
     } else {
-        match serde_json::to_value(&telemetry_msg.metadata) {
-            Ok(val) => Some(val),
-            Err(e) => {
-                warn!("Failed to serialize metadata: {}", e);
-                None
+        serde_json::to_value(&telemetry.metadata).ok()
+    };
+    let has_location = telemetry.latitude != 0.0 || telemetry.longitude != 0.0;
+    let observed_network_hosts =
+        device_connections::network_analyzer_hosts_from_metadata(&telemetry.metadata);
+    let declared_connections =
+        device_connections::declared_connections_from_metadata(&telemetry.metadata);
+    let data = TelemetryData {
+        temperature: telemetry.temperature,
+        humidity: telemetry.humidity,
+        battery_level: telemetry.battery_level,
+        latitude: telemetry.latitude,
+        longitude: telemetry.longitude,
+        speed: telemetry.speed,
+        altitude: telemetry.altitude,
+        heading: telemetry.heading,
+    };
+
+    for _ in 0..MAX_OPTIMISTIC_RETRIES {
+        let context = match persistence.devices.ingress_context(identity).await {
+            Ok(Some(context)) => context,
+            Ok(None) => {
+                warn!(
+                    "Dropping telemetry from unregistered device: {}",
+                    telemetry.device_id
+                );
+                return 0;
+            }
+            Err(error) => {
+                warn!("Failed to load telemetry device context: {error}");
+                return 0;
+            }
+        };
+        let pending_actions = {
+            let cache = match rule_cache.read() {
+                Ok(cache) => cache,
+                Err(error) => {
+                    warn!("Failed to read-lock rule cache: {error}");
+                    return 0;
+                }
+            };
+            let mut actions = evaluate_telemetry_for_tenant(
+                context.identity.tenant_id_str(),
+                context.identity.device_id(),
+                context.device_type_id,
+                context.fleet_id,
+                &data,
+                &cache,
+            );
+            actions.extend(evaluate_geofence_for_tenant(
+                context.identity.tenant_id_str(),
+                context.identity.device_id(),
+                context.device_type_id,
+                context.fleet_id,
+                &data,
+                &cache,
+            ));
+            actions
+        };
+        let outcome = persistence
+            .telemetry
+            .record(
+                identity,
+                TelemetryWrite {
+                    expected_device_type_id: context.device_type_id,
+                    expected_fleet_id: context.fleet_id,
+                    payload: payload.to_vec(),
+                    temperature: Some(telemetry.temperature),
+                    humidity: Some(telemetry.humidity),
+                    battery_level: Some(telemetry.battery_level),
+                    custom_json: custom_json.clone(),
+                    latitude: has_location.then_some(telemetry.latitude),
+                    longitude: has_location.then_some(telemetry.longitude),
+                    speed: has_location.then_some(telemetry.speed),
+                    altitude: has_location.then_some(telemetry.altitude),
+                    heading: has_location.then_some(telemetry.heading),
+                    declared_connections: declared_connections.clone(),
+                    observed_network_hosts: observed_network_hosts.clone(),
+                    pending_actions,
+                    observed_at: chrono::Utc::now().naive_utc(),
+                },
+            )
+            .await;
+        match outcome {
+            Ok(outcome) if outcome.recorded => {
+                info!(
+                    "Recorded telemetry from device {}: temp={}, humidity={}, battery={}",
+                    telemetry.device_id,
+                    telemetry.temperature,
+                    telemetry.humidity,
+                    telemetry.battery_level
+                );
+                return outcome.actions_enqueued;
+            }
+            Ok(_) => continue,
+            Err(error) => {
+                warn!("Failed to atomically record telemetry and rule actions: {error}");
+                return 0;
             }
         }
-    };
-
-    let has_location = telemetry_msg.latitude != 0.0 || telemetry_msg.longitude != 0.0;
-
-    let observed_network_hosts =
-        device_connections::network_analyzer_hosts_from_metadata(&telemetry_msg.metadata);
-    let declared_connections =
-        device_connections::declared_connections_from_metadata(&telemetry_msg.metadata);
-
-    let record = NewTelemetryRecord {
-        tenant_id: identity.tenant_id_str().to_string(),
-        device_id: telemetry_msg.device_id.clone(),
-        payload: payload.to_vec(),
-        temperature: Some(telemetry_msg.temperature),
-        humidity: Some(telemetry_msg.humidity),
-        battery_level: Some(telemetry_msg.battery_level),
-        custom_json,
-        latitude: if has_location {
-            Some(telemetry_msg.latitude)
-        } else {
-            None
-        },
-        longitude: if has_location {
-            Some(telemetry_msg.longitude)
-        } else {
-            None
-        },
-        speed: if has_location {
-            Some(telemetry_msg.speed)
-        } else {
-            None
-        },
-        altitude: if has_location {
-            Some(telemetry_msg.altitude)
-        } else {
-            None
-        },
-        heading: if has_location {
-            Some(telemetry_msg.heading)
-        } else {
-            None
-        },
-    };
-
-    let result = conn.transaction::<usize, AppError, _>(|conn| {
-        let Some(device) =
-            telemetry_service::record(conn, record, declared_connections, observed_network_hosts)?
-        else {
-            warn!(
-                "Dropping telemetry from unregistered device: {}",
-                telemetry_msg.device_id
-            );
-            return Ok(0);
-        };
-
-        info!(
-            "Recorded telemetry from device {}: temp={}, humidity={}, battery={}",
-            telemetry_msg.device_id,
-            telemetry_msg.temperature,
-            telemetry_msg.humidity,
-            telemetry_msg.battery_level
-        );
-
-        // Update device latest location (sync, using same connection)
-        if has_location {
-            use crate::db::schema::devices::dsl;
-            diesel::update(
-                dsl::devices
-                    .filter(dsl::tenant_id.eq(identity.tenant_id_str()))
-                    .filter(dsl::id.eq(&telemetry_msg.device_id)),
-            )
-            .set((
-                dsl::latest_latitude.eq(Some(telemetry_msg.latitude)),
-                dsl::latest_longitude.eq(Some(telemetry_msg.longitude)),
-            ))
-            .execute(conn)?;
-        }
-
-        // Evaluate rules against this telemetry data
-        let data = TelemetryData {
-            temperature: telemetry_msg.temperature,
-            humidity: telemetry_msg.humidity,
-            battery_level: telemetry_msg.battery_level,
-            latitude: telemetry_msg.latitude,
-            longitude: telemetry_msg.longitude,
-            speed: telemetry_msg.speed,
-            altitude: telemetry_msg.altitude,
-            heading: telemetry_msg.heading,
-        };
-
-        let cache = rule_cache.read().map_err(|error| {
-            AppError::Internal(format!("failed to read-lock rule cache: {error}"))
-        })?;
-
-        let mut actions = evaluate_telemetry_for_tenant(
-            &device.tenant_id,
-            &telemetry_msg.device_id,
-            device.device_type_id,
-            device.fleet_id,
-            &data,
-            &cache,
-        );
-
-        let geofence_actions = evaluate_geofence_for_tenant(
-            &device.tenant_id,
-            &telemetry_msg.device_id,
-            device.device_type_id,
-            device.fleet_id,
-            &data,
-            &cache,
-        );
-        actions.extend(geofence_actions);
-        enqueue_pending_actions(conn, &actions)
-    });
-
-    match result {
-        Ok(enqueued) => enqueued,
-        Err(error) => {
-            warn!("Failed to atomically record telemetry and rule actions: {error}");
-            0
-        }
     }
+    warn!("Telemetry device context changed repeatedly; dropping sample");
+    0
 }

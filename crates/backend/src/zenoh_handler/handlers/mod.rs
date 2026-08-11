@@ -4,20 +4,22 @@ pub mod log;
 pub mod shadow;
 pub mod telemetry;
 
-use diesel::PgConnection;
-
-use crate::repositories::device_repo;
+use crate::persistence::Persistence;
+use crate::services::device_catalog_service;
 use crate::tenancy::DeviceIdentity;
 
-pub(crate) fn resolve_ingress_identity(
-    conn: &mut PgConnection,
+pub(crate) async fn resolve_ingress_identity(
+    persistence: &Persistence,
     message_type: &str,
     device_id: &str,
+    warn_if_missing: bool,
 ) -> Option<DeviceIdentity> {
-    match device_repo::resolve_device_identity(conn, device_id) {
-        Ok(identity) => Some(identity),
-        Err(diesel::result::Error::NotFound) => {
-            tracing::warn!("Dropping {message_type} from unregistered device: {device_id}");
+    match device_catalog_service::resolve_identity(persistence.devices.as_ref(), device_id).await {
+        Ok(Some(identity)) => Some(identity),
+        Ok(None) => {
+            if warn_if_missing {
+                tracing::warn!("Dropping {message_type} from unregistered device: {device_id}");
+            }
             None
         }
         Err(error) => {
