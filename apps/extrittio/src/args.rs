@@ -88,6 +88,10 @@ pub(crate) struct RunArgs {
     #[arg(long, env = "ZENOH_TLS_PORT", default_value_t = 7447)]
     pub(crate) zenoh_port: u16,
 
+    /// Host address for the Zenoh listener. Use :: to accept Thread IPv6 clients.
+    #[arg(long, env = "ZENOH_LISTEN_HOST")]
+    pub(crate) zenoh_listen_host: Option<String>,
+
     /// Initial owner username, used only when the database has no users.
     #[arg(
         long,
@@ -231,6 +235,10 @@ pub(crate) struct ServiceConfigArgs {
     /// Zenoh TCP/TLS listen port.
     #[arg(long, env = "ZENOH_TLS_PORT")]
     pub(crate) zenoh_tls_port: Option<u16>,
+
+    /// Host address for the Zenoh listener. Use :: to accept Thread IPv6 clients.
+    #[arg(long, env = "ZENOH_LISTEN_HOST")]
+    pub(crate) zenoh_listen_host: Option<String>,
 
     /// Seconds before a device is marked offline.
     #[arg(long, env = "OFFLINE_TIMEOUT_SECS")]

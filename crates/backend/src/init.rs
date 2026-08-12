@@ -249,7 +249,9 @@ pub async fn open_zenoh_session(
 ) -> anyhow::Result<zenoh::Session> {
     let mut zenoh_config = zenoh::Config::default();
     let listen_scheme = if tls_enabled { "tls" } else { "tcp" };
-    let listen_endpoint = format!("{listen_scheme}/{listen_host}:{tls_port}");
+    let listen_endpoint = zenoh_listen_endpoint(listen_scheme, listen_host, tls_port);
+    let listen_endpoints_json = serde_json::to_string(&[&listen_endpoint])
+        .map_err(|error| anyhow::anyhow!("Failed to encode Zenoh listen endpoint: {error}"))?;
 
     zenoh_config
         .insert_json5("scouting/multicast/enabled", "false")
@@ -267,7 +269,7 @@ pub async fn open_zenoh_session(
         }
 
         zenoh_config
-            .insert_json5("listen/endpoints", &format!("[\"{listen_endpoint}\"]"))
+            .insert_json5("listen/endpoints", &listen_endpoints_json)
             .map_err(|e| anyhow::anyhow!("Failed to set Zenoh listen endpoints: {e}"))?;
 
         zenoh_config
@@ -305,7 +307,7 @@ pub async fn open_zenoh_session(
             warn!("Zenoh certificate ACL requested without TLS; certificate ACL is disabled");
         }
         zenoh_config
-            .insert_json5("listen/endpoints", &format!("[\"{listen_endpoint}\"]"))
+            .insert_json5("listen/endpoints", &listen_endpoints_json)
             .map_err(|e| anyhow::anyhow!("Failed to set Zenoh listen endpoints: {e}"))?;
         warn!("Zenoh configured: listening on {listen_endpoint} without TLS");
     }
@@ -319,6 +321,20 @@ pub async fn open_zenoh_session(
             tls_port
         ))
     })
+}
+
+/// Build a Zenoh endpoint from a host and port, adding URI brackets for IPv6 literals.
+///
+/// `ZENOH_LISTEN_HOST` intentionally remains a host string so existing host-name based
+/// deployments continue to work. IPv6, however, must be bracketed in a Zenoh URI.
+fn zenoh_listen_endpoint(scheme: &str, listen_host: &str, port: u16) -> String {
+    let host = listen_host.trim();
+    let host = if host.parse::<std::net::Ipv6Addr>().is_ok() {
+        format!("[{host}]")
+    } else {
+        host.to_string()
+    };
+    format!("{scheme}/{host}:{port}")
 }
 
 fn configure_zenoh_device_acl(
@@ -500,7 +516,31 @@ fn format_zenoh_open_error(raw_error: &str, listen_endpoint: &str, port: u16) ->
 mod tests {
     use serde_json::Value;
 
-    use super::{build_zenoh_device_acl, format_zenoh_open_error, normalize_acl_device_ids};
+    use super::{
+        build_zenoh_device_acl, format_zenoh_open_error, normalize_acl_device_ids,
+        zenoh_listen_endpoint,
+    };
+
+    #[test]
+    fn zenoh_listener_brackets_ipv6_hosts() {
+        assert_eq!(zenoh_listen_endpoint("tcp", "::", 7447), "tcp/[::]:7447");
+        assert_eq!(
+            zenoh_listen_endpoint("tls", "fd12:3456::1", 7447),
+            "tls/[fd12:3456::1]:7447"
+        );
+    }
+
+    #[test]
+    fn zenoh_listener_keeps_ipv4_and_host_names_compatible() {
+        assert_eq!(
+            zenoh_listen_endpoint("tcp", "127.0.0.1", 7447),
+            "tcp/127.0.0.1:7447"
+        );
+        assert_eq!(
+            zenoh_listen_endpoint("tcp", "localhost", 7447),
+            "tcp/localhost:7447"
+        );
+    }
 
     #[test]
     fn zenoh_port_conflict_error_is_actionable() {

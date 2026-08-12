@@ -60,6 +60,7 @@ pub(crate) async fn run_hobby(args: RunArgs) -> Result<()> {
             certs_dir: None,
             zenoh_tls_enabled: None,
             zenoh_tls_port: Some(args.zenoh_port),
+            zenoh_listen_host: args.zenoh_listen_host,
             offline_timeout_secs: None,
             command_timeout_secs: None,
             max_firmware_size_mb: None,
@@ -124,6 +125,7 @@ pub(crate) async fn migrate(args: DatabaseArgs, output_format: OutputFormat) -> 
         certs_dir: None,
         zenoh_tls_enabled: None,
         zenoh_tls_port: None,
+        zenoh_listen_host: None,
         offline_timeout_secs: None,
         command_timeout_secs: None,
         max_firmware_size_mb: None,
@@ -184,6 +186,7 @@ pub(crate) async fn database(args: DatabaseCommand, output_format: OutputFormat)
         certs_dir: None,
         zenoh_tls_enabled: None,
         zenoh_tls_port: None,
+        zenoh_listen_host: None,
         offline_timeout_secs: None,
         command_timeout_secs: None,
         max_firmware_size_mb: None,
@@ -305,6 +308,9 @@ fn app_config(args: ServiceConfigArgs) -> Result<AppConfig> {
     }
     if let Some(zenoh_tls_port) = args.zenoh_tls_port {
         config.zenoh_tls_port = zenoh_tls_port;
+    }
+    if let Some(zenoh_listen_host) = args.zenoh_listen_host {
+        config.zenoh_listen_host = zenoh_listen_host;
     }
     if let Some(offline_timeout_secs) = args.offline_timeout_secs {
         config.offline_timeout_secs = offline_timeout_secs;
