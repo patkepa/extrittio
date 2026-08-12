@@ -13,7 +13,8 @@ OTBR_REPOSITORY := https://github.com/openthread/ot-br-posix.git
 OTBR_SOURCE_DIR := target/openthread/ot-br-posix
 OTBR_BUILD_DIR := target/openthread/build
 OTBR_AGENT := $(OTBR_BUILD_DIR)/src/agent/otbr-agent
-OTBR_CTL := $(OTBR_BUILD_DIR)/src/cli/ot-ctl
+# `ot-ctl` is built by OpenThread itself, which OTBR embeds as a subproject.
+OTBR_CTL := $(OTBR_BUILD_DIR)/third_party/openthread/repo/src/posix/ot-ctl
 OTBR_INSTALL_DIR := $(EXTRITTIO_INSTALL_ROOT)/libexec/extrittio
 
 OTBR_CMAKE_OPTIONS := \
