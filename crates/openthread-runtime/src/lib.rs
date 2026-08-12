@@ -577,12 +577,22 @@ impl BorderRouter {
             infrastructure_interface = %config.infrastructure_interface,
             "Starting OpenThread border router"
         );
+        let log_path = config.data_path.join("otbr-agent.log");
+        let log_file = fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&log_path)
+            .with_context(|| format!("Failed to create OTBR log file: {}", log_path.display()))?;
+        let stdout = log_file
+            .try_clone()
+            .context("Failed to duplicate OTBR log file handle")?;
         let mut command = Command::new(&config.agent_path);
         command
             .args(&args)
             .stdin(Stdio::null())
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit());
+            .stdout(stdout)
+            .stderr(log_file);
         if let Some(address) = dbus_address {
             command.env("DBUS_SYSTEM_BUS_ADDRESS", address);
         }
@@ -602,7 +612,10 @@ impl BorderRouter {
             .try_wait()
             .context("Failed to inspect OpenThread border router startup")?
         {
-            bail!("OpenThread border router exited immediately with status {status}");
+            bail!(
+                "OpenThread border router exited immediately with status {status}: {}",
+                startup_log_tail(&log_path)
+            );
         }
 
         Ok(Self {
@@ -650,6 +663,26 @@ impl BorderRouter {
         if let Some(daemon) = self.dbus_daemon.take() {
             drop(daemon);
         }
+    }
+}
+
+fn startup_log_tail(log_path: &Path) -> String {
+    let Ok(log) = fs::read_to_string(log_path) else {
+        return "no agent diagnostics were captured".to_string();
+    };
+    let tail = log
+        .lines()
+        .rev()
+        .take(8)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>()
+        .join(" ");
+    if tail.is_empty() {
+        "no agent diagnostics were captured".to_string()
+    } else {
+        tail
     }
 }
 
