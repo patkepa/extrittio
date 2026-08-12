@@ -127,7 +127,7 @@ fn start_hobby_thread_runtime(
         infrastructure_interface: args
             .thread_infra_interface
             .clone()
-            .unwrap_or_else(|| default_infrastructure_interface().to_string()),
+            .unwrap_or_else(default_infrastructure_interface),
         data_path: data_dir.join("thread"),
     }));
     let snapshot = runtime.refresh();

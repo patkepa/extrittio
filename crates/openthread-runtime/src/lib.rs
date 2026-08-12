@@ -781,11 +781,25 @@ pub fn discover_agent(explicit: Option<&Path>) -> Result<Option<PathBuf>> {
 
 /// Selects the usual primary network interface for a standalone hobby host.
 #[must_use]
-pub fn default_infrastructure_interface() -> &'static str {
+pub fn default_infrastructure_interface() -> String {
     if cfg!(target_os = "macos") {
-        "en0"
+        Command::new("route")
+            .args(["-n", "get", "default"])
+            .output()
+            .ok()
+            .and_then(|output| String::from_utf8(output.stdout).ok())
+            .and_then(|output| {
+                output.lines().find_map(|line| {
+                    line.trim()
+                        .strip_prefix("interface:")
+                        .map(str::trim)
+                        .filter(|interface| !interface.is_empty())
+                        .map(ToOwned::to_owned)
+                })
+            })
+            .unwrap_or_else(|| "en0".to_string())
     } else {
-        "eth0"
+        "eth0".to_string()
     }
 }
 
@@ -1058,7 +1072,7 @@ mod tests {
 
     #[test]
     fn chooses_a_sensible_default_infrastructure_interface() {
-        assert!(matches!(default_infrastructure_interface(), "en0" | "eth0"));
+        assert!(!default_infrastructure_interface().is_empty());
     }
 
     #[test]

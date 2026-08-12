@@ -119,10 +119,7 @@ export function ThreadSettings() {
           Unable to load the Thread border-router status.
         </Callout>
       ) : !status?.available ? (
-        <Callout intent="warning" icon="warning-sign">
-          {status?.error ??
-            'No controllable OpenThread border router is running. Connect an RCP and refresh this page.'}
-        </Callout>
+        <ThreadRuntimeNotice status={status} />
       ) : (
         <div className="settings-content">
           <Card elevation={Elevation.ONE} className="settings-card">
@@ -133,7 +130,7 @@ export function ThreadSettings() {
               </Tag>
             </div>
             {status.connected ? <ThreadStatusDetails status={status} /> : null}
-            {status.error ? <Callout intent="danger">{status.error}</Callout> : null}
+            {status.error ? <ThreadRuntimeNotice status={status} /> : null}
           </Card>
 
           <Card elevation={Elevation.ONE} className="settings-card">
@@ -284,6 +281,50 @@ export function ThreadSettings() {
       </Alert>
     </div>
   );
+}
+
+function ThreadRuntimeNotice({ status }: { status?: ThreadStatus }) {
+  const error =
+    status?.error ??
+    'No controllable OpenThread border router is running. Connect an RCP and refresh this page.';
+  const nextStep = threadRuntimeNextStep(error);
+
+  return (
+    <Callout intent="warning" icon="warning-sign" title="Border router is not running">
+      <p className="thread-runtime-error">{error}</p>
+      <dl className="thread-runtime-details">
+        <div>
+          <dt>RCP serial device</dt>
+          <dd>{status?.rcp_device ?? 'No RCP was detected'}</dd>
+        </div>
+        <div>
+          <dt>Next step</dt>
+          <dd>{nextStep}</dd>
+        </div>
+        <div>
+          <dt>OTBR log</dt>
+          <dd>Extrittio data directory/thread/otbr-agent.log</dd>
+        </div>
+      </dl>
+      <p className="thread-runtime-help">Refresh rechecks the RCP and restarts the local router.</p>
+    </Callout>
+  );
+}
+
+function threadRuntimeNextStep(error: string) {
+  if (error.includes('connect session failed')) {
+    return 'OTBR exited after starting. Press Refresh to restart it, then inspect the OTBR log.';
+  }
+  if (error.includes('Operation not permitted')) {
+    return 'Start the hobby appliance with the macOS network privileges required by OTBR.';
+  }
+  if (error.includes('Invalid argument')) {
+    return 'Verify the infrastructure interface (currently normally en0) is the active Wi-Fi or Ethernet interface.';
+  }
+  if (error.includes('No unique Thread RCP')) {
+    return 'Connect one RCP, or restart Extrittio with --thread-rcp and its serial-device path.';
+  }
+  return 'Inspect the OTBR log, then correct the reported startup issue and press Refresh.';
 }
 
 function ThreadNetworkList({ networks }: { networks: ThreadNetwork[] }) {
