@@ -331,9 +331,8 @@ fn apply_database_args(config: &mut AppConfig, args: DatabaseArgs) -> Result<()>
         {
             config.certs_dir = data_dir.join("certs").display().to_string();
         }
-        let previous_default_firmware = previous_data_dir
-            .as_ref()
-            .map(|path| path.join("firmware"));
+        let previous_default_firmware =
+            previous_data_dir.as_ref().map(|path| path.join("firmware"));
         if matches!(
             &config.firmware_storage,
             FirmwareStorageConfig::Local { path }
