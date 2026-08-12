@@ -1,0 +1,38 @@
+menu "Extrittio Thread Device"
+
+config EXTRITTIO_DEVICE_ID
+    string "Device ID"
+    default "esp32c6-thread-001"
+    help
+        Unique identifier registered in Extrittio.
+
+config EXTRITTIO_ZENOH_CONNECT
+    string "Zenoh IPv6 endpoint"
+    default "tcp/[fd00::1]:7447"
+    help
+        Routable IPv6 address of the Extrittio hobby host, formatted as a Zenoh
+        locator. IPv6 literals must be enclosed in square brackets.
+
+config EXTRITTIO_THREAD_ACTIVE_DATASET_TLVS
+    string "Thread Active Operational Dataset (hex TLVs)"
+    default ""
+    help
+        Hex-encoded Active Operational Dataset exported from Extrittio's Thread
+        Network settings. The dataset contains the Thread network key; do not
+        commit it to source control or share a generated sdkconfig file.
+
+config EXTRITTIO_TELEMETRY_INTERVAL_S
+    int "Telemetry interval (seconds)"
+    range 1 3600
+    default 30
+
+config EXTRITTIO_HEARTBEAT_INTERVAL_S
+    int "Heartbeat interval (seconds)"
+    range 5 86400
+    default 60
+
+config EXTRITTIO_FIRMWARE_VERSION
+    string "Firmware version"
+    default "v1.0.0-esp32c6-thread-c"
+
+endmenu

@@ -4,3 +4,4 @@ dependencies:
   idf:
     version: ">=5.0.0"
   nikas-belogolov/nanopb: "1.0.0"
+  espressif/cjson: "^1.7.19"

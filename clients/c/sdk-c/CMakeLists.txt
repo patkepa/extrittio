@@ -67,7 +67,7 @@ if(ESP_PLATFORM)
         SRCS ${SDK_SOURCES}
         INCLUDE_DIRS include generated
         REQUIRES zenohpico
-        PRIV_REQUIRES nanopb json
+        PRIV_REQUIRES nanopb cjson
     )
 else()
     add_library(extrittio_sdk_c ${SDK_SOURCES})
