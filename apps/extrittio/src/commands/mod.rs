@@ -35,6 +35,7 @@ pub(crate) async fn run(cli: Cli) -> Result<()> {
         Command::Serve(args) => service::serve(args).await,
         Command::Migrate(args) => service::migrate(args, output_format).await,
         Command::Init(args) => service::init(args, output_format).await,
+        Command::Database(args) => service::database(args, output_format).await,
         command => run_api_command(command, cli.url, cli.token, cli.config, output_format).await,
     }
 }
@@ -79,7 +80,9 @@ async fn run_api_command(
         Command::ApiKeys(command) => api_keys::handle(command, output_format, &client).await?,
         Command::Certs(command) => certs::handle(command, output_format, &client).await?,
         Command::Provision(args) => provision::handle(args, output_format, &client).await?,
-        Command::Serve(_) | Command::Migrate(_) | Command::Init(_) => unreachable!(),
+        Command::Serve(_) | Command::Migrate(_) | Command::Init(_) | Command::Database(_) => {
+            unreachable!()
+        }
     }
 
     Ok(())

@@ -202,6 +202,10 @@ impl AppConfig {
             max_zenoh_payload_kb.checked_mul(1024).ok_or_else(|| {
                 ConfigError::Validation("ZENOH_MAX_PAYLOAD_KB overflows address space".to_string())
             })?;
+        let default_firmware_path = match &database {
+            DatabaseConfig::Turso { data_dir, .. } => data_dir.join("firmware"),
+            DatabaseConfig::Postgres { .. } => PathBuf::from("./data/firmware"),
+        };
         let firmware_storage = match read_env("FIRMWARE_STORAGE_BACKEND")
             .unwrap_or_else(|| "local".to_string())
             .trim()
@@ -209,10 +213,9 @@ impl AppConfig {
             .as_str()
         {
             "local" => FirmwareStorageConfig::Local {
-                path: PathBuf::from(
-                    read_env("FIRMWARE_STORAGE_PATH")
-                        .unwrap_or_else(|| "./data/firmware".to_string()),
-                ),
+                path: read_env("FIRMWARE_STORAGE_PATH")
+                    .map(PathBuf::from)
+                    .unwrap_or(default_firmware_path),
             },
             "s3" => FirmwareStorageConfig::S3 {
                 bucket: read_env("FIRMWARE_S3_BUCKET")
@@ -239,6 +242,10 @@ impl AppConfig {
                 });
             }
         };
+        let default_certs_dir = match &database {
+            DatabaseConfig::Turso { data_dir, .. } => data_dir.join("certs").display().to_string(),
+            DatabaseConfig::Postgres { .. } => "./certs".to_string(),
+        };
 
         let config = Self {
             deployment_profile,
@@ -263,7 +270,7 @@ impl AppConfig {
                     DEFAULT_COMMAND_TIMEOUT_SECS
                 },
             ),
-            certs_dir: read_env("EXTRITTIO_CERTS_DIR").unwrap_or_else(|| "./certs".to_string()),
+            certs_dir: read_env("EXTRITTIO_CERTS_DIR").unwrap_or(default_certs_dir),
             zenoh_tls_enabled,
             zenoh_cert_acl_enabled,
             zenoh_tls_port: env_parse(&read_env, "ZENOH_TLS_PORT")?.unwrap_or(7447),
@@ -663,6 +670,23 @@ mod tests {
             error
                 .to_string()
                 .contains("must be inside EXTRITTIO_DATA_DIR")
+        );
+    }
+
+    #[cfg(feature = "turso")]
+    #[test]
+    fn turso_keeps_mutable_defaults_under_the_data_directory() {
+        let config = config_from(&[
+            ("EXTRITTIO_DATABASE_BACKEND", "turso"),
+            ("EXTRITTIO_DEPLOYMENT_PROFILE", "hobby"),
+            ("EXTRITTIO_DATA_DIR", "/tmp/extrittio-hobby"),
+        ]);
+        assert_eq!(config.certs_dir, "/tmp/extrittio-hobby/certs");
+        assert_eq!(
+            config.firmware_storage,
+            FirmwareStorageConfig::Local {
+                path: "/tmp/extrittio-hobby/firmware".into()
+            }
         );
     }
 

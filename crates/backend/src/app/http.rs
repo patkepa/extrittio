@@ -150,10 +150,13 @@ async fn security_headers(request: Request, next: Next) -> Response {
 
 #[derive(Clone)]
 struct FrontendUi {
-    root: PathBuf,
-    index: PathBuf,
+    root: Option<PathBuf>,
     index_html: Bytes,
 }
+
+#[cfg(feature = "embedded-ui")]
+static EMBEDDED_UI: include_dir::Dir<'static> =
+    include_dir::include_dir!("$CARGO_MANIFEST_DIR/../../apps/frontend/dist");
 
 fn attach_frontend_ui(app: Router, config: &AppConfig) -> Router {
     if !config.serve_ui {
@@ -161,7 +164,20 @@ fn attach_frontend_ui(app: Router, config: &AppConfig) -> Router {
         return app;
     }
 
-    let Some(root) = resolve_ui_dir(config) else {
+    let root = resolve_ui_dir(config);
+    #[cfg(feature = "embedded-ui")]
+    if root.is_none()
+        && let Some(index) = EMBEDDED_UI.get_file("index.html")
+    {
+        info!("Serving frontend UI embedded in the executable");
+        return app
+            .fallback(spa_fallback)
+            .layer(Extension(Arc::new(FrontendUi {
+                root: None,
+                index_html: Bytes::from_static(index.contents()),
+            })));
+    }
+    let Some(root) = root else {
         warn!(
             "Frontend UI build not found; serving API only. Run `npm run build` in apps/frontend/ or set EXTRITTIO_UI_DIR."
         );
@@ -180,8 +196,7 @@ fn attach_frontend_ui(app: Router, config: &AppConfig) -> Router {
 
     app.fallback(spa_fallback)
         .layer(Extension(Arc::new(FrontendUi {
-            root,
-            index,
+            root: Some(root),
             index_html,
         })))
 }
@@ -234,13 +249,34 @@ async fn spa_fallback(
 
     if is_index_path(&relative_path) {
         return Ok(static_response(
-            &ui.index,
+            Path::new("index.html"),
             Body::from(ui.index_html.clone()),
             HeaderValue::from_static("no-cache"),
         ));
     }
 
-    let requested_path = ui.root.join(&relative_path);
+    #[cfg(feature = "embedded-ui")]
+    if ui.root.is_none() {
+        let key = relative_path.to_string_lossy();
+        if let Some(file) = EMBEDDED_UI.get_file(key.as_ref()) {
+            return Ok(static_response(
+                &relative_path,
+                Body::from(Bytes::from_static(file.contents())),
+                cache_control_for_path(&relative_path),
+            ));
+        }
+        if relative_path.extension().is_none() {
+            return Ok(static_response(
+                Path::new("index.html"),
+                Body::from(ui.index_html.clone()),
+                HeaderValue::from_static("no-cache"),
+            ));
+        }
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let root = ui.root.as_ref().ok_or(StatusCode::NOT_FOUND)?;
+    let requested_path = root.join(&relative_path);
     let file_path = if tokio::fs::metadata(&requested_path)
         .await
         .map(|metadata| metadata.is_file())
@@ -249,7 +285,7 @@ async fn spa_fallback(
         requested_path
     } else if relative_path.extension().is_none() {
         return Ok(static_response(
-            &ui.index,
+            Path::new("index.html"),
             Body::from(ui.index_html.clone()),
             HeaderValue::from_static("no-cache"),
         ));

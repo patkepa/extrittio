@@ -21,6 +21,10 @@ impl BootstrapRepository for TursoAdapter {
         self.database.migrate().await
     }
 
+    async fn maintenance_checkpoint(&self) -> Result<(), PersistenceError> {
+        self.database.checkpoint().await
+    }
+
     async fn seed_builtin_device_types(
         &self,
         tenant: &TenantId,

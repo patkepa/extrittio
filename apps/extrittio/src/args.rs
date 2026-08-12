@@ -44,6 +44,8 @@ pub(crate) enum Command {
     Migrate(DatabaseArgs),
     /// Initialize database seed data and service certificates, then exit.
     Init(InitArgs),
+    /// Inspect and maintain an embedded Turso database.
+    Database(DatabaseCommand),
     /// Authenticate and manage the local CLI session.
     Auth(AuthCommand),
     /// Show or update local CLI configuration.
@@ -119,6 +121,48 @@ pub(crate) struct DatabaseArgs {
     /// Turso database file path; must be inside --data-dir.
     #[arg(long, env = "EXTRITTIO_TURSO_DATABASE_PATH")]
     pub(crate) turso_database_path: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatabaseCommand {
+    #[command(flatten)]
+    pub(crate) database: DatabaseArgs,
+
+    #[command(subcommand)]
+    pub(crate) command: DatabaseSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum DatabaseSubcommand {
+    /// Show the database path, size, schema version, and integrity status.
+    Info,
+    /// Run the database integrity check.
+    Integrity,
+    /// Checkpoint and truncate the write-ahead log.
+    Checkpoint,
+    /// Create a checkpointed, verified backup and SHA-256 manifest.
+    Backup {
+        /// New backup file path. Existing files are never overwritten.
+        path: PathBuf,
+    },
+    /// Verify a backup's integrity, schema version, and checksum manifest.
+    VerifyBackup { backup: PathBuf },
+    /// Restore a verified backup. The replaced database is retained beside it.
+    Restore {
+        backup: PathBuf,
+        /// Required when the configured database already exists.
+        #[arg(long)]
+        force: bool,
+    },
+    /// Export a versioned, backend-neutral logical JSON archive.
+    Export { path: PathBuf },
+    /// Validate or replace database contents from a logical JSON archive.
+    Import {
+        path: PathBuf,
+        /// Validate the complete archive without writing records.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Debug, Args, Clone, Default)]

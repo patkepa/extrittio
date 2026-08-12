@@ -1,0 +1,70 @@
+# Turso Hobby Deployment
+
+Extrittio supports a local-only Turso database for single-node hobby and appliance deployments. PostgreSQL remains the default and the only supported production/HA backend. Turso is rejected when `EXTRITTIO_DEPLOYMENT_PROFILE=production`, and database open failures never fall back to another backend.
+
+## Build and first run
+
+The standalone release shape embeds the React UI and excludes PostgreSQL/Diesel:
+
+```bash
+cd apps/frontend
+npm ci
+npm run build
+cd ../..
+cargo build --release -p extrittio --no-default-features --features hobby
+
+export EXTRITTIO_BOOTSTRAP_ADMIN_PASSWORD='replace-with-a-strong-password'
+./target/release/extrittio init \
+  --database-backend turso \
+  --deployment-profile hobby \
+  --data-dir ./data \
+  --certs-dir ./data/certs
+./target/release/extrittio serve \
+  --database-backend turso \
+  --deployment-profile hobby \
+  --data-dir ./data
+```
+
+The data directory contains `extrittio.db`, `extrittio.lock`, certificates, local firmware objects, and operator-created backups. One process exclusively owns a data directory. A second process fails fast.
+
+## Maintenance
+
+These commands acquire the same process lock as the server, so stop the server before using them:
+
+```bash
+extrittio database --database-backend turso --deployment-profile hobby --data-dir ./data info
+extrittio database --database-backend turso --deployment-profile hobby --data-dir ./data integrity
+extrittio database --database-backend turso --deployment-profile hobby --data-dir ./data checkpoint
+extrittio database --database-backend turso --deployment-profile hobby --data-dir ./data backup ./backups/extrittio.db
+extrittio database --database-backend turso --deployment-profile hobby --data-dir ./data verify-backup ./backups/extrittio.db
+```
+
+Backup creates a checkpointed database copy and a sibling `.sha256` manifest, then reopens the copy and runs its integrity/schema checks. Existing backup files are never overwritten.
+
+Restore validates the backup and checksum before changing the target. If the target exists, `--force` is required; the replaced database and WAL sidecars are preserved with a `pre-restore-<UTC timestamp>` name.
+
+```bash
+extrittio database --database-backend turso --deployment-profile hobby --data-dir ./data \
+  restore ./backups/extrittio.db --force
+```
+
+Logical JSON archives preserve SQL value types, including BLOBs, and are intended for model-level portability and comparison:
+
+```bash
+extrittio database --database-backend turso --deployment-profile hobby --data-dir ./data export ./backups/export.json
+extrittio database --database-backend turso --deployment-profile hobby --data-dir ./data import ./backups/export.json --dry-run
+extrittio database --database-backend turso --deployment-profile hobby --data-dir ./data import ./backups/export.json
+```
+
+Import replaces all logical table contents in one deferred-foreign-key transaction. Always take a physical backup first.
+
+## Durability and limits
+
+- Foreign keys are enabled, synchronous mode is `FULL`, and writes use one serialized connection.
+- A WAL truncate checkpoint runs every 15 minutes and during graceful shutdown.
+- Telemetry/log retention is bounded and maintained by the normal worker tree.
+- Turso mode is not multi-process, HA, remote, or cloud-synchronized.
+- Database files and firmware objects are mutable state and must stay outside the executable.
+- Remote map tiles remain an optional external dependency unless a local tile source is configured separately.
+
+The CI hobby artifact gate builds Linux amd64 and arm64, runs the Turso unit suite and first-run migration smoke test, and rejects binaries linked to `libpq` or PostgreSQL runtime libraries.

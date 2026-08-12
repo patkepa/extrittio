@@ -1,16 +1,19 @@
 use anyhow::{Context, Result};
 use extrittio_backend::{
     app,
-    config::{AppConfig, DatabaseConfig, DeploymentProfile},
+    config::{AppConfig, DatabaseConfig, DeploymentProfile, FirmwareStorageConfig},
     init as backend_init, observability,
 };
 use serde::Serialize;
 use tracing::info;
 
 use crate::{
-    args::{DatabaseArgs, InitArgs, ServeArgs, ServiceConfigArgs},
+    args::{DatabaseArgs, DatabaseCommand, InitArgs, ServeArgs, ServiceConfigArgs},
     output::{OutputFormat, output},
 };
+
+#[cfg(feature = "turso")]
+use crate::args::DatabaseSubcommand;
 
 pub(crate) async fn serve(args: ServeArgs) -> Result<()> {
     load_dotenv();
@@ -97,6 +100,116 @@ pub(crate) async fn init(args: InitArgs, output_format: OutputFormat) -> Result<
     })
 }
 
+pub(crate) async fn database(args: DatabaseCommand, output_format: OutputFormat) -> Result<()> {
+    load_dotenv();
+    let config = app_config(ServiceConfigArgs {
+        database: args.database,
+        port: None,
+        public_url: None,
+        cors_origin: None,
+        certs_dir: None,
+        zenoh_tls_enabled: None,
+        zenoh_tls_port: None,
+        offline_timeout_secs: None,
+        command_timeout_secs: None,
+        max_firmware_size_mb: None,
+        alert_retention_days: None,
+        telemetry_retention_days: None,
+    })?;
+    let DatabaseConfig::Turso {
+        data_dir,
+        database_path,
+        busy_timeout,
+        ..
+    } = config.database
+    else {
+        anyhow::bail!("database maintenance commands require --database-backend turso")
+    };
+
+    #[cfg(feature = "turso")]
+    {
+        use extrittio_backend::persistence::turso::TursoDatabase;
+
+        if let DatabaseSubcommand::VerifyBackup { backup } = &args.command {
+            let result = TursoDatabase::verify_backup(backup).await?;
+            return output(output_format, &result, || {
+                format!("Backup verified ({})", result.path.display())
+            });
+        }
+        if let DatabaseSubcommand::Restore { backup, force } = &args.command {
+            let result =
+                TursoDatabase::restore_backup(&data_dir, &database_path, backup, *force).await?;
+            return output(output_format, &result, || {
+                format!("Database restored ({})", result.path.display())
+            });
+        }
+
+        let database = TursoDatabase::open(&data_dir, &database_path, busy_timeout).await?;
+        database.migrate().await?;
+        match args.command {
+            DatabaseSubcommand::Info => {
+                let result = database.info().await?;
+                output(output_format, &result, || {
+                    format!(
+                        "Turso database: {} ({} bytes, schema {}, integrity {})",
+                        result.path.display(),
+                        result.size_bytes,
+                        result.schema_version,
+                        result.integrity
+                    )
+                })
+            }
+            DatabaseSubcommand::Integrity => {
+                database.integrity_check().await?;
+                output(output_format, &StatusResult { status: "ok" }, || {
+                    "Database integrity check passed".to_string()
+                })
+            }
+            DatabaseSubcommand::Checkpoint => {
+                database.checkpoint().await?;
+                output(output_format, &StatusResult { status: "ok" }, || {
+                    "Database checkpoint completed".to_string()
+                })
+            }
+            DatabaseSubcommand::Backup { path } => {
+                let result = database.backup(&path).await?;
+                output(output_format, &result, || {
+                    format!("Database backup created ({})", result.path.display())
+                })
+            }
+            DatabaseSubcommand::Export { path } => {
+                let result = database.export_logical(&path).await?;
+                output(output_format, &result, || {
+                    format!("Logical archive exported ({})", result.path.display())
+                })
+            }
+            DatabaseSubcommand::Import { path, dry_run } => {
+                let result = database.import_logical(&path, dry_run).await?;
+                output(output_format, &result, || {
+                    if dry_run {
+                        format!("Logical archive validated ({})", result.path.display())
+                    } else {
+                        format!("Logical archive imported ({})", result.path.display())
+                    }
+                })
+            }
+            DatabaseSubcommand::VerifyBackup { .. } => unreachable!(),
+            DatabaseSubcommand::Restore { .. } => unreachable!(),
+        }
+    }
+    #[cfg(not(feature = "turso"))]
+    {
+        let _ = (
+            data_dir,
+            database_path,
+            busy_timeout,
+            args.command,
+            output_format,
+        );
+        anyhow::bail!("database maintenance requires a binary built with the `turso` feature")
+    }
+}
+
 fn app_config(args: ServiceConfigArgs) -> Result<AppConfig> {
     let mut config = AppConfig::from_env()?;
 
@@ -142,6 +255,10 @@ fn app_config(args: ServiceConfigArgs) -> Result<AppConfig> {
 }
 
 fn apply_database_args(config: &mut AppConfig, args: DatabaseArgs) -> Result<()> {
+    let previous_data_dir = match &config.database {
+        DatabaseConfig::Turso { data_dir, .. } => Some(data_dir.clone()),
+        DatabaseConfig::Postgres { .. } => None,
+    };
     if let Some(profile) = args.deployment_profile {
         config.deployment_profile = match profile.trim().to_ascii_lowercase().as_str() {
             "production" => DeploymentProfile::Production,
@@ -205,6 +322,29 @@ fn apply_database_args(config: &mut AppConfig, args: DatabaseArgs) -> Result<()>
         }
         _ => anyhow::bail!("--database-backend must be postgres or turso"),
     };
+    if let DatabaseConfig::Turso { data_dir, .. } = &config.database {
+        let previous_default_certs = previous_data_dir
+            .as_ref()
+            .map(|path| path.join("certs").display().to_string());
+        if config.certs_dir == "./certs"
+            || previous_default_certs.as_deref() == Some(config.certs_dir.as_str())
+        {
+            config.certs_dir = data_dir.join("certs").display().to_string();
+        }
+        let previous_default_firmware = previous_data_dir
+            .as_ref()
+            .map(|path| path.join("firmware"));
+        if matches!(
+            &config.firmware_storage,
+            FirmwareStorageConfig::Local { path }
+                if path == &std::path::PathBuf::from("./data/firmware")
+                    || previous_default_firmware.as_ref() == Some(path)
+        ) {
+            config.firmware_storage = FirmwareStorageConfig::Local {
+                path: data_dir.join("firmware"),
+            };
+        }
+    }
     Ok(())
 }
 
@@ -243,4 +383,10 @@ struct InitCommandResult {
     status: &'static str,
     database_url: String,
     certs_dir: String,
+}
+
+#[derive(Serialize)]
+#[cfg(feature = "turso")]
+struct StatusResult {
+    status: &'static str,
 }

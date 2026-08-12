@@ -36,6 +36,11 @@ pub trait BootstrapRepository: Send + Sync {
 
     async fn run_migrations(&self) -> Result<(), PersistenceError>;
 
+    /// Flush backend-local durability state. Remote/server databases may no-op.
+    async fn maintenance_checkpoint(&self) -> Result<(), PersistenceError> {
+        Ok(())
+    }
+
     async fn seed_builtin_device_types(
         &self,
         tenant: &TenantId,

@@ -178,3 +178,26 @@ INSERT INTO roles (tenant_id, name, description, is_system, created_at, updated_
 ('default', 'admin', 'Administrative access to tenant resources and security settings.', 1, CAST(unixepoch('subsec') * 1000000 AS INTEGER), CAST(unixepoch('subsec') * 1000000 AS INTEGER)),
 ('default', 'operator', 'Operational access without security administration.', 1, CAST(unixepoch('subsec') * 1000000 AS INTEGER), CAST(unixepoch('subsec') * 1000000 AS INTEGER)),
 ('default', 'viewer', 'Read-only operational visibility.', 1, CAST(unixepoch('subsec') * 1000000 AS INTEGER), CAST(unixepoch('subsec') * 1000000 AS INTEGER));
+WITH grants(role_name, permission) AS (VALUES
+('owner','api_keys.manage'),('owner','alerts.manage'),('owner','alerts.read'),('owner','commands.read'),('owner','commands.send'),
+('owner','device_types.manage'),('owner','device_types.read'),('owner','devices.manage'),('owner','devices.read'),
+('owner','firmware.deploy'),('owner','firmware.manage'),('owner','firmware.read'),('owner','fleets.manage'),('owner','fleets.read'),
+('owner','logs.read'),('owner','roles.manage'),('owner','roles.read'),('owner','rules.manage'),('owner','rules.read'),
+('owner','server_metrics.read'),('owner','shadows.manage'),('owner','shadows.read'),('owner','telemetry.read'),
+('owner','users.manage'),('owner','users.read'),('owner','zones.manage'),('owner','zones.read'),
+('admin','api_keys.manage'),('admin','alerts.manage'),('admin','alerts.read'),('admin','commands.read'),('admin','commands.send'),
+('admin','device_types.manage'),('admin','device_types.read'),('admin','devices.manage'),('admin','devices.read'),
+('admin','firmware.deploy'),('admin','firmware.manage'),('admin','firmware.read'),('admin','fleets.manage'),('admin','fleets.read'),
+('admin','logs.read'),('admin','roles.manage'),('admin','roles.read'),('admin','rules.manage'),('admin','rules.read'),
+('admin','server_metrics.read'),('admin','shadows.manage'),('admin','shadows.read'),('admin','telemetry.read'),
+('admin','users.manage'),('admin','users.read'),('admin','zones.manage'),('admin','zones.read'),
+('operator','alerts.manage'),('operator','alerts.read'),('operator','commands.read'),('operator','commands.send'),
+('operator','device_types.read'),('operator','devices.read'),('operator','firmware.read'),('operator','fleets.read'),
+('operator','logs.read'),('operator','rules.read'),('operator','shadows.manage'),('operator','shadows.read'),
+('operator','telemetry.read'),('operator','zones.read'),
+('viewer','alerts.read'),('viewer','commands.read'),('viewer','device_types.read'),('viewer','devices.read'),
+('viewer','firmware.read'),('viewer','fleets.read'),('viewer','logs.read'),('viewer','rules.read'),
+('viewer','shadows.read'),('viewer','telemetry.read'),('viewer','zones.read'))
+INSERT INTO role_permissions(role_id,permission)
+SELECT roles.id,grants.permission FROM roles JOIN grants ON grants.role_name=roles.name
+WHERE roles.tenant_id='default';

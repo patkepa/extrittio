@@ -1,7 +1,7 @@
 use std::sync::{Arc, RwLock};
 
 use anyhow::Context;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::config::AppConfig;
 use crate::domains::firmware_store::FirmwareObjectStore;
@@ -17,8 +17,35 @@ pub async fn initialize_state(config: &AppConfig) -> anyhow::Result<Arc<AppState
         backend = persistence.backend.kind.as_str(),
         "Database opened"
     );
+    if persistence.backend.kind == crate::persistence::BackendKind::Turso {
+        let database = persistence
+            .backend
+            .local_file
+            .as_deref()
+            .and_then(std::path::Path::file_name)
+            .and_then(|name| name.to_str())
+            .unwrap_or("local database");
+        info!(
+            database,
+            "Embedded Turso backend enabled: single-node hobby deployment"
+        );
+    }
 
     init::run_persistence_migrations(&persistence).await?;
+    if let crate::config::DatabaseConfig::Turso {
+        database_path,
+        size_warning_bytes,
+        ..
+    } = &config.database
+        && let Ok(metadata) = std::fs::metadata(database_path)
+        && metadata.len() >= *size_warning_bytes
+    {
+        warn!(
+            database_size_bytes = metadata.len(),
+            warning_threshold_bytes = size_warning_bytes,
+            "Embedded Turso database has reached its configured size warning threshold"
+        );
+    }
     init::seed_persistence_device_types(&persistence).await?;
     let jwt_secret = init::init_persistence_jwt_secret(&persistence).await?;
     init::seed_persistence_admin_user(&persistence).await?;

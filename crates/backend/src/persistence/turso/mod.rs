@@ -1,3 +1,4 @@
+mod alerts;
 mod api_keys;
 mod audit;
 mod bootstrap;
@@ -8,17 +9,24 @@ mod dashboard;
 mod database;
 mod device_types;
 mod devices;
+mod firmware;
 mod fleets;
 mod logs;
+mod metrics;
+mod outbox;
 mod roles;
 mod row;
+mod rules;
 mod shadows;
 mod telemetry;
 mod users;
+mod zones;
 
 use std::sync::Arc;
 
-pub use database::TursoDatabase;
+use crate::persistence::{BackendDescriptor, Persistence, PersistencePorts};
+
+pub use database::{LogicalArchiveInfo, TursoBackupInfo, TursoDatabase, TursoDatabaseInfo};
 
 #[derive(Clone)]
 pub struct TursoAdapter {
@@ -32,6 +40,38 @@ impl TursoAdapter {
     }
 }
 
+#[must_use]
+pub fn create_persistence(database: Arc<TursoDatabase>) -> Persistence {
+    let path = database.path().to_path_buf();
+    let adapter = Arc::new(TursoAdapter::new(database));
+    Persistence::new(
+        BackendDescriptor::turso(path),
+        PersistencePorts {
+            api_keys: adapter.clone(),
+            alerts: adapter.clone(),
+            audit: adapter.clone(),
+            bootstrap: adapter.clone(),
+            certificates: adapter.clone(),
+            commands: adapter.clone(),
+            configuration: adapter.clone(),
+            dashboard: adapter.clone(),
+            device_types: adapter.clone(),
+            devices: adapter.clone(),
+            fleets: adapter.clone(),
+            firmware: adapter.clone(),
+            logs: adapter.clone(),
+            metrics: adapter.clone(),
+            outbox: adapter.clone(),
+            roles: adapter.clone(),
+            rules: adapter.clone(),
+            shadows: adapter.clone(),
+            telemetry: adapter.clone(),
+            users: adapter.clone(),
+            zones: adapter,
+        },
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
@@ -40,6 +80,8 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::domains::alerts::port::AlertRepository;
+    use crate::domains::alerts::types::NewAlertRecord;
     use crate::domains::commands::port::CommandRepository;
     use crate::domains::commands::types::NewCommandRecord;
     use crate::domains::configuration::repository::DeviceConfigRepository;
@@ -48,6 +90,8 @@ mod tests {
     use crate::domains::device_types::types::CreateDeviceTypeRecord;
     use crate::domains::devices::repository::DeviceRepository;
     use crate::domains::devices::types::{CreateDeviceRecord, DeviceListQuery};
+    use crate::domains::firmware::port::FirmwareRepository;
+    use crate::domains::firmware::types::{NewFirmwareRecord, TriggerOtaOutcome};
     use crate::domains::fleets::repository::FleetRepository;
     use crate::domains::fleets::types::CreateFleetRecord;
     use crate::domains::identity::api_key_repository::ApiKeyRepository;
@@ -59,6 +103,13 @@ mod tests {
     use crate::domains::identity::user_repository::UserRepository;
     use crate::domains::identity::user_types::{CreateUserOutcome, CreateUserRecord};
     use crate::domains::logs::port::LogRepository;
+    use crate::domains::operations::metrics_repository::MetricsRepository;
+    use crate::domains::operations::metrics_types::NewAppMetricRecord;
+    use crate::domains::operations::outbox_repository::OutboxRepository;
+    use crate::domains::rules::port::RuleRepository;
+    use crate::domains::rules::types::{
+        NewRuleRecord, RuleActionRecord, RuleConditionRecord, RuleFilter,
+    };
     use crate::domains::shadows::repository::ShadowRepository;
     use crate::domains::telemetry::port::TelemetryRepository;
     use crate::domains::telemetry::types::{TelemetryQuery, TelemetryWrite};
@@ -274,6 +325,161 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(maintenance.rollups_upserted, 1);
+        let alert = AlertRepository::create(
+            &adapter,
+            &tenant,
+            NewAlertRecord {
+                id: "alert-1".into(),
+                rule_id: None,
+                device_id: "device-1".into(),
+                severity: "warning".into(),
+                message: "threshold".into(),
+                triggered_value: Some("21.5".into()),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(alert.status, "active");
+        let rule = RuleRepository::create(
+            &adapter,
+            &tenant,
+            NewRuleRecord {
+                id: "rule-1".into(),
+                name: "temperature".into(),
+                description: Some("hot".into()),
+                trigger_type: "telemetry".into(),
+                target_type: "global".into(),
+                target_id: None,
+                cooldown_seconds: 60,
+                conditions: vec![RuleConditionRecord {
+                    id: "condition-1".into(),
+                    field: "temperature".into(),
+                    operator: "gt".into(),
+                    value: "30".into(),
+                    condition_group: 0,
+                    zone_id: None,
+                }],
+                actions: vec![RuleActionRecord {
+                    id: "action-1".into(),
+                    action_type: "alert".into(),
+                    config: json!({"severity":"warning"}),
+                }],
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(rule.conditions.len(), 1);
+        assert_eq!(
+            RuleRepository::list(
+                &adapter,
+                &tenant,
+                RuleFilter {
+                    enabled: Some(true),
+                    trigger_type: None,
+                    target_type: None,
+                },
+            )
+            .await
+            .unwrap()
+            .len(),
+            1
+        );
+        assert_eq!(
+            RuleRepository::build_cache(&adapter)
+                .await
+                .unwrap()
+                .global_rules
+                .len(),
+            1
+        );
+
+        let firmware = FirmwareRepository::create(
+            &adapter,
+            &tenant,
+            NewFirmwareRecord {
+                device_type_id: device_type.id,
+                version: "1.0.0".into(),
+                url: "firmware/sensor.bin".into(),
+                sha256: Some("abcd".into()),
+                description: None,
+                commit_sha: None,
+                branch: None,
+                ci_run_url: None,
+                build_timestamp: None,
+                changelog: None,
+                source: None,
+            },
+            None,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            FirmwareRepository::next_version(&adapter, &tenant, device_type.id)
+                .await
+                .unwrap(),
+            "1.0.1"
+        );
+        let ota = FirmwareRepository::trigger_ota(
+            &adapter,
+            &tenant,
+            "device-1",
+            firmware.id,
+            "http://localhost:8080",
+        )
+        .await
+        .unwrap();
+        assert!(matches!(ota, TriggerOtaOutcome::Ready { .. }));
+        assert_eq!(
+            FirmwareRepository::list_all_deployments(&adapter, &tenant, None, 10, 0)
+                .await
+                .unwrap()
+                .total,
+            1
+        );
+        MetricsRepository::insert_app(
+            &adapter,
+            NewAppMetricRecord {
+                request_count: 1,
+                error_count: 0,
+                avg_latency_ms: 2.0,
+                p95_latency_ms: 3.0,
+                db_pool_active: 1,
+                db_pool_idle: 0,
+                zenoh_messages_in: 4,
+                zenoh_messages_out: 5,
+            },
+        )
+        .await
+        .unwrap();
+        assert!(
+            MetricsRepository::current(&adapter)
+                .await
+                .unwrap()
+                .app
+                .is_some()
+        );
+        super::devices::enqueue(
+            &adapter.database.connect().unwrap(),
+            &[crate::rule_engine::types::PendingAction::SendCommand {
+                tenant_id: tenant.as_str().into(),
+                device_id: "device-1".into(),
+                command: "reboot".into(),
+                params: json!({}),
+            }],
+        )
+        .await
+        .unwrap();
+        let claimed =
+            OutboxRepository::claim_batch(&adapter, "worker-1", 10, Duration::from_secs(30))
+                .await
+                .unwrap();
+        assert_eq!(claimed.len(), 1);
+        assert!(
+            OutboxRepository::mark_succeeded(&adapter, &claimed[0].id, "worker-1")
+                .await
+                .unwrap()
+        );
 
         let ca = adapter
             .insert_ca_if_absent(NewCaCertificateRecord {

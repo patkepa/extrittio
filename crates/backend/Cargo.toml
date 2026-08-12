@@ -12,6 +12,7 @@ publish.workspace = true
 default = ["postgres"]
 postgres = ["dep:diesel", "dep:diesel_migrations"]
 turso = ["dep:turso"]
+embedded-ui = ["dep:include_dir"]
 all-databases = ["postgres", "turso"]
 phase0-turso = ["turso"]
 
@@ -56,6 +57,7 @@ dotenvy = "0.15"
 base64 = "0.22"
 ring = "0.17"
 turso = { version = "=0.7.2", default-features = false, optional = true }
+include_dir = { version = "0.7", optional = true }
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
 tikv-jemallocator = "0.6"

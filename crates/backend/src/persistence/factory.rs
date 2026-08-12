@@ -20,15 +20,26 @@ pub async fn create(config: &DatabaseConfig) -> anyhow::Result<Persistence> {
                 )
             }
         }
-        DatabaseConfig::Turso { .. } => {
+        DatabaseConfig::Turso {
+            data_dir,
+            database_path,
+            busy_timeout,
+            ..
+        } => {
             #[cfg(feature = "turso")]
-            anyhow::bail!(
-                "the Turso persistence adapter is not available yet; this build will not fall back to PostgreSQL"
-            );
+            {
+                let database =
+                    super::turso::TursoDatabase::open(data_dir, database_path, *busy_timeout)
+                        .await?;
+                Ok(super::turso::create_persistence(database))
+            }
             #[cfg(not(feature = "turso"))]
-            anyhow::bail!(
-                "Turso was requested but this binary was built without the `turso` feature"
-            )
+            {
+                let _ = (data_dir, database_path, busy_timeout);
+                anyhow::bail!(
+                    "Turso was requested but this binary was built without the `turso` feature"
+                )
+            }
         }
     }
 }

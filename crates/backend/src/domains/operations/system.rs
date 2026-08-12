@@ -10,7 +10,7 @@ pub(crate) struct SystemVersionResponse {
     pub version: String,
     pub commit_sha: String,
     pub build_timestamp: String,
-    pub database: &'static str,
+    pub database: String,
 }
 
 pub fn router() -> Router<Arc<AppState>> {
@@ -43,7 +43,7 @@ fn runtime_version() -> String {
     ),
 )]
 pub(crate) async fn get_version(State(state): State<Arc<AppState>>) -> Json<SystemVersionResponse> {
-    let database = if state
+    let database_status = if state
         .persistence
         .bootstrap
         .health()
@@ -54,6 +54,10 @@ pub(crate) async fn get_version(State(state): State<Arc<AppState>>) -> Json<Syst
     } else {
         "unreachable"
     };
+    let database = format!(
+        "{}:{database_status}",
+        state.persistence.backend.kind.as_str()
+    );
 
     Json(SystemVersionResponse {
         version: runtime_version(),

@@ -115,6 +115,60 @@ jobs:
         run: pg_isready -h 127.0.0.1 -p 5432 -U extrittio -d extrittio
       - run: cargo test --workspace --exclude extrittio-macos
 
+  turso-hobby:
+    name: Turso Hobby (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          components: clippy
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/frontend/package-lock.json
+          registry-url: https://npm.pkg.github.com
+          scope: "@extrittio"
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          cache-on-failure: true
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler libssl-dev
+      - name: Build frontend for embedding
+        working-directory: apps/frontend
+        run: npm ci && npm run build
+      - name: Verify Turso adapter
+        run: |
+          cargo clippy -p extrittio --no-default-features --features turso --all-targets -- -D warnings
+          cargo test -p extrittio-backend --no-default-features --features turso --lib
+      - name: Build standalone hobby executable
+        run: cargo build --release -p extrittio --no-default-features --features hobby
+      - name: Verify artifact and first-run migration
+        run: |
+          if ldd target/release/extrittio | grep -E 'libpq|postgres'; then
+            echo "hobby executable unexpectedly links PostgreSQL runtime libraries" >&2
+            exit 1
+          fi
+          smoke_dir="$(mktemp -d)"
+          target/release/extrittio -o json migrate --database-backend turso --deployment-profile hobby --data-dir "$smoke_dir"
+          target/release/extrittio -o json database --database-backend turso --deployment-profile hobby --data-dir "$smoke_dir" info
+          sha256sum target/release/extrittio > target/release/extrittio-${{ matrix.arch }}.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: extrittio-hobby-linux-${{ matrix.arch }}
+          path: |
+            target/release/extrittio
+            target/release/extrittio-${{ matrix.arch }}.sha256
+
   clients-and-protocol:
     name: Clients & Protocol
     runs-on: ubuntu-latest

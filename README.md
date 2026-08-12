@@ -2,8 +2,9 @@
 
 Extrittio is a self-hosted IoT hub for provisioning, operating, and observing
 connected devices. It combines a Rust control plane, Zenoh device messaging,
-Protobuf contracts, PostgreSQL persistence, a React operations console, and a
-native SwiftUI companion app for iOS.
+Protobuf contracts, PostgreSQL production persistence or embedded Turso hobby
+persistence, a React operations console, and a native SwiftUI companion app for
+iOS.
 
 The platform supports multi-tenant device and fleet management, telemetry and
 logs, desired/reported shadows, commands, OTA firmware deployments, rules,
@@ -15,7 +16,7 @@ alerts, audit events, operational metrics, and native/embedded client SDKs.
 Devices and gateways
   -> Zenoh + Protobuf
   -> supervised ingestion and rule processing
-  -> tenant-scoped services and PostgreSQL
+  -> tenant-scoped services and PostgreSQL or local Turso
   -> Axum REST API / OpenAPI
   -> React operations console and CLI
 ```

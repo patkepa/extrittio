@@ -133,3 +133,5 @@ expanding the binary entrypoint:
 - `output.rs` owns table/JSON rendering.
 - `config.rs` owns local CLI state.
 - `esp32.rs` owns provisioning support for ESP-IDF targets.
+
+For the single-executable Turso hobby build, data layout and backup/restore commands, see [Turso Hobby Deployment](../../docs/TURSO_HOBBY.md).

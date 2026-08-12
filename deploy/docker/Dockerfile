@@ -61,9 +61,9 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
         PKG_CONFIG_ALLOW_CROSS=1 PKG_CONFIG_SYSROOT_DIR=/ \
         PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig \
         OPENSSL_LIB_DIR=/usr/lib/aarch64-linux-gnu OPENSSL_INCLUDE_DIR=/usr/include \
-        cargo build --profile "$CARGO_PROFILE" --target aarch64-unknown-linux-gnu -p extrittio 2>/dev/null || true; \
+        cargo build --profile "$CARGO_PROFILE" --target aarch64-unknown-linux-gnu -p extrittio --no-default-features --features postgres 2>/dev/null || true; \
     else \
-        cargo build --profile "$CARGO_PROFILE" -p extrittio 2>/dev/null || true; \
+        cargo build --profile "$CARGO_PROFILE" -p extrittio --no-default-features --features postgres 2>/dev/null || true; \
     fi
 
 # Copy actual source code
@@ -83,10 +83,10 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
         PKG_CONFIG_ALLOW_CROSS=1 PKG_CONFIG_SYSROOT_DIR=/ \
         PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig \
         OPENSSL_LIB_DIR=/usr/lib/aarch64-linux-gnu OPENSSL_INCLUDE_DIR=/usr/include \
-        cargo build --profile "$CARGO_PROFILE" --target aarch64-unknown-linux-gnu -p extrittio && \
+        cargo build --profile "$CARGO_PROFILE" --target aarch64-unknown-linux-gnu -p extrittio --no-default-features --features postgres && \
         cp "target/aarch64-unknown-linux-gnu/$CARGO_PROFILE/extrittio" /app/bin/extrittio; \
     else \
-        cargo build --profile "$CARGO_PROFILE" -p extrittio && \
+        cargo build --profile "$CARGO_PROFILE" -p extrittio --no-default-features --features postgres && \
         cp "target/$CARGO_PROFILE/extrittio" /app/bin/extrittio; \
     fi
 

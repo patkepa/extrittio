@@ -17,6 +17,7 @@ struct WorkerExit {
 pub struct WorkerSupervisor {
     cancellation: CancellationToken,
     monitor: JoinHandle<anyhow::Result<()>>,
+    persistence: crate::persistence::Persistence,
 }
 
 impl WorkerSupervisor {
@@ -27,9 +28,16 @@ impl WorkerSupervisor {
 
     pub async fn shutdown(self) -> anyhow::Result<()> {
         self.cancellation.cancel();
-        self.monitor
+        let result = self
+            .monitor
             .await
-            .map_err(|error| anyhow::anyhow!("worker supervisor task panicked: {error}"))?
+            .map_err(|error| anyhow::anyhow!("worker supervisor task panicked: {error}"))?;
+        self.persistence
+            .bootstrap
+            .maintenance_checkpoint()
+            .await
+            .map_err(|error| anyhow::anyhow!("database shutdown checkpoint failed: {error}"))?;
+        result
     }
 }
 
@@ -280,6 +288,28 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         },
     );
 
+    if !state.persistence.backend.capabilities.partitioned_telemetry {
+        let maintenance = state.persistence.clone();
+        spawn_worker(
+            &mut workers,
+            &cancellation,
+            &state.readiness,
+            "database-checkpoint",
+            async move {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(15 * 60));
+                interval.tick().await;
+                loop {
+                    interval.tick().await;
+                    maintenance
+                        .bootstrap
+                        .maintenance_checkpoint()
+                        .await
+                        .map_err(|error| error.to_string())?;
+                }
+            },
+        );
+    }
+
     let monitor_cancellation = cancellation.clone();
     let readiness = state.readiness.clone();
     let worker_names = readiness
@@ -318,5 +348,6 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
     WorkerSupervisor {
         cancellation,
         monitor,
+        persistence: state.persistence.clone(),
     }
 }
