@@ -29,6 +29,8 @@ OTBR_BUILD_DIR := target/openthread/build
 OTBR_AGENT := $(OTBR_BUILD_DIR)/src/agent/otbr-agent
 # `ot-ctl` is built by OpenThread itself, which OTBR embeds as a subproject.
 OTBR_CTL := $(OTBR_BUILD_DIR)/third_party/openthread/repo/src/posix/ot-ctl
+OTBR_MACOS_IPV6_PATCH := patches/otbr-macos-ipv6-bound-if.patch
+OTBR_MACOS_IPV6_PATCH_STAMP := $(OTBR_SOURCE_DIR)/.extrittio-macos-ipv6-bound-if-patched
 OTBR_INSTALL_DIR := $(EXTRITTIO_INSTALL_ROOT)/libexec/extrittio
 EXTRITTIO_BIN_DIR := $(EXTRITTIO_INSTALL_ROOT)/bin
 
@@ -116,13 +118,19 @@ otbr-agent: $(OTBR_AGENT) $(OTBR_CTL)
 
 # The source verification must run before a build, but it must not mark an
 # already-built OTBR agent stale on every hobby install.
-$(OTBR_AGENT): | check-otbr-source
+$(OTBR_AGENT): $(OTBR_MACOS_IPV6_PATCH_STAMP) | check-otbr-source
 	cmake -S "$(OTBR_SOURCE_DIR)" -B "$(OTBR_BUILD_DIR)" $(OTBR_CMAKE_OPTIONS)
 	cmake --build "$(OTBR_BUILD_DIR)" --target otbr-agent ot-ctl --parallel
 	test -x "$(OTBR_AGENT)"
 	test -x "$(OTBR_CTL)"
 
 $(OTBR_CTL): $(OTBR_AGENT)
+
+$(OTBR_MACOS_IPV6_PATCH_STAMP): $(OTBR_SOURCE_DIR)/.git $(OTBR_MACOS_IPV6_PATCH)
+ifeq ($(shell uname -s),Darwin)
+	git -C "$(OTBR_SOURCE_DIR)" apply "$(abspath $(OTBR_MACOS_IPV6_PATCH))"
+endif
+	touch "$@"
 
 check-otbr-source: $(OTBR_SOURCE_DIR)/.git
 	test "$$(git -C "$(OTBR_SOURCE_DIR)" rev-parse HEAD)" = "$(OTBR_COMMIT)"
