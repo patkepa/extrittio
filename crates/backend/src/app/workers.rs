@@ -1,7 +1,9 @@
 use std::future::Future;
 use std::sync::Arc;
+#[cfg(not(target_os = "macos"))]
 use std::time::Duration;
 
+#[cfg(not(target_os = "macos"))]
 use mdns_sd::{ServiceDaemon, ServiceInfo};
 use tokio::task::{JoinHandle, JoinSet};
 use tokio_util::sync::CancellationToken;
@@ -503,22 +505,37 @@ struct ThreadDnsSdService {
 }
 
 struct ThreadDnsSdRegistration {
-    daemon: ServiceDaemon,
-    fullname: String,
+    registration: ThreadDnsSdRegistrationKind,
     generation: u64,
+}
+
+enum ThreadDnsSdRegistrationKind {
+    #[cfg(target_os = "macos")]
+    NativeBonjour(NativeBonjourRegistration),
+    #[cfg(not(target_os = "macos"))]
+    PortableMdns {
+        daemon: ServiceDaemon,
+        fullname: String,
+    },
 }
 
 impl ThreadDnsSdRegistration {
     fn withdraw(self) -> Result<(), String> {
-        let receiver = self
-            .daemon
-            .unregister(&self.fullname)
-            .map_err(|error| error.to_string())?;
-        let _ = receiver.recv_timeout(Duration::from_secs(1));
-        self.daemon
-            .shutdown()
-            .map(|_| ())
-            .map_err(|error| error.to_string())
+        match self.registration {
+            #[cfg(target_os = "macos")]
+            ThreadDnsSdRegistrationKind::NativeBonjour(registration) => registration.withdraw(),
+            #[cfg(not(target_os = "macos"))]
+            ThreadDnsSdRegistrationKind::PortableMdns { daemon, fullname } => {
+                let receiver = daemon
+                    .unregister(&fullname)
+                    .map_err(|error| error.to_string())?;
+                let _ = receiver.recv_timeout(Duration::from_secs(1));
+                daemon
+                    .shutdown()
+                    .map(|_| ())
+                    .map_err(|error| error.to_string())
+            }
+        }
     }
 }
 
@@ -528,30 +545,102 @@ fn register_thread_dns_sd_service(
     generation: u64,
 ) -> Result<ThreadDnsSdRegistration, String> {
     validate_thread_dns_sd_service(&service)?;
-    let service_type = format!("{}.local.", service.service_name);
-    let host_name = format!("{}.local.", service.instance_name);
-    let properties = [
-        ("role", "server"),
-        ("proto", "zenoh"),
-        ("version", "1"),
-        ("tls", if service.tls_enabled { "1" } else { "0" }),
-    ];
-    let info = ServiceInfo::new(
-        &service_type,
-        &service.instance_name,
-        &host_name,
-        address.to_string(),
-        service.port,
-        &properties[..],
-    )
-    .map_err(|error| error.to_string())?;
-    let daemon = ServiceDaemon::new().map_err(|error| error.to_string())?;
-    daemon.register(info).map_err(|error| error.to_string())?;
-    Ok(ThreadDnsSdRegistration {
-        daemon,
-        fullname: format!("{}.{}", service.instance_name, service_type),
-        generation,
-    })
+
+    #[cfg(target_os = "macos")]
+    {
+        Ok(ThreadDnsSdRegistration {
+            registration: ThreadDnsSdRegistrationKind::NativeBonjour(
+                NativeBonjourRegistration::register(&service, address)?,
+            ),
+            generation,
+        })
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let service_type = format!("{}.local.", service.service_name);
+        let host_name = format!("{}.local.", service.instance_name);
+        let properties = [
+            ("role", "server"),
+            ("proto", "zenoh"),
+            ("version", "1"),
+            ("tls", if service.tls_enabled { "1" } else { "0" }),
+        ];
+        let info = ServiceInfo::new(
+            &service_type,
+            &service.instance_name,
+            &host_name,
+            address.to_string(),
+            service.port,
+            &properties[..],
+        )
+        .map_err(|error| error.to_string())?;
+        let daemon = ServiceDaemon::new().map_err(|error| error.to_string())?;
+        daemon.register(info).map_err(|error| error.to_string())?;
+        Ok(ThreadDnsSdRegistration {
+            registration: ThreadDnsSdRegistrationKind::PortableMdns {
+                daemon,
+                fullname: format!("{}.{}", service.instance_name, service_type),
+            },
+            generation,
+        })
+    }
+}
+
+#[cfg(target_os = "macos")]
+struct NativeBonjourRegistration {
+    child: std::process::Child,
+}
+
+#[cfg(target_os = "macos")]
+impl NativeBonjourRegistration {
+    fn register(service: &ThreadDnsSdService, address: std::net::Ipv6Addr) -> Result<Self, String> {
+        use std::process::{Command, Stdio};
+
+        // `dns-sd -P` is Apple's supported custom-host registration interface.
+        // It atomically publishes PTR/SRV/TXT/AAAA records for the Thread ULA;
+        // macOS 26 rejects the corresponding low-level record sequence.
+        let port = service.port.to_string();
+        let host = format!("{}.local.", service.instance_name);
+        let address = address.to_string();
+        let child = Command::new("/usr/bin/dns-sd")
+            .args([
+                "-P",
+                service.instance_name.as_str(),
+                service.service_name.as_str(),
+                "local.",
+                port.as_str(),
+                host.as_str(),
+                address.as_str(),
+                "role=server",
+                "proto=zenoh",
+                "version=1",
+                if service.tls_enabled {
+                    "tls=1"
+                } else {
+                    "tls=0"
+                },
+            ])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| format!("Failed to start macOS DNS-SD proxy registration: {error}"))?;
+        Ok(Self { child })
+    }
+
+    fn withdraw(mut self) -> Result<(), String> {
+        if self
+            .child
+            .try_wait()
+            .map_err(|error| error.to_string())?
+            .is_none()
+        {
+            self.child.kill().map_err(|error| error.to_string())?;
+            let _ = self.child.wait();
+        }
+        Ok(())
+    }
 }
 
 fn validate_thread_dns_sd_service(service: &ThreadDnsSdService) -> Result<(), String> {

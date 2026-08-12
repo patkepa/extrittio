@@ -1,0 +1,22 @@
+diff --git a/src/mdns/CMakeLists.txt b/src/mdns/CMakeLists.txt
+index e7b8ef3..b916eee 100644
+--- a/src/mdns/CMakeLists.txt
++++ b/src/mdns/CMakeLists.txt
+@@ -34,8 +34,14 @@ if(OTBR_MDNS STREQUAL "mDNSResponder")
+     target_link_libraries(otbr-mdns
+         PUBLIC
+             otbr-common
+-        PRIVATE
+-            otbr-utils
+-            dns_sd
++        PRIVATE
++            otbr-utils
+     )
++    # macOS 26 exports Bonjour's DNSService APIs through libSystem rather
++    # than a standalone libdns_sd library.
++    if(APPLE)
++        target_link_libraries(otbr-mdns PRIVATE System)
++    else()
++        target_link_libraries(otbr-mdns PRIVATE dns_sd)
++    endif()
+ endif()

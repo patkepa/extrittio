@@ -31,6 +31,8 @@ OTBR_AGENT := $(OTBR_BUILD_DIR)/src/agent/otbr-agent
 OTBR_CTL := $(OTBR_BUILD_DIR)/third_party/openthread/repo/src/posix/ot-ctl
 OTBR_MACOS_IPV6_PATCH := patches/otbr-macos-ipv6-bound-if.patch
 OTBR_MACOS_IPV6_PATCH_STAMP := $(OTBR_SOURCE_DIR)/.extrittio-macos-ipv6-bound-if-patched
+OTBR_MACOS_DNSSD_PATCH := patches/otbr-macos-dnssd-link.patch
+OTBR_MACOS_DNSSD_PATCH_STAMP := $(OTBR_SOURCE_DIR)/.extrittio-macos-dnssd-link-patched
 OTBR_INSTALL_DIR := $(EXTRITTIO_INSTALL_ROOT)/libexec/extrittio
 EXTRITTIO_BIN_DIR := $(EXTRITTIO_INSTALL_ROOT)/bin
 
@@ -61,15 +63,21 @@ OTBR_CMAKE_OPTIONS := \
 	-DOTBR_NAT64=OFF \
 	-DOTBR_OT_SRP_ADV_PROXY=ON \
 	-DOTBR_OT_DISCOVERY_PROXY=ON \
-	-DOTBR_DNSSD_PLAT=OFF \
 	-DOTBR_TREL=OFF \
 	-DBUILD_TESTING=OFF
 
 # OpenThread's Backbone Router multicast routing and firewall integrations are
 # Linux-specific. Basic Thread Border Router and commissioning functionality
-# remain enabled on macOS.
+# remain enabled on macOS. Use macOS's mDNSResponder so OTBR's Discovery Proxy
+# can resolve the backend's standard host mDNS registration for Thread DNS-SD
+# clients. Clear the cached OpenThread mDNS setting when upgrading an existing
+# internal-mDNS build; OT permits platform DNS-SD or its own mDNS, not both.
 ifeq ($(shell uname -s),Darwin)
 OTBR_CMAKE_OPTIONS += \
+	-DOTBR_MDNS=mDNSResponder \
+	-DOTBR_DNSSD_PLAT=ON \
+	-DOT_MDNS=OFF \
+	-DOT_MDNS_VERBOSE=OFF \
 	-DOTBR_BACKBONE_ROUTER=OFF \
 	-DOT_FIREWALL=OFF \
 	-DCMAKE_C_FLAGS=-Wno-error=uninitialized-const-pointer
@@ -121,7 +129,7 @@ otbr-agent: $(OTBR_AGENT) $(OTBR_CTL)
 
 # The source verification must run before a build, but it must not mark an
 # already-built OTBR agent stale on every hobby install.
-$(OTBR_AGENT): $(OTBR_MACOS_IPV6_PATCH_STAMP) | check-otbr-source
+$(OTBR_AGENT): Makefile $(OTBR_MACOS_IPV6_PATCH_STAMP) $(OTBR_MACOS_DNSSD_PATCH_STAMP) | check-otbr-source
 	cmake -S "$(OTBR_SOURCE_DIR)" -B "$(OTBR_BUILD_DIR)" $(OTBR_CMAKE_OPTIONS)
 	cmake --build "$(OTBR_BUILD_DIR)" --target otbr-agent ot-ctl --parallel
 	test -x "$(OTBR_AGENT)"
@@ -135,6 +143,16 @@ ifeq ($(shell uname -s),Darwin)
 		git -C "$(OTBR_SOURCE_DIR)" apply "$(abspath $(OTBR_MACOS_IPV6_PATCH))"; \
 	else \
 		git -C "$(OTBR_SOURCE_DIR)" apply --reverse --check "$(abspath $(OTBR_MACOS_IPV6_PATCH))"; \
+	fi
+endif
+	touch "$@"
+
+$(OTBR_MACOS_DNSSD_PATCH_STAMP): $(OTBR_SOURCE_DIR)/.git $(OTBR_MACOS_DNSSD_PATCH)
+ifeq ($(shell uname -s),Darwin)
+	if git -C "$(OTBR_SOURCE_DIR)" apply --check "$(abspath $(OTBR_MACOS_DNSSD_PATCH))" 2>/dev/null; then \
+		git -C "$(OTBR_SOURCE_DIR)" apply "$(abspath $(OTBR_MACOS_DNSSD_PATCH))"; \
+	else \
+		git -C "$(OTBR_SOURCE_DIR)" apply --reverse --check "$(abspath $(OTBR_MACOS_DNSSD_PATCH))"; \
 	fi
 endif
 	touch "$@"
