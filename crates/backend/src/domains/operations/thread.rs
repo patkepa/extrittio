@@ -187,6 +187,9 @@ pub(crate) async fn create_thread_network(
         controller.create_network(&network)
     })
     .await?;
+    if let Some(runtime) = state.thread_runtime.as_ref() {
+        runtime.mark_network_changed();
+    }
     Ok(Json(status_after_change(controller).await?))
 }
 
@@ -214,6 +217,9 @@ pub(crate) async fn import_thread_dataset(
         controller.import_active_dataset(&request.active_dataset_tlvs)
     })
     .await?;
+    if let Some(runtime) = state.thread_runtime.as_ref() {
+        runtime.mark_network_changed();
+    }
     Ok(Json(status_after_change(controller).await?))
 }
 

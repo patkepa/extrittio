@@ -1,8 +1,11 @@
 use std::future::Future;
 use std::sync::Arc;
+use std::time::Duration;
 
+use mdns_sd::{ServiceDaemon, ServiceInfo};
 use tokio::task::{JoinHandle, JoinSet};
 use tokio_util::sync::CancellationToken;
+use tracing::{info, warn};
 
 use crate::config::AppConfig;
 use crate::state::{AppState, ReadinessRegistry};
@@ -60,10 +63,50 @@ fn spawn_worker<F>(
     });
 }
 
+fn spawn_shutdown_worker<F, Fut>(
+    workers: &mut JoinSet<WorkerExit>,
+    cancellation: &CancellationToken,
+    readiness: &Arc<ReadinessRegistry>,
+    name: &'static str,
+    worker: F,
+) where
+    F: FnOnce(CancellationToken) -> Fut + Send + 'static,
+    Fut: Future<Output = Result<(), String>> + Send + 'static,
+{
+    readiness.register_worker(name);
+    let cancellation = cancellation.clone();
+    workers.spawn(async move {
+        WorkerExit {
+            name,
+            result: worker(cancellation).await,
+        }
+    });
+}
+
 /// Start all long-running tasks under one monitored worker tree.
 pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> WorkerSupervisor {
     let cancellation = CancellationToken::new();
     let mut workers = JoinSet::new();
+
+    if let Some(thread_runtime) = state.thread_runtime.clone() {
+        let service = ThreadDnsSdService {
+            instance_name: config.thread_zenoh_service_instance.clone(),
+            service_name: config.thread_zenoh_service_name.clone(),
+            port: config.zenoh_tls_port,
+            tls_enabled: config.zenoh_tls_enabled,
+        };
+        let listen_host = config.zenoh_listen_host.clone();
+        spawn_shutdown_worker(
+            &mut workers,
+            &cancellation,
+            &state.readiness,
+            "thread-dns-sd",
+            move |cancellation| async move {
+                run_thread_dns_sd_advertiser(thread_runtime, service, listen_host, cancellation)
+                    .await
+            },
+        );
+    }
 
     let subscriber_persistence = state.persistence.clone();
     let subscriber_session = state.zenoh_session.clone();
@@ -350,4 +393,182 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         monitor,
         persistence: state.persistence.clone(),
     }
+}
+
+async fn run_thread_dns_sd_advertiser(
+    runtime: Arc<extrittio_openthread_runtime::ThreadRuntime>,
+    service: ThreadDnsSdService,
+    listen_host: String,
+    cancellation: CancellationToken,
+) -> Result<(), String> {
+    let mut registration = None;
+    let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+
+    loop {
+        tokio::select! {
+            () = cancellation.cancelled() => {
+                if let Some(registration) = registration.take() {
+                    withdraw_thread_service(registration).await;
+                }
+                return Ok(());
+            }
+            _ = interval.tick() => {
+                let refresh_runtime = runtime.clone();
+                let snapshot = tokio::task::spawn_blocking(move || refresh_runtime.refresh())
+                    .await
+                    .map_err(|error| format!("Thread DNS-SD refresh task failed: {error}"))?;
+                if !snapshot.available {
+                    if let Some(registration) = registration.take() {
+                        withdraw_thread_service(registration).await;
+                        warn!("Thread DNS-SD service withdrawn because OTBR is unavailable");
+                    }
+                    continue;
+                }
+
+                let generation = runtime.network_generation();
+                if registration.as_ref().is_some_and(|registration: &ThreadDnsSdRegistration| registration.generation == generation) {
+                    continue;
+                }
+
+                let address_runtime = runtime.clone();
+                let address = match tokio::task::spawn_blocking(move || address_runtime.thread_ipv6_address()).await {
+                    Ok(Ok(address)) => address,
+                    Ok(Err(error)) => {
+                        warn!(%error, "Thread DNS-SD service is waiting for a mesh-reachable IPv6 address");
+                        continue;
+                    }
+                    Err(error) => return Err(format!("Thread DNS-SD address task failed: {error}")),
+                };
+                if !zenoh_listener_accepts(&listen_host, address) {
+                    warn!(
+                        listen_host,
+                        address = %address,
+                        "Thread DNS-SD service is not advertised because the Zenoh listener does not accept the Thread IPv6 address"
+                    );
+                    continue;
+                }
+
+                let advertise_service = service.clone();
+                if let Some(registration) = registration.take() {
+                    withdraw_thread_service(registration).await;
+                }
+                match tokio::task::spawn_blocking(move || register_thread_dns_sd_service(advertise_service, address, generation)).await {
+                    Ok(Ok(new_registration)) => {
+                        registration = Some(new_registration);
+                        info!(
+                            service = %service.service_name,
+                            instance = %service.instance_name,
+                            address = %address,
+                            port = service.port,
+                            "Advertised Zenoh DNS-SD service on the Thread mesh"
+                        );
+                    }
+                    Ok(Err(error)) => warn!(%error, "Failed to advertise Zenoh DNS-SD service on the Thread mesh; will retry"),
+                    Err(error) => return Err(format!("Thread DNS-SD advertisement task failed: {error}")),
+                }
+            }
+        }
+    }
+}
+
+async fn withdraw_thread_service(registration: ThreadDnsSdRegistration) {
+    match tokio::task::spawn_blocking(move || registration.withdraw()).await {
+        Ok(Ok(())) => info!("Withdrew Zenoh DNS-SD service from the Thread mesh"),
+        Ok(Err(error)) => {
+            warn!(%error, "Failed to withdraw Zenoh DNS-SD service from the Thread mesh")
+        }
+        Err(error) => warn!(%error, "Thread DNS-SD withdrawal task failed"),
+    }
+}
+
+#[derive(Clone)]
+struct ThreadDnsSdService {
+    instance_name: String,
+    service_name: String,
+    port: u16,
+    tls_enabled: bool,
+}
+
+struct ThreadDnsSdRegistration {
+    daemon: ServiceDaemon,
+    fullname: String,
+    generation: u64,
+}
+
+impl ThreadDnsSdRegistration {
+    fn withdraw(self) -> Result<(), String> {
+        let receiver = self
+            .daemon
+            .unregister(&self.fullname)
+            .map_err(|error| error.to_string())?;
+        let _ = receiver.recv_timeout(Duration::from_secs(1));
+        self.daemon
+            .shutdown()
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
+}
+
+fn register_thread_dns_sd_service(
+    service: ThreadDnsSdService,
+    address: std::net::Ipv6Addr,
+    generation: u64,
+) -> Result<ThreadDnsSdRegistration, String> {
+    validate_thread_dns_sd_service(&service)?;
+    let service_type = format!("{}.local.", service.service_name);
+    let host_name = format!("{}.local.", service.instance_name);
+    let properties = [
+        ("role", "server"),
+        ("proto", "zenoh"),
+        ("version", "1"),
+        ("tls", if service.tls_enabled { "1" } else { "0" }),
+    ];
+    let info = ServiceInfo::new(
+        &service_type,
+        &service.instance_name,
+        &host_name,
+        address.to_string(),
+        service.port,
+        &properties[..],
+    )
+    .map_err(|error| error.to_string())?;
+    let daemon = ServiceDaemon::new().map_err(|error| error.to_string())?;
+    daemon.register(info).map_err(|error| error.to_string())?;
+    Ok(ThreadDnsSdRegistration {
+        daemon,
+        fullname: format!("{}.{}", service.instance_name, service_type),
+        generation,
+    })
+}
+
+fn validate_thread_dns_sd_service(service: &ThreadDnsSdService) -> Result<(), String> {
+    if service.port == 0 {
+        return Err("DNS-SD service port must be greater than zero".to_string());
+    }
+    if !valid_dns_sd_label(&service.instance_name) {
+        return Err("DNS-SD service instance must be a non-empty DNS label".to_string());
+    }
+    if !service.service_name.starts_with('_')
+        || !service.service_name.ends_with("._tcp")
+        || service.service_name.split('.').count() != 2
+        || service.service_name.len() > 63
+    {
+        return Err("DNS-SD service name must be a _service._tcp value".to_string());
+    }
+    Ok(())
+}
+
+fn valid_dns_sd_label(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 63
+        && !value.starts_with('-')
+        && !value.ends_with('-')
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+}
+
+fn zenoh_listener_accepts(listen_host: &str, address: std::net::Ipv6Addr) -> bool {
+    let listen_host = listen_host.trim();
+    listen_host == "::" || listen_host.parse::<std::net::Ipv6Addr>() == Ok(address)
 }

@@ -59,6 +59,7 @@ base64 = "0.22"
 ring = "0.17"
 turso = { version = "=0.7.2", default-features = false, optional = true }
 include_dir = { version = "0.7", optional = true }
+mdns-sd = "0.20"
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
 tikv-jemallocator = "0.6"

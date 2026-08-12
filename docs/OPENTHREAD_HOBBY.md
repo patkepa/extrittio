@@ -99,6 +99,48 @@ Pass that value to `extrittio provision --zenoh-connect ...`, or place it in
 the OpenThread client's Zenoh configuration. IPv6 literals require square
 brackets in Zenoh locators.
 
+## Zenoh DNS-SD discovery on Thread
+
+When the local OTBR runtime is ready, Extrittio publishes exactly one DNS-SD
+service. OTBR's DNS-SD discovery proxy translates its local mDNS registration
+onto the Thread service domain, so Thread clients discover:
+
+```text
+extrittio-backend._extrittio-zenoh._tcp.default.service.arpa.
+```
+
+Its target is a concrete, non-loopback IPv6 address assigned to OTBR's Thread
+interface, and its port is the active `ZENOH_TLS_PORT` (normally `7447`). It
+never publishes the Zenoh wildcard `::` or an IPv4-only infrastructure address.
+The TXT record is `role=server`, `proto=zenoh`, `version=1`, and `tls=1` when
+Zenoh TLS is enabled (`tls=0` otherwise).
+
+The safe defaults can be changed without altering device traffic:
+
+```bash
+EXTRITTIO_THREAD_ZENOH_SERVICE_NAME=_extrittio-zenoh._tcp
+EXTRITTIO_THREAD_ZENOH_SERVICE_INSTANCE=extrittio-backend
+```
+
+Extrittio registers the service only after OTBR is available, removes it during
+backend shutdown, and re-registers it after OTBR recovery or a Thread dataset
+replacement. The bundled OTBR build enables OpenThread's DNS-SD discovery and
+SRP advertising proxies; a custom OTBR build must enable equivalent DNS-SD/SRP
+proxy support. The mesh also needs OTBR's normal SRP server service and IPv6
+routing between Thread clients and the OTBR host.
+
+Many Thread devices discover this same backend record. They remain isolated by
+their existing device-specific Zenoh keys—such as
+`extrittio/devices/<device-id>/heartbeat` and
+`extrittio/devices/<device-id>/telemetry`—not by separate DNS-SD records.
+Devices do not advertise their own DNS-SD services. Topic validation and
+registered-device enforcement remain unchanged; even unauthenticated test mode
+keeps `EXTRITTIO_AUTO_REGISTER_DEVICES=false` by default.
+
+Plain TCP (`tls=0`) is for controlled test environments only. Production
+deployments should use the default TLS/mTLS listener and provision each device
+with its Extrittio client certificate.
+
 ## OpenThread Border Router
 
 ### Linux deployment
