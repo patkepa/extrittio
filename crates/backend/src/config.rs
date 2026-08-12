@@ -350,6 +350,11 @@ impl AppConfig {
                 "PORT and ZENOH_TLS_PORT must be greater than zero".to_string(),
             ));
         }
+        if self.zenoh_listen_host.trim().is_empty() {
+            return Err(ConfigError::Validation(
+                "ZENOH_LISTEN_HOST must not be empty".to_string(),
+            ));
+        }
         self.validate_database()?;
         if self.allowed_origin == "*" {
             return Err(ConfigError::Validation(

@@ -1,0 +1,640 @@
+/**
+ * Dark Theme - High Contrast, Minimal, Professional
+ *
+ * This theme uses Blueprint.js v6 color system properly:
+ * - Blueprint's .bp6-dark class handles most text/UI colors automatically
+ * - We only override backgrounds and structural colors
+ * - For custom colors in components, prefer theme CSS variables from this file
+ *
+ * @see https://blueprintjs.com/docs/#core/colors
+ * @see https://blueprintjs.com/docs/#core/colors for Blueprint color references
+ */
+
+/* Dark Theme Only - Deep blacks with electric accents and consistent colors */
+:root,
+:root.dark {
+  --bp-surface-border-radius: 2px;
+  /* Base colors - HIGH CONTRAST dark theme
+   * Pure black backgrounds with white text for maximum contrast
+   */
+  --background: 0 0% 9%; /* Dark gray #171717 */
+  --foreground: 0 0% 100%; /* Pure white #FFFFFF */
+
+  /* Primary - Softened blue */
+  --primary: 213 68% 59%;
+  --primary-foreground: 220 20% 8%;
+
+  /* Secondary - HIGH CONTRAST */
+  --secondary: 0 0% 5%; /* Near black */
+  --secondary-foreground: 0 0% 100%; /* Pure white */
+
+  /* Accent - Softened blue */
+  --accent: 213 68% 59%;
+  --accent-hover: 214 84% 65%;
+
+  /* Muted colors - HIGH CONTRAST muted (still light gray for readability) */
+  --muted: 0 0% 70%; /* Light gray for muted elements */
+  --muted-foreground: 0 0% 85%; /* Very light gray for muted text */
+
+  /* Border and ring - More visible */
+  --ring: 213 68% 59%;
+
+  /* Sidebar specific - HIGH CONTRAST */
+  --sidebar-bg: #060606;
+  --sidebar-foreground: hsl(0, 0%, 100%); /* Pure white text */
+  --sidebar-primary: hsl(213, 68%, 59%);
+  --sidebar-primary-foreground: hsl(
+    0,
+    0%,
+    0%
+  ); /* Black text on blue background */
+  --sidebar-accent: #101010;
+  --sidebar-accent-hover: #161616;
+  --sidebar-muted-foreground: hsl(0, 0%, 85%); /* Light gray for muted text */
+  --sidebar-border: hsla(0, 0%, 100%, 0.08);
+
+  /* Content area - HIGH CONTRAST */
+  --content-bg: #171717;
+  --navbar-bg: #060606;
+  --border-color: hsla(0, 0%, 100%, 0.1);
+  --card-bg: #242424;
+
+  /* Status colors - Vibrant for dark bg (Blueprint GREEN3, ORANGE3, RED3) */
+  --success: 152 69% 45%; /* ~Blueprint GREEN3 */
+  --success-light: 152 50% 15%;
+  --warning: 38 92% 55%; /* ~Blueprint ORANGE3 */
+  --warning-light: 38 70% 15%;
+  --danger: 0 84% 60%; /* ~Blueprint RED3 */
+  --danger-light: 0 60% 15%;
+}
+
+/* Global styles */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu",
+    "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--content-bg);
+  color: hsl(var(--foreground));
+  line-height: 1.5;
+  letter-spacing: -0.01em;
+}
+
+code {
+  font-family:
+    "SF Mono", "Monaco", "Inconsolata", "Roboto Mono", "Source Code Pro",
+    "Menlo", "Consolas", "Courier New", monospace;
+  font-size: 0.875em;
+}
+
+/* Monospaced data display — for timestamps, IDs, counts, firmware */
+.mono-data {
+  font-family: "SF Mono", "Monaco", "Inconsolata", "Roboto Mono", monospace;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.copy-on-click {
+  cursor: pointer;
+}
+
+/* Section header labels — uppercase tracked */
+.section-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: hsl(var(--muted));
+  margin-bottom: 12px;
+}
+
+/* Typography improvements */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  color: hsl(var(--foreground));
+}
+
+p {
+  color: hsl(var(--foreground));
+}
+
+/* Blueprint.js overrides for dark theme - Work WITH Blueprint, not against it */
+.bp6-dark {
+  background-color: var(--content-bg);
+}
+
+.bp6-navbar {
+  background-color: var(--navbar-bg);
+  border-bottom: 1px solid var(--border-color);
+  box-shadow: none;
+  height: 48px;
+}
+
+/* Override Blueprint's default backgrounds */
+.bp6-dark .bp6-navbar {
+  background-color: var(--navbar-bg);
+  box-shadow: none;
+}
+
+.bp6-dark .bp6-menu {
+  background-color: transparent;
+}
+
+.bp6-card,
+.bp6-dark .bp6-card {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: border-color 0.15s ease;
+}
+
+.bp6-card.bp6-interactive:hover {
+  border-color: hsla(0, 0%, 100%, 0.14);
+}
+
+.bp6-menu {
+  background-color: transparent;
+}
+
+.bp6-dark .bp6-overlay-backdrop {
+  background-color: rgba(0, 0, 0, 0.7);
+}
+
+.bp6-dark .bp6-dialog {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-color);
+}
+
+.bp6-dark .bp6-dialog-header {
+  background-color: var(--card-bg);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.bp6-dark .bp6-dialog-body {
+  /* Let Blueprint handle text color */
+}
+
+.bp6-dark .bp6-dialog-footer {
+  background-color: var(--card-bg);
+  border-top: 1px solid var(--border-color);
+}
+
+/* Enhanced button styles */
+.bp6-button {
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+  background-color: hsla(0, 0%, 100%, 0.06);
+  color: hsl(var(--foreground));
+  border-color: var(--border-color);
+  border-radius: 1px !important;
+}
+
+.bp6-button:hover {
+  background-color: hsla(0, 0%, 100%, 0.1);
+  border-color: var(--border-color);
+}
+
+.bp6-button.bp6-intent-primary {
+  background-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border-color: transparent;
+}
+
+.bp6-button.bp6-intent-primary:hover {
+  background-color: hsl(213, 68%, 54%);
+}
+
+.bp6-button.bp6-intent-success {
+  background-color: hsl(var(--success));
+  color: white;
+  border-color: transparent;
+}
+
+.bp6-button.bp6-intent-danger {
+  background-color: hsl(var(--danger));
+  color: white;
+  border-color: transparent;
+}
+
+.bp6-button.bp6-intent-warning {
+  background-color: hsl(var(--warning));
+  color: hsl(220, 25%, 4%);
+  border-color: transparent;
+}
+
+/* Minimal buttons */
+.bp6-button.bp6-minimal {
+  background-color: transparent;
+  color: hsl(var(--foreground));
+  border-color: transparent;
+}
+
+.bp6-button.bp6-minimal:hover {
+  background-color: hsla(0, 0%, 100%, 0.06);
+}
+
+/* Input enhancements */
+.bp6-input {
+  border: 1px solid var(--border-color);
+  background-color: var(--card-bg);
+  color: hsl(var(--foreground));
+  font-size: 14px;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.bp6-input:focus {
+  border-color: hsl(var(--accent));
+  box-shadow: 0 0 0 1px hsl(var(--accent));
+  background-color: var(--card-bg);
+}
+
+.bp6-input::placeholder {
+  color: hsl(var(--muted));
+}
+
+.bp6-input-group .bp6-input {
+  padding-left: 10px;
+}
+
+.bp6-input-group .bp6-icon {
+  color: hsl(var(--muted));
+}
+
+/* Tag enhancements */
+.bp6-tag {
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  border: none;
+  background-color: hsla(0, 0%, 100%, 0.06);
+  color: hsl(var(--foreground));
+}
+
+.bp6-tag.bp6-minimal {
+  background-color: hsla(0, 0%, 100%, 0.06);
+  border: none;
+}
+
+.bp6-tag.bp6-intent-primary {
+  background-color: hsl(var(--accent) / 0.12);
+  color: hsl(var(--accent));
+  border: none;
+}
+.bp6-tag.bp6-intent-success {
+  background-color: hsl(var(--success) / 0.12);
+  color: hsl(var(--success));
+  border: none;
+}
+.bp6-tag.bp6-intent-danger {
+  background-color: hsl(var(--danger) / 0.12);
+  color: hsl(var(--danger));
+  border: none;
+}
+.bp6-tag.bp6-intent-warning {
+  background-color: hsl(var(--warning) / 0.12);
+  color: hsl(var(--warning));
+  border: none;
+}
+
+/* Table enhancements */
+.bp6-html-table {
+  border: none;
+  color: hsl(var(--foreground));
+}
+
+.bp6-html-table thead th {
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: hsl(var(--muted));
+  background-color: hsla(0, 0%, 100%, 0.03);
+}
+
+.bp6-html-table tbody td {
+  border-top: 1px solid hsla(0, 0%, 100%, 0.05);
+  color: hsl(var(--foreground));
+}
+
+.bp6-html-table tbody tr:hover {
+  background-color: hsla(0, 0%, 100%, 0.03);
+}
+
+/* Drawer enhancements */
+.bp6-drawer {
+  background-color: var(--card-bg);
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.8);
+}
+
+.bp6-drawer-header {
+  background-color: var(--card-bg);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.bp6-drawer-header .bp6-heading {
+  color: hsl(var(--foreground));
+}
+
+.bp6-drawer-body {
+  color: hsl(var(--foreground));
+}
+
+/* Callout enhancements */
+.bp6-callout {
+  border-left-width: 4px;
+  background-color: hsla(0, 0%, 100%, 0.04);
+  color: hsl(var(--foreground));
+}
+
+.bp6-callout.bp6-intent-danger {
+  background-color: hsl(var(--danger-light));
+  border-left-color: hsl(var(--danger));
+  color: hsl(var(--foreground));
+}
+
+.bp6-callout.bp6-intent-warning {
+  background-color: hsl(var(--warning-light));
+  border-left-color: hsl(var(--warning));
+  color: hsl(var(--foreground));
+}
+
+.bp6-callout.bp6-intent-success {
+  background-color: hsl(var(--success-light));
+  border-left-color: hsl(var(--success));
+  color: hsl(var(--foreground));
+}
+
+/* Rectangular progress bars */
+.bp6-progress-bar,
+.bp6-progress-bar .bp6-progress-meter {
+  border-radius: 2px !important;
+}
+
+/* Divider */
+.bp6-divider {
+  border-color: var(--border-color);
+}
+
+/* Form enhancements */
+.bp6-form-group label.bp6-label {
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: hsl(var(--foreground));
+  margin-bottom: 6px;
+}
+
+.bp6-form-content {
+  color: hsl(var(--foreground));
+}
+
+/* Switch enhancements */
+.bp6-control.bp6-switch {
+  font-weight: 500;
+  color: hsl(var(--foreground));
+}
+
+.bp6-control.bp6-switch .bp6-control-indicator {
+  background-color: hsla(0, 0%, 100%, 0.06);
+  border: 1px solid var(--border-color);
+}
+
+/* Button groups */
+.bp6-button-group .bp6-button.bp6-active {
+  background-color: hsl(var(--accent));
+  color: white;
+}
+
+/* Icons */
+.bp6-icon {
+  color: hsl(var(--foreground));
+}
+
+.bp6-button .bp6-icon {
+  color: currentColor;
+}
+
+/* Elevation shadows — 1 and 2 are intentionally identical (near-black bg absorbs shadow depth) */
+.bp6-elevation-0 {
+  box-shadow: none;
+}
+
+.bp6-elevation-1,
+.bp6-elevation-2 {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* Scrollbar styling - minimal and elegant */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted));
+  border-radius: 0;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground));
+}
+
+/* Selection color */
+::selection {
+  background-color: hsl(var(--accent) / 0.2);
+  color: hsl(var(--foreground));
+}
+
+/* Focus rings - high contrast */
+:focus-visible {
+  outline: 2px solid hsl(var(--accent));
+  outline-offset: 2px;
+}
+
+/* Smooth transitions — scoped to theme-controlled elements only */
+.bp6-card,
+.bp6-button,
+.bp6-input,
+.bp6-tag {
+  transition-property: background-color, border-color, color, fill, stroke;
+  transition-duration: 150ms;
+  transition-timing-function: ease-in-out;
+}
+
+/* Text color fixes - let Blueprint handle most of this */
+.bp6-text-muted {
+  color: hsl(var(--muted-foreground));
+}
+
+.bp6-running-text {
+  color: hsl(var(--foreground));
+}
+
+.bp6-text-overflow-ellipsis {
+  color: hsl(var(--foreground));
+}
+
+/* Tooltip overrides — high contrast */
+.bp6-dark .bp6-tooltip .bp6-popover-content,
+.bp6-dark .bp6-tooltip.bp6-minimal .bp6-popover-content {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  font-weight: 500;
+  border-radius: 0 !important;
+}
+
+.bp6-dark .bp6-tooltip .bp6-popover-arrow-fill,
+.bp6-dark .bp6-tooltip.bp6-minimal .bp6-popover-arrow-fill {
+  fill: #ffffff !important;
+}
+
+/* Popover overrides */
+.bp6-dark .bp6-popover {
+  background-color: var(--card-bg);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+}
+
+.bp6-dark .bp6-popover .bp6-popover-content {
+  background-color: var(--card-bg);
+}
+
+.bp6-dark .bp6-popover-arrow-fill {
+  fill: var(--card-bg);
+}
+
+/* Stagger fade-in animation for card grids */
+@keyframes staggerFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stagger-item {
+  animation: staggerFadeIn 0.4s ease-out both;
+}
+
+.stagger-item:nth-child(1) {
+  animation-delay: 0ms;
+}
+.stagger-item:nth-child(2) {
+  animation-delay: 40ms;
+}
+.stagger-item:nth-child(3) {
+  animation-delay: 80ms;
+}
+.stagger-item:nth-child(4) {
+  animation-delay: 120ms;
+}
+.stagger-item:nth-child(5) {
+  animation-delay: 160ms;
+}
+.stagger-item:nth-child(6) {
+  animation-delay: 200ms;
+}
+
+/* Device detail tab utilities */
+.tab-card {
+  margin-bottom: 16px;
+  padding: 16px;
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-color);
+}
+
+.tab-card-sm {
+  margin-bottom: 12px;
+  padding: 12px;
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-color);
+}
+
+.tab-divider {
+  margin: 16px 0;
+}
+
+.tab-divider-lg {
+  margin: 24px 0 16px;
+}
+
+.tab-callout {
+  margin-top: 12px;
+}
+
+.tab-help-text {
+  font-size: 12px;
+  opacity: 0.6;
+  margin: 4px 0 12px;
+}
+
+.tab-cell-muted {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.tab-text-secondary {
+  font-size: 11px;
+  opacity: 0.6;
+  margin-left: 6px;
+}
+
+.tab-actions {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+}
+
+.tab-table {
+  width: 100%;
+}
+
+.tab-label-muted {
+  opacity: 0.6;
+}
+
+.tab-param-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.tab-input-spacing {
+  margin-bottom: 12px;
+}
+
+/* uPlot dark theme overrides */
+.uplot .u-cursor-x,
+.uplot .u-cursor-y {
+  border-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+.uplot .u-select {
+  background: rgba(41, 101, 204, 0.15) !important;
+}

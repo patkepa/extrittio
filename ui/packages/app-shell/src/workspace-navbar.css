@@ -1,0 +1,56 @@
+.workspace-navbar-shell {
+  flex-shrink: 0;
+  background-color: var(--navbar-bg);
+}
+
+.workspace-navbar {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.top-navbar {
+  position: relative;
+  height: 48px;
+  flex-shrink: 0;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--navbar-bg) !important;
+  box-shadow: none;
+}
+
+.top-navbar::after {
+  content: "";
+  position: absolute;
+  right: var(--aside-inset, 0);
+  bottom: -1px;
+  left: 0;
+  z-index: 1;
+  height: 1px;
+  background-color: transparent;
+  pointer-events: none;
+  transition: background-color 0.15s ease;
+}
+
+.workspace-navbar .bp6-navbar-group {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  min-width: 0;
+  float: none;
+}
+
+.workspace-navbar-group--left {
+  flex: 1 1 auto;
+}
+
+.workspace-navbar-group--right {
+  flex: 0 0 auto;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.workspace-navbar-expanded {
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--navbar-bg);
+}

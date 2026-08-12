@@ -34,6 +34,11 @@ extrittio run \
   --public-url http://hub.local:8080
 ```
 
+For devices that reach the hub through a Thread mesh, use
+`--zenoh-listen-host ::` and configure an OpenThread Border Router. The
+[OpenThread hobby deployment guide](OPENTHREAD_HOBBY.md) covers the nRF52840
+RCP topology and IPv6 Zenoh locator.
+
 The data directory contains `extrittio.db`, `extrittio.lock`, certificates, local firmware objects, and operator-created backups. One process exclusively owns a data directory. A second process fails fast.
 
 ## Maintenance

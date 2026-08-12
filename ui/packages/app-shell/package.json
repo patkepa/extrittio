@@ -1,0 +1,59 @@
+{
+  "name": "@extrittio/app-shell",
+  "version": "0.1.0",
+  "description": "Reusable Extrittio workspace and public site shells, navigation, footer, and error boundary.",
+  "license": "MIT",
+  "homepage": "https://github.com/extrittio/ui/tree/main/packages/app-shell#readme",
+  "bugs": {
+    "url": "https://github.com/extrittio/ui/issues"
+  },
+  "keywords": [
+    "extrittio",
+    "react",
+    "app-shell",
+    "layout",
+    "workspace",
+    "site"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": [
+    "*.css"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./styles.css": "./dist/styles.css"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && cp src/*.css dist/ && cp styles.css dist/styles.css"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/extrittio/ui.git",
+    "directory": "packages/app-shell"
+  },
+  "dependencies": {
+    "@extrittio/interactions": "^0.1.0",
+    "@extrittio/navigation": "^0.1.0",
+    "@extrittio/ui": "^0.1.0"
+  },
+  "peerDependencies": {
+    "@blueprintjs/core": "^6.3.2",
+    "@blueprintjs/icons": "^6.2.0",
+    "react": "^18.3.1",
+    "react-router-dom": "^7.9.4"
+  }
+}
