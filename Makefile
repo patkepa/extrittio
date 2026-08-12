@@ -114,7 +114,9 @@ install-hobby-debug: hobby-assets otbr-agent
 
 otbr-agent: $(OTBR_AGENT) $(OTBR_CTL)
 
-$(OTBR_AGENT): check-otbr-source
+# The source verification must run before a build, but it must not mark an
+# already-built OTBR agent stale on every hobby install.
+$(OTBR_AGENT): | check-otbr-source
 	cmake -S "$(OTBR_SOURCE_DIR)" -B "$(OTBR_BUILD_DIR)" $(OTBR_CMAKE_OPTIONS)
 	cmake --build "$(OTBR_BUILD_DIR)" --target otbr-agent ot-ctl --parallel
 	test -x "$(OTBR_AGENT)"
