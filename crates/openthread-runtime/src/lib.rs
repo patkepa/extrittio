@@ -10,9 +10,13 @@ use std::{
     env,
     ffi::OsString,
     fs,
+    net::Ipv6Addr,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
     time::Duration,
 };
 
@@ -176,6 +180,7 @@ impl ThreadRuntimeSnapshot {
 pub struct ThreadRuntime {
     config: ThreadRuntimeConfig,
     state: Mutex<ThreadRuntimeState>,
+    network_generation: AtomicU64,
 }
 
 struct ThreadRuntimeState {
@@ -202,6 +207,7 @@ impl ThreadRuntime {
                     message: Some("Thread runtime has not checked for an RCP yet".to_string()),
                 },
             }),
+            network_generation: AtomicU64::new(0),
         }
     }
 
@@ -224,7 +230,8 @@ impl ThreadRuntime {
                 state.snapshot = snapshot.clone();
                 return snapshot;
             }
-
+        }
+        if state.active.is_some() {
             let mut inactive = state
                 .active
                 .take()
@@ -329,6 +336,7 @@ impl ThreadRuntime {
                     router,
                     controller: Arc::new(controller),
                 });
+                self.network_generation.fetch_add(1, Ordering::Relaxed);
                 Self::set_snapshot(&mut state, ThreadRuntimeSnapshot::ready(rcp_device))
             }
             Err(error) => Self::set_snapshot(
@@ -373,6 +381,32 @@ impl ThreadRuntime {
         {
             warn!(%error, "OpenThread border-router shutdown failed");
         }
+    }
+
+    /// Increments the mesh generation after replacing the active dataset.
+    /// Callers use this to re-register the backend service on the new mesh.
+    pub fn mark_network_changed(&self) {
+        self.network_generation.fetch_add(1, Ordering::Relaxed);
+    }
+
+    #[must_use]
+    pub fn network_generation(&self) -> u64 {
+        self.network_generation.load(Ordering::Relaxed)
+    }
+
+    /// Returns a non-link-local IPv6 address assigned to OTBR's Thread
+    /// interface. This is deliberately not derived from a Zenoh wildcard
+    /// listener; DNS-SD clients must receive a concrete, mesh-reachable host.
+    pub fn thread_ipv6_address(&self) -> Result<Ipv6Addr> {
+        let thread_interface = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .active
+            .as_ref()
+            .map(|active| active.router.config().thread_interface.clone())
+            .context("The local OpenThread border router is unavailable")?;
+        thread_interface_ipv6_address(&thread_interface)
     }
 
     fn set_snapshot(
@@ -913,6 +947,56 @@ fn find_in_path(program: &str) -> Option<PathBuf> {
     })
 }
 
+fn thread_interface_ipv6_address(interface: &str) -> Result<Ipv6Addr> {
+    let ip_output = Command::new("ip")
+        .args(["-6", "address", "show", "dev", interface])
+        .output();
+    if let Ok(output) = ip_output
+        && output.status.success()
+        && let Some(address) = parse_thread_ipv6_addresses(&String::from_utf8_lossy(&output.stdout))
+            .into_iter()
+            .next()
+    {
+        return Ok(address);
+    }
+
+    let ifconfig_output = Command::new("ifconfig")
+        .arg(interface)
+        .output()
+        .with_context(|| format!("Failed to inspect IPv6 addresses on {interface}"))?;
+    anyhow::ensure!(
+        ifconfig_output.status.success(),
+        "Failed to inspect IPv6 addresses on {interface}: {}",
+        String::from_utf8_lossy(&ifconfig_output.stderr).trim()
+    );
+    parse_thread_ipv6_addresses(&String::from_utf8_lossy(&ifconfig_output.stdout))
+        .into_iter()
+        .next()
+        .context("OTBR has no usable IPv6 address on its Thread interface")
+}
+
+fn parse_thread_ipv6_addresses(output: &str) -> Vec<Ipv6Addr> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let mut words = line.split_whitespace();
+            while let Some(word) = words.next() {
+                if word == "inet6" {
+                    let value = words.next()?.split('%').next()?.split('/').next()?;
+                    return value.parse::<Ipv6Addr>().ok();
+                }
+            }
+            None
+        })
+        .filter(|address| {
+            !address.is_unspecified()
+                && !address.is_loopback()
+                && !address.is_multicast()
+                && !address.is_unicast_link_local()
+        })
+        .collect()
+}
+
 fn dataset_string(dataset: &serde_json::Value, key: &str) -> Option<String> {
     dataset.get(key)?.as_str().map(ToOwned::to_owned)
 }
@@ -1053,9 +1137,9 @@ fn is_rcp_candidate_name(name: &str) -> bool {
 mod tests {
     use super::{
         BorderRouterConfig, CreateNetwork, default_infrastructure_interface,
-        validate_create_network,
+        parse_thread_ipv6_addresses, validate_create_network,
     };
-    use std::path::PathBuf;
+    use std::{net::Ipv6Addr, path::PathBuf};
 
     #[test]
     fn builds_the_standard_spinel_uart_url_and_otbr_arguments() {
@@ -1150,6 +1234,17 @@ array [
                 rssi: -28,
                 lqi: 3,
             }]
+        );
+    }
+
+    #[test]
+    fn selects_only_mesh_reachable_ipv6_addresses_for_dns_sd() {
+        let addresses = parse_thread_ipv6_addresses(
+            "inet6 ::1 prefixlen 128\ninet6 fe80::1234%wpan0 prefixlen 64\ninet6 fd12:3456::20/64 scope global\n",
+        );
+        assert_eq!(
+            addresses,
+            vec!["fd12:3456::20".parse::<Ipv6Addr>().unwrap()]
         );
     }
 }

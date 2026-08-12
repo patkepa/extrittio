@@ -1250,6 +1250,7 @@ dependencies = [
  "http-body-util",
  "include_dir",
  "jsonwebtoken",
+ "mdns-sd",
  "object_store",
  "opentelemetry",
  "opentelemetry-otlp",
@@ -1447,6 +1448,17 @@ dependencies = [
  "futures-core",
  "futures-sink",
  "nanorand",
+ "spin 0.9.9",
+]
+
+[[package]]
+name = "flume"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5e139bc46ca777eb5efaf62df0ab8cc5fd400866427e56c68b22e414e53bd3be"
+dependencies = [
+ "futures-core",
+ "futures-sink",
  "spin 0.9.9",
 ]
 
@@ -2137,6 +2149,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "if-addrs"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0a05c691e1fae256cf7013d99dad472dc52d5543322761f83ec8d47eab40d2b"
+dependencies = [
+ "libc",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "include_dir"
 version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2411,9 +2433,9 @@ checksum = "09edd9e8b54e49e587e4f6295a7d29c3ea94d469cb40ab8ca70b288248a81db2"
 
 [[package]]
 name = "libc"
-version = "0.2.186"
+version = "0.2.189"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
+checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
 
 [[package]]
 name = "libloading"
@@ -2553,6 +2575,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "mdns-sd"
+version = "0.20.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "86dbb9f00c8c367f75ed3a775d3eb31d0375a72f58275ef64a1bc53c255a2ce2"
+dependencies = [
+ "fastrand",
+ "flume 0.12.0",
+ "if-addrs",
+ "log",
+ "mio",
+ "socket-pktinfo",
+ "socket2 0.6.3",
+]
+
+[[package]]
 name = "memchr"
 version = "2.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2649,6 +2686,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "50b7e5b27aa02a74bac8c3f23f448f8d87ff11f92d3aac1a6ed369ee08cc56c1"
 dependencies = [
  "libc",
+ "log",
  "wasi",
  "windows-sys 0.61.2",
 ]
@@ -4544,6 +4582,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 
 [[package]]
+name = "socket-pktinfo"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "612942246d0cc239cfd83af1dfd39be47f649208a3524e5e9da651910128e0ac"
+dependencies = [
+ "libc",
+ "socket2 0.6.3",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "socket2"
 version = "0.5.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6303,7 +6352,7 @@ dependencies = [
  "bytes",
  "const_format",
  "flate2",
- "flume",
+ "flume 0.11.1",
  "futures",
  "git-version",
  "itertools 0.14.0",
@@ -6461,7 +6510,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8dc91a5163793f842b4b016b2d50640db5a3533370348eb796e7078c576e87cf"
 dependencies = [
  "async-trait",
- "flume",
+ "flume 0.11.1",
  "futures",
  "rustls",
  "rustls-webpki",
@@ -6635,7 +6684,7 @@ checksum = "80800c4adc26dbe81418735068541cf39820a95ec988114f04dd014775ba7c97"
 dependencies = [
  "async-trait",
  "crossbeam-utils",
- "flume",
+ "flume 0.11.1",
  "futures",
  "lazy_static",
  "lz4_flex",
@@ -6669,7 +6718,7 @@ checksum = "1b10369df18a781a3e675c9a2cbf54adb44c9dc2a376c1014c5e488410df2179"
 dependencies = [
  "async-trait",
  "const_format",
- "flume",
+ "flume 0.11.1",
  "home",
  "humantime",
  "lazy_static",

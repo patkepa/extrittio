@@ -112,6 +112,10 @@ pub struct AppConfig {
     pub zenoh_cert_acl_enabled: bool,
     pub zenoh_tls_port: u16,
     pub zenoh_listen_host: String,
+    /// DNS-SD service type registered on the local Thread mesh when OTBR runs.
+    pub thread_zenoh_service_name: String,
+    /// Stable DNS-SD instance/host name registered on the local Thread mesh.
+    pub thread_zenoh_service_instance: String,
     pub db_pool_size: u32,
     pub max_firmware_size_bytes: usize,
     pub firmware_storage: FirmwareStorageConfig,
@@ -276,6 +280,10 @@ impl AppConfig {
             zenoh_tls_port: env_parse(&read_env, "ZENOH_TLS_PORT")?.unwrap_or(7447),
             zenoh_listen_host: read_env("ZENOH_LISTEN_HOST")
                 .unwrap_or_else(|| "127.0.0.1".to_string()),
+            thread_zenoh_service_name: read_env("EXTRITTIO_THREAD_ZENOH_SERVICE_NAME")
+                .unwrap_or_else(|| "_extrittio-zenoh._tcp".to_string()),
+            thread_zenoh_service_instance: read_env("EXTRITTIO_THREAD_ZENOH_SERVICE_INSTANCE")
+                .unwrap_or_else(|| "extrittio-backend".to_string()),
             db_pool_size,
             max_firmware_size_bytes,
             firmware_storage,
@@ -353,6 +361,22 @@ impl AppConfig {
         if self.zenoh_listen_host.trim().is_empty() {
             return Err(ConfigError::Validation(
                 "ZENOH_LISTEN_HOST must not be empty".to_string(),
+            ));
+        }
+        if self.thread_zenoh_service_name.trim().is_empty()
+            || self.thread_zenoh_service_instance.trim().is_empty()
+        {
+            return Err(ConfigError::Validation(
+                "EXTRITTIO_THREAD_ZENOH_SERVICE_NAME and EXTRITTIO_THREAD_ZENOH_SERVICE_INSTANCE must not be empty"
+                    .to_string(),
+            ));
+        }
+        if !valid_thread_dns_sd_instance(&self.thread_zenoh_service_instance)
+            || !valid_thread_dns_sd_service_name(&self.thread_zenoh_service_name)
+        {
+            return Err(ConfigError::Validation(
+                "Thread Zenoh DNS-SD settings must be a DNS label and a _service._tcp name"
+                    .to_string(),
             ));
         }
         self.validate_database()?;
@@ -581,6 +605,23 @@ where
         .transpose()
 }
 
+fn valid_thread_dns_sd_instance(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 63
+        && !value.starts_with('-')
+        && !value.ends_with('-')
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+}
+
+fn valid_thread_dns_sd_service_name(value: &str) -> bool {
+    value.starts_with('_')
+        && value.ends_with("._tcp")
+        && value.split('.').count() == 2
+        && value.len() <= 63
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
@@ -612,6 +653,8 @@ mod tests {
         assert_eq!(config.app_metrics_flush_interval_secs, 10);
         assert_eq!(config.metrics_retention_hours, 24);
         assert_eq!(config.zenoh_listen_host, "127.0.0.1");
+        assert_eq!(config.thread_zenoh_service_name, "_extrittio-zenoh._tcp");
+        assert_eq!(config.thread_zenoh_service_instance, "extrittio-backend");
         assert!(!config.zenoh_cert_acl_enabled);
         assert_eq!(
             config.max_zenoh_payload_size_bytes,
@@ -777,6 +820,16 @@ mod tests {
     fn rejects_unknown_boolean_values() {
         let result =
             AppConfig::from_env_reader(|key| (key == "RPI_MODE").then(|| "sometimes".to_string()));
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn rejects_invalid_thread_dns_sd_names() {
+        let result = config_result(&[(
+            "EXTRITTIO_THREAD_ZENOH_SERVICE_NAME",
+            "extrittio-zenoh._udp",
+        )]);
 
         assert!(result.is_err());
     }
