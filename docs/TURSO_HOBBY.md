@@ -18,9 +18,10 @@ extrittio run
 ```
 
 `extrittio run` always selects the local Turso hobby profile. On first run it
-generates and prints a strong owner password unless `--admin-password` or
-`EXTRITTIO_BOOTSTRAP_ADMIN_PASSWORD` was supplied. It then prints the browser
-URL and starts the complete stack. The password is not shown again.
+creates the owner account as `admin` / `admin` unless `--admin-username` and
+`--admin-password` (or their environment variables) were supplied. It then
+prints the browser URL and starts the complete stack. Change the default
+password after signing in.
 
 Useful overrides:
 

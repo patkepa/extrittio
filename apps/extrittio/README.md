@@ -54,8 +54,9 @@ cargo install --path apps/extrittio --locked --no-default-features --features ho
 extrittio run
 ```
 
-`run` fixes the backend/profile to local Turso, embeds the web UI, generates a
-first-run owner password when needed, and starts the complete stack.
+`run` fixes the backend/profile to local Turso, embeds the web UI, creates the
+first-run owner as `admin` / `admin`, and starts the complete stack. Change the
+default password after signing in.
 
 Publish a firmware binary and trigger OTA:
 

@@ -96,13 +96,14 @@ pub(crate) struct RunArgs {
     )]
     pub(crate) admin_username: String,
 
-    /// Initial owner password. If omitted on first run, a strong password is generated and printed once.
+    /// Initial owner password, used only when the database has no users.
     #[arg(
         long,
         env = "EXTRITTIO_BOOTSTRAP_ADMIN_PASSWORD",
+        default_value = "admin",
         hide_env_values = true
     )]
-    pub(crate) admin_password: Option<String>,
+    pub(crate) admin_password: String,
 
     /// Public URL advertised for firmware downloads.
     #[arg(long, env = "EXTRITTIO_PUBLIC_URL")]

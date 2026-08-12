@@ -38,8 +38,6 @@ pub(crate) async fn run_hobby(args: RunArgs) -> Result<()> {
     }
     #[cfg(feature = "hobby")]
     {
-        use rand::{Rng, distributions::Alphanumeric};
-
         load_dotenv();
         let data_dir = args.data_dir.unwrap_or_else(|| {
             dirs::data_local_dir()
@@ -74,27 +72,16 @@ pub(crate) async fn run_hobby(args: RunArgs) -> Result<()> {
         let persistence = extrittio_backend::persistence::factory::create(&config.database).await?;
         backend_init::run_persistence_migrations(&persistence).await?;
         if !persistence.bootstrap.users_exist().await? {
-            let generated = args.admin_password.is_none();
-            let password = args.admin_password.unwrap_or_else(|| {
-                let random: String = rand::thread_rng()
-                    .sample_iter(&Alphanumeric)
-                    .take(20)
-                    .map(char::from)
-                    .collect();
-                format!("Aa1!{random}")
-            });
-            backend_init::seed_persistence_owner(
+            backend_init::seed_persistence_local_owner(
                 &persistence,
                 args.admin_username.clone(),
-                password.clone(),
+                args.admin_password.clone(),
             )
             .await?;
             eprintln!("\nExtrittio owner account created");
             eprintln!("  Username: {}", args.admin_username);
-            eprintln!("  Password: {password}");
-            if generated {
-                eprintln!("  Save this generated password now; it will not be shown again.");
-            }
+            eprintln!("  Password: {}", args.admin_password);
+            eprintln!("  Change this password after signing in.");
             eprintln!();
         }
         drop(persistence);

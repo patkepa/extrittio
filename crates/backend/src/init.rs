@@ -137,6 +137,30 @@ pub async fn seed_persistence_owner(
         password != "admin" && password != username,
         "Bootstrap admin password must not be a default or match the username"
     );
+    seed_persistence_owner_unchecked(persistence, username, password).await
+}
+
+/// Seeds the owner for the explicitly local, single-binary experience.
+///
+/// The well-known `admin` / `admin` pair is accepted only here. Any override
+/// still goes through the normal production password validation.
+pub async fn seed_persistence_local_owner(
+    persistence: &Persistence,
+    username: String,
+    password: String,
+) -> anyhow::Result<SeedOwnerOutcome> {
+    let username = username.trim().to_string();
+    if username == "admin" && password == "admin" {
+        return seed_persistence_owner_unchecked(persistence, username, password).await;
+    }
+    seed_persistence_owner(persistence, username, password).await
+}
+
+async fn seed_persistence_owner_unchecked(
+    persistence: &Persistence,
+    username: String,
+    password: String,
+) -> anyhow::Result<SeedOwnerOutcome> {
     let password_hash = tokio::task::spawn_blocking(move || auth::hash_password(&password))
         .await
         .context("Bootstrap password task failed")?

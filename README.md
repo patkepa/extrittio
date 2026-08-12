@@ -29,9 +29,10 @@ extrittio run
 ```
 
 On first run Extrittio creates its local database, certificates, and firmware
-directory, generates an owner password when one was not supplied, prints the
-credentials and web URL, and starts the UI, API, Zenoh listener, and background
-workers. Open [http://localhost:8080](http://localhost:8080).
+directory, creates the local owner account as `admin` / `admin`, prints the web
+URL, and starts the UI, API, Zenoh listener, and background workers. Open
+[http://localhost:8080](http://localhost:8080) and change the default password
+after signing in.
 
 By default mutable data uses the operating system's local application-data
 directory. Override it with `extrittio run --data-dir /path/to/extrittio`.
