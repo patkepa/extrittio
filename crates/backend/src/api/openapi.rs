@@ -234,6 +234,8 @@ use utoipa::{Modify, OpenApi};
         // System
         super::system::SystemVersionResponse,
         super::thread::ThreadStatusResponse,
+        super::thread::ThreadNetworkResponse,
+        super::thread::ThreadNetworkScanResponse,
         super::thread::CreateThreadNetworkRequest,
         super::thread::ImportThreadDatasetRequest,
         // Outbox

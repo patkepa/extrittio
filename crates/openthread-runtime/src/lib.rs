@@ -99,6 +99,20 @@ pub struct CreateNetwork {
     pub network_key: Option<String>,
 }
 
+/// A Thread network discovered by the local radio during an active scan.
+///
+/// This deliberately contains only the metadata broadcast over the air. A
+/// Thread operational dataset (and its network key) is never discoverable via
+/// a scan and is not represented here.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThreadNetwork {
+    pub pan_id: String,
+    pub extended_address: String,
+    pub channel: u16,
+    pub rssi: i16,
+    pub lqi: u8,
+}
+
 impl ThreadController {
     /// Creates a controller for the OTBR companion binary installed beside the
     /// agent. The binary may also be supplied explicitly for development.
@@ -147,6 +161,12 @@ impl ThreadController {
             mesh_local_prefix: dataset_value(&dataset, "Mesh Local Prefix"),
             addresses,
         })
+    }
+
+    /// Performs an active scan using the local radio and returns nearby Thread
+    /// networks. This does not alter the active operational dataset.
+    pub fn scan_networks(&self) -> Result<Vec<ThreadNetwork>> {
+        Ok(parse_network_scan(&self.run(&["scan"])?))
     }
 
     /// Forms a new Thread mesh. Existing devices will be detached, so callers
@@ -508,6 +528,65 @@ fn dataset_value(dataset: &str, key: &str) -> Option<String> {
     })
 }
 
+fn parse_network_scan(output: &str) -> Vec<ThreadNetwork> {
+    let mut header = None;
+    let mut networks = Vec::new();
+
+    for line in output.lines().map(str::trim) {
+        if !line.starts_with('|') {
+            continue;
+        }
+        let columns = scan_columns(line);
+        if columns.is_empty() {
+            continue;
+        }
+        if header.is_none() {
+            if columns
+                .iter()
+                .any(|column| *column == "PAN" || *column == "PAN ID")
+            {
+                header = Some(columns);
+            }
+            continue;
+        }
+
+        let Some(network) = parse_scan_row(header.as_deref().unwrap_or_default(), &columns) else {
+            continue;
+        };
+        networks.push(network);
+    }
+
+    networks
+}
+
+fn scan_columns(line: &str) -> Vec<&str> {
+    line.trim_matches('|').split('|').map(str::trim).collect()
+}
+
+fn parse_scan_row(header: &[&str], row: &[&str]) -> Option<ThreadNetwork> {
+    if row.len() != header.len() || row.iter().all(|column| column.chars().all(|ch| ch == '-')) {
+        return None;
+    }
+
+    let value = |name| {
+        header
+            .iter()
+            .position(|column| *column == name)
+            .and_then(|index| row.get(index).copied())
+            .filter(|value| !value.is_empty())
+    };
+
+    Some(ThreadNetwork {
+        pan_id: value("PAN").or_else(|| value("PAN ID"))?.to_owned(),
+        extended_address: value("MAC Address")
+            .or_else(|| value("Extended Address"))?
+            .to_owned(),
+        channel: value("Ch")?.parse().ok()?,
+        rssi: value("dBm")?.parse().ok()?,
+        lqi: value("LQI")?.parse().ok()?,
+    })
+}
+
 fn validate_create_network(network: &CreateNetwork) -> Result<()> {
     let name = network.network_name.trim();
     if name.is_empty() || name.len() > 16 || !name.is_ascii() {
@@ -582,7 +661,7 @@ fn is_rcp_candidate_name(name: &str) -> bool {
 mod tests {
     use super::{
         BorderRouterConfig, CreateNetwork, dataset_value, default_infrastructure_interface,
-        validate_create_network,
+        parse_network_scan, validate_create_network,
     };
     use std::path::PathBuf;
 
@@ -649,5 +728,35 @@ mod tests {
             Some("Extrittio-Thread".into())
         );
         assert_eq!(dataset_value(dataset, "PAN ID"), Some("0x1234".into()));
+    }
+
+    #[test]
+    fn parses_active_scan_results_without_credentials() {
+        let scan = "\
+| PAN  | MAC Address      | Ch | dBm | LQI |\n\
++------+------------------+----+-----+-----+\n\
+| 1234 | 0011223344556677 | 15 | -28 | 3   |\n\
+| abcd | 8899aabbccddeeff | 20 | -74 | 1   |\n\
+Done\n";
+
+        assert_eq!(
+            parse_network_scan(scan),
+            vec![
+                super::ThreadNetwork {
+                    pan_id: "1234".into(),
+                    extended_address: "0011223344556677".into(),
+                    channel: 15,
+                    rssi: -28,
+                    lqi: 3,
+                },
+                super::ThreadNetwork {
+                    pan_id: "abcd".into(),
+                    extended_address: "8899aabbccddeeff".into(),
+                    channel: 20,
+                    rssi: -74,
+                    lqi: 1,
+                },
+            ]
+        );
     }
 }

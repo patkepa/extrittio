@@ -2,11 +2,17 @@ import client from './client';
 import type {
   CreateThreadNetworkRequest,
   ImportThreadDatasetRequest,
+  ThreadNetworkScan,
   ThreadStatus,
 } from '../types/api';
 
 export async function getThreadStatus(): Promise<ThreadStatus> {
   const { data } = await client.get<ThreadStatus>('/system/thread');
+  return data;
+}
+
+export async function scanThreadNetworks(): Promise<ThreadNetworkScan> {
+  const { data } = await client.post<ThreadNetworkScan>('/system/thread/scan');
   return data;
 }
 

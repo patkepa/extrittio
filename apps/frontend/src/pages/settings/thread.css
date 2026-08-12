@@ -22,6 +22,21 @@
   gap: 0 16px;
 }
 
+.thread-scan-results {
+  overflow-x: auto;
+}
+
+.thread-scan-results .bp6-html-table {
+  width: 100%;
+  margin: 0;
+}
+
+.thread-network-address {
+  color: hsl(var(--muted));
+  font-family: var(--font-mono, monospace);
+  overflow-wrap: anywhere;
+}
+
 .thread-status-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

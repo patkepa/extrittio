@@ -7,6 +7,7 @@ import {
   Elevation,
   FormGroup,
   H3,
+  HTMLTable,
   HTMLSelect,
   InputGroup,
   Spinner,
@@ -15,9 +16,10 @@ import {
 import {
   useCreateThreadNetwork,
   useImportThreadDataset,
+  useThreadNetworkScan,
   useThreadStatus,
 } from '../../hooks/use-thread';
-import type { ThreadStatus } from '../../types/api';
+import type { ThreadNetwork, ThreadStatus } from '../../types/api';
 import { showErrorToast, showSuccessToast } from '../../utils/toaster';
 import './settings.css';
 import './thread.css';
@@ -36,6 +38,7 @@ export function ThreadSettings() {
   const statusQuery = useThreadStatus();
   const createMutation = useCreateThreadNetwork();
   const importMutation = useImportThreadDataset();
+  const scanMutation = useThreadNetworkScan();
   const status = statusQuery.data;
 
   const submit = () => {
@@ -80,6 +83,7 @@ export function ThreadSettings() {
   };
 
   const busy = createMutation.isPending || importMutation.isPending;
+  const scan = scanMutation.data;
 
   return (
     <div className="settings-page">
@@ -122,6 +126,32 @@ export function ThreadSettings() {
             </div>
             {status.connected ? <ThreadStatusDetails status={status} /> : null}
             {status.error ? <Callout intent="danger">{status.error}</Callout> : null}
+          </Card>
+
+          <Card elevation={Elevation.ONE} className="settings-card">
+            <div className="thread-status-heading">
+              <span className="section-label">Nearby Thread Networks</span>
+              <Button
+                icon="search"
+                loading={scanMutation.isPending}
+                disabled={!status.connected}
+                onClick={() => {
+                  scanMutation.mutate(undefined, {
+                    onError: () => {
+                      void showErrorToast('Unable to scan for Thread networks');
+                    },
+                  });
+                }}
+              >
+                Scan Local Radio
+              </Button>
+            </div>
+            <p className="thread-help">
+              Scan with this border router&apos;s local radio to find nearby Thread networks. A scan
+              reveals PAN, MAC address, channel, and signal only; you still need an Active
+              Operational Dataset to join.
+            </p>
+            {scan ? <ThreadNetworkList networks={scan.networks} /> : null}
           </Card>
 
           <Card elevation={Elevation.ONE} className="settings-card">
@@ -244,6 +274,39 @@ export function ThreadSettings() {
         This replaces the active Thread operational dataset. Existing Thread devices will disconnect
         until they are configured for the new network.
       </Alert>
+    </div>
+  );
+}
+
+function ThreadNetworkList({ networks }: { networks: ThreadNetwork[] }) {
+  if (networks.length === 0) {
+    return <Callout icon="info-sign">No Thread networks were discovered by the local radio.</Callout>;
+  }
+
+  return (
+    <div className="thread-scan-results">
+      <HTMLTable compact striped interactive>
+        <thead>
+          <tr>
+            <th>PAN ID</th>
+            <th>MAC address</th>
+            <th>Channel</th>
+            <th>Signal</th>
+          </tr>
+        </thead>
+        <tbody>
+          {networks.map((network) => (
+            <tr key={`${network.extended_address}-${network.pan_id}-${network.channel}`}>
+              <td>{network.pan_id}</td>
+              <td className="thread-network-address">{network.extended_address}</td>
+              <td>{network.channel}</td>
+              <td>
+                {network.rssi} dBm · LQI {network.lqi}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </HTMLTable>
     </div>
   );
 }

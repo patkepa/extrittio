@@ -1,5 +1,18 @@
-.PHONY: hobby install-extrittio install-extrittio-fast otbr-agent check-otbr-source
+.PHONY: help hobby install-extrittio install-extrittio-fast otbr-agent check-otbr-source
 .DEFAULT_GOAL := hobby
+
+help:
+	@printf '%s\n' \
+		'Extrittio build targets:' \
+		'  make help                    Show this list of supported commands.' \
+		'  make hobby                   Build and install the complete hobby appliance (default).' \
+		'  make install-extrittio       Package the frontend, build OTBR, and install Extrittio.' \
+		'  make install-extrittio-fast  Quickly rebuild and install the existing hobby package.' \
+		'  make otbr-agent              Build the OpenThread Border Router agent and ot-ctl.' \
+		'  make check-otbr-source       Verify and initialize the pinned OpenThread source.' \
+		'' \
+		'Configuration:' \
+		'  EXTRITTIO_INSTALL_ROOT        Installation prefix (default: ~/.cargo).'
 
 # The hobby install places both executables under this root:
 #   bin/extrittio

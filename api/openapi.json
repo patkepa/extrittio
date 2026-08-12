@@ -7316,6 +7316,52 @@
           }
         }
       },
+      "ThreadNetworkResponse": {
+        "type": "object",
+        "required": [
+          "pan_id",
+          "extended_address",
+          "channel",
+          "rssi",
+          "lqi"
+        ],
+        "properties": {
+          "channel": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "extended_address": {
+            "type": "string"
+          },
+          "lqi": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "pan_id": {
+            "type": "string"
+          },
+          "rssi": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "ThreadNetworkScanResponse": {
+        "type": "object",
+        "required": [
+          "networks"
+        ],
+        "properties": {
+          "networks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ThreadNetworkResponse"
+            }
+          }
+        }
+      },
       "ThreadStatusResponse": {
         "type": "object",
         "required": [

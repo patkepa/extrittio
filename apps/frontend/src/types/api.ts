@@ -256,6 +256,18 @@ export interface ImportThreadDatasetRequest {
   active_dataset_tlvs: string;
 }
 
+export interface ThreadNetwork {
+  pan_id: string;
+  extended_address: string;
+  channel: number;
+  rssi: number;
+  lqi: number;
+}
+
+export interface ThreadNetworkScan {
+  networks: ThreadNetwork[];
+}
+
 // ---------------------------------------------------------------------------
 // API Keys
 // ---------------------------------------------------------------------------

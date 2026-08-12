@@ -11,7 +11,7 @@ use axum::{
     extract::State,
     routing::{get, post, put},
 };
-use extrittio_openthread_runtime::{CreateNetwork, ThreadController, ThreadStatus};
+use extrittio_openthread_runtime::{CreateNetwork, ThreadController, ThreadNetwork, ThreadStatus};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -52,11 +52,52 @@ pub struct ImportThreadDatasetRequest {
     pub active_dataset_tlvs: String,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ThreadNetworkResponse {
+    pub pan_id: String,
+    pub extended_address: String,
+    pub channel: u16,
+    pub rssi: i16,
+    pub lqi: u8,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ThreadNetworkScanResponse {
+    pub networks: Vec<ThreadNetworkResponse>,
+}
+
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/api/v1/system/thread", get(get_thread_status))
+        .route("/api/v1/system/thread/scan", post(scan_thread_networks))
         .route("/api/v1/system/thread/network", post(create_thread_network))
         .route("/api/v1/system/thread/dataset", put(import_thread_dataset))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/system/thread/scan",
+    tag = "system",
+    security(("bearer_auth" = [])),
+    responses(
+        (status = 200, description = "Nearby Thread networks discovered by the local radio", body = ThreadNetworkScanResponse),
+        (status = 403, description = "Owner access required"),
+        (status = 409, description = "Thread is unavailable"),
+    ),
+)]
+pub(crate) async fn scan_thread_networks(
+    Extension(ctx): Extension<RequestContext>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<ThreadNetworkScanResponse>, AppError> {
+    require_owner(&ctx)?;
+    let controller = controller(&state)?;
+    let networks = run_blocking(controller, |controller| controller.scan_networks()).await?;
+    Ok(Json(ThreadNetworkScanResponse {
+        networks: networks
+            .into_iter()
+            .map(ThreadNetworkResponse::from)
+            .collect(),
+    }))
 }
 
 #[utoipa::path(
@@ -183,6 +224,18 @@ impl ThreadStatusResponse {
             connected: false,
             error: Some(error.to_string()),
             ..Self::unavailable()
+        }
+    }
+}
+
+impl From<ThreadNetwork> for ThreadNetworkResponse {
+    fn from(network: ThreadNetwork) -> Self {
+        Self {
+            pan_id: network.pan_id,
+            extended_address: network.extended_address,
+            channel: network.channel,
+            rssi: network.rssi,
+            lqi: network.lqi,
         }
     }
 }

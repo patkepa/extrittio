@@ -1,5 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { createThreadNetwork, getThreadStatus, importThreadDataset } from '../api/thread';
+import {
+  createThreadNetwork,
+  getThreadStatus,
+  importThreadDataset,
+  scanThreadNetworks,
+} from '../api/thread';
 import type { CreateThreadNetworkRequest, ImportThreadDatasetRequest } from '../types/api';
 import { queryKeys } from './query-keys';
 
@@ -9,6 +14,13 @@ export function useThreadStatus() {
     queryFn: getThreadStatus,
     staleTime: 10_000,
     refetchInterval: 20_000,
+  });
+}
+
+export function useThreadNetworkScan() {
+  return useMutation({
+    mutationKey: queryKeys.thread.scan,
+    mutationFn: scanThreadNetworks,
   });
 }
 

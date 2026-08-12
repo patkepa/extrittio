@@ -2077,6 +2077,19 @@ export interface components {
             /** Format: float */
             temperature?: number | null;
         };
+        ThreadNetworkResponse: {
+            /** Format: int32 */
+            channel: number;
+            extended_address: string;
+            /** Format: int32 */
+            lqi: number;
+            pan_id: string;
+            /** Format: int32 */
+            rssi: number;
+        };
+        ThreadNetworkScanResponse: {
+            networks: components["schemas"]["ThreadNetworkResponse"][];
+        };
         ThreadStatusResponse: {
             addresses: string[];
             /** @description Whether this process is the hobby appliance with a controllable OTBR. */
