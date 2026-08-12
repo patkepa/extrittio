@@ -22,6 +22,7 @@
 #include "openthread/dns_client.h"
 #include "openthread/error.h"
 #include "openthread/ip6.h"
+#include "openthread/platform/radio.h"
 #include "sdkconfig.h"
 
 #include "extrittio/extrittio.h"
@@ -258,6 +259,18 @@ static void openthread_task(void *context)
     }
 
     ESP_ERROR_CHECK(esp_openthread_auto_start(&dataset));
+
+    esp_openthread_lock_acquire(portMAX_DELAY);
+    error = otPlatRadioSetTransmitPower(esp_openthread_get_instance(),
+                                        CONFIG_EXTRITTIO_THREAD_TX_POWER_DBM);
+    esp_openthread_lock_release();
+    if (error != OT_ERROR_NONE) {
+        ESP_LOGE(TAG, "Unable to set Thread transmit power: %d", error);
+        abort();
+    }
+    ESP_LOGI(TAG, "Thread radio transmit power: %d dBm",
+             CONFIG_EXTRITTIO_THREAD_TX_POWER_DBM);
+
     ESP_ERROR_CHECK(esp_openthread_launch_mainloop());
     abort();
 }

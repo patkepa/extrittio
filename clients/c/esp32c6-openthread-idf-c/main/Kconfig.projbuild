@@ -38,6 +38,16 @@ config EXTRITTIO_THREAD_ACTIVE_DATASET_TLVS
         Network settings. The dataset contains the Thread network key; do not
         commit it to source control or share a generated sdkconfig file.
 
+config EXTRITTIO_THREAD_TX_POWER_DBM
+    int "Thread radio transmit power (dBm)"
+    range -24 20
+    default 20
+    help
+        Transmit power used by the ESP32-C6 802.15.4 radio. The OpenThread
+        upstream default is 0 dBm, which is unnecessarily weak for a
+        standalone Thread node. Keep this at the board's supported maximum
+        unless local radio regulations or power constraints require less.
+
 config EXTRITTIO_TELEMETRY_INTERVAL_S
     int "Telemetry interval (seconds)"
     range 1 3600
