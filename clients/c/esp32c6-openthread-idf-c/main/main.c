@@ -32,6 +32,7 @@
 #define BACKEND_HOSTNAME_MAX_LENGTH 128
 #define BACKEND_TXT_MAX_LENGTH 128
 #define BACKEND_LOCATOR_MAX_LENGTH 128
+#define BACKEND_DISCOVERY_TIMEOUT_MS 20000
 
 static const char *TAG = "extrittio_thread";
 static EventGroupHandle_t s_thread_events;
@@ -126,74 +127,66 @@ static bool txt_property_is_true(const uint8_t *txt, uint16_t txt_length, const 
     return false;
 }
 
-static void backend_discovery_callback(otError error, const otDnsBrowseResponse *response,
-                                       void *context)
+static void backend_service_callback(otError error, const otDnsServiceResponse *response,
+                                     void *context)
 {
     (void)context;
     if (error != OT_ERROR_NONE) {
-        ESP_LOGW(TAG, "Thread DNS-SD browse failed: %d", error);
+        ESP_LOGW(TAG, "Thread DNS-SD service resolution failed: %d", error);
         return;
     }
 
-    for (uint16_t index = 0;; index++) {
-        char instance[64];
-        otError result = otDnsBrowseResponseGetServiceInstance(response, index, instance,
-                                                                 sizeof(instance));
-        if (result == OT_ERROR_NOT_FOUND) {
-            break;
-        }
-        if (result != OT_ERROR_NONE) {
-            ESP_LOGW(TAG, "Unable to read Thread DNS-SD instance: %d", result);
-            continue;
-        }
-
-        char hostname[BACKEND_HOSTNAME_MAX_LENGTH] = {0};
-        uint8_t txt[BACKEND_TXT_MAX_LENGTH] = {0};
-        otDnsServiceInfo service = {
-            .mHostNameBuffer = hostname,
-            .mHostNameBufferSize = sizeof(hostname),
-            .mTxtData = txt,
-            .mTxtDataSize = sizeof(txt),
-        };
-        result = otDnsBrowseResponseGetServiceInfo(response, instance, &service);
-        if (result != OT_ERROR_NONE || otIp6IsAddressUnspecified(&service.mHostAddress) ||
-            service.mPort == 0) {
-            ESP_LOGW(TAG, "Thread DNS-SD instance %s has no usable IPv6 endpoint (%d)",
-                     instance, result);
-            continue;
-        }
-
-        backend_endpoint_t endpoint = {0};
-        char address[OT_IP6_ADDRESS_STRING_SIZE];
-        otIp6AddressToString(&service.mHostAddress, address, sizeof(address));
-        endpoint.tls_enabled = txt_property_is_true(txt, service.mTxtDataSize, "tls");
-        int written = snprintf(endpoint.locator, sizeof(endpoint.locator), "%s/[%s]:%u",
-                               endpoint.tls_enabled ? "tls" : "tcp", address,
-                               service.mPort);
-        if (written < 0 || written >= sizeof(endpoint.locator)) {
-            ESP_LOGW(TAG, "Discovered Zenoh endpoint is too long");
-            continue;
-        }
-        xQueueOverwrite(s_backend_discovery_queue, &endpoint);
-        ESP_LOGI(TAG, "Discovered Extrittio Zenoh endpoint: %s", endpoint.locator);
+    char hostname[BACKEND_HOSTNAME_MAX_LENGTH] = {0};
+    uint8_t txt[BACKEND_TXT_MAX_LENGTH] = {0};
+    otDnsServiceInfo service = {
+        .mHostNameBuffer = hostname,
+        .mHostNameBufferSize = sizeof(hostname),
+        .mTxtData = txt,
+        .mTxtDataSize = sizeof(txt),
+    };
+    otError result = otDnsServiceResponseGetServiceInfo(response, &service);
+    if (result != OT_ERROR_NONE || otIp6IsAddressUnspecified(&service.mHostAddress) ||
+        service.mPort == 0) {
+        ESP_LOGW(TAG, "Thread DNS-SD service has no usable IPv6 endpoint: %d", result);
         return;
     }
+
+    backend_endpoint_t endpoint = {0};
+    char address[OT_IP6_ADDRESS_STRING_SIZE];
+    otIp6AddressToString(&service.mHostAddress, address, sizeof(address));
+    endpoint.tls_enabled = txt_property_is_true(txt, service.mTxtDataSize, "tls");
+    int written = snprintf(endpoint.locator, sizeof(endpoint.locator), "%s/[%s]:%u",
+                           endpoint.tls_enabled ? "tls" : "tcp", address, service.mPort);
+    if (written < 0 || written >= sizeof(endpoint.locator)) {
+        ESP_LOGW(TAG, "Discovered Zenoh endpoint is too long");
+        return;
+    }
+    xQueueOverwrite(s_backend_discovery_queue, &endpoint);
+    ESP_LOGI(TAG, "Discovered Extrittio Zenoh endpoint: %s", endpoint.locator);
 }
 
 static bool discover_backend(backend_endpoint_t *endpoint)
 {
     xQueueReset(s_backend_discovery_queue);
+    const otDnsQueryConfig query_config = {
+        // OTBR's Discovery Proxy receives separate SRV and TXT questions on
+        // macOS reliably, whereas a combined question can wait for the DNS
+        // client's fallback timeout before the proxy responds.
+        .mResponseTimeout = BACKEND_DISCOVERY_TIMEOUT_MS,
+        .mMaxTxAttempts = 1,
+        .mServiceMode = OT_DNS_SERVICE_MODE_SRV_TXT_SEPARATE,
+    };
     esp_openthread_lock_acquire(portMAX_DELAY);
-    otError error = otDnsClientBrowse(esp_openthread_get_instance(),
-                                      CONFIG_EXTRITTIO_THREAD_ZENOH_SERVICE_NAME,
-                                      backend_discovery_callback, NULL, NULL);
+    otError error = otDnsClientResolveServiceAndHostAddress(
+        esp_openthread_get_instance(), CONFIG_EXTRITTIO_THREAD_ZENOH_INSTANCE_NAME,
+        CONFIG_EXTRITTIO_THREAD_ZENOH_SERVICE_NAME, backend_service_callback, NULL, &query_config);
     esp_openthread_lock_release();
     if (error != OT_ERROR_NONE) {
-        ESP_LOGW(TAG, "Could not start Thread DNS-SD browse: %d", error);
+        ESP_LOGW(TAG, "Could not start Thread DNS-SD service resolution: %d", error);
         return false;
     }
     return xQueueReceive(s_backend_discovery_queue, endpoint,
-                         pdMS_TO_TICKS(10 * 1000)) == pdTRUE;
+                         pdMS_TO_TICKS(BACKEND_DISCOVERY_TIMEOUT_MS)) == pdTRUE;
 }
 
 static bool configured_backend(backend_endpoint_t *endpoint)
