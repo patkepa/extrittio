@@ -1,4 +1,4 @@
-.PHONY: hobby install-extrittio otbr-agent check-otbr-source
+.PHONY: hobby install-extrittio install-extrittio-fast otbr-agent check-otbr-source
 .DEFAULT_GOAL := hobby
 
 # The hobby install places both executables under this root:
@@ -47,6 +47,14 @@ install-extrittio: otbr-agent
 	install -d "$(OTBR_INSTALL_DIR)"
 	install -m 0755 "$(OTBR_AGENT)" "$(OTBR_INSTALL_DIR)/otbr-agent"
 	install -m 0755 "$(OTBR_CTL)" "$(OTBR_INSTALL_DIR)/ot-ctl"
+
+# Fast local iteration: reuses the workspace Cargo target cache and keeps the
+# previously packaged frontend and OpenThread tools. Run `make hobby` after
+# frontend, frontend-dependency, or OpenThread changes.
+install-extrittio-fast:
+	cargo build --release -p extrittio --no-default-features --features hobby
+	install -d "$(EXTRITTIO_INSTALL_ROOT)/bin"
+	install -m 0755 target/release/extrittio "$(EXTRITTIO_INSTALL_ROOT)/bin/extrittio"
 
 otbr-agent: $(OTBR_AGENT) $(OTBR_CTL)
 

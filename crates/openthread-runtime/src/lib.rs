@@ -580,7 +580,10 @@ fn is_rcp_candidate_name(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{BorderRouterConfig, default_infrastructure_interface};
+    use super::{
+        BorderRouterConfig, CreateNetwork, dataset_value, default_infrastructure_interface,
+        validate_create_network,
+    };
     use std::path::PathBuf;
 
     #[test]
@@ -612,5 +615,39 @@ mod tests {
     #[test]
     fn chooses_a_sensible_default_infrastructure_interface() {
         assert!(matches!(default_infrastructure_interface(), "en0" | "eth0"));
+    }
+
+    #[test]
+    fn validates_create_network_inputs_without_accepting_malformed_credentials() {
+        let valid = CreateNetwork {
+            network_name: "Extrittio-Thread".into(),
+            channel: Some(15),
+            pan_id: Some("1234".into()),
+            extended_pan_id: Some("0011223344556677".into()),
+            network_key: Some("00112233445566778899aabbccddeeff".into()),
+        };
+        assert!(validate_create_network(&valid).is_ok());
+
+        let invalid_channel = CreateNetwork {
+            channel: Some(27),
+            ..valid.clone()
+        };
+        assert!(validate_create_network(&invalid_channel).is_err());
+
+        let invalid_key = CreateNetwork {
+            network_key: Some("not-a-network-key".into()),
+            ..valid
+        };
+        assert!(validate_create_network(&invalid_key).is_err());
+    }
+
+    #[test]
+    fn parses_only_requested_non_secret_dataset_values() {
+        let dataset = "Network Name: Extrittio-Thread\nNetwork Key: secret\nPAN ID: 0x1234\nDone\n";
+        assert_eq!(
+            dataset_value(dataset, "Network Name"),
+            Some("Extrittio-Thread".into())
+        );
+        assert_eq!(dataset_value(dataset, "PAN ID"), Some("0x1234".into()));
     }
 }
