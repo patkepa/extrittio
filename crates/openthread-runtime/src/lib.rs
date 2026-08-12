@@ -13,7 +13,7 @@ use std::{
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::{Arc, Mutex},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use anyhow::{Context, Result, bail};
@@ -81,14 +81,16 @@ struct DbusDaemon {
 
 /// Controlled access to the local OTBR instance.
 ///
-/// `ot-ctl` is the supported OpenThread CLI client for an OTBR agent. Keeping
-/// all calls behind this type prevents the web application from ever accepting
-/// arbitrary CLI input and serializes state-changing dataset operations.
+/// OTBR exposes RCP-mode status over its loopback REST API. Keeping access
+/// behind this type prevents the web application from accepting arbitrary
+/// commands and avoids `ot-ctl`, whose Unix-socket protocol only supports NCP
+/// mode and cannot control a serial RCP border router.
 #[derive(Clone)]
 pub struct ThreadController {
-    ot_ctl_path: PathBuf,
-    command_lock: Arc<Mutex<()>>,
+    rest_endpoint: String,
     dbus_address: Option<String>,
+    thread_interface: String,
+    command_lock: Arc<Mutex<()>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -391,57 +393,74 @@ impl Drop for ThreadRuntime {
 impl ThreadController {
     /// Creates a controller for the OTBR companion binary installed beside the
     /// agent. The binary may also be supplied explicitly for development.
-    pub fn discover(agent_path: &Path, explicit: Option<&Path>) -> Result<Option<Self>> {
-        let path = match explicit {
-            Some(path) => executable_if_present(path)?,
-            None => match discover_ctl(agent_path) {
-                Some(path) => path,
-                None => return Ok(None),
-            },
-        };
+    pub fn discover(_agent_path: &Path, _explicit: Option<&Path>) -> Result<Option<Self>> {
         Ok(Some(Self {
-            ot_ctl_path: path,
-            command_lock: Arc::new(Mutex::new(())),
+            rest_endpoint: "http://127.0.0.1:8081".to_string(),
             dbus_address: None,
+            thread_interface: "wpan0".to_string(),
+            command_lock: Arc::new(Mutex::new(())),
         }))
     }
 
-    #[must_use]
-    pub fn path(&self) -> &Path {
-        &self.ot_ctl_path
-    }
-
-    fn with_dbus_address(mut self, address: String) -> Self {
+    fn with_dbus_control(mut self, address: String, thread_interface: String) -> Self {
         self.dbus_address = Some(address);
+        self.thread_interface = thread_interface;
         self
     }
 
     pub fn status(&self) -> Result<ThreadStatus> {
-        let role = single_value(&self.run(&["state"])?);
-        let dataset = self.run(&["dataset", "active"])?;
-        let addresses = self
-            .run(&["ipaddr"])?
-            .lines()
-            .map(str::trim)
-            .filter(|line| !line.is_empty() && *line != "Done")
-            .map(ToOwned::to_owned)
-            .collect();
+        let role = Some(self.rest_json_string("/node/state")?);
+        let dataset = self.rest_json("/node/dataset/active").ok();
 
         Ok(ThreadStatus {
             role,
-            network_name: dataset_value(&dataset, "Network Name"),
-            channel: dataset_value(&dataset, "Channel").and_then(|value| value.parse().ok()),
-            pan_id: dataset_value(&dataset, "PAN ID"),
-            extended_pan_id: dataset_value(&dataset, "Ext PAN ID"),
-            mesh_local_prefix: dataset_value(&dataset, "Mesh Local Prefix"),
-            addresses,
+            network_name: dataset
+                .as_ref()
+                .and_then(|dataset| dataset_string(dataset, "networkName")),
+            channel: dataset
+                .as_ref()
+                .and_then(|dataset| dataset_u16(dataset, "channel")),
+            pan_id: dataset
+                .as_ref()
+                .and_then(|dataset| dataset_string(dataset, "panId")),
+            extended_pan_id: dataset
+                .as_ref()
+                .and_then(|dataset| dataset_string(dataset, "extendedPanId")),
+            mesh_local_prefix: dataset
+                .as_ref()
+                .and_then(|dataset| dataset_string(dataset, "meshLocalPrefix")),
+            addresses: Vec::new(),
         })
     }
 
     /// Performs an active scan using the local radio and returns nearby Thread
     /// networks. This does not alter the active operational dataset.
     pub fn scan_networks(&self) -> Result<Vec<ThreadNetwork>> {
-        Ok(parse_network_scan(&self.run(&["scan"])?))
+        let _guard = self.lock();
+        let address = self
+            .dbus_address
+            .as_deref()
+            .context("The local OTBR RCP control bus is unavailable")?;
+        let service = format!("io.openthread.BorderRouter.{}", self.thread_interface);
+        let object = format!("/io/openthread/BorderRouter/{}", self.thread_interface);
+        let output = Command::new("dbus-send")
+            .args([
+                format!("--address={address}"),
+                "--print-reply".to_string(),
+                "--reply-timeout=35000".to_string(),
+                format!("--dest={service}"),
+                object,
+                "io.openthread.BorderRouter.Scan".to_string(),
+            ])
+            .output()
+            .context("Failed to run the OTBR RCP scan controller")?;
+        if !output.status.success() {
+            bail!(
+                "OpenThread RCP scan failed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+        }
+        Ok(parse_dbus_scan(&String::from_utf8_lossy(&output.stdout)))
     }
 
     /// Forms a new Thread mesh. Existing devices will be detached, so callers
@@ -449,23 +468,41 @@ impl ThreadController {
     pub fn create_network(&self, network: &CreateNetwork) -> Result<()> {
         validate_create_network(network)?;
         let _guard = self.lock();
-        self.run_locked(&["thread", "stop"])?;
-        self.run_locked(&["ifconfig", "down"])?;
-        self.run_locked(&["dataset", "init", "new"])?;
-        self.run_locked(&["dataset", "networkname", &network.network_name])?;
+        self.rest_put_json(
+            "/node/state",
+            &serde_json::Value::String("disable".to_string()),
+        )?;
+        let mut dataset = serde_json::Map::new();
+        dataset.insert(
+            "networkName".to_string(),
+            serde_json::Value::String(network.network_name.clone()),
+        );
         if let Some(channel) = network.channel {
-            self.run_locked(&["dataset", "channel", &channel.to_string()])?;
+            dataset.insert("channel".to_string(), serde_json::Value::from(channel));
         }
         if let Some(pan_id) = &network.pan_id {
-            self.run_locked(&["dataset", "panid", pan_id])?;
+            dataset.insert(
+                "panId".to_string(),
+                serde_json::Value::from(parse_pan_id(pan_id)?),
+            );
         }
         if let Some(extended_pan_id) = &network.extended_pan_id {
-            self.run_locked(&["dataset", "extpanid", extended_pan_id])?;
+            dataset.insert(
+                "extPanId".to_string(),
+                serde_json::Value::String(strip_hex_prefix(extended_pan_id).to_string()),
+            );
         }
         if let Some(network_key) = &network.network_key {
-            self.run_locked(&["dataset", "networkkey", network_key])?;
+            dataset.insert(
+                "networkKey".to_string(),
+                serde_json::Value::String(strip_hex_prefix(network_key).to_string()),
+            );
         }
-        self.activate_locked()
+        self.rest_put_json("/node/dataset/active", &serde_json::Value::Object(dataset))?;
+        self.rest_put_json(
+            "/node/state",
+            &serde_json::Value::String("enable".to_string()),
+        )
     }
 
     /// Replaces the active dataset with a complete, hex-encoded Thread
@@ -481,22 +518,15 @@ impl ThreadController {
         }
 
         let _guard = self.lock();
-        self.run_locked(&["thread", "stop"])?;
-        self.run_locked(&["ifconfig", "down"])?;
-        self.run_locked(&["dataset", "set", "active", dataset_tlvs])?;
-        self.activate_locked()
-    }
-
-    fn activate_locked(&self) -> Result<()> {
-        self.run_locked(&["dataset", "commit", "active"])?;
-        self.run_locked(&["ifconfig", "up"])?;
-        self.run_locked(&["thread", "start"])?;
-        Ok(())
-    }
-
-    fn run(&self, arguments: &[&str]) -> Result<String> {
-        let _guard = self.lock();
-        self.run_locked(arguments)
+        self.rest_put_json(
+            "/node/state",
+            &serde_json::Value::String("disable".to_string()),
+        )?;
+        self.rest_put_plain("/node/dataset/active", dataset_tlvs)?;
+        self.rest_put_json(
+            "/node/state",
+            &serde_json::Value::String("enable".to_string()),
+        )
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, ()> {
@@ -505,44 +535,61 @@ impl ThreadController {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    fn run_locked(&self, arguments: &[&str]) -> Result<String> {
-        let mut command = Command::new(&self.ot_ctl_path);
-        command
-            .args(arguments)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        if let Some(address) = &self.dbus_address {
-            command.env("DBUS_SYSTEM_BUS_ADDRESS", address);
-        }
-        let mut child = command
-            .spawn()
-            .with_context(|| format!("Failed to run {}", self.ot_ctl_path.display()))?;
-        let deadline = Instant::now() + Duration::from_secs(5);
-        loop {
-            if child
-                .try_wait()
-                .context("Failed to inspect OpenThread command")?
-                .is_some()
-            {
-                break;
-            }
-            if Instant::now() >= deadline {
-                child
-                    .kill()
-                    .context("Failed to stop a timed-out OpenThread command")?;
-                let _ = child.wait();
-                bail!("OpenThread command timed out after 5 seconds");
-            }
-            std::thread::sleep(Duration::from_millis(25));
-        }
-        let output = child
-            .wait_with_output()
-            .context("Failed to collect OpenThread command output")?;
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            bail!("OpenThread command failed: {}", stderr.trim());
-        }
-        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    fn rest_json_string(&self, path: &str) -> Result<String> {
+        self.rest_json(path)?
+            .as_str()
+            .map(ToOwned::to_owned)
+            .context("OTBR returned an invalid JSON string")
+    }
+
+    fn rest_json(&self, path: &str) -> Result<serde_json::Value> {
+        let url = self.url(path);
+        let response = self
+            .client()?
+            .get(&url)
+            .send()
+            .with_context(|| format!("Failed to reach local OTBR REST endpoint at {url}"))?
+            .error_for_status()
+            .with_context(|| format!("OTBR REST endpoint rejected {url}"))?;
+        response
+            .json()
+            .with_context(|| format!("OTBR REST endpoint returned invalid JSON for {url}"))
+    }
+
+    fn rest_put_json(&self, path: &str, body: &serde_json::Value) -> Result<()> {
+        let url = self.url(path);
+        self.client()?
+            .put(&url)
+            .json(body)
+            .send()
+            .with_context(|| format!("Failed to reach local OTBR REST endpoint at {url}"))?
+            .error_for_status()
+            .with_context(|| format!("OTBR REST endpoint rejected {url}"))?;
+        Ok(())
+    }
+
+    fn rest_put_plain(&self, path: &str, body: &str) -> Result<()> {
+        let url = self.url(path);
+        self.client()?
+            .put(&url)
+            .header(reqwest::header::CONTENT_TYPE, "text/plain")
+            .body(body.to_string())
+            .send()
+            .with_context(|| format!("Failed to reach local OTBR REST endpoint at {url}"))?
+            .error_for_status()
+            .with_context(|| format!("OTBR REST endpoint rejected {url}"))?;
+        Ok(())
+    }
+
+    fn client(&self) -> Result<reqwest::blocking::Client> {
+        reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .context("Failed to initialize the OTBR REST client")
+    }
+
+    fn url(&self, path: &str) -> String {
+        format!("{}{path}", self.rest_endpoint)
     }
 }
 
@@ -552,16 +599,19 @@ impl BorderRouter {
         Self::start_inner(config, None, None)
     }
 
-    /// Starts OTBR with a private D-Bus control bus and returns the paired
-    /// `ot-ctl` controller. This avoids exposing or depending on the host's
-    /// system D-Bus service.
+    /// Starts OTBR with a private D-Bus bus required by the agent's RCP mode,
+    /// then returns its loopback REST controller.
     pub fn start_with_controller(
         config: BorderRouterConfig,
         controller: ThreadController,
     ) -> Result<(Self, ThreadController)> {
         let (daemon, address) = DbusDaemon::start()?;
+        let thread_interface = config.thread_interface.clone();
         let router = Self::start_inner(config, Some(address.clone()), Some(daemon))?;
-        Ok((router, controller.with_dbus_address(address)))
+        Ok((
+            router,
+            controller.with_dbus_control(address, thread_interface),
+        ))
     }
 
     fn start_inner(
@@ -840,11 +890,11 @@ fn executable_if_present(path: &Path) -> Result<PathBuf> {
 
 fn bundled_agent_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
-    if let Ok(executable) = env::current_exe() {
-        if let Some(bin_dir) = executable.parent() {
-            paths.push(bin_dir.join("../libexec/extrittio/otbr-agent"));
-            paths.push(bin_dir.join("otbr-agent"));
-        }
+    if let Ok(executable) = env::current_exe()
+        && let Some(bin_dir) = executable.parent()
+    {
+        paths.push(bin_dir.join("../libexec/extrittio/otbr-agent"));
+        paths.push(bin_dir.join("otbr-agent"));
     }
     paths
 }
@@ -857,105 +907,70 @@ fn find_in_path(program: &str) -> Option<PathBuf> {
     })
 }
 
-fn discover_ctl(agent_path: &Path) -> Option<PathBuf> {
-    let mut candidates = Vec::new();
-    if let Some(directory) = agent_path.parent() {
-        candidates.push(directory.join("ot-ctl"));
-    }
-    candidates.extend(bundled_ctl_paths());
-    candidates
-        .into_iter()
-        .find(|candidate| candidate.is_file())
-        .or_else(|| find_in_path("ot-ctl"))
+fn dataset_string(dataset: &serde_json::Value, key: &str) -> Option<String> {
+    dataset.get(key)?.as_str().map(ToOwned::to_owned)
 }
 
-fn bundled_ctl_paths() -> Vec<PathBuf> {
-    let mut paths = Vec::new();
-    if let Ok(executable) = env::current_exe()
-        && let Some(bin_dir) = executable.parent()
-    {
-        paths.push(bin_dir.join("../libexec/extrittio/ot-ctl"));
-        paths.push(bin_dir.join("ot-ctl"));
-    }
-    paths
+fn dataset_u16(dataset: &serde_json::Value, key: &str) -> Option<u16> {
+    dataset
+        .get(key)?
+        .as_u64()
+        .and_then(|value| u16::try_from(value).ok())
 }
 
-fn single_value(output: &str) -> Option<String> {
+fn parse_dbus_scan(output: &str) -> Vec<ThreadNetwork> {
     output
-        .lines()
-        .map(str::trim)
-        .find(|line| !line.is_empty() && *line != "Done")
-        .map(ToOwned::to_owned)
+        .split("struct {")
+        .skip(1)
+        .filter_map(|entry| entry.split('}').next())
+        .filter_map(parse_dbus_scan_entry)
+        .collect()
 }
 
-fn dataset_value(dataset: &str, key: &str) -> Option<String> {
-    dataset.lines().find_map(|line| {
-        line.trim()
-            .strip_prefix(key)
-            .and_then(|value| value.strip_prefix(':'))
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToOwned::to_owned)
-    })
-}
+fn parse_dbus_scan_entry(entry: &str) -> Option<ThreadNetwork> {
+    let mut ext_address = None;
+    let mut pan_id = None;
+    let mut channel = None;
+    let mut rssi = None;
+    let mut lqi = None;
 
-fn parse_network_scan(output: &str) -> Vec<ThreadNetwork> {
-    let mut header = None;
-    let mut networks = Vec::new();
-
-    for line in output.lines().map(str::trim) {
-        if !line.starts_with('|') {
-            continue;
-        }
-        let columns = scan_columns(line);
-        if columns.is_empty() {
-            continue;
-        }
-        if header.is_none() {
-            if columns
-                .iter()
-                .any(|column| *column == "PAN" || *column == "PAN ID")
-            {
-                header = Some(columns);
+    for line in entry.lines().map(str::trim) {
+        if let Some(value) = line.strip_prefix("uint64 ") {
+            ext_address.get_or_insert_with(|| value.trim().to_string());
+        } else if let Some(value) = line.strip_prefix("uint16 ") {
+            if pan_id.is_none() {
+                pan_id = value
+                    .trim()
+                    .parse::<u16>()
+                    .ok()
+                    .map(|value| format!("{value:04x}"));
             }
-            continue;
+        } else if let Some(value) = line.strip_prefix("byte ") {
+            if channel.is_none() {
+                channel = value.trim().parse().ok();
+            } else if lqi.is_none() {
+                lqi = value.trim().parse().ok();
+            }
+        } else if let Some(value) = line.strip_prefix("int16 ") {
+            rssi = value.trim().parse().ok();
         }
-
-        let Some(network) = parse_scan_row(header.as_deref().unwrap_or_default(), &columns) else {
-            continue;
-        };
-        networks.push(network);
     }
-
-    networks
-}
-
-fn scan_columns(line: &str) -> Vec<&str> {
-    line.trim_matches('|').split('|').map(str::trim).collect()
-}
-
-fn parse_scan_row(header: &[&str], row: &[&str]) -> Option<ThreadNetwork> {
-    if row.len() != header.len() || row.iter().all(|column| column.chars().all(|ch| ch == '-')) {
-        return None;
-    }
-
-    let value = |name| {
-        header
-            .iter()
-            .position(|column| *column == name)
-            .and_then(|index| row.get(index).copied())
-            .filter(|value| !value.is_empty())
-    };
 
     Some(ThreadNetwork {
-        pan_id: value("PAN").or_else(|| value("PAN ID"))?.to_owned(),
-        extended_address: value("MAC Address")
-            .or_else(|| value("Extended Address"))?
-            .to_owned(),
-        channel: value("Ch")?.parse().ok()?,
-        rssi: value("dBm")?.parse().ok()?,
-        lqi: value("LQI")?.parse().ok()?,
+        pan_id: pan_id?,
+        extended_address: format!("{:016x}", ext_address?.parse::<u64>().ok()?),
+        channel: channel?,
+        rssi: rssi?,
+        lqi: lqi?,
     })
+}
+
+fn strip_hex_prefix(value: &str) -> &str {
+    value.trim().trim_start_matches("0x")
+}
+
+fn parse_pan_id(value: &str) -> Result<u16> {
+    u16::from_str_radix(strip_hex_prefix(value), 16).context("Thread PAN ID must be hexadecimal")
 }
 
 fn validate_create_network(network: &CreateNetwork) -> Result<()> {
@@ -982,7 +997,7 @@ fn validate_hex(label: &str, value: Option<&str>, length: usize) -> Result<()> {
     let Some(value) = value else {
         return Ok(());
     };
-    let value = value.trim().trim_start_matches("0x");
+    let value = strip_hex_prefix(value);
     if value.len() != length || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         bail!("{label} must be {length} hexadecimal characters");
     }
@@ -1031,8 +1046,8 @@ fn is_rcp_candidate_name(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        BorderRouterConfig, CreateNetwork, dataset_value, default_infrastructure_interface,
-        parse_network_scan, validate_create_network,
+        BorderRouterConfig, CreateNetwork, default_infrastructure_interface,
+        validate_create_network,
     };
     use std::path::PathBuf;
 
@@ -1100,42 +1115,35 @@ mod tests {
     }
 
     #[test]
-    fn parses_only_requested_non_secret_dataset_values() {
-        let dataset = "Network Name: Extrittio-Thread\nNetwork Key: secret\nPAN ID: 0x1234\nDone\n";
-        assert_eq!(
-            dataset_value(dataset, "Network Name"),
-            Some("Extrittio-Thread".into())
-        );
-        assert_eq!(dataset_value(dataset, "PAN ID"), Some("0x1234".into()));
-    }
+    fn parses_rcp_dbus_scan_results_without_network_credentials() {
+        let output = r#"
+array [
+   struct {
+      uint64 4822678189205111
+      string "Example"
+      uint64 0
+      array [ ]
+      uint16 4660
+      uint16 0
+      byte 15
+      int16 -28
+      byte 3
+      byte 4
+      boolean false
+      boolean false
+   }
+]
+"#;
 
-    #[test]
-    fn parses_active_scan_results_without_credentials() {
-        let scan = "\
-| PAN  | MAC Address      | Ch | dBm | LQI |\n\
-+------+------------------+----+-----+-----+\n\
-| 1234 | 0011223344556677 | 15 | -28 | 3   |\n\
-| abcd | 8899aabbccddeeff | 20 | -74 | 1   |\n\
-Done\n";
-
         assert_eq!(
-            parse_network_scan(scan),
-            vec![
-                super::ThreadNetwork {
-                    pan_id: "1234".into(),
-                    extended_address: "0011223344556677".into(),
-                    channel: 15,
-                    rssi: -28,
-                    lqi: 3,
-                },
-                super::ThreadNetwork {
-                    pan_id: "abcd".into(),
-                    extended_address: "8899aabbccddeeff".into(),
-                    channel: 20,
-                    rssi: -74,
-                    lqi: 1,
-                },
-            ]
+            super::parse_dbus_scan(output),
+            vec![super::ThreadNetwork {
+                pan_id: "1234".into(),
+                extended_address: "0011223344556677".into(),
+                channel: 15,
+                rssi: -28,
+                lqi: 3,
+            }]
         );
     }
 }

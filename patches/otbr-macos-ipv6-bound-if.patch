@@ -18,3 +18,20 @@ index 286ed3e..a405bed 100644
 +    rval = setsockopt(sock, IPPROTO_IPV6, IPV6_BOUND_IF, aInfraIfName, strlen(aInfraIfName));
  #endif // __linux__
      VerifyOrDie(rval == 0, OT_EXIT_ERROR_ERRNO);
+diff --git a/src/host/posix/cli_daemon.cpp b/src/host/posix/cli_daemon.cpp
+index 328d8e2..95f718d 100644
+--- a/src/host/posix/cli_daemon.cpp
++++ b/src/host/posix/cli_daemon.cpp
+@@ -56,5 +56,12 @@ static constexpr char kDefaultNetIfName[] = "wpan0";
+ static constexpr char kDefaultNetIfName[] = "wpan0";
++#if defined(__APPLE__)
++// `ot-ctl` on macOS connects through /tmp (the platform default in
++// OpenThread's POSIX client). Keep the agent's daemon socket in the same
++// location so the controller can reach the running OTBR instance.
++static constexpr char kSocketBaseName[] = "/tmp/openthread-";
++#else
+ static constexpr char kSocketBaseName[]   = "/run/openthread-";
++#endif
+ static constexpr char kSocketSuffix[]     = ".sock";
+ static constexpr char kSocketLockSuffix[] = ".lock";
+ static constexpr char kTruncatedMsg[]     = "(truncated ...)";

@@ -54,9 +54,10 @@ FRONTEND_BUILD_INPUTS := \
 
 OTBR_CMAKE_OPTIONS := \
 	-DCMAKE_BUILD_TYPE=Release \
+	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 	-DOTBR_DBUS=ON \
 	-DOTBR_WEB=OFF \
-	-DOTBR_REST=OFF \
+	-DOTBR_REST=ON \
 	-DOTBR_NAT64=OFF \
 	-DOTBR_DNSSD_PLAT=OFF \
 	-DOTBR_TREL=OFF \
@@ -128,7 +129,11 @@ $(OTBR_CTL): $(OTBR_AGENT)
 
 $(OTBR_MACOS_IPV6_PATCH_STAMP): $(OTBR_SOURCE_DIR)/.git $(OTBR_MACOS_IPV6_PATCH)
 ifeq ($(shell uname -s),Darwin)
-	git -C "$(OTBR_SOURCE_DIR)" apply "$(abspath $(OTBR_MACOS_IPV6_PATCH))"
+	if git -C "$(OTBR_SOURCE_DIR)" apply --check "$(abspath $(OTBR_MACOS_IPV6_PATCH))" 2>/dev/null; then \
+		git -C "$(OTBR_SOURCE_DIR)" apply "$(abspath $(OTBR_MACOS_IPV6_PATCH))"; \
+	else \
+		git -C "$(OTBR_SOURCE_DIR)" apply --reverse --check "$(abspath $(OTBR_MACOS_IPV6_PATCH))"; \
+	fi
 endif
 	touch "$@"
 

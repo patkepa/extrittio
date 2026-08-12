@@ -259,11 +259,12 @@ impl ThreadStatusResponse {
         }
     }
 
-    fn failed(error: AppError) -> Self {
+    fn failed(error: AppError, rcp_device: Option<String>) -> Self {
         Self {
             available: true,
             connected: false,
             error: Some(error.to_string()),
+            rcp_device,
             ..Self::unavailable()
         }
     }
@@ -319,7 +320,7 @@ async fn thread_status(runtime: Arc<ThreadRuntime>) -> ThreadStatusResponse {
         .map(|device| device.display().to_string());
     match run_blocking(controller, |controller| controller.status()).await {
         Ok(status) => ThreadStatusResponse::connected(status, rcp_device),
-        Err(error) => ThreadStatusResponse::failed(error),
+        Err(error) => ThreadStatusResponse::failed(error, rcp_device),
     }
 }
 
