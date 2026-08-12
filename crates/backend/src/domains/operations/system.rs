@@ -43,7 +43,13 @@ fn runtime_version() -> String {
     ),
 )]
 pub(crate) async fn get_version(State(state): State<Arc<AppState>>) -> Json<SystemVersionResponse> {
-    let database = if state.db_pool.get().is_ok() {
+    let database = if state
+        .persistence
+        .bootstrap
+        .health()
+        .await
+        .is_ok_and(|health| health.reachable)
+    {
         "ready"
     } else {
         "unreachable"

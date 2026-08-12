@@ -7,26 +7,22 @@ use ring::aead::{AES_256_GCM, Aad, LessSafeKey, Nonce, UnboundKey};
 use ring::rand::{SecureRandom, SystemRandom};
 use sha2::{Digest, Sha256};
 
-use diesel::PgConnection;
-
 use crate::auth::context::RequestContext;
 use crate::auth::policy::{self, Permission};
-use crate::db::models::{CaCertificate, NewCaCertificate, NewDeviceCertificate};
 use crate::domains::identity::certificate_repository::CertificateRepository;
 use crate::domains::identity::certificate_types::{
     CaCertificateRecord, CertificateMaterialOutcome, CertificateStatusOutcome,
-    DeviceCertificateRecord, NewDeviceCertificateRecord, ReplaceCertificateOutcome,
-    StoredPrivateKeyRecord,
+    DeviceCertificateRecord, NewCaCertificateRecord, NewDeviceCertificateRecord,
+    ReplaceCertificateOutcome, StoredPrivateKeyRecord,
 };
 use crate::error::AppError;
-use crate::repositories::cert_repo;
 use crate::tenancy::DEFAULT_TENANT_ID;
 
 const ENCRYPTED_KEY_PREFIX: &str = "enc:v1:";
 const KEY_ENCRYPTION_SECRET_ENV: &str = "EXTRITTIO_KEY_ENCRYPTION_SECRET";
 
 /// Generate a self-signed root CA certificate (Ed25519, 10-year validity).
-pub fn generate_ca_certificate() -> Result<NewCaCertificate, AppError> {
+pub fn generate_ca_certificate() -> Result<NewCaCertificateRecord, AppError> {
     let key_pair = KeyPair::generate_for(&rcgen::PKCS_ED25519)
         .map_err(|e| AppError::Internal(format!("Failed to generate CA key pair: {e}")))?;
 
@@ -51,7 +47,7 @@ pub fn generate_ca_certificate() -> Result<NewCaCertificate, AppError> {
         .self_signed(&key_pair)
         .map_err(|e| AppError::Internal(format!("Failed to self-sign CA certificate: {e}")))?;
 
-    Ok(NewCaCertificate {
+    Ok(NewCaCertificateRecord {
         private_key_pem: protect_private_key(&key_pair.serialize_pem())?,
         certificate_pem: ca_cert.pem(),
     })
@@ -61,8 +57,8 @@ pub fn generate_ca_certificate() -> Result<NewCaCertificate, AppError> {
 /// CN is set to the device ID.
 pub fn generate_device_certificate(
     device_id: &str,
-    ca: &CaCertificate,
-) -> Result<NewDeviceCertificate, AppError> {
+    ca: &CaCertificateRecord,
+) -> Result<NewDeviceCertificateRecord, AppError> {
     generate_device_certificate_for_tenant(DEFAULT_TENANT_ID, device_id, ca)
 }
 
@@ -71,8 +67,8 @@ pub fn generate_device_certificate(
 pub fn generate_device_certificate_for_tenant(
     tenant_id: &str,
     device_id: &str,
-    ca: &CaCertificate,
-) -> Result<NewDeviceCertificate, AppError> {
+    ca: &CaCertificateRecord,
+) -> Result<NewDeviceCertificateRecord, AppError> {
     let ca_private_key_pem = unprotect_private_key(&ca.private_key_pem)?;
     let ca_key_pair = KeyPair::from_pem(&ca_private_key_pem)
         .map_err(|e| AppError::Internal(format!("Failed to parse CA key: {e}")))?;
@@ -116,18 +112,18 @@ pub fn generate_device_certificate_for_tenant(
 
     let device_private_key_pem = device_key_pair.serialize_pem();
 
-    Ok(NewDeviceCertificate {
-        tenant_id: tenant_id.to_string(),
+    let _ = tenant_id;
+    Ok(NewDeviceCertificateRecord {
         device_id: device_id.to_string(),
         private_key_pem: protect_private_key(&device_private_key_pem)?,
         certificate_pem: cert_pem,
         fingerprint,
-        expires_at,
+        expires_at: expires_at.and_utc(),
     })
 }
 
 /// Generate a server certificate signed by the CA for Zenoh TLS.
-pub fn generate_server_certificate(ca: &CaCertificate) -> Result<(String, String), AppError> {
+pub fn generate_server_certificate(ca: &CaCertificateRecord) -> Result<(String, String), AppError> {
     let ca_private_key_pem = unprotect_private_key(&ca.private_key_pem)?;
     let ca_key_pair = KeyPair::from_pem(&ca_private_key_pem)
         .map_err(|e| AppError::Internal(format!("Failed to parse CA key: {e}")))?;
@@ -277,11 +273,6 @@ pub async fn get_device_certificate_status(
     }
 }
 
-/// Get the CA certificate, if one has been initialized.
-pub fn get_ca_certificate(conn: &mut PgConnection) -> Result<Option<CaCertificate>, AppError> {
-    Ok(cert_repo::get_ca_certificate(conn)?)
-}
-
 /// Get the CA certificate for an authenticated request.
 pub async fn get_ca_certificate_for_request(
     ctx: &RequestContext,
@@ -302,14 +293,7 @@ pub async fn regenerate_device_certificate_bundle(
         .get_ca()
         .await?
         .ok_or_else(|| AppError::Internal("CA certificate not found".into()))?;
-    let legacy_ca = CaCertificate {
-        id: ca.id,
-        private_key_pem: ca.private_key_pem.clone(),
-        certificate_pem: ca.certificate_pem.clone(),
-        created_at: ca.created_at.naive_utc(),
-    };
-    let new_cert =
-        generate_device_certificate_for_tenant(ctx.tenant_id_str(), device_id, &legacy_ca)?;
+    let new_cert = generate_device_certificate_for_tenant(ctx.tenant_id_str(), device_id, &ca)?;
     let private_key_pem = unprotect_private_key(&new_cert.private_key_pem)?;
     let outcome = repository
         .replace_device_certificate(
@@ -319,7 +303,7 @@ pub async fn regenerate_device_certificate_bundle(
                 private_key_pem: new_cert.private_key_pem,
                 certificate_pem: new_cert.certificate_pem,
                 fingerprint: new_cert.fingerprint,
-                expires_at: new_cert.expires_at.and_utc(),
+                expires_at: new_cert.expires_at,
             },
         )
         .await?;

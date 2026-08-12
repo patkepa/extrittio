@@ -1,12 +1,10 @@
 use crate::auth::context::RequestContext;
 use crate::auth::policy::{self, Permission};
-use crate::db::models::CaCertificate;
 use crate::domains::devices::repository::DeviceRepository;
 use crate::domains::devices::types::{
     CreateDeviceRecord, DeviceDetails, DeviceFilter, DeviceListQuery, UpdateDeviceRecord,
 };
 use crate::domains::identity::certificate_repository::CertificateRepository;
-use crate::domains::identity::certificate_types::NewDeviceCertificateRecord;
 use crate::error::AppError;
 use crate::persistence::PersistenceError;
 use crate::services::cert_service;
@@ -72,24 +70,12 @@ pub async fn create(
     let certificate = if let Some(ca) = certificates.get_ca().await? {
         let tenant_id = ctx.tenant_id_str().to_string();
         let device_id = record.id.clone();
-        let legacy_ca = CaCertificate {
-            id: ca.id,
-            private_key_pem: ca.private_key_pem,
-            certificate_pem: ca.certificate_pem,
-            created_at: ca.created_at.naive_utc(),
-        };
         let generated = tokio::task::spawn_blocking(move || {
-            cert_service::generate_device_certificate_for_tenant(&tenant_id, &device_id, &legacy_ca)
+            cert_service::generate_device_certificate_for_tenant(&tenant_id, &device_id, &ca)
         })
         .await
         .map_err(|error| AppError::Internal(format!("certificate task failed: {error}")))??;
-        Some(NewDeviceCertificateRecord {
-            device_id: generated.device_id,
-            private_key_pem: generated.private_key_pem,
-            certificate_pem: generated.certificate_pem,
-            fingerprint: generated.fingerprint,
-            expires_at: generated.expires_at.and_utc(),
-        })
+        Some(generated)
     } else {
         None
     };
@@ -206,6 +192,7 @@ mod tests {
         AutoRegisterOutcome, DeviceIngressContext, DeviceList, DeviceWriteOutcome, HeartbeatWrite,
         OfflineTransition, OfflineWriteOutcome,
     };
+    use crate::domains::identity::certificate_types::NewDeviceCertificateRecord;
     use crate::tenancy::TenantId;
 
     #[derive(Default)]
@@ -354,6 +341,13 @@ mod tests {
         ) -> Result<usize, PersistenceError> {
             self.record("bulk_delete", tenant);
             Ok(device_ids.len())
+        }
+
+        async fn delete_observed_hosts_before(
+            &self,
+            _cutoff: chrono::NaiveDateTime,
+        ) -> Result<usize, PersistenceError> {
+            Ok(0)
         }
     }
 

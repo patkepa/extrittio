@@ -3,6 +3,7 @@ use diesel::{Connection, OptionalExtension};
 
 use crate::db::models::{
     FirmwareBlob, FirmwareUpdate, NewFirmwareBlob, NewFirmwareUpdate, NewOtaDeployment,
+    UpdateShadow,
 };
 use crate::domains::firmware::port::FirmwareRepository;
 use crate::domains::firmware::types::{
@@ -12,8 +13,9 @@ use crate::domains::firmware::types::{
 };
 use crate::error::AppError;
 use crate::persistence::PersistenceError;
-use crate::repositories::{api_key_repo, device_repo, device_type_repo, firmware_repo};
-use crate::services::shadow_service;
+use crate::repositories::{
+    api_key_repo, device_repo, device_type_repo, firmware_repo, shadow_repo,
+};
 use crate::tenancy::{DeviceIdentity, TenantId};
 
 use super::PostgresAdapter;
@@ -71,6 +73,46 @@ fn increment_version(version: &str) -> String {
         return format!("{}.{}.{}", parts[0], parts[1], patch + 1);
     }
     format!("{version}.1")
+}
+
+fn update_desired_shadow(
+    connection: &mut diesel::PgConnection,
+    tenant_id: &str,
+    device_id: &str,
+    patch: &serde_json::Map<String, serde_json::Value>,
+) -> Result<(serde_json::Value, i32), AppError> {
+    use extrittio_common::shadow::{compute_delta, merge_json};
+
+    let shadow = shadow_repo::find_shadow(connection, tenant_id, device_id)?;
+    let desired = if shadow.desired.is_object() {
+        shadow.desired
+    } else {
+        serde_json::json!({})
+    };
+    let reported = if shadow.reported.is_object() {
+        shadow.reported
+    } else {
+        serde_json::json!({})
+    };
+    let desired = merge_json(desired, patch);
+    let delta = compute_delta(&desired, &reported);
+    let version = shadow
+        .version
+        .checked_add(1)
+        .ok_or_else(|| AppError::Internal("shadow version overflow".to_string()))?;
+    shadow_repo::update_shadow(
+        connection,
+        tenant_id,
+        device_id,
+        &UpdateShadow {
+            desired: Some(desired),
+            delta: Some(delta.clone()),
+            version: Some(version),
+            updated_at: Some(chrono::Utc::now().naive_utc()),
+            ..Default::default()
+        },
+    )?;
+    Ok((delta, version))
 }
 
 #[async_trait]
@@ -481,9 +523,8 @@ impl FirmwareRepository for PostgresAdapter {
                         }
                         let mut patch = serde_json::Map::new();
                         patch.insert(fields::SHADOW_KEY.to_string(), ota);
-                        let (delta, version) = shadow_service::update_desired_db(
-                            connection, &tenant_id, &device_id, &patch,
-                        )?;
+                        let (delta, version) =
+                            update_desired_shadow(connection, &tenant_id, &device_id, &patch)?;
                         firmware_repo::insert_ota_deployment(
                             connection,
                             &NewOtaDeployment {

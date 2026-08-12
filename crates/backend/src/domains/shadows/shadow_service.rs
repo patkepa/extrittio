@@ -1,4 +1,3 @@
-use diesel::PgConnection;
 use serde_json::Value;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -6,17 +5,14 @@ use tracing::warn;
 
 use crate::auth::context::RequestContext;
 use crate::auth::policy::{self, Permission};
-use crate::db::models::UpdateShadow;
 use crate::domains::firmware::port::FirmwareRepository;
 use crate::domains::firmware::types::OtaStatusUpdate;
 use crate::domains::shadows::repository::ShadowRepository;
 use crate::domains::shadows::types::ShadowRecord;
 use crate::error::AppError;
-use crate::repositories::{firmware_repo, shadow_repo};
 use crate::state::ZenohMetrics;
 use crate::tenancy::DeviceIdentity;
 use crate::tenancy::TenantId;
-use extrittio_common::shadow::{compute_delta as compute_shadow_delta, merge_json};
 
 pub async fn get_shadow(
     ctx: &RequestContext,
@@ -141,103 +137,6 @@ pub async fn publish_delta_if_nonempty(
             zenoh_metrics.messages_out.fetch_add(1, Ordering::Relaxed);
         }
     }
-}
-
-// Transitional PostgreSQL-only helpers used by device/firmware write sets that
-// have not yet moved into their owning persistence ports. They disappear when
-// those atomic operations migrate later in Phase 2.
-
-/// DB-only desired-state mutation used inside the atomic OTA deployment write
-/// set. The caller owns the surrounding transaction.
-pub fn update_desired_db(
-    conn: &mut PgConnection,
-    tenant_id: &str,
-    device_id: &str,
-    patch: &serde_json::Map<String, Value>,
-) -> Result<(Value, i32), AppError> {
-    let shadow = shadow_repo::find_shadow(conn, tenant_id, device_id)?;
-
-    let current_desired = if shadow.desired.is_object() {
-        shadow.desired
-    } else {
-        Value::Object(serde_json::Map::default())
-    };
-    let current_reported = if shadow.reported.is_object() {
-        shadow.reported
-    } else {
-        Value::Object(serde_json::Map::default())
-    };
-
-    let new_desired = merge_json(current_desired, patch);
-    let new_delta = compute_shadow_delta(&new_desired, &current_reported);
-    let new_version = shadow
-        .version
-        .checked_add(1)
-        .ok_or_else(|| AppError::Internal("shadow version overflow".to_string()))?;
-    let now = chrono::Utc::now().naive_utc();
-
-    shadow_repo::update_shadow(
-        conn,
-        tenant_id,
-        device_id,
-        &UpdateShadow {
-            desired: Some(new_desired),
-            delta: Some(new_delta.clone()),
-            version: Some(new_version),
-            updated_at: Some(now),
-            ..Default::default()
-        },
-    )?;
-
-    Ok((new_delta, new_version))
-}
-
-/// Process OTA status from a shadow report's reported state.
-pub fn process_ota_from_report(
-    conn: &mut PgConnection,
-    tenant_id: &str,
-    device_id: &str,
-    reported: &serde_json::Value,
-) -> Result<(), AppError> {
-    use extrittio_common::ota::{fields as ota_fields, status as ota_status_consts};
-
-    let ota_obj = match reported.get(ota_fields::SHADOW_KEY) {
-        Some(serde_json::Value::Object(object)) => object,
-        _ => return Ok(()),
-    };
-    let status_raw = match ota_obj.get(ota_fields::STATUS) {
-        Some(serde_json::Value::String(status)) => status.as_str(),
-        _ => return Ok(()),
-    };
-    let status = status_raw.to_lowercase();
-    let firmware_update_id = ota_obj
-        .get(ota_fields::FIRMWARE_UPDATE_ID)
-        .and_then(serde_json::Value::as_i64)
-        .and_then(|id| i32::try_from(id).ok());
-
-    let deployment_id =
-        firmware_repo::find_active_ota_deployment(conn, tenant_id, device_id, firmware_update_id)?;
-    if let Some(deployment_id) = deployment_id {
-        let error_message = ota_obj
-            .get(ota_fields::ERROR)
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_string);
-        let completed_at = if ota_status_consts::is_terminal(&status) {
-            Some(chrono::Utc::now().naive_utc())
-        } else {
-            None
-        };
-        firmware_repo::update_ota_deployment_status(
-            conn,
-            tenant_id,
-            deployment_id,
-            &status,
-            error_message.as_deref(),
-            completed_at,
-        )?;
-    }
-
-    Ok(())
 }
 
 pub async fn process_ota_from_report_with_repository(

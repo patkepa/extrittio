@@ -106,4 +106,9 @@ pub trait DeviceRepository: Send + Sync {
         tenant: &TenantId,
         device_ids: Vec<String>,
     ) -> Result<usize, PersistenceError>;
+
+    async fn delete_observed_hosts_before(
+        &self,
+        cutoff: chrono::NaiveDateTime,
+    ) -> Result<usize, PersistenceError>;
 }

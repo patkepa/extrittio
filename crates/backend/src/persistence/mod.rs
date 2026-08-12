@@ -14,6 +14,9 @@ use crate::domains::identity::certificate_repository::CertificateRepository;
 use crate::domains::identity::role_repository::RoleRepository;
 use crate::domains::identity::user_repository::UserRepository;
 use crate::domains::logs::port::LogRepository;
+use crate::domains::operations::metrics_repository::MetricsRepository;
+use crate::domains::operations::outbox_repository::OutboxRepository;
+use crate::domains::rules::port::RuleRepository;
 use crate::domains::shadows::repository::ShadowRepository;
 use crate::domains::telemetry::port::TelemetryRepository;
 use crate::domains::zones::port::ZoneRepository;
@@ -21,7 +24,11 @@ use crate::domains::zones::port::ZoneRepository;
 pub mod backend;
 pub mod bootstrap;
 pub mod error;
+pub mod factory;
+#[cfg(feature = "postgres")]
 pub mod postgres;
+#[cfg(feature = "turso")]
+pub mod turso;
 
 pub use backend::{BackendCapabilities, BackendDescriptor, BackendKind};
 pub use bootstrap::{
@@ -48,7 +55,10 @@ pub struct Persistence {
     pub fleets: Arc<dyn FleetRepository>,
     pub firmware: Arc<dyn FirmwareRepository>,
     pub logs: Arc<dyn LogRepository>,
+    pub metrics: Arc<dyn MetricsRepository>,
+    pub outbox: Arc<dyn OutboxRepository>,
     pub roles: Arc<dyn RoleRepository>,
+    pub rules: Arc<dyn RuleRepository>,
     pub shadows: Arc<dyn ShadowRepository>,
     pub telemetry: Arc<dyn TelemetryRepository>,
     pub users: Arc<dyn UserRepository>,
@@ -69,7 +79,10 @@ pub struct PersistencePorts {
     pub fleets: Arc<dyn FleetRepository>,
     pub firmware: Arc<dyn FirmwareRepository>,
     pub logs: Arc<dyn LogRepository>,
+    pub metrics: Arc<dyn MetricsRepository>,
+    pub outbox: Arc<dyn OutboxRepository>,
     pub roles: Arc<dyn RoleRepository>,
+    pub rules: Arc<dyn RuleRepository>,
     pub shadows: Arc<dyn ShadowRepository>,
     pub telemetry: Arc<dyn TelemetryRepository>,
     pub users: Arc<dyn UserRepository>,
@@ -94,7 +107,10 @@ impl Persistence {
             fleets: ports.fleets,
             firmware: ports.firmware,
             logs: ports.logs,
+            metrics: ports.metrics,
+            outbox: ports.outbox,
             roles: ports.roles,
+            rules: ports.rules,
             shadows: ports.shadows,
             telemetry: ports.telemetry,
             users: ports.users,

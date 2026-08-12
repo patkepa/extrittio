@@ -6,10 +6,23 @@ use crate::tenancy::TenantId;
 
 use super::types::{
     AlertListFilter, AlertRecord, AlertTransition, AlertTransitionOutcome, CooldownRecord,
+    NewAlertRecord,
 };
 
 #[async_trait]
 pub trait AlertRepository: Send + Sync {
+    async fn create(
+        &self,
+        tenant: &TenantId,
+        record: NewAlertRecord,
+    ) -> Result<AlertRecord, PersistenceError>;
+    async fn update_triggered_value(
+        &self,
+        tenant: &TenantId,
+        id: &str,
+        value: String,
+    ) -> Result<bool, PersistenceError>;
+
     async fn list(
         &self,
         tenant: &TenantId,

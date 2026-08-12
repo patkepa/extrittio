@@ -116,7 +116,7 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         },
     );
 
-    let outbox_pool = state.db_pool.clone();
+    let outbox_persistence = state.persistence.clone();
     let outbox_cache = state.rule_cache.clone();
     let outbox_client = state.http_client.clone();
     let outbox_session = state.zenoh_session.clone();
@@ -134,7 +134,7 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         "rule-action-outbox",
         async move {
             crate::rule_engine::actions::run_rule_action_outbox_worker(
-                outbox_pool,
+                outbox_persistence,
                 outbox_cache,
                 outbox_client,
                 outbox_session,
@@ -146,7 +146,7 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         },
     );
 
-    let metrics_pool = state.db_pool.clone();
+    let metrics_persistence = state.persistence.clone();
     let metrics_interval = config.system_metrics_interval_secs;
     spawn_worker(
         &mut workers,
@@ -154,8 +154,11 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         &state.readiness,
         "system-metrics",
         async move {
-            services::server_metrics::run_system_metrics_collector(metrics_pool, metrics_interval)
-                .await;
+            services::server_metrics::run_system_metrics_collector(
+                metrics_persistence,
+                metrics_interval,
+            )
+            .await;
             Ok(())
         },
     );
@@ -177,7 +180,7 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         },
     );
 
-    let metrics_retention_pool = state.db_pool.clone();
+    let metrics_retention_persistence = state.persistence.clone();
     let metrics_retention_hours = config.metrics_retention_hours;
     spawn_worker(
         &mut workers,
@@ -186,7 +189,7 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         "metrics-retention",
         async move {
             services::server_metrics::run_metrics_retention(
-                metrics_retention_pool,
+                metrics_retention_persistence,
                 metrics_retention_hours,
             )
             .await;
@@ -209,7 +212,7 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         },
     );
 
-    let retention_pool = state.db_pool.clone();
+    let retention_persistence = state.persistence.clone();
     let retention_days = config.alert_retention_days;
     spawn_worker(
         &mut workers,
@@ -217,7 +220,7 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         &state.readiness,
         "alert-retention",
         async move {
-            background::run_alert_retention(retention_pool, retention_days).await;
+            background::run_alert_retention(retention_persistence, retention_days).await;
             Ok(())
         },
     );

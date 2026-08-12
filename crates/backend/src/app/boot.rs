@@ -6,16 +6,17 @@ use tracing::info;
 use crate::config::AppConfig;
 use crate::domains::firmware_store::FirmwareObjectStore;
 use crate::init;
-use crate::persistence::postgres;
 use crate::rate_limit::{ApiKeyRateLimiter, RateLimiter, parse_trusted_proxies};
 use crate::services;
 use crate::state::{AppState, MetricsAccumulator, ReadinessRegistry, ZenohMetrics};
 
 /// Initialize infrastructure and shared application state.
 pub async fn initialize_state(config: &AppConfig) -> anyhow::Result<Arc<AppState>> {
-    let db_pool = init::create_db_pool(&config.database_url, config.db_pool_size)?;
-    let persistence = postgres::create_persistence(db_pool.clone());
-    info!("DB connection pool: max_size={}", config.db_pool_size);
+    let persistence = crate::persistence::factory::create(&config.database).await?;
+    info!(
+        backend = persistence.backend.kind.as_str(),
+        "Database opened"
+    );
 
     init::run_persistence_migrations(&persistence).await?;
     init::seed_persistence_device_types(&persistence).await?;
@@ -32,13 +33,10 @@ pub async fn initialize_state(config: &AppConfig) -> anyhow::Result<Arc<AppState
         .await
         .context("Failed to load active device certificate IDs for Zenoh ACL")?;
 
-    let rule_cache = {
-        let mut conn = db_pool
-            .get()
-            .context("Failed to get DB connection for rule cache")?;
-        services::rule_service::build_cache(&mut conn)
-            .context("Failed to build initial rule cache")?
-    };
+    let rule_cache =
+        services::rule_service::build_cache_with_repository(persistence.rules.as_ref())
+            .await
+            .context("Failed to build initial rule cache")?;
     let rule_cache = Arc::new(RwLock::new(rule_cache));
 
     let http_client = reqwest::Client::builder()
@@ -74,7 +72,6 @@ pub async fn initialize_state(config: &AppConfig) -> anyhow::Result<Arc<AppState
     let zenoh_metrics = Arc::new(ZenohMetrics::new());
 
     Ok(Arc::new(AppState {
-        db_pool,
         persistence,
         zenoh_session,
         jwt_secret,

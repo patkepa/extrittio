@@ -1,4 +1,6 @@
-use std::{env, path::PathBuf};
+use std::{env, path::PathBuf, time::Duration};
+
+use crate::persistence::BackendKind;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
@@ -26,6 +28,52 @@ pub enum FirmwareStorageConfig {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeploymentProfile {
+    Production,
+    Development,
+    Hobby,
+}
+
+impl DeploymentProfile {
+    fn parse(value: &str) -> Result<Self, ConfigError> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "production" => Ok(Self::Production),
+            "development" => Ok(Self::Development),
+            "hobby" => Ok(Self::Hobby),
+            _ => Err(ConfigError::InvalidValue {
+                key: "EXTRITTIO_DEPLOYMENT_PROFILE".to_string(),
+                value: value.to_string(),
+                reason: "expected production, development, or hobby".to_string(),
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DatabaseConfig {
+    Postgres {
+        url: String,
+        pool_size: u32,
+    },
+    Turso {
+        data_dir: PathBuf,
+        database_path: PathBuf,
+        busy_timeout: Duration,
+        size_warning_bytes: u64,
+    },
+}
+
+impl DatabaseConfig {
+    #[must_use]
+    pub const fn kind(&self) -> BackendKind {
+        match self {
+            Self::Postgres { .. } => BackendKind::Postgres,
+            Self::Turso { .. } => BackendKind::Turso,
+        }
+    }
+}
+
 const DEFAULT_DB_POOL_SIZE: u32 = 16;
 const RPI_DB_POOL_SIZE: u32 = 4;
 const DEFAULT_OFFLINE_TIMEOUT_SECS: u64 = 300;
@@ -50,6 +98,8 @@ const DEFAULT_OUTBOX_IDLE_INTERVAL_MS: u64 = 500;
 const DEFAULT_OUTBOX_LEASE_TIMEOUT_SECS: u64 = 60;
 
 pub struct AppConfig {
+    pub deployment_profile: DeploymentProfile,
+    pub database: DatabaseConfig,
     pub rpi_mode: bool,
     pub port: u16,
     pub public_url: String,
@@ -95,6 +145,42 @@ impl AppConfig {
         F: Fn(&str) -> Option<String>,
     {
         let rpi_mode = env_bool(&read_env, "RPI_MODE")?.unwrap_or(false);
+        let deployment_profile = DeploymentProfile::parse(
+            &read_env("EXTRITTIO_DEPLOYMENT_PROFILE").unwrap_or_else(|| {
+                if cfg!(all(feature = "turso", not(feature = "postgres"))) {
+                    "hobby".to_string()
+                } else {
+                    "development".to_string()
+                }
+            }),
+        )?;
+        let backend = parse_database_backend(read_env("EXTRITTIO_DATABASE_BACKEND"))?;
+        let database_url = read_env("DATABASE_URL")
+            .unwrap_or_else(|| "postgres://extrittio:extrittio@localhost/extrittio".to_string());
+        let db_pool_size = env_parse(&read_env, "DB_POOL_SIZE")?.unwrap_or(if rpi_mode {
+            RPI_DB_POOL_SIZE
+        } else {
+            DEFAULT_DB_POOL_SIZE
+        });
+        let data_dir =
+            PathBuf::from(read_env("EXTRITTIO_DATA_DIR").unwrap_or_else(|| "./data".to_string()));
+        let database = match backend {
+            BackendKind::Postgres => DatabaseConfig::Postgres {
+                url: database_url.clone(),
+                pool_size: db_pool_size,
+            },
+            BackendKind::Turso => DatabaseConfig::Turso {
+                database_path: read_env("EXTRITTIO_TURSO_DATABASE_PATH")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| data_dir.join("extrittio.db")),
+                data_dir,
+                busy_timeout: Duration::from_millis(
+                    env_parse(&read_env, "EXTRITTIO_TURSO_BUSY_TIMEOUT_MS")?.unwrap_or(5_000),
+                ),
+                size_warning_bytes: env_parse(&read_env, "EXTRITTIO_TURSO_SIZE_WARNING_BYTES")?
+                    .unwrap_or(5 * 1024 * 1024 * 1024),
+            },
+        };
         let max_firmware_mb: usize = env_parse(&read_env, "MAX_FIRMWARE_SIZE_MB")?.unwrap_or(100);
         let port = env_parse(&read_env, "PORT")?.unwrap_or(8080);
         let public_url = read_env("EXTRITTIO_PUBLIC_URL")
@@ -155,12 +241,12 @@ impl AppConfig {
         };
 
         let config = Self {
+            deployment_profile,
+            database,
             rpi_mode,
             port,
             public_url,
-            database_url: read_env("DATABASE_URL").unwrap_or_else(|| {
-                "postgres://extrittio:extrittio@localhost/extrittio".to_string()
-            }),
+            database_url,
             allowed_origin: read_env("CORS_ORIGIN")
                 .unwrap_or_else(|| "http://localhost:5173".to_string()),
             offline_timeout_secs: env_parse(&read_env, "OFFLINE_TIMEOUT_SECS")?.unwrap_or(
@@ -183,11 +269,7 @@ impl AppConfig {
             zenoh_tls_port: env_parse(&read_env, "ZENOH_TLS_PORT")?.unwrap_or(7447),
             zenoh_listen_host: read_env("ZENOH_LISTEN_HOST")
                 .unwrap_or_else(|| "127.0.0.1".to_string()),
-            db_pool_size: env_parse(&read_env, "DB_POOL_SIZE")?.unwrap_or(if rpi_mode {
-                RPI_DB_POOL_SIZE
-            } else {
-                DEFAULT_DB_POOL_SIZE
-            }),
+            db_pool_size,
             max_firmware_size_bytes,
             firmware_storage,
             alert_retention_days: env_parse(&read_env, "ALERT_RETENTION_DAYS")?.unwrap_or(
@@ -261,11 +343,7 @@ impl AppConfig {
                 "PORT and ZENOH_TLS_PORT must be greater than zero".to_string(),
             ));
         }
-        if self.db_pool_size == 0 {
-            return Err(ConfigError::Validation(
-                "DB_POOL_SIZE must be greater than zero".to_string(),
-            ));
-        }
+        self.validate_database()?;
         if self.allowed_origin == "*" {
             return Err(ConfigError::Validation(
                 "CORS_ORIGIN='*' is not allowed".to_string(),
@@ -280,14 +358,6 @@ impl AppConfig {
         if !matches!(public_url.scheme(), "http" | "https") || public_url.host_str().is_none() {
             return Err(ConfigError::Validation(
                 "EXTRITTIO_PUBLIC_URL must be an absolute http(s) URL".to_string(),
-            ));
-        }
-        let database_url = reqwest::Url::parse(&self.database_url).map_err(|error| {
-            ConfigError::Validation(format!("DATABASE_URL is invalid: {error}"))
-        })?;
-        if !matches!(database_url.scheme(), "postgres" | "postgresql") {
-            return Err(ConfigError::Validation(
-                "DATABASE_URL must use the postgres or postgresql scheme".to_string(),
             ));
         }
         if self.max_firmware_size_bytes == 0 || self.max_zenoh_payload_size_bytes == 0 {
@@ -340,6 +410,111 @@ impl AppConfig {
         }
         Ok(())
     }
+
+    fn validate_database(&self) -> Result<(), ConfigError> {
+        match &self.database {
+            DatabaseConfig::Postgres { url, pool_size } => {
+                if !cfg!(feature = "postgres") {
+                    return Err(ConfigError::Validation(
+                        "PostgreSQL was requested but this binary was built without the `postgres` feature"
+                            .to_string(),
+                    ));
+                }
+                if *pool_size == 0 {
+                    return Err(ConfigError::Validation(
+                        "DB_POOL_SIZE must be greater than zero".to_string(),
+                    ));
+                }
+                let parsed = reqwest::Url::parse(url).map_err(|error| {
+                    ConfigError::Validation(format!("DATABASE_URL is invalid: {error}"))
+                })?;
+                if !matches!(parsed.scheme(), "postgres" | "postgresql") {
+                    return Err(ConfigError::Validation(
+                        "DATABASE_URL must use the postgres or postgresql scheme".to_string(),
+                    ));
+                }
+            }
+            DatabaseConfig::Turso {
+                data_dir,
+                database_path,
+                busy_timeout,
+                size_warning_bytes,
+            } => {
+                if !cfg!(feature = "turso") {
+                    return Err(ConfigError::Validation(
+                        "Turso was requested but this binary was built without the `turso` feature"
+                            .to_string(),
+                    ));
+                }
+                if self.deployment_profile == DeploymentProfile::Production {
+                    return Err(ConfigError::Validation(
+                        "production deployments require PostgreSQL; Turso is single-node hobby support"
+                            .to_string(),
+                    ));
+                }
+                if busy_timeout.is_zero() || *size_warning_bytes == 0 {
+                    return Err(ConfigError::Validation(
+                        "Turso busy timeout and size warning threshold must be greater than zero"
+                            .to_string(),
+                    ));
+                }
+                let data_dir = absolute_lexical(data_dir)?;
+                let database_path = absolute_lexical(database_path)?;
+                if !database_path.starts_with(&data_dir)
+                    && !env_bool(
+                        &|key| env::var(key).ok(),
+                        "EXTRITTIO_ALLOW_UNSAFE_TURSO_PATH",
+                    )?
+                    .unwrap_or(false)
+                {
+                    return Err(ConfigError::Validation(
+                        "EXTRITTIO_TURSO_DATABASE_PATH must be inside EXTRITTIO_DATA_DIR"
+                            .to_string(),
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+fn parse_database_backend(value: Option<String>) -> Result<BackendKind, ConfigError> {
+    let default = if cfg!(feature = "postgres") {
+        BackendKind::Postgres
+    } else {
+        BackendKind::Turso
+    };
+    match value.map(|value| value.trim().to_ascii_lowercase()) {
+        None => Ok(default),
+        Some(value) if value == "postgres" => Ok(BackendKind::Postgres),
+        Some(value) if value == "turso" => Ok(BackendKind::Turso),
+        Some(value) => Err(ConfigError::InvalidValue {
+            key: "EXTRITTIO_DATABASE_BACKEND".to_string(),
+            value,
+            reason: "expected postgres or turso".to_string(),
+        }),
+    }
+}
+
+fn absolute_lexical(path: &std::path::Path) -> Result<PathBuf, ConfigError> {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        env::current_dir()
+            .map_err(|error| ConfigError::Validation(format!("cannot resolve data path: {error}")))?
+            .join(path)
+    };
+    let mut normalized = PathBuf::new();
+    for component in absolute.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                normalized.pop();
+            }
+            component => normalized.push(component.as_os_str()),
+        }
+    }
+    Ok(normalized)
 }
 
 fn csv_env<F>(read_env: &F, key: &str) -> Vec<String>
@@ -405,6 +580,11 @@ mod tests {
         AppConfig::from_env_reader(|key| vars.get(key).map(|value| (*value).to_string())).unwrap()
     }
 
+    fn config_result(vars: &[(&str, &str)]) -> Result<AppConfig, super::ConfigError> {
+        let vars: HashMap<&str, &str> = vars.iter().copied().collect();
+        AppConfig::from_env_reader(|key| vars.get(key).map(|value| (*value).to_string()))
+    }
+
     #[test]
     fn uses_standard_defaults_without_rpi_mode() {
         let config = config_from(&[]);
@@ -437,6 +617,52 @@ mod tests {
             FirmwareStorageConfig::Local {
                 path: "./data/firmware".into()
             }
+        );
+    }
+
+    #[cfg(feature = "turso")]
+    #[test]
+    fn rejects_turso_in_production() {
+        let error = config_result(&[
+            ("EXTRITTIO_DATABASE_BACKEND", "turso"),
+            ("EXTRITTIO_DEPLOYMENT_PROFILE", "production"),
+        ])
+        .err()
+        .expect("production Turso must fail");
+        assert!(
+            error
+                .to_string()
+                .contains("production deployments require PostgreSQL")
+        );
+    }
+
+    #[cfg(all(feature = "postgres", not(feature = "turso")))]
+    #[test]
+    fn rejects_backend_missing_from_the_build() {
+        let error = config_result(&[("EXTRITTIO_DATABASE_BACKEND", "turso")])
+            .err()
+            .expect("unavailable Turso must fail");
+        assert!(
+            error
+                .to_string()
+                .contains("built without the `turso` feature")
+        );
+    }
+
+    #[cfg(feature = "turso")]
+    #[test]
+    fn rejects_turso_database_outside_data_directory() {
+        let error = config_result(&[
+            ("EXTRITTIO_DATABASE_BACKEND", "turso"),
+            ("EXTRITTIO_DATA_DIR", "/tmp/extrittio-data"),
+            ("EXTRITTIO_TURSO_DATABASE_PATH", "/tmp/outside.db"),
+        ])
+        .err()
+        .expect("outside path must fail");
+        assert!(
+            error
+                .to_string()
+                .contains("must be inside EXTRITTIO_DATA_DIR")
         );
     }
 

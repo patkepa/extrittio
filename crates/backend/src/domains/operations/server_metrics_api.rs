@@ -9,10 +9,10 @@ use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::auth::context::RequestContext;
-use crate::db::models::{AppMetric, ServerMetric};
+use crate::domains::operations::metrics_types::{AppMetricRecord, SystemMetricRecord};
 use crate::error::AppError;
 use crate::services::server_metrics;
-use crate::state::{AppState, run_db};
+use crate::state::AppState;
 
 // ---------------------------------------------------------------------------
 // Response types
@@ -70,8 +70,8 @@ pub struct MetricsHistoryResponse {
 // Conversions
 // ---------------------------------------------------------------------------
 
-impl From<ServerMetric> for SystemMetricsSnapshot {
-    fn from(m: ServerMetric) -> Self {
+impl From<SystemMetricRecord> for SystemMetricsSnapshot {
+    fn from(m: SystemMetricRecord) -> Self {
         Self {
             cpu_usage_percent: m.cpu_usage_percent,
             memory_used_bytes: m.memory_used_bytes,
@@ -88,8 +88,8 @@ impl From<ServerMetric> for SystemMetricsSnapshot {
     }
 }
 
-impl From<AppMetric> for AppMetricsSnapshot {
-    fn from(m: AppMetric) -> Self {
+impl From<AppMetricRecord> for AppMetricsSnapshot {
+    fn from(m: AppMetricRecord) -> Self {
         Self {
             request_count: m.request_count,
             error_count: m.error_count,
@@ -132,15 +132,12 @@ pub(crate) async fn get_current_metrics(
     Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<CurrentMetricsResponse>, AppError> {
-    let response = run_db(&state.db_pool, move |conn| {
-        let (system, app) = server_metrics::get_current_metrics(&ctx, conn)?;
-
-        Ok(CurrentMetricsResponse {
-            system: system.map(SystemMetricsSnapshot::from),
-            app: app.map(AppMetricsSnapshot::from),
-        })
-    })
-    .await?;
+    let metrics =
+        server_metrics::get_current_metrics(&ctx, state.persistence.metrics.as_ref()).await?;
+    let response = CurrentMetricsResponse {
+        system: metrics.system.map(SystemMetricsSnapshot::from),
+        app: metrics.app.map(AppMetricsSnapshot::from),
+    };
 
     Ok(Json(response))
 }
@@ -167,58 +164,25 @@ pub(crate) async fn get_metrics_history(
         return Err(AppError::BadRequest("resolution must be >= 10".into()));
     }
 
-    let response = run_db(&state.db_pool, move |conn| {
-        let data = server_metrics::get_metrics_history(&ctx, conn, since, resolution)?;
-
-        let system = if let Some(raw) = data.system_raw {
-            raw.into_iter().map(SystemMetricsSnapshot::from).collect()
-        } else if let Some(ds) = data.system_downsampled {
-            ds.into_iter()
-                .map(|d| SystemMetricsSnapshot {
-                    cpu_usage_percent: d.cpu_usage_percent,
-                    memory_used_bytes: d.memory_used_bytes,
-                    memory_total_bytes: d.memory_total_bytes,
-                    disk_used_bytes: d.disk_used_bytes,
-                    disk_total_bytes: d.disk_total_bytes,
-                    network_rx_bytes_delta: d.network_rx_bytes_delta,
-                    network_tx_bytes_delta: d.network_tx_bytes_delta,
-                    load_avg_1m: d.load_avg_1m,
-                    load_avg_5m: d.load_avg_5m,
-                    load_avg_15m: d.load_avg_15m,
-                    recorded_at: chrono::DateTime::from_timestamp(d.bucket, 0)
-                        .unwrap_or_default()
-                        .to_rfc3339(),
-                })
-                .collect()
-        } else {
-            vec![]
-        };
-
-        let app = if let Some(raw) = data.app_raw {
-            raw.into_iter().map(AppMetricsSnapshot::from).collect()
-        } else if let Some(ds) = data.app_downsampled {
-            ds.into_iter()
-                .map(|d| AppMetricsSnapshot {
-                    request_count: d.request_count,
-                    error_count: d.error_count,
-                    avg_latency_ms: d.avg_latency_ms,
-                    p95_latency_ms: d.p95_latency_ms,
-                    db_pool_active: d.db_pool_active,
-                    db_pool_idle: d.db_pool_idle,
-                    zenoh_messages_in: d.zenoh_messages_in,
-                    zenoh_messages_out: d.zenoh_messages_out,
-                    recorded_at: chrono::DateTime::from_timestamp(d.bucket, 0)
-                        .unwrap_or_default()
-                        .to_rfc3339(),
-                })
-                .collect()
-        } else {
-            vec![]
-        };
-
-        Ok(MetricsHistoryResponse { system, app })
-    })
+    let history = server_metrics::get_metrics_history(
+        &ctx,
+        state.persistence.metrics.as_ref(),
+        since,
+        resolution,
+    )
     .await?;
+    let response = MetricsHistoryResponse {
+        system: history
+            .system
+            .into_iter()
+            .map(SystemMetricsSnapshot::from)
+            .collect(),
+        app: history
+            .app
+            .into_iter()
+            .map(AppMetricsSnapshot::from)
+            .collect(),
+    };
 
     Ok(Json(response))
 }

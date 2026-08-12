@@ -15,11 +15,11 @@ use crate::domains::telemetry::types::{
 use crate::error::AppError;
 use crate::persistence::PersistenceError;
 use crate::repositories::{device_repo, network_observed_host_repo, telemetry_repo};
-use crate::rule_engine::actions::enqueue_pending_actions;
 use crate::tenancy::{DeviceIdentity, TenantId};
 
 use super::PostgresAdapter;
 use super::executor::map_diesel_error;
+use super::outbox::enqueue_pending_actions;
 
 fn to_record(record: PgTelemetryRecord) -> TelemetryRecord {
     TelemetryRecord {

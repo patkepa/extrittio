@@ -1,11 +1,13 @@
 use async_trait::async_trait;
 use chrono::{NaiveDateTime, Utc};
-use diesel::{Connection, OptionalExtension, PgConnection};
+use diesel::{Connection, OptionalExtension, PgConnection, prelude::*};
 
-use crate::db::models::{Alert, RuleCooldown, UpdateAlert};
+use crate::db::models::{Alert, NewAlert, RuleCooldown, UpdateAlert};
+use crate::db::schema::alerts;
 use crate::domains::alerts::port::AlertRepository;
 use crate::domains::alerts::types::{
     AlertListFilter, AlertRecord, AlertTransition, AlertTransitionOutcome, CooldownRecord,
+    NewAlertRecord,
 };
 use crate::persistence::PersistenceError;
 use crate::repositories::{alert_repo, rule_repo};
@@ -74,6 +76,58 @@ fn transition_alert(
 
 #[async_trait]
 impl AlertRepository for PostgresAdapter {
+    async fn create(
+        &self,
+        tenant: &TenantId,
+        record: NewAlertRecord,
+    ) -> Result<AlertRecord, PersistenceError> {
+        let tenant_id = tenant.as_str().to_string();
+        self.executor
+            .run(move |connection| {
+                connection
+                    .transaction(|connection| {
+                        alert_repo::insert_alert(
+                            connection,
+                            &NewAlert {
+                                id: record.id.clone(),
+                                tenant_id: tenant_id.clone(),
+                                rule_id: record.rule_id,
+                                device_id: record.device_id,
+                                severity: record.severity,
+                                message: record.message,
+                                triggered_value: record.triggered_value,
+                            },
+                        )?;
+                        alert_repo::find_alert(connection, &tenant_id, &record.id).map(alert_record)
+                    })
+                    .map_err(map_diesel_error)
+            })
+            .await
+    }
+
+    async fn update_triggered_value(
+        &self,
+        tenant: &TenantId,
+        id: &str,
+        value: String,
+    ) -> Result<bool, PersistenceError> {
+        let tenant_id = tenant.as_str().to_string();
+        let id = id.to_string();
+        self.executor
+            .run(move |connection| {
+                diesel::update(
+                    alerts::table
+                        .filter(alerts::tenant_id.eq(tenant_id))
+                        .filter(alerts::id.eq(id)),
+                )
+                .set(alerts::triggered_value.eq(Some(value)))
+                .execute(connection)
+                .map(|rows| rows == 1)
+                .map_err(map_diesel_error)
+            })
+            .await
+    }
+
     async fn list(
         &self,
         tenant: &TenantId,

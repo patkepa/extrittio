@@ -10,9 +10,10 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 use crate::auth::context::RequestContext;
+use crate::domains::rules::types::{RuleDetails, RuleFilter};
 use crate::error::AppError;
 use crate::services::rule_service;
-use crate::state::{AppState, run_db};
+use crate::state::AppState;
 
 // ---------------------------------------------------------------------------
 // Request / Response DTOs
@@ -102,7 +103,7 @@ pub struct ActionResponse {
 // Conversions
 // ---------------------------------------------------------------------------
 
-fn to_rule_response(details: rule_service::RuleWithDetails) -> Result<RuleResponse, AppError> {
+fn to_rule_response(details: RuleDetails) -> Result<RuleResponse, AppError> {
     let rule = details.rule;
     let conditions = details
         .conditions
@@ -154,22 +155,15 @@ fn to_rule_response(details: rule_service::RuleWithDetails) -> Result<RuleRespon
 // ---------------------------------------------------------------------------
 
 async fn refresh_rule_cache(state: &AppState) {
-    let pool = state.db_pool.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        crate::services::rule_service::build_cache(&mut conn).map_err(|e| e.to_string())
-    })
-    .await;
-    match result {
-        Ok(Ok(new_cache)) => {
+    match rule_service::build_cache_with_repository(state.persistence.rules.as_ref()).await {
+        Ok(new_cache) => {
             if let Ok(mut guard) = state.rule_cache.write() {
                 *guard = new_cache;
             } else {
                 tracing::warn!("Rule cache lock poisoned; skipping refresh");
             }
         }
-        Ok(Err(e)) => tracing::warn!("Failed to refresh rule cache: {e}"),
-        Err(e) => tracing::warn!("Rule cache refresh task failed: {e}"),
+        Err(error) => tracing::warn!(%error, "Failed to refresh rule cache"),
     }
 }
 
@@ -203,21 +197,20 @@ pub(crate) async fn list_rules(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ListRulesQuery>,
 ) -> Result<Json<Vec<RuleResponse>>, AppError> {
-    let responses = run_db(&state.db_pool, move |conn| {
-        let details_list = rule_service::list_rules_with_details(
-            &ctx,
-            conn,
-            params.enabled,
-            params.trigger_type.as_deref(),
-            params.target_type.as_deref(),
-        )?;
-
-        details_list
-            .into_iter()
-            .map(to_rule_response)
-            .collect::<Result<Vec<_>, _>>()
-    })
+    let details_list = rule_service::list_with_repository(
+        &ctx,
+        state.persistence.rules.as_ref(),
+        RuleFilter {
+            enabled: params.enabled,
+            trigger_type: params.trigger_type,
+            target_type: params.target_type,
+        },
+    )
     .await?;
+    let responses = details_list
+        .into_iter()
+        .map(to_rule_response)
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(Json(responses))
 }
@@ -231,10 +224,8 @@ pub(crate) async fn get_rule(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<RuleResponse>, AppError> {
-    let details = run_db(&state.db_pool, move |conn| {
-        rule_service::get_rule(&ctx, conn, &id)
-    })
-    .await?;
+    let details =
+        rule_service::get_with_repository(&ctx, state.persistence.rules.as_ref(), &id).await?;
 
     Ok(Json(to_rule_response(details)?))
 }
@@ -262,20 +253,18 @@ pub(crate) async fn create_rule(
 
     let cooldown = body.cooldown_seconds.unwrap_or(0);
 
-    let details = run_db(&state.db_pool, move |conn| {
-        rule_service::create_rule(
-            &ctx,
-            conn,
-            &body.name,
-            body.description,
-            &body.trigger_type,
-            &body.target_type,
-            body.target_id,
-            cooldown,
-            conditions,
-            actions,
-        )
-    })
+    let details = rule_service::create_with_repository(
+        &ctx,
+        state.persistence.rules.as_ref(),
+        &body.name,
+        body.description,
+        &body.trigger_type,
+        &body.target_type,
+        body.target_id,
+        cooldown,
+        conditions,
+        actions,
+    )
     .await?;
 
     refresh_rule_cache(&state).await;
@@ -308,21 +297,19 @@ pub(crate) async fn update_rule_handler(
     });
 
     let rule_id = id.clone();
-    let details = run_db(&state.db_pool, move |conn| {
-        rule_service::update_rule(
-            &ctx,
-            conn,
-            &id,
-            body.name,
-            body.description,
-            body.trigger_type,
-            body.target_type,
-            body.target_id,
-            body.cooldown_seconds,
-            conditions,
-            actions,
-        )
-    })
+    let details = rule_service::update_with_repository(
+        &ctx,
+        state.persistence.rules.as_ref(),
+        &id,
+        body.name,
+        body.description,
+        body.trigger_type,
+        body.target_type,
+        body.target_id,
+        body.cooldown_seconds,
+        conditions,
+        actions,
+    )
     .await?;
 
     // If trigger_type changed, remove any active alert cache entries for this
@@ -356,10 +343,7 @@ pub(crate) async fn delete_rule_handler(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
-    run_db(&state.db_pool, move |conn| {
-        rule_service::delete_rule(&ctx, conn, &id)
-    })
-    .await?;
+    rule_service::delete_with_repository(&ctx, state.persistence.rules.as_ref(), &id).await?;
 
     refresh_rule_cache(&state).await;
 
@@ -377,10 +361,12 @@ pub(crate) async fn toggle_rule(
     Path(id): Path<String>,
     Json(body): Json<EnabledInput>,
 ) -> Result<Json<RuleResponse>, AppError> {
-    let details = run_db(&state.db_pool, move |conn| {
-        rule_service::toggle_rule(&ctx, conn, &id, body.enabled)?;
-        rule_service::get_rule(&ctx, conn, &id)
-    })
+    let details = rule_service::toggle_with_repository(
+        &ctx,
+        state.persistence.rules.as_ref(),
+        &id,
+        body.enabled,
+    )
     .await?;
 
     refresh_rule_cache(&state).await;

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::persistence::{BackendDescriptor, Persistence, PersistencePorts};
-use crate::state::DbPool;
+use executor::PostgresPool;
 
 mod alerts;
 mod api_keys;
@@ -17,7 +17,10 @@ pub mod executor;
 mod firmware;
 mod fleets;
 mod logs;
+mod metrics;
+mod outbox;
 mod roles;
+mod rules;
 mod shadows;
 mod telemetry;
 mod users;
@@ -32,7 +35,7 @@ pub struct PostgresAdapter {
 
 impl PostgresAdapter {
     #[must_use]
-    pub fn new(pool: DbPool) -> Self {
+    pub fn new(pool: PostgresPool) -> Self {
         Self {
             executor: executor::PostgresExecutor::new(pool),
         }
@@ -40,7 +43,7 @@ impl PostgresAdapter {
 }
 
 #[must_use]
-pub fn create_persistence(pool: DbPool) -> Persistence {
+pub fn create_persistence(pool: PostgresPool) -> Persistence {
     let adapter = Arc::new(PostgresAdapter::new(pool));
     Persistence::new(
         BackendDescriptor::postgres(),
@@ -58,7 +61,10 @@ pub fn create_persistence(pool: DbPool) -> Persistence {
             fleets: adapter.clone(),
             firmware: adapter.clone(),
             logs: adapter.clone(),
+            metrics: adapter.clone(),
+            outbox: adapter.clone(),
             roles: adapter.clone(),
+            rules: adapter.clone(),
             shadows: adapter.clone(),
             telemetry: adapter.clone(),
             users: adapter.clone(),

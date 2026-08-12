@@ -25,13 +25,14 @@ use crate::domains::devices::types::{
 };
 use crate::domains::fleets::types::FleetRecord;
 use crate::domains::identity::certificate_types::NewDeviceCertificateRecord;
+use crate::error::AppError;
 use crate::persistence::PersistenceError;
 use crate::services::device_connections;
 use crate::tenancy::{DeviceIdentity, TenantId};
-use crate::{error::AppError, rule_engine::actions::enqueue_pending_actions};
 
 use super::PostgresAdapter;
 use super::executor::map_diesel_error;
+use super::outbox::enqueue_pending_actions;
 
 type JoinedDevice = (Device, DeviceType, Option<Fleet>);
 
@@ -740,6 +741,22 @@ impl DeviceRepository for PostgresAdapter {
                     devices::table
                         .filter(devices::tenant_id.eq(tenant_id))
                         .filter(devices::id.eq_any(device_ids)),
+                )
+                .execute(connection)
+                .map_err(map_diesel_error)
+            })
+            .await
+    }
+
+    async fn delete_observed_hosts_before(
+        &self,
+        cutoff: chrono::NaiveDateTime,
+    ) -> Result<usize, PersistenceError> {
+        self.executor
+            .run(move |connection| {
+                diesel::delete(
+                    network_observed_hosts::table
+                        .filter(network_observed_hosts::last_seen_at.lt(cutoff)),
                 )
                 .execute(connection)
                 .map_err(map_diesel_error)

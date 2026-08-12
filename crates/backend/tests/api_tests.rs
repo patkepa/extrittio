@@ -1,3 +1,5 @@
+#![cfg(feature = "postgres")]
+
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use diesel::PgConnection;
@@ -15,7 +17,7 @@ use extrittio_backend::api_key_util;
 use extrittio_backend::rate_limit::{ApiKeyRateLimiter, RateLimiter};
 use extrittio_backend::state::AppState;
 
-const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
+const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations/postgres");
 const DEFAULT_TEST_DATABASE_URL: &str =
     "postgres://extrittio:extrittio@127.0.0.1:5432/extrittio?connect_timeout=2";
 static TEST_DB_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
@@ -93,7 +95,6 @@ async fn setup_app_with_context(
         .expect("Failed to open test zenoh session");
 
     let state = Arc::new(extrittio_backend::state::AppState {
-        db_pool: db_pool.clone(),
         persistence: extrittio_backend::persistence::postgres::create_persistence(db_pool.clone()),
         zenoh_session: Arc::new(zenoh_session),
         jwt_secret: "test-secret-key".to_string(),
@@ -1120,7 +1121,6 @@ async fn test_ci_ingest_success() {
         .expect("Failed to open test zenoh session");
 
     let state = Arc::new(AppState {
-        db_pool: db_pool.clone(),
         persistence: extrittio_backend::persistence::postgres::create_persistence(db_pool.clone()),
         zenoh_session: Arc::new(zenoh_session),
         jwt_secret: "test-secret-key".to_string(),

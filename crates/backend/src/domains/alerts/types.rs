@@ -48,3 +48,13 @@ pub struct CooldownRecord {
     pub device_id: String,
     pub last_fired_at: NaiveDateTime,
 }
+
+#[derive(Debug, Clone)]
+pub struct NewAlertRecord {
+    pub id: String,
+    pub rule_id: Option<String>,
+    pub device_id: String,
+    pub severity: String,
+    pub message: String,
+    pub triggered_value: Option<String>,
+}

@@ -1,3 +1,5 @@
+#![cfg(feature = "postgres")]
+
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use diesel::PgConnection;
@@ -11,13 +13,33 @@ use std::time::Duration;
 use tower::ServiceExt;
 
 use extrittio_backend::db::models::NewCaCertificate;
+use extrittio_backend::domains::identity::certificate_types::{
+    CaCertificateRecord, NewCaCertificateRecord,
+};
 use extrittio_backend::repositories::cert_repo;
 use extrittio_backend::services::cert_service;
 
-const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
+const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations/postgres");
 const DEFAULT_TEST_DATABASE_URL: &str =
     "postgres://extrittio:extrittio@127.0.0.1:5432/extrittio?connect_timeout=2";
 static TEST_DB_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+fn insert_generated_ca(conn: &mut PgConnection, ca: NewCaCertificateRecord) -> CaCertificateRecord {
+    let stored = cert_repo::insert_ca_certificate(
+        conn,
+        &NewCaCertificate {
+            private_key_pem: ca.private_key_pem,
+            certificate_pem: ca.certificate_pem,
+        },
+    )
+    .unwrap();
+    CaCertificateRecord {
+        id: stored.id,
+        private_key_pem: stored.private_key_pem,
+        certificate_pem: stored.certificate_pem,
+        created_at: stored.created_at.and_utc(),
+    }
+}
 
 fn test_context() -> extrittio_backend::auth::context::RequestContext {
     extrittio_backend::auth::context::RequestContext::from_claims(extrittio_backend::auth::Claims {
@@ -77,11 +99,10 @@ async fn setup_app_with_ca() -> (axum::Router, Pool<ConnectionManager<PgConnecti
     {
         let mut conn = db_pool.get().unwrap();
         let ca = cert_service::generate_ca_certificate().unwrap();
-        cert_repo::insert_ca_certificate(&mut conn, &ca).unwrap();
+        insert_generated_ca(&mut conn, ca);
     }
 
     let state = Arc::new(extrittio_backend::state::AppState {
-        db_pool: db_pool.clone(),
         persistence: extrittio_backend::persistence::postgres::create_persistence(db_pool.clone()),
         zenoh_session: Arc::new(zenoh_session),
         jwt_secret: "test-secret-key".to_string(),
@@ -142,7 +163,7 @@ fn test_generate_device_certificate() {
 
     // Generate and store CA
     let new_ca = cert_service::generate_ca_certificate().unwrap();
-    let ca = cert_repo::insert_ca_certificate(&mut conn, &new_ca).unwrap();
+    let ca = insert_generated_ca(&mut conn, new_ca);
 
     // Generate device cert
     let device_id = "test-device-001";
@@ -174,7 +195,7 @@ fn test_generate_server_certificate() {
     let mut conn = pool.get().unwrap();
 
     let new_ca = cert_service::generate_ca_certificate().unwrap();
-    let ca = cert_repo::insert_ca_certificate(&mut conn, &new_ca).unwrap();
+    let ca = insert_generated_ca(&mut conn, new_ca);
 
     let (server_cert_pem, server_key_pem) = cert_service::generate_server_certificate(&ca).unwrap();
 
@@ -189,7 +210,7 @@ fn test_different_devices_get_different_certs() {
     let mut conn = pool.get().unwrap();
 
     let new_ca = cert_service::generate_ca_certificate().unwrap();
-    let ca = cert_repo::insert_ca_certificate(&mut conn, &new_ca).unwrap();
+    let ca = insert_generated_ca(&mut conn, new_ca);
 
     let cert1 = cert_service::generate_device_certificate("device-aaa", &ca).unwrap();
     let cert2 = cert_service::generate_device_certificate("device-bbb", &ca).unwrap();
@@ -253,21 +274,31 @@ fn test_device_certificate_crud() {
 
     // Generate CA and a device to reference
     let new_ca = cert_service::generate_ca_certificate().unwrap();
-    cert_repo::insert_ca_certificate(&mut conn, &new_ca).unwrap();
+    insert_generated_ca(&mut conn, new_ca);
 
     // Create a device in the DB to satisfy the FK constraint
-    use extrittio_backend::db::models::NewDevice;
-    use extrittio_backend::services::device_service;
+    use extrittio_backend::domains::devices::types::CreateDeviceRecord;
+    use extrittio_backend::persistence::postgres;
+    use extrittio_backend::services::device_catalog_service;
     let ctx = test_context();
-    let device = NewDevice {
+    let device = CreateDeviceRecord {
         id: "dev-cert-test".to_string(),
-        tenant_id: extrittio_backend::tenancy::DEFAULT_TENANT_ID.to_string(),
         name: "Cert Test Device".to_string(),
         device_type_id: 1,
         fleet_id: None,
         firmware: "v1".to_string(),
     };
-    device_service::create_device(&ctx, &mut conn, &device).unwrap();
+    let persistence = postgres::create_persistence(pool.clone());
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        device_catalog_service::create(
+            &ctx,
+            persistence.devices.as_ref(),
+            persistence.certificates.as_ref(),
+            device,
+        )
+        .await
+        .unwrap();
+    });
 
     // Device cert was auto-generated on device creation
     let cert = cert_repo::get_device_certificate(&mut conn, "dev-cert-test")

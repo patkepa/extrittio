@@ -96,6 +96,14 @@ pub(crate) struct InitArgs {
 
 #[derive(Debug, Args, Clone, Default)]
 pub(crate) struct DatabaseArgs {
+    /// Database backend: postgres or turso (single-node hobby support).
+    #[arg(long, env = "EXTRITTIO_DATABASE_BACKEND")]
+    pub(crate) database_backend: Option<String>,
+
+    /// Deployment profile: production, development, or hobby.
+    #[arg(long, env = "EXTRITTIO_DEPLOYMENT_PROFILE")]
+    pub(crate) deployment_profile: Option<String>,
+
     /// PostgreSQL connection URL.
     #[arg(long, env = "DATABASE_URL")]
     pub(crate) database_url: Option<String>,
@@ -103,6 +111,14 @@ pub(crate) struct DatabaseArgs {
     /// Maximum PostgreSQL pool size.
     #[arg(long, env = "DB_POOL_SIZE")]
     pub(crate) db_pool_size: Option<u32>,
+
+    /// Data directory for the local Turso database and lock file.
+    #[arg(long, env = "EXTRITTIO_DATA_DIR")]
+    pub(crate) data_dir: Option<PathBuf>,
+
+    /// Turso database file path; must be inside --data-dir.
+    #[arg(long, env = "EXTRITTIO_TURSO_DATABASE_PATH")]
+    pub(crate) turso_database_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Args, Clone, Default)]

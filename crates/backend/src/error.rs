@@ -64,9 +64,11 @@ pub enum AppError {
     #[error("Authentication error: {0}")]
     Auth(String),
 
+    #[cfg(feature = "postgres")]
     #[error("Database error: {0}")]
     Database(#[from] diesel::result::Error),
 
+    #[cfg(feature = "postgres")]
     #[error("Connection pool error: {0}")]
     Pool(#[from] diesel::r2d2::PoolError),
 
@@ -113,11 +115,13 @@ impl IntoResponse for AppError {
                     "Authentication error".to_string(),
                 )
             }
+            #[cfg(feature = "postgres")]
             AppError::Database(diesel::result::Error::NotFound) => (
                 StatusCode::NOT_FOUND,
                 "not_found",
                 "Resource not found".to_string(),
             ),
+            #[cfg(feature = "postgres")]
             AppError::Database(e) => {
                 tracing::error!("Database error: {e}");
                 (
@@ -126,6 +130,7 @@ impl IntoResponse for AppError {
                     "Internal server error".to_string(),
                 )
             }
+            #[cfg(feature = "postgres")]
             AppError::Pool(e) => {
                 tracing::error!("Connection pool error: {e}");
                 (

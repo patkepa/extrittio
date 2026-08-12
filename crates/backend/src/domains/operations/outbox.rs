@@ -10,8 +10,7 @@ use utoipa::ToSchema;
 use crate::auth::context::RequestContext;
 use crate::auth::policy::{self, Permission};
 use crate::error::AppError;
-use crate::repositories::rule_action_outbox_repo;
-use crate::state::{AppState, run_db};
+use crate::state::AppState;
 
 #[derive(Serialize, ToSchema)]
 pub struct RuleActionOutboxSummaryResponse {
@@ -95,27 +94,26 @@ pub(crate) async fn list_dead_letters(
 ) -> Result<Json<DeadLetterListResponse>, AppError> {
     let limit = query.limit.unwrap_or(50).clamp(1, 200);
     let offset = query.offset.unwrap_or(0).max(0);
-    let events = run_db(&state.db_pool, move |conn| {
-        policy::require(&ctx, Permission::ReadServerMetrics)?;
-        let rows =
-            rule_action_outbox_repo::list_dead_letters(conn, ctx.tenant_id_str(), limit, offset)?;
-        Ok(rows
-            .into_iter()
-            .map(|event| DeadLetterEventResponse {
-                id: event.id,
-                event_type: event.event_type,
-                aggregate_type: event.aggregate_type,
-                aggregate_id: event.aggregate_id,
-                payload: event.payload,
-                attempts: event.attempts,
-                max_attempts: event.max_attempts,
-                last_error: event.last_error,
-                created_at: event.created_at.and_utc().to_rfc3339(),
-                updated_at: event.updated_at.and_utc().to_rfc3339(),
-            })
-            .collect())
-    })
-    .await?;
+    policy::require(&ctx, Permission::ReadServerMetrics)?;
+    let events = state
+        .persistence
+        .outbox
+        .list_dead_letters(ctx.tenant_id(), limit, offset)
+        .await?
+        .into_iter()
+        .map(|event| DeadLetterEventResponse {
+            id: event.id,
+            event_type: event.event_type,
+            aggregate_type: event.aggregate_type,
+            aggregate_id: event.aggregate_id,
+            payload: event.payload,
+            attempts: event.attempts,
+            max_attempts: event.max_attempts,
+            last_error: event.last_error,
+            created_at: event.created_at.and_utc().to_rfc3339(),
+            updated_at: event.updated_at.and_utc().to_rfc3339(),
+        })
+        .collect();
 
     Ok(Json(DeadLetterListResponse { data: events }))
 }
@@ -147,16 +145,13 @@ pub(crate) async fn replay_dead_letters(
         ));
     }
 
-    let replayed_count = run_db(&state.db_pool, move |conn| {
-        policy::require(&ctx, Permission::ManageRules)?;
-        let ids = (!request.replay_all).then_some(request.event_ids.as_slice());
-        Ok(rule_action_outbox_repo::replay_dead_letters(
-            conn,
-            ctx.tenant_id_str(),
-            ids,
-        )?)
-    })
-    .await?;
+    policy::require(&ctx, Permission::ManageRules)?;
+    let ids = (!request.replay_all).then_some(request.event_ids);
+    let replayed_count = state
+        .persistence
+        .outbox
+        .replay_dead_letters(ctx.tenant_id(), ids)
+        .await?;
 
     Ok(Json(ReplayDeadLettersResponse { replayed_count }))
 }
@@ -174,23 +169,19 @@ pub(crate) async fn get_summary(
     Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<RuleActionOutboxSummaryResponse>, AppError> {
-    let response = run_db(&state.db_pool, move |conn| {
-        policy::require(&ctx, Permission::ReadServerMetrics)?;
-        let summary = rule_action_outbox_repo::summarize_for_tenant(conn, ctx.tenant_id_str())?;
-
-        Ok(RuleActionOutboxSummaryResponse {
-            pending_count: summary.pending_count,
-            processing_count: summary.processing_count,
-            failed_count: summary.failed_count,
-            dead_letter_count: summary.dead_letter_count,
-            succeeded_count: summary.succeeded_count,
-            oldest_pending_at: summary
-                .oldest_pending_at
-                .map(|dt| dt.and_utc().to_rfc3339()),
-            oldest_pending_age_seconds: summary.oldest_pending_age_seconds,
-        })
-    })
-    .await?;
+    policy::require(&ctx, Permission::ReadServerMetrics)?;
+    let summary = state.persistence.outbox.summary(ctx.tenant_id()).await?;
+    let response = RuleActionOutboxSummaryResponse {
+        pending_count: summary.pending_count,
+        processing_count: summary.processing_count,
+        failed_count: summary.failed_count,
+        dead_letter_count: summary.dead_letter_count,
+        succeeded_count: summary.succeeded_count,
+        oldest_pending_at: summary
+            .oldest_pending_at
+            .map(|dt| dt.and_utc().to_rfc3339()),
+        oldest_pending_age_seconds: summary.oldest_pending_age_seconds,
+    };
 
     Ok(Json(response))
 }

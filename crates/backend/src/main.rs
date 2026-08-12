@@ -16,7 +16,7 @@ use std::env;
 use tracing::info;
 
 use extrittio_backend::app;
-use extrittio_backend::config::AppConfig;
+use extrittio_backend::config::{AppConfig, DatabaseConfig};
 use extrittio_backend::observability;
 
 #[tokio::main]
@@ -27,9 +27,15 @@ async fn main() -> anyhow::Result<()> {
     let config = AppConfig::from_env()?;
     info!("Starting extrittio-backend on port {}", config.port);
     if config.rpi_mode {
+        let database_tuning = match &config.database {
+            DatabaseConfig::Postgres { pool_size, .. } => format!("db_pool_size={pool_size}"),
+            DatabaseConfig::Turso { database_path, .. } => {
+                format!("database_path={}", database_path.display())
+            }
+        };
         info!(
-            "RPI mode enabled (db_pool_size={}, telemetry_retention={}d, log_retention={}d, metrics_interval={}s)",
-            config.db_pool_size,
+            "RPI mode enabled ({}, telemetry_retention={}d, log_retention={}d, metrics_interval={}s)",
+            database_tuning,
             config.telemetry_retention_days,
             config.log_retention_days,
             config.system_metrics_interval_secs

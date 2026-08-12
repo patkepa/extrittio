@@ -1,7 +1,6 @@
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-use diesel::{Connection, PgConnection};
 use opentelemetry::global;
 use opentelemetry::propagation::Injector;
 use prost::Message;
@@ -12,10 +11,14 @@ use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use super::cache::RuleCache;
 use super::types::PendingAction;
-use crate::db::models::{NewRuleActionOutboxEvent, RuleActionOutboxEvent};
-use crate::error::AppError;
-use crate::repositories::rule_action_outbox_repo;
-use crate::state::{DbPool, ZenohMetrics};
+use crate::domains::alerts::types::{
+    AlertTransition, AlertTransitionOutcome, CooldownRecord, NewAlertRecord,
+};
+use crate::domains::commands::types::NewCommandRecord;
+use crate::domains::operations::outbox_types::{NewOutboxEventRecord, OutboxEventRecord};
+use crate::persistence::Persistence;
+use crate::state::ZenohMetrics;
+use crate::tenancy::TenantId;
 
 #[derive(Debug, Clone, Copy)]
 pub struct OutboxWorkerConfig {
@@ -25,33 +28,22 @@ pub struct OutboxWorkerConfig {
     pub lease_timeout: Duration,
 }
 
-pub fn enqueue_pending_actions(
-    conn: &mut PgConnection,
-    actions: &[PendingAction],
-) -> Result<usize, AppError> {
-    conn.transaction(|conn| {
-        let mut inserted = 0;
-
-        for action in actions {
-            let payload = serde_json::to_value(action)?;
-            let event = NewRuleActionOutboxEvent {
-                id: uuid::Uuid::new_v4().to_string(),
-                tenant_id: tenant_id_for_action(action).to_string(),
-                event_type: event_type_for_action(action).to_string(),
-                aggregate_type: aggregate_type_for_action(action).to_string(),
-                aggregate_id: aggregate_id_for_action(action),
-                idempotency_key: Some(idempotency_key_for_action(action)),
-                payload,
-            };
-            inserted += rule_action_outbox_repo::insert_event(conn, &event)?;
-        }
-
-        Ok(inserted)
+pub(crate) fn outbox_event_for_action(
+    action: &PendingAction,
+) -> Result<NewOutboxEventRecord, serde_json::Error> {
+    Ok(NewOutboxEventRecord {
+        id: uuid::Uuid::new_v4().to_string(),
+        tenant_id: tenant_id_for_action(action).to_string(),
+        event_type: event_type_for_action(action).to_string(),
+        aggregate_type: aggregate_type_for_action(action).to_string(),
+        aggregate_id: aggregate_id_for_action(action),
+        idempotency_key: Some(idempotency_key_for_action(action)),
+        payload: serde_json::to_value(action)?,
     })
 }
 
 pub async fn run_rule_action_outbox_worker(
-    db_pool: DbPool,
+    persistence: Persistence,
     rule_cache: Arc<RwLock<RuleCache>>,
     http_client: reqwest::Client,
     zenoh_session: Arc<zenoh::Session>,
@@ -62,29 +54,14 @@ pub async fn run_rule_action_outbox_worker(
     info!("Rule action outbox worker started: {}", worker_id);
 
     loop {
-        let pool = db_pool.clone();
-        let worker_id_for_claim = worker_id.clone();
-        let claim_result = tokio::task::spawn_blocking(move || {
-            let mut conn = pool.get().map_err(|e| e.to_string())?;
-            rule_action_outbox_repo::claim_batch(
-                &mut conn,
-                &worker_id_for_claim,
-                config.batch_size,
-                config.lease_timeout,
-            )
-            .map_err(|e| e.to_string())
-        })
-        .await;
-
-        let events = match claim_result {
-            Ok(Ok(events)) => events,
-            Ok(Err(e)) => {
-                warn!("Failed to claim rule action outbox batch: {}", e);
-                sleep(Duration::from_secs(5)).await;
-                continue;
-            }
+        let events = match persistence
+            .outbox
+            .claim_batch(&worker_id, config.batch_size, config.lease_timeout)
+            .await
+        {
+            Ok(events) => events,
             Err(e) => {
-                warn!("Rule action outbox claim task panicked: {}", e);
+                warn!("Failed to claim rule action outbox batch: {}", e);
                 sleep(Duration::from_secs(5)).await;
                 continue;
             }
@@ -103,7 +80,7 @@ pub async fn run_rule_action_outbox_worker(
                 }
             }
 
-            let pool = db_pool.clone();
+            let persistence = persistence.clone();
             let cache = rule_cache.clone();
             let client = http_client.clone();
             let session = zenoh_session.clone();
@@ -120,7 +97,7 @@ pub async fn run_rule_action_outbox_worker(
                     process_outbox_event(
                         event,
                         &processing_worker_id,
-                        &pool,
+                        &persistence,
                         &cache,
                         &client,
                         &session,
@@ -140,9 +117,9 @@ pub async fn run_rule_action_outbox_worker(
 }
 
 async fn process_outbox_event(
-    event: RuleActionOutboxEvent,
+    event: OutboxEventRecord,
     worker_id: &str,
-    db_pool: &DbPool,
+    persistence: &Persistence,
     rule_cache: &Arc<RwLock<RuleCache>>,
     http_client: &reqwest::Client,
     zenoh_session: &Arc<zenoh::Session>,
@@ -152,7 +129,7 @@ async fn process_outbox_event(
         Ok(action) => {
             execute_action(
                 action,
-                db_pool,
+                persistence,
                 rule_cache,
                 http_client,
                 zenoh_session,
@@ -164,41 +141,34 @@ async fn process_outbox_event(
         Err(e) => Err(format!("failed to deserialize pending action: {e}")),
     };
 
-    let event_id = event.id.clone();
-    let attempts = event.attempts;
-    let max_attempts = event.max_attempts;
-    let pool = db_pool.clone();
-    let worker_id = worker_id.to_string();
-    let mark_result = tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        match result {
-            Ok(()) => { rule_action_outbox_repo::mark_succeeded(&mut conn, &event_id, &worker_id) }
-                .map(|_| ())
-                .map_err(|e| e.to_string()),
-            Err(e) => rule_action_outbox_repo::mark_failed(
-                &mut conn,
-                &event_id,
-                &worker_id,
-                attempts,
-                max_attempts,
-                &e,
-            )
-            .map(|_| ())
-            .map_err(|db_err| db_err.to_string()),
+    let mark_result = match result {
+        Ok(()) => {
+            persistence
+                .outbox
+                .mark_succeeded(&event.id, worker_id)
+                .await
         }
-    })
-    .await;
-
-    if let Err(e) = mark_result {
-        warn!("Rule action outbox mark task panicked: {}", e);
-    } else if let Ok(Err(e)) = mark_result {
-        warn!("Failed to mark rule action outbox event: {}", e);
+        Err(error) => {
+            persistence
+                .outbox
+                .mark_failed(
+                    &event.id,
+                    worker_id,
+                    event.attempts,
+                    event.max_attempts,
+                    &error,
+                )
+                .await
+        }
+    };
+    if let Err(error) = mark_result {
+        warn!(%error, "Failed to mark rule action outbox event");
     }
 }
 
 pub async fn execute_action(
     action: PendingAction,
-    db_pool: &DbPool,
+    persistence: &Persistence,
     rule_cache: &Arc<RwLock<RuleCache>>,
     _http_client: &reqwest::Client,
     zenoh_session: &Arc<zenoh::Session>,
@@ -228,22 +198,22 @@ pub async fn execute_action(
                 return Err("rule cache lock poisoned while reserving alert".to_string());
             }
 
-            let pool = db_pool.clone();
-            let result = tokio::task::spawn_blocking(move || {
-                let mut conn = pool.get().map_err(|e| e.to_string())?;
-                crate::services::alert_service::create_alert_for_tenant(
-                    &mut conn,
-                    &tenant_id,
-                    Some(rule_id),
-                    device_id,
-                    severity,
-                    message,
-                    triggered_value,
+            let tenant = TenantId::new(tenant_id).map_err(|error| error.to_string())?;
+            let result = persistence
+                .alerts
+                .create(
+                    &tenant,
+                    NewAlertRecord {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        rule_id: Some(rule_id),
+                        device_id,
+                        severity,
+                        message,
+                        triggered_value,
+                    },
                 )
-                .map_err(|e| e.to_string())
-            })
-            .await
-            .map_err(|e| e.to_string())?;
+                .await
+                .map_err(|error| error.to_string());
 
             match result {
                 Ok(alert) => {
@@ -261,42 +231,36 @@ pub async fn execute_action(
             }
         }
         PendingAction::UpdateAlertValue {
-            tenant_id: _,
+            tenant_id,
             alert_id,
             triggered_value,
         } => {
-            let pool = db_pool.clone();
-            tokio::task::spawn_blocking(move || {
-                let mut conn = pool.get().map_err(|e| e.to_string())?;
-                crate::services::alert_service::update_triggered_value(
-                    &mut conn,
-                    &alert_id,
-                    triggered_value,
-                )
-                .map_err(|e| e.to_string())
-            })
-            .await
-            .map_err(|e| e.to_string())?
+            let tenant = TenantId::new(tenant_id).map_err(|error| error.to_string())?;
+            if persistence
+                .alerts
+                .update_triggered_value(&tenant, &alert_id, triggered_value)
+                .await
+                .map_err(|error| error.to_string())?
+            {
+                Ok(())
+            } else {
+                Err(format!("Alert '{alert_id}' not found"))
+            }
         }
         PendingAction::ResolveAlert {
             tenant_id,
             alert_id,
         } => {
-            let cache = rule_cache.clone();
-            let pool = db_pool.clone();
-            let result = tokio::task::spawn_blocking(move || {
-                let mut conn = pool.get().map_err(|e| e.to_string())?;
-                crate::services::alert_service::resolve_alert_for_tenant(
-                    &mut conn, &tenant_id, &alert_id,
-                )
-                .map_err(|e| e.to_string())
-            })
-            .await
-            .map_err(|e| e.to_string())?;
+            let tenant = TenantId::new(tenant_id).map_err(|error| error.to_string())?;
+            let result = persistence
+                .alerts
+                .transition(&tenant, &alert_id, AlertTransition::Resolve)
+                .await
+                .map_err(|error| error.to_string());
 
             match result {
-                Ok(alert) => {
-                    if let Ok(mut cache) = cache.write()
+                Ok(AlertTransitionOutcome::Updated(alert)) => {
+                    if let Ok(mut cache) = rule_cache.write()
                         && let Some(rule_id) = &alert.rule_id
                     {
                         cache.active_alerts.remove(&(
@@ -307,7 +271,13 @@ pub async fn execute_action(
                     }
                     Ok(())
                 }
-                Err(e) => Err(e),
+                Ok(AlertTransitionOutcome::NotFound) => {
+                    Err(format!("Alert '{alert_id}' not found"))
+                }
+                Ok(AlertTransitionOutcome::InvalidStatus(status)) => Err(format!(
+                    "Alert '{alert_id}' cannot be resolved from status '{status}'"
+                )),
+                Err(error) => Err(error),
             }
         }
         PendingAction::SendWebhook {
@@ -381,33 +351,21 @@ pub async fn execute_action(
             let correlation_id = delivery_id.to_string();
             let params_json =
                 serde_json::to_string(&params_map).unwrap_or_else(|_| "{}".to_string());
-            let pool = db_pool.clone();
-            let db_tenant_id = tenant_id.clone();
-            let db_device_id = device_id.clone();
-            let db_command = command.clone();
-            let db_correlation_id = correlation_id.clone();
-            tokio::task::spawn_blocking(move || {
-                let mut conn = pool.get().map_err(|e| e.to_string())?;
-                crate::repositories::device_repo::find_device_for_tenant(
-                    &mut conn,
-                    &db_tenant_id,
-                    &db_device_id,
-                )
-                .map_err(|e| e.to_string())?;
-                crate::repositories::command_repo::insert_command_idempotent(
-                    &mut conn,
-                    &crate::db::models::NewCommandRecord {
-                        id: db_correlation_id,
-                        tenant_id: db_tenant_id,
-                        device_id: db_device_id,
-                        command: db_command,
+            let tenant = TenantId::new(tenant_id).map_err(|error| error.to_string())?;
+            persistence
+                .commands
+                .create(
+                    &tenant,
+                    &device_id,
+                    NewCommandRecord {
+                        id: correlation_id.clone(),
+                        command: command.clone(),
                         params: params_json,
                     },
                 )
-                .map_err(|e| e.to_string())
-            })
-            .await
-            .map_err(|e| e.to_string())??;
+                .await
+                .map_err(|error| error.to_string())?
+                .ok_or_else(|| format!("Device '{device_id}' not found"))?;
 
             let proto_command = extrittio_common::extrittio::DeviceCommand {
                 command,
@@ -432,20 +390,16 @@ pub async fn execute_action(
             device_id,
             fired_at,
         } => {
-            let pool = db_pool.clone();
-            let cooldown = crate::db::models::RuleCooldown {
-                tenant_id: tenant_id.clone(),
-                rule_id: rule_id.clone(),
-                device_id: device_id.clone(),
-                last_fired_at: fired_at,
-            };
-            tokio::task::spawn_blocking(move || {
-                let mut conn = pool.get().map_err(|e| e.to_string())?;
-                crate::repositories::rule_repo::upsert_cooldown(&mut conn, &cooldown)
-                    .map_err(|e| e.to_string())
-            })
-            .await
-            .map_err(|e| e.to_string())??;
+            persistence
+                .alerts
+                .persist_cooldowns(vec![CooldownRecord {
+                    tenant_id: tenant_id.clone(),
+                    rule_id: rule_id.clone(),
+                    device_id: device_id.clone(),
+                    last_fired_at: fired_at,
+                }])
+                .await
+                .map_err(|error| error.to_string())?;
 
             if let Ok(mut cache) = rule_cache.write() {
                 cache

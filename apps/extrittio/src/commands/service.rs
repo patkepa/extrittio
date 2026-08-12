@@ -1,5 +1,9 @@
 use anyhow::{Context, Result};
-use extrittio_backend::{app, config::AppConfig, init as backend_init, observability};
+use extrittio_backend::{
+    app,
+    config::{AppConfig, DatabaseConfig, DeploymentProfile},
+    init as backend_init, observability,
+};
 use serde::Serialize;
 use tracing::info;
 
@@ -50,13 +54,12 @@ pub(crate) async fn migrate(args: DatabaseArgs, output_format: OutputFormat) -> 
         telemetry_retention_days: None,
     })?;
 
-    let pool = backend_init::create_db_pool(&config.database_url, config.db_pool_size)?;
-    let persistence = extrittio_backend::persistence::postgres::create_persistence(pool);
+    let persistence = extrittio_backend::persistence::factory::create(&config.database).await?;
     backend_init::run_persistence_migrations(&persistence).await?;
 
     let result = ServiceCommandResult {
         status: "ok",
-        database_url: redact_database_url(&config.database_url),
+        database_url: database_location(&config.database),
     };
     output(output_format, &result, || {
         format!("Database migrations completed ({})", result.database_url)
@@ -68,12 +71,12 @@ pub(crate) async fn init(args: InitArgs, output_format: OutputFormat) -> Result<
     let _observability = observability::init("extrittio", "extrittio=info,extrittio_backend=info")?;
 
     let mut config = AppConfig::from_env()?;
-    apply_database_args(&mut config, args.database);
+    apply_database_args(&mut config, args.database)?;
     if let Some(certs_dir) = args.certs_dir {
         config.certs_dir = certs_dir;
     }
-    let pool = backend_init::create_db_pool(&config.database_url, config.db_pool_size)?;
-    let persistence = extrittio_backend::persistence::postgres::create_persistence(pool);
+    config.validate()?;
+    let persistence = extrittio_backend::persistence::factory::create(&config.database).await?;
     backend_init::run_persistence_migrations(&persistence).await?;
     backend_init::seed_persistence_device_types(&persistence).await?;
     backend_init::init_persistence_jwt_secret(&persistence).await?;
@@ -83,7 +86,7 @@ pub(crate) async fn init(args: InitArgs, output_format: OutputFormat) -> Result<
 
     let result = InitCommandResult {
         status: "ok",
-        database_url: redact_database_url(&config.database_url),
+        database_url: database_location(&config.database),
         certs_dir: config.certs_dir,
     };
     output(output_format, &result, || {
@@ -97,7 +100,7 @@ pub(crate) async fn init(args: InitArgs, output_format: OutputFormat) -> Result<
 fn app_config(args: ServiceConfigArgs) -> Result<AppConfig> {
     let mut config = AppConfig::from_env()?;
 
-    apply_database_args(&mut config, args.database);
+    apply_database_args(&mut config, args.database)?;
     if let Some(port) = args.port {
         config.port = port;
     }
@@ -138,13 +141,71 @@ fn app_config(args: ServiceConfigArgs) -> Result<AppConfig> {
     Ok(config)
 }
 
-fn apply_database_args(config: &mut AppConfig, args: DatabaseArgs) {
+fn apply_database_args(config: &mut AppConfig, args: DatabaseArgs) -> Result<()> {
+    if let Some(profile) = args.deployment_profile {
+        config.deployment_profile = match profile.trim().to_ascii_lowercase().as_str() {
+            "production" => DeploymentProfile::Production,
+            "development" => DeploymentProfile::Development,
+            "hobby" => DeploymentProfile::Hobby,
+            _ => anyhow::bail!("--deployment-profile must be production, development, or hobby"),
+        };
+    }
     if let Some(database_url) = args.database_url {
         config.database_url = database_url;
     }
     if let Some(db_pool_size) = args.db_pool_size {
         config.db_pool_size = db_pool_size;
     }
+    let selected_backend = args
+        .database_backend
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or_else(|| config.database.kind().as_str());
+    config.database = match selected_backend {
+        "postgres" => DatabaseConfig::Postgres {
+            url: config.database_url.clone(),
+            pool_size: config.db_pool_size,
+        },
+        "turso" => {
+            let (existing_data_dir, existing_path, busy_timeout, size_warning_bytes) =
+                match &config.database {
+                    DatabaseConfig::Turso {
+                        data_dir,
+                        database_path,
+                        busy_timeout,
+                        size_warning_bytes,
+                    } => (
+                        data_dir.clone(),
+                        database_path.clone(),
+                        *busy_timeout,
+                        *size_warning_bytes,
+                    ),
+                    DatabaseConfig::Postgres { .. } => (
+                        "./data".into(),
+                        "./data/extrittio.db".into(),
+                        std::time::Duration::from_secs(5),
+                        5 * 1024 * 1024 * 1024,
+                    ),
+                };
+            let data_dir_overridden = args.data_dir.is_some();
+            let data_dir = args.data_dir.unwrap_or(existing_data_dir);
+            let database_path = args.turso_database_path.unwrap_or_else(|| {
+                if data_dir_overridden {
+                    data_dir.join("extrittio.db")
+                } else {
+                    existing_path
+                }
+            });
+            DatabaseConfig::Turso {
+                data_dir,
+                database_path,
+                busy_timeout,
+                size_warning_bytes,
+            }
+        }
+        _ => anyhow::bail!("--database-backend must be postgres or turso"),
+    };
+    Ok(())
 }
 
 fn load_dotenv() {
@@ -162,6 +223,13 @@ fn redact_database_url(database_url: &str) -> String {
         return database_url.to_string();
     };
     format!("{scheme}://{username}:***@{host}")
+}
+
+fn database_location(database: &DatabaseConfig) -> String {
+    match database {
+        DatabaseConfig::Postgres { url, .. } => redact_database_url(url),
+        DatabaseConfig::Turso { database_path, .. } => database_path.display().to_string(),
+    }
 }
 
 #[derive(Serialize)]

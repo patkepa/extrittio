@@ -6,10 +6,9 @@ use chrono::Timelike;
 use tracing::{info, warn};
 
 use crate::persistence::Persistence;
-use crate::repositories::network_observed_host_repo;
 use crate::rule_engine::cache::RuleCache;
 use crate::services::{command_service, device_ingress_service, log_service};
-use crate::state::DbPool;
+use crate::tenancy::{DEFAULT_TENANT_ID, TenantId};
 
 /// Compute a backoff sleep duration based on consecutive failures.
 /// Doubles each failure from `base` up to `max`.
@@ -123,7 +122,7 @@ pub async fn run_command_timeout_checker(persistence: Persistence, timeout_secs:
     }
 }
 
-pub async fn run_alert_retention(db_pool: DbPool, retention_days: u64) {
+pub async fn run_alert_retention(persistence: Persistence, retention_days: u64) {
     let base_interval = Duration::from_secs(3600);
     let max_backoff = Duration::from_secs(7200); // 2 hours
     let mut consecutive_failures: u32 = 0;
@@ -137,33 +136,38 @@ pub async fn run_alert_retention(db_pool: DbPool, retention_days: u64) {
         };
         tokio::time::sleep(sleep_dur).await;
 
-        let pool = db_pool.clone();
-        let result = tokio::task::spawn_blocking(move || {
-            let mut conn = pool.get().map_err(|e| e.to_string())?;
+        let result: Result<(usize, usize, usize), String> = async {
             #[allow(clippy::cast_possible_wrap)]
             let cutoff =
                 chrono::Utc::now().naive_utc() - chrono::Duration::days(retention_days as i64);
-            let alert_count =
-                crate::services::alert_service::delete_resolved_older_than(&mut conn, cutoff)
-                    .map_err(|e| e.to_string())?;
+            let tenant = TenantId::new(DEFAULT_TENANT_ID).map_err(|error| error.to_string())?;
+            let alert_count = persistence
+                .alerts
+                .delete_resolved_before(&tenant, cutoff)
+                .await
+                .map_err(|error| error.to_string())?;
 
             // Prune stale cooldowns (older than max cooldown window of 24h)
             let cooldown_cutoff = chrono::Utc::now().naive_utc() - chrono::Duration::seconds(86400);
-            let cooldown_count =
-                crate::services::rule_service::delete_stale_cooldowns(&mut conn, cooldown_cutoff)
-                    .map_err(|e| e.to_string())?;
+            let cooldown_count = persistence
+                .rules
+                .delete_stale_cooldowns(cooldown_cutoff)
+                .await
+                .map_err(|error| error.to_string())?;
 
             let observed_host_cutoff = chrono::Utc::now().naive_utc() - chrono::Duration::days(30);
-            let observed_host_count =
-                network_observed_host_repo::delete_older_than(&mut conn, observed_host_cutoff)
-                    .map_err(|e| e.to_string())?;
+            let observed_host_count = persistence
+                .devices
+                .delete_observed_hosts_before(observed_host_cutoff)
+                .await
+                .map_err(|error| error.to_string())?;
 
-            Ok::<(usize, usize, usize), String>((alert_count, cooldown_count, observed_host_count))
-        })
+            Ok((alert_count, cooldown_count, observed_host_count))
+        }
         .await;
 
         match result {
-            Ok(Ok((alert_count, cooldown_count, observed_host_count))) => {
+            Ok((alert_count, cooldown_count, observed_host_count)) => {
                 consecutive_failures = 0;
                 if alert_count > 0 {
                     info!("Alert retention: deleted {} resolved alerts", alert_count);
@@ -181,7 +185,7 @@ pub async fn run_alert_retention(db_pool: DbPool, retention_days: u64) {
                     );
                 }
             }
-            Ok(Err(msg)) => {
+            Err(msg) => {
                 consecutive_failures = consecutive_failures.saturating_add(1);
                 if consecutive_failures >= 5 {
                     tracing::error!(
@@ -193,20 +197,6 @@ pub async fn run_alert_retention(db_pool: DbPool, retention_days: u64) {
                     );
                 } else {
                     warn!("Alert retention error: {}", msg);
-                }
-            }
-            Err(e) => {
-                consecutive_failures = consecutive_failures.saturating_add(1);
-                if consecutive_failures >= 5 {
-                    tracing::error!(
-                        "Alert retention: {} consecutive failures (next retry in {}s): task panicked: {}",
-                        consecutive_failures,
-                        backoff_duration(base_interval, consecutive_failures, max_backoff)
-                            .as_secs(),
-                        e,
-                    );
-                } else {
-                    warn!("Alert retention task panicked: {}", e);
                 }
             }
         }

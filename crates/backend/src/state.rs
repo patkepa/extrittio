@@ -1,15 +1,10 @@
-use diesel::PgConnection;
-use diesel::r2d2::{ConnectionManager, Pool};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::RwLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::error::AppError;
 use crate::rate_limit::{ApiKeyRateLimiter, RateLimiter, TrustedProxy};
 use crate::rule_engine::cache::RuleCache;
-
-pub type DbPool = Pool<ConnectionManager<PgConnection>>;
 
 const MAX_LATENCY_SAMPLES_PER_FLUSH: usize = 10_000;
 
@@ -141,10 +136,6 @@ impl Default for MetricsAccumulator {
 }
 
 pub struct AppState {
-    pub db_pool: DbPool,
-    /// Backend-neutral ports for migrated domains. `db_pool` remains only as a
-    /// temporary compatibility path until the PostgreSQL adapter extraction is
-    /// complete.
     pub persistence: crate::persistence::Persistence,
     pub zenoh_session: Arc<zenoh::Session>,
     pub jwt_secret: String,
@@ -163,20 +154,4 @@ pub struct AppState {
     pub readiness: Arc<ReadinessRegistry>,
 }
 
-/// Run a synchronous DB operation on a blocking thread to avoid starving the
-/// Tokio runtime. Acquires a pooled connection, passes it to the closure, and
-/// returns the result.
-pub async fn run_db<F, T>(pool: &DbPool, f: F) -> Result<T, AppError>
-where
-    F: FnOnce(&mut PgConnection) -> Result<T, AppError> + Send + 'static,
-    T: Send + 'static,
-{
-    let pool = pool.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get()?;
-        f(&mut conn)
-    })
-    .await
-    .map_err(|e| AppError::Internal(format!("Task join error: {e}")))?
-}
 use std::collections::BTreeMap;

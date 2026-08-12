@@ -1,25 +1,25 @@
-use std::{collections::BTreeSet, time::Duration};
+use std::collections::BTreeSet;
+#[cfg(feature = "postgres")]
+use std::time::Duration;
 
 use anyhow::Context;
+#[cfg(feature = "postgres")]
 use diesel::PgConnection;
-use diesel::RunQueryDsl;
-use diesel::prelude::*;
+#[cfg(feature = "postgres")]
 use diesel::r2d2::{ConnectionManager, Pool};
-use diesel_migrations::MigrationHarness;
 use tracing::{debug, info, warn};
 
-use crate::db::models::{NewDeviceType, NewServerConfigEntry, NewUser, ServerConfigEntry};
-use crate::db::schema::{ca_certificates, device_types, server_config, users};
+use crate::auth;
 use crate::domains::identity::certificate_types::NewCaCertificateRecord;
+#[cfg(feature = "postgres")]
+use crate::persistence::postgres::executor::PostgresPool;
 use crate::persistence::{BootstrapOwner, BuiltinDeviceType, Persistence, SeedOwnerOutcome};
-use crate::repositories::{cert_repo, role_repo, user_repo};
-use crate::services::{cert_service, role_service, user_service};
-use crate::state::DbPool;
-use crate::{MIGRATIONS, auth};
+use crate::services::{cert_service, user_service};
 use extrittio_common::topics::{self, patterns};
 
 /// Create the PostgreSQL connection pool.
-pub fn create_db_pool(database_url: &str, pool_size: u32) -> anyhow::Result<DbPool> {
+#[cfg(feature = "postgres")]
+pub fn create_db_pool(database_url: &str, pool_size: u32) -> anyhow::Result<PostgresPool> {
     let manager = ConnectionManager::<PgConnection>::new(database_url);
     Pool::builder()
         .max_size(pool_size)
@@ -27,95 +27,6 @@ pub fn create_db_pool(database_url: &str, pool_size: u32) -> anyhow::Result<DbPo
         .idle_timeout(Some(Duration::from_secs(300)))
         .build(manager)
         .context("Failed to create database connection pool")
-}
-
-/// Run pending migrations.
-pub fn run_migrations(conn: &mut PgConnection) -> anyhow::Result<()> {
-    conn.run_pending_migrations(MIGRATIONS)
-        .map_err(|e| anyhow::anyhow!("Failed to run database migrations: {e}"))?;
-
-    info!("Database migrations completed successfully");
-    Ok(())
-}
-
-/// Ensure built-in device types exist even if a dev/test database was reseeded
-/// after migrations had already run.
-pub fn seed_default_device_types(conn: &mut PgConnection) -> anyhow::Result<()> {
-    const BUILT_IN_DEVICE_TYPES: &[(&str, &str, &str)] = &[
-        ("default", "cube", "#8ABBFF"),
-        ("mac-device", "desktop", "#F7C948"),
-        ("network-analyzer", "antenna", "#36CFC9"),
-        ("OrganBath", "heatmap", "#E76A6E"),
-    ];
-
-    let rows: Vec<NewDeviceType> = BUILT_IN_DEVICE_TYPES
-        .iter()
-        .map(|(name, icon, color_hex)| NewDeviceType {
-            tenant_id: crate::tenancy::DEFAULT_TENANT_ID.to_string(),
-            name: (*name).to_string(),
-            icon: (*icon).to_string(),
-            color_hex: (*color_hex).to_string(),
-        })
-        .collect();
-
-    diesel::insert_into(device_types::table)
-        .values(&rows)
-        .on_conflict((device_types::tenant_id, device_types::name))
-        .do_nothing()
-        .execute(conn)
-        .context("Failed to seed built-in device types")?;
-
-    Ok(())
-}
-
-/// Initialize JWT secret from the database, or generate one if not present.
-/// Falls back to the `JWT_SECRET` environment variable if set.
-pub fn init_jwt_secret(conn: &mut PgConnection) -> anyhow::Result<String> {
-    if let Some(secret) = std::env::var("JWT_SECRET")
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-    {
-        return Ok(secret);
-    }
-
-    if env_bool("EXTRITTIO_REQUIRE_ENV_SECRETS") {
-        anyhow::bail!("JWT_SECRET must be set when EXTRITTIO_REQUIRE_ENV_SECRETS=true");
-    }
-
-    let jwt_secret = {
-        let existing: Option<ServerConfigEntry> = server_config::table
-            .find("jwt_secret")
-            .select(ServerConfigEntry::as_select())
-            .first(conn)
-            .optional()
-            .context("Failed to query server_config")?;
-
-        if let Some(entry) = existing {
-            entry.value
-        } else {
-            use rand::Rng;
-            let secret: String = rand::thread_rng()
-                .sample_iter(&rand::distributions::Alphanumeric)
-                .take(64)
-                .map(char::from)
-                .collect();
-
-            let entry = NewServerConfigEntry {
-                key: "jwt_secret".to_string(),
-                value: secret.clone(),
-            };
-            diesel::insert_into(server_config::table)
-                .values(&entry)
-                .execute(conn)
-                .context("Failed to insert JWT secret")?;
-
-            info!("Generated new JWT secret");
-            secret
-        }
-    };
-
-    Ok(jwt_secret)
 }
 
 fn env_bool(key: &str) -> bool {
@@ -127,117 +38,6 @@ fn env_bool(key: &str) -> bool {
             )
         })
         .unwrap_or(false)
-}
-
-/// Seed the first owner user if explicitly configured.
-pub fn seed_admin_user(conn: &mut PgConnection) -> anyhow::Result<()> {
-    let user_count: i64 = users::table
-        .count()
-        .get_result(conn)
-        .context("Failed to count users")?;
-
-    if user_count == 0 {
-        let Some(password) = std::env::var("EXTRITTIO_BOOTSTRAP_ADMIN_PASSWORD")
-            .ok()
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty())
-        else {
-            warn!(
-                "No users exist and EXTRITTIO_BOOTSTRAP_ADMIN_PASSWORD is not set; owner bootstrap skipped"
-            );
-            return Ok(());
-        };
-
-        user_service::validate_password(&password)
-            .map_err(|e| anyhow::anyhow!("Invalid bootstrap admin password: {e}"))?;
-        let username = std::env::var("EXTRITTIO_BOOTSTRAP_ADMIN_USERNAME")
-            .ok()
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty())
-            .unwrap_or_else(|| "admin".to_string());
-        anyhow::ensure!(
-            password != "admin" && password != username,
-            "Bootstrap admin password must not be a default or match the username"
-        );
-
-        let password_hash = auth::hash_password(&password)
-            .map_err(|e| anyhow::anyhow!("Failed to hash default password: {e}"))?;
-        let admin = NewUser {
-            tenant_id: crate::tenancy::DEFAULT_TENANT_ID.to_string(),
-            username: username.clone(),
-            password_hash,
-            role: role_service::OWNER_ROLE.to_string(),
-        };
-        let admin = user_repo::insert_user(conn, &admin).context("Failed to seed admin user")?;
-        let owner_role = role_repo::find_role_by_name(
-            conn,
-            crate::tenancy::DEFAULT_TENANT_ID,
-            role_service::OWNER_ROLE,
-        )
-        .context("Failed to find owner role for seeded admin")?;
-        role_repo::set_user_roles(
-            conn,
-            crate::tenancy::DEFAULT_TENANT_ID,
-            admin.id,
-            &[owner_role.id],
-        )
-        .context("Failed to assign owner role to seeded admin")?;
-        info!("Bootstrap owner user created (username: {username})");
-    }
-    Ok(())
-}
-
-/// Ensure the root CA certificate exists in the database.
-pub fn init_ca_certificate(conn: &mut PgConnection) -> anyhow::Result<()> {
-    let ca_exists: i64 = ca_certificates::table
-        .count()
-        .get_result(conn)
-        .context("Failed to count CA certificates")?;
-
-    if ca_exists == 0 {
-        let new_ca =
-            cert_service::generate_ca_certificate().context("Failed to generate CA certificate")?;
-        cert_repo::insert_ca_certificate(conn, &new_ca)
-            .context("Failed to insert CA certificate")?;
-        info!("Generated new root CA certificate");
-    }
-    Ok(())
-}
-
-/// Write CA and server TLS certificates to disk for Zenoh.
-pub fn write_tls_certs(conn: &mut PgConnection, certs_dir: &str) -> anyhow::Result<()> {
-    let certs_path = std::path::PathBuf::from(certs_dir);
-    std::fs::create_dir_all(&certs_path).context("Failed to create certs directory")?;
-
-    let ca = cert_repo::get_ca_certificate(conn)
-        .context("Failed to read CA certificate")?
-        .context("CA certificate must exist")?;
-
-    std::fs::write(certs_path.join("ca.pem"), &ca.certificate_pem)
-        .context("Failed to write CA cert to disk")?;
-
-    let server_cert_path = certs_path.join("server.pem");
-    let server_key_path = certs_path.join("server-key.pem");
-    if !server_cert_path.exists() || !server_key_path.exists() {
-        let (server_cert_pem, server_key_pem) = cert_service::generate_server_certificate(&ca)
-            .context("Failed to generate server certificate")?;
-        std::fs::write(&server_cert_path, &server_cert_pem)
-            .context("Failed to write server cert to disk")?;
-        std::fs::write(&server_key_path, &server_key_pem)
-            .context("Failed to write server key to disk")?;
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&server_key_path, std::fs::Permissions::from_mode(0o600))
-                .context("Failed to set server key permissions")?;
-        }
-
-        info!("Generated server TLS certificate");
-    }
-
-    info!("TLS certificates at {}", certs_dir);
-    Ok(())
 }
 
 /// Run backend-specific migrations through the persistence facade.
@@ -372,20 +172,14 @@ pub async fn write_persistence_tls_certs(
         .context("CA certificate must exist")?;
     let certs_dir = certs_dir.to_string();
     tokio::task::spawn_blocking(move || {
-        let legacy_ca = crate::db::models::CaCertificate {
-            id: ca.id,
-            private_key_pem: ca.private_key_pem,
-            certificate_pem: ca.certificate_pem,
-            created_at: ca.created_at.naive_utc(),
-        };
         let certs_path = std::path::PathBuf::from(&certs_dir);
         std::fs::create_dir_all(&certs_path).context("Failed to create certs directory")?;
-        std::fs::write(certs_path.join("ca.pem"), &legacy_ca.certificate_pem)
+        std::fs::write(certs_path.join("ca.pem"), &ca.certificate_pem)
             .context("Failed to write CA cert to disk")?;
         let server_cert_path = certs_path.join("server.pem");
         let server_key_path = certs_path.join("server-key.pem");
         if !server_cert_path.exists() || !server_key_path.exists() {
-            let (certificate, private_key) = cert_service::generate_server_certificate(&legacy_ca)
+            let (certificate, private_key) = cert_service::generate_server_certificate(&ca)
                 .context("Failed to generate server certificate")?;
             std::fs::write(&server_cert_path, certificate)
                 .context("Failed to write server cert to disk")?;

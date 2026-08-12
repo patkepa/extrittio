@@ -1,2 +1,5 @@
+[migrations_directory]
+dir = "migrations/postgres"
+
 [print_schema]
 file = "src/db/schema.rs"

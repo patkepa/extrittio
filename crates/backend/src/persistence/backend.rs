@@ -47,6 +47,19 @@ impl BackendDescriptor {
             local_file: None,
         }
     }
+
+    #[must_use]
+    pub fn turso(local_file: PathBuf) -> Self {
+        Self {
+            kind: BackendKind::Turso,
+            capabilities: BackendCapabilities {
+                multi_process: false,
+                concurrent_claimers: false,
+                partitioned_telemetry: false,
+            },
+            local_file: Some(local_file),
+        }
+    }
 }
 
 #[cfg(test)]
