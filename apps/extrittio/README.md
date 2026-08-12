@@ -46,6 +46,17 @@ API-only mode. `migrate` only applies pending database migrations. `init`
 applies migrations, seeds built-in records, creates the initial admin user when
 needed, and writes service certificates.
 
+For the installed, single-node appliance experience, build `apps/frontend/dist`
+and install the hobby feature:
+
+```bash
+cargo install --path apps/extrittio --locked --no-default-features --features hobby
+extrittio run
+```
+
+`run` fixes the backend/profile to local Turso, embeds the web UI, generates a
+first-run owner password when needed, and starts the complete stack.
+
 Publish a firmware binary and trigger OTA:
 
 ```bash

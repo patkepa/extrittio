@@ -10,6 +10,32 @@ The platform supports multi-tenant device and fleet management, telemetry and
 logs, desired/reported shadows, commands, OTA firmware deployments, rules,
 alerts, audit events, operational metrics, and native/embedded client SDKs.
 
+## One-command hobby install
+
+Build the frontend once, install the Turso-only executable, and run the whole
+hub:
+
+```bash
+cd apps/frontend
+export NODE_AUTH_TOKEN='your-github-packages-token'
+npm ci
+npm run build
+cd ../..
+
+cargo install --path apps/extrittio --locked \
+  --no-default-features --features hobby
+
+extrittio run
+```
+
+On first run Extrittio creates its local database, certificates, and firmware
+directory, generates an owner password when one was not supplied, prints the
+credentials and web URL, and starts the UI, API, Zenoh listener, and background
+workers. Open [http://localhost:8080](http://localhost:8080).
+
+By default mutable data uses the operating system's local application-data
+directory. Override it with `extrittio run --data-dir /path/to/extrittio`.
+
 ## Architecture
 
 ```text

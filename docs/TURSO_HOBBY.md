@@ -2,7 +2,7 @@
 
 Extrittio supports a local-only Turso database for single-node hobby and appliance deployments. PostgreSQL remains the default and the only supported production/HA backend. Turso is rejected when `EXTRITTIO_DEPLOYMENT_PROFILE=production`, and database open failures never fall back to another backend.
 
-## Build and first run
+## Install and first run
 
 The standalone release shape embeds the React UI and excludes PostgreSQL/Diesel:
 
@@ -11,18 +11,26 @@ cd apps/frontend
 npm ci
 npm run build
 cd ../..
-cargo build --release -p extrittio --no-default-features --features hobby
+cargo install --path apps/extrittio --locked \
+  --no-default-features --features hobby
 
-export EXTRITTIO_BOOTSTRAP_ADMIN_PASSWORD='replace-with-a-strong-password'
-./target/release/extrittio init \
-  --database-backend turso \
-  --deployment-profile hobby \
-  --data-dir ./data \
-  --certs-dir ./data/certs
-./target/release/extrittio serve \
-  --database-backend turso \
-  --deployment-profile hobby \
-  --data-dir ./data
+extrittio run
+```
+
+`extrittio run` always selects the local Turso hobby profile. On first run it
+generates and prints a strong owner password unless `--admin-password` or
+`EXTRITTIO_BOOTSTRAP_ADMIN_PASSWORD` was supplied. It then prints the browser
+URL and starts the complete stack. The password is not shown again.
+
+Useful overrides:
+
+```bash
+extrittio run \
+  --data-dir /srv/extrittio \
+  --port 8080 \
+  --zenoh-port 7447 \
+  --admin-username owner \
+  --public-url http://hub.local:8080
 ```
 
 The data directory contains `extrittio.db`, `extrittio.lock`, certificates, local firmware objects, and operator-created backups. One process exclusively owns a data directory. A second process fails fast.

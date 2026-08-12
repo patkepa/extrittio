@@ -151,7 +151,9 @@ jobs:
           cargo clippy -p extrittio --no-default-features --features turso --all-targets -- -D warnings
           cargo test -p extrittio-backend --no-default-features --features turso --lib
       - name: Build standalone hobby executable
-        run: cargo build --release -p extrittio --no-default-features --features hobby
+        run: |
+          cargo build --release -p extrittio --no-default-features --features hobby
+          cargo install --path apps/extrittio --locked --no-default-features --features hobby --root target/hobby-install
       - name: Verify artifact and first-run migration
         run: |
           if ldd target/release/extrittio | grep -E 'libpq|postgres'; then
@@ -161,6 +163,7 @@ jobs:
           smoke_dir="$(mktemp -d)"
           target/release/extrittio -o json migrate --database-backend turso --deployment-profile hobby --data-dir "$smoke_dir"
           target/release/extrittio -o json database --database-backend turso --deployment-profile hobby --data-dir "$smoke_dir" info
+          target/hobby-install/bin/extrittio run --help
           sha256sum target/release/extrittio > target/release/extrittio-${{ matrix.arch }}.sha256
       - uses: actions/upload-artifact@v4
         with:

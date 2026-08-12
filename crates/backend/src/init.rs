@@ -109,13 +109,30 @@ pub async fn seed_persistence_admin_user(persistence: &Persistence) -> anyhow::R
         );
         return Ok(());
     };
-    user_service::validate_password(&password)
-        .map_err(|error| anyhow::anyhow!("Invalid bootstrap admin password: {error}"))?;
     let username = std::env::var("EXTRITTIO_BOOTSTRAP_ADMIN_USERNAME")
         .ok()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| "admin".to_string());
+    let outcome = seed_persistence_owner(persistence, username.clone(), password).await?;
+    if outcome == SeedOwnerOutcome::Created {
+        info!("Bootstrap owner user created (username: {username})");
+    }
+    Ok(())
+}
+
+pub async fn seed_persistence_owner(
+    persistence: &Persistence,
+    username: String,
+    password: String,
+) -> anyhow::Result<SeedOwnerOutcome> {
+    let username = username.trim().to_string();
+    anyhow::ensure!(
+        !username.is_empty(),
+        "Bootstrap admin username must not be empty"
+    );
+    user_service::validate_password(&password)
+        .map_err(|error| anyhow::anyhow!("Invalid bootstrap admin password: {error}"))?;
     anyhow::ensure!(
         password != "admin" && password != username,
         "Bootstrap admin password must not be a default or match the username"
@@ -126,7 +143,7 @@ pub async fn seed_persistence_admin_user(persistence: &Persistence) -> anyhow::R
         .map_err(|error| anyhow::anyhow!("Failed to hash default password: {error}"))?;
     let tenant = crate::tenancy::TenantId::new(crate::tenancy::DEFAULT_TENANT_ID)
         .expect("default tenant id is valid");
-    let outcome = persistence
+    persistence
         .bootstrap
         .seed_owner_if_empty(
             &tenant,
@@ -135,11 +152,8 @@ pub async fn seed_persistence_admin_user(persistence: &Persistence) -> anyhow::R
                 password_hash,
             },
         )
-        .await?;
-    if outcome == SeedOwnerOutcome::Created {
-        info!("Bootstrap owner user created (username: {username})");
-    }
-    Ok(())
+        .await
+        .map_err(Into::into)
 }
 
 pub async fn init_persistence_ca_certificate(persistence: &Persistence) -> anyhow::Result<()> {

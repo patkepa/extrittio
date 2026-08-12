@@ -8,7 +8,7 @@ use serde::Serialize;
 use tracing::info;
 
 use crate::{
-    args::{DatabaseArgs, DatabaseCommand, InitArgs, ServeArgs, ServiceConfigArgs},
+    args::{DatabaseArgs, DatabaseCommand, InitArgs, RunArgs, ServeArgs, ServiceConfigArgs},
     output::{OutputFormat, output},
 };
 
@@ -17,7 +17,6 @@ use crate::args::DatabaseSubcommand;
 
 pub(crate) async fn serve(args: ServeArgs) -> Result<()> {
     load_dotenv();
-    let observability = observability::init("extrittio", "extrittio=info,extrittio_backend=info")?;
 
     let mut config = app_config(args.config)?;
     if let Some(ui_dir) = args.ui_dir {
@@ -26,6 +25,94 @@ pub(crate) async fn serve(args: ServeArgs) -> Result<()> {
     if args.no_ui {
         config.serve_ui = false;
     }
+    serve_config(config).await
+}
+
+pub(crate) async fn run_hobby(args: RunArgs) -> Result<()> {
+    #[cfg(not(feature = "hobby"))]
+    {
+        let _ = args;
+        anyhow::bail!(
+            "`extrittio run` requires the standalone hobby build; install it with: cargo install --path apps/extrittio --locked --no-default-features --features hobby"
+        )
+    }
+    #[cfg(feature = "hobby")]
+    {
+        use rand::{Rng, distributions::Alphanumeric};
+
+        load_dotenv();
+        let data_dir = args.data_dir.unwrap_or_else(|| {
+            dirs::data_local_dir()
+                .map(|path| path.join("extrittio"))
+                .unwrap_or_else(|| std::path::PathBuf::from("./extrittio-data"))
+        });
+        let public_url = args
+            .public_url
+            .unwrap_or_else(|| format!("http://localhost:{}", args.port));
+        let mut config = app_config(ServiceConfigArgs {
+            database: DatabaseArgs {
+                database_backend: Some("turso".into()),
+                deployment_profile: Some("hobby".into()),
+                data_dir: Some(data_dir),
+                ..Default::default()
+            },
+            port: Some(args.port),
+            public_url: Some(public_url.clone()),
+            cors_origin: Some(public_url.clone()),
+            certs_dir: None,
+            zenoh_tls_enabled: None,
+            zenoh_tls_port: Some(args.zenoh_port),
+            offline_timeout_secs: None,
+            command_timeout_secs: None,
+            max_firmware_size_mb: None,
+            alert_retention_days: None,
+            telemetry_retention_days: None,
+        })?;
+        config.serve_ui = true;
+        config.ui_dir = None;
+
+        let persistence = extrittio_backend::persistence::factory::create(&config.database).await?;
+        backend_init::run_persistence_migrations(&persistence).await?;
+        if !persistence.bootstrap.users_exist().await? {
+            let generated = args.admin_password.is_none();
+            let password = args.admin_password.unwrap_or_else(|| {
+                let random: String = rand::thread_rng()
+                    .sample_iter(&Alphanumeric)
+                    .take(20)
+                    .map(char::from)
+                    .collect();
+                format!("Aa1!{random}")
+            });
+            backend_init::seed_persistence_owner(
+                &persistence,
+                args.admin_username.clone(),
+                password.clone(),
+            )
+            .await?;
+            eprintln!("\nExtrittio owner account created");
+            eprintln!("  Username: {}", args.admin_username);
+            eprintln!("  Password: {password}");
+            if generated {
+                eprintln!("  Save this generated password now; it will not be shown again.");
+            }
+            eprintln!();
+        }
+        drop(persistence);
+
+        eprintln!("Extrittio web UI: {public_url}");
+        eprintln!(
+            "Data directory: {}\n",
+            match &config.database {
+                DatabaseConfig::Turso { data_dir, .. } => data_dir.display().to_string(),
+                DatabaseConfig::Postgres { .. } => unreachable!(),
+            }
+        );
+        serve_config(config).await
+    }
+}
+
+async fn serve_config(config: AppConfig) -> Result<()> {
+    let observability = observability::init("extrittio", "extrittio=info,extrittio_backend=info")?;
     info!("Starting extrittio on port {}", config.port);
 
     let state = app::boot::initialize_state(&config).await?;

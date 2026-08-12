@@ -37,6 +37,8 @@ pub(crate) struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum Command {
+    /// Run the complete single-node Extrittio stack with embedded Turso.
+    Run(RunArgs),
     /// Run the Extrittio backend service.
     #[command(alias = "server")]
     Serve(ServeArgs),
@@ -70,6 +72,41 @@ pub(crate) enum Command {
     Certs(CertsCommand),
     /// Create a device and emit client provisioning material.
     Provision(ProvisionArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct RunArgs {
+    /// Directory containing the database, certificates, firmware, and backups.
+    #[arg(long, env = "EXTRITTIO_DATA_DIR")]
+    pub(crate) data_dir: Option<PathBuf>,
+
+    /// HTTP port for the web UI and REST API.
+    #[arg(long, env = "PORT", default_value_t = 8080)]
+    pub(crate) port: u16,
+
+    /// Zenoh TCP/TLS listen port used by devices.
+    #[arg(long, env = "ZENOH_TLS_PORT", default_value_t = 7447)]
+    pub(crate) zenoh_port: u16,
+
+    /// Initial owner username, used only when the database has no users.
+    #[arg(
+        long,
+        env = "EXTRITTIO_BOOTSTRAP_ADMIN_USERNAME",
+        default_value = "admin"
+    )]
+    pub(crate) admin_username: String,
+
+    /// Initial owner password. If omitted on first run, a strong password is generated and printed once.
+    #[arg(
+        long,
+        env = "EXTRITTIO_BOOTSTRAP_ADMIN_PASSWORD",
+        hide_env_values = true
+    )]
+    pub(crate) admin_password: Option<String>,
+
+    /// Public URL advertised for firmware downloads.
+    #[arg(long, env = "EXTRITTIO_PUBLIC_URL")]
+    pub(crate) public_url: Option<String>,
 }
 
 #[derive(Debug, Args, Default)]

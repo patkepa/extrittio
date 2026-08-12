@@ -32,6 +32,7 @@ pub(crate) async fn run(cli: Cli) -> Result<()> {
     let output_format = cli.output;
 
     match command {
+        Command::Run(args) => service::run_hobby(args).await,
         Command::Serve(args) => service::serve(args).await,
         Command::Migrate(args) => service::migrate(args, output_format).await,
         Command::Init(args) => service::init(args, output_format).await,
@@ -80,7 +81,11 @@ async fn run_api_command(
         Command::ApiKeys(command) => api_keys::handle(command, output_format, &client).await?,
         Command::Certs(command) => certs::handle(command, output_format, &client).await?,
         Command::Provision(args) => provision::handle(args, output_format, &client).await?,
-        Command::Serve(_) | Command::Migrate(_) | Command::Init(_) | Command::Database(_) => {
+        Command::Run(_)
+        | Command::Serve(_)
+        | Command::Migrate(_)
+        | Command::Init(_)
+        | Command::Database(_) => {
             unreachable!()
         }
     }
