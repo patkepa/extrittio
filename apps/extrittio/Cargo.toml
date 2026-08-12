@@ -12,7 +12,7 @@ publish.workspace = true
 default = ["postgres"]
 postgres = ["extrittio-backend/postgres"]
 turso = ["extrittio-backend/turso"]
-hobby = ["turso", "extrittio-backend/embedded-ui"]
+hobby = ["turso", "extrittio-backend/embedded-ui", "dep:extrittio-openthread-runtime"]
 all-databases = ["postgres", "turso"]
 
 [[bin]]
@@ -30,6 +30,7 @@ serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tracing = "0.1"
 dirs = "6"
+extrittio-openthread-runtime = { version = "0.1.0", path = "../../crates/openthread-runtime", optional = true }
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
 tikv-jemallocator = "0.6"

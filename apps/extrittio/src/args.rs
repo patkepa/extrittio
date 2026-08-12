@@ -92,6 +92,30 @@ pub(crate) struct RunArgs {
     #[arg(long, env = "ZENOH_LISTEN_HOST")]
     pub(crate) zenoh_listen_host: Option<String>,
 
+    /// Start the bundled OpenThread border-router runtime when an RCP is connected.
+    #[arg(long, env = "EXTRITTIO_THREAD_ENABLED", default_value_t = true, action = clap::ArgAction::Set)]
+    pub(crate) thread_enabled: bool,
+
+    /// Require a local OpenThread RCP and border-router runtime instead of falling back to Wi-Fi-only mode.
+    #[arg(long, env = "EXTRITTIO_THREAD_REQUIRED")]
+    pub(crate) thread_required: bool,
+
+    /// Serial device for the OpenThread RCP. Auto-detected when omitted.
+    #[arg(long, env = "EXTRITTIO_THREAD_RCP")]
+    pub(crate) thread_rcp: Option<PathBuf>,
+
+    /// Path to the packaged or locally installed otbr-agent executable.
+    #[arg(long, env = "EXTRITTIO_OTBR_AGENT")]
+    pub(crate) thread_otbr_agent: Option<PathBuf>,
+
+    /// Adjacent Ethernet or Wi-Fi interface used by the Thread border router.
+    #[arg(long, env = "EXTRITTIO_THREAD_INFRA_INTERFACE")]
+    pub(crate) thread_infra_interface: Option<String>,
+
+    /// UART baud rate used by the OpenThread RCP firmware.
+    #[arg(long, env = "EXTRITTIO_THREAD_RCP_BAUD", default_value_t = 460_800)]
+    pub(crate) thread_rcp_baud: u32,
+
     /// Initial owner username, used only when the database has no users.
     #[arg(
         long,

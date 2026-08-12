@@ -1,0 +1,13 @@
+[package]
+name = "extrittio-openthread-runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow = "1"
+tracing = "0.1"

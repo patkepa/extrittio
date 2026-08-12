@@ -4,6 +4,7 @@ members = [
     "apps/extrittio",
     "crates/backend",
     "crates/common",
+    "crates/openthread-runtime",
     "clients/rust/linux",
     "clients/rust/macos",
     "clients/rust/rpi",

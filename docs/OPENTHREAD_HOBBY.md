@@ -23,29 +23,48 @@ host's infrastructure network. For a real end-to-end test, use a second Thread
 device (or another existing Thread endpoint) in addition to the RCP dongle.
 A dongle flashed as the RCP cannot also be the independent telemetry device.
 
-## Run Extrittio with an IPv6 Zenoh listener
+## Run Extrittio with the bundled Thread runtime
 
-The default Zenoh listener is `127.0.0.1`, which deliberately does not expose
-the device port. Enable IPv6 explicitly for a Thread deployment:
-
-```bash
-ZENOH_TLS_ENABLED=true extrittio run --zenoh-listen-host ::
-```
-
-`::` is emitted as the valid Zenoh locator `tls/[::]:7447` (or
-`tcp/[::]:7447` when TLS is disabled). Extrittio's usual mTLS certificate and
-topic ACL protections continue to apply. Do not expose an unauthenticated TCP
-listener outside an isolated development network.
-
-For `extrittio serve`, use the equivalent setting:
+The hobby feature includes `extrittio-openthread-runtime`. `extrittio run`
+auto-detects exactly one connected RCP, starts its `otbr-agent` child, and
+changes the Zenoh listener from its secure loopback default to IPv6. It shuts
+OTBR down with Extrittio so stale Thread routes are not left on the host.
 
 ```bash
-extrittio serve --zenoh-listen-host ::
+extrittio run --thread-required
 ```
 
-or set `ZENOH_LISTEN_HOST=::`. A Thread client must use a *routable server
-address*, never the listener wildcard. For example, after choosing the server's
-IPv6 address:
+`--thread-required` turns an absent/ambiguous RCP or unavailable OTBR runtime
+into a startup error. Without it, a machine with no RCP continues in Wi-Fi-only
+mode. `--thread-enabled false` disables automatic OTBR startup. The RCP is
+normally detected as `/dev/cu.usbmodem…` on macOS or a Nordic `/dev/serial/by-id`
+device on Linux; specify it explicitly when other USB serial hardware is
+attached:
+
+```bash
+extrittio run \
+  --thread-required \
+  --thread-rcp /dev/cu.usbmodem14101 \
+  --thread-infra-interface en0
+```
+
+For a Cargo development build, point Extrittio to the locally built OTBR agent:
+
+```bash
+extrittio run --thread-required \
+  --thread-otbr-agent /path/to/ot-br-posix/build/otbr/src/agent/otbr-agent
+```
+
+The packaged agent is resolved from `libexec/extrittio/otbr-agent`; the
+`EXTRITTIO_OTBR_AGENT` environment variable and `PATH` are fallback locations
+for development and custom packaging. OTBR needs the privileges required to
+create its Thread interface and configure IPv6 routing. Install the packaged
+agent with those privileges, or run the explicitly configured local setup using
+your platform's normal privilege mechanism.
+
+Extrittio emits a valid IPv6 listen locator such as `tls/[::]:7447` when
+`ZENOH_TLS_ENABLED=true`. A Thread client must use a *routable server address*,
+never the wildcard. For example:
 
 ```text
 tls/[fd12:3456:789a:1::20]:7447
@@ -57,7 +76,7 @@ brackets in Zenoh locators.
 
 ## OpenThread Border Router
 
-### Recommended Linux deployment
+### Linux deployment
 
 Run OTBR natively on a Linux host (a Raspberry Pi, mini PC, or the Linux
 machine that runs Extrittio). Flash the Nordic dongle with the OpenThread RCP
@@ -65,8 +84,10 @@ image for the USB bootloader, connect it to that host, and use a stable
 `/dev/serial/by-id/...` path for the radio. The official OpenThread nRF52840
 instructions require `-DOT_BOOTLOADER=USB` when producing this firmware.
 
-Install and start OTBR using its native setup, selecting the Ethernet or Wi-Fi
-interface that reaches Extrittio:
+For a Cargo development build, build the official agent and pass it with
+`--thread-otbr-agent`; production hobby packages install that agent beside the
+Extrittio executable. The official native setup builds OTBR with the selected
+Ethernet or Wi-Fi interface:
 
 ```bash
 git clone --recursive --depth=1 https://github.com/openthread/ot-br-posix
@@ -75,18 +96,11 @@ cd ot-br-posix
 INFRA_IF_NAME=eth0 ./script/setup
 ```
 
-Set OTBR's radio URL in `/etc/default/otbr-agent` to the stable serial device,
-for example:
-
-```text
-OTBR_AGENT_OPTS="-I wpan0 -B eth0 spinel+hdlc+uart:///dev/serial/by-id/<nrf52840>?uart-baudrate=460800"
-```
-
-Then restart and inspect the service:
+When Extrittio owns the process, it supplies the equivalent arguments directly
+and does not install a system service. Inspect the router using the normal OTBR
+tools:
 
 ```bash
-sudo systemctl restart otbr-agent
-sudo systemctl status otbr-agent
 sudo ot-ctl state
 sudo ot-ctl ipaddr
 sudo ot-ctl netdata show
@@ -101,17 +115,12 @@ guide are the source of truth for host dependencies and the firmware build:
 
 ### macOS deployment
 
-The supported OTBR native installation is Linux-oriented: it installs a system
-service and configures host IPv6 forwarding, interfaces, and firewall rules.
-Docker Desktop on macOS is not a substitute because its VM does not provide the
-host networking and serial-device behavior OTBR needs.
-
-For a Mac running `extrittio run`, place the RCP dongle and OTBR on a Linux host
-on the same Ethernet/Wi-Fi network. OTBR advertises the Thread routes on that
-infrastructure network, allowing Thread devices to reach the Mac's IPv6 Zenoh
-listener. Running Extrittio and OTBR together on the Linux host is the simplest
-first setup; the Extrittio hobby binary itself remains portable to macOS and
-Linux.
+Current macOS is supported by the same hobby runtime. Connect the flashed RCP,
+then run `extrittio run --thread-required`; `en0` is used as the default
+adjacent Wi-Fi/Ethernet interface. Set `--thread-infra-interface` if the Mac
+uses a different interface. Docker Desktop remains unsuitable because its VM
+does not provide the host serial-device and network-interface behavior OTBR
+requires.
 
 ## Verify the path
 

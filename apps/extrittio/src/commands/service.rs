@@ -5,7 +5,7 @@ use extrittio_backend::{
     init as backend_init, observability,
 };
 use serde::Serialize;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::{
     args::{DatabaseArgs, DatabaseCommand, InitArgs, RunArgs, ServeArgs, ServiceConfigArgs},
@@ -39,14 +39,20 @@ pub(crate) async fn run_hobby(args: RunArgs) -> Result<()> {
     #[cfg(feature = "hobby")]
     {
         load_dotenv();
-        let data_dir = args.data_dir.unwrap_or_else(|| {
+        let data_dir = args.data_dir.clone().unwrap_or_else(|| {
             dirs::data_local_dir()
                 .map(|path| path.join("extrittio"))
                 .unwrap_or_else(|| std::path::PathBuf::from("./extrittio-data"))
         });
         let public_url = args
             .public_url
+            .clone()
             .unwrap_or_else(|| format!("http://localhost:{}", args.port));
+        let mut thread_router = start_hobby_thread_router(&args)?;
+        let zenoh_listen_host = args
+            .zenoh_listen_host
+            .clone()
+            .or_else(|| thread_router.as_ref().map(|_| "::".to_string()));
         let mut config = app_config(ServiceConfigArgs {
             database: DatabaseArgs {
                 database_backend: Some("turso".into()),
@@ -60,7 +66,7 @@ pub(crate) async fn run_hobby(args: RunArgs) -> Result<()> {
             certs_dir: None,
             zenoh_tls_enabled: None,
             zenoh_tls_port: Some(args.zenoh_port),
-            zenoh_listen_host: args.zenoh_listen_host,
+            zenoh_listen_host,
             offline_timeout_secs: None,
             command_timeout_secs: None,
             max_firmware_size_mb: None,
@@ -95,8 +101,78 @@ pub(crate) async fn run_hobby(args: RunArgs) -> Result<()> {
                 DatabaseConfig::Postgres { .. } => unreachable!(),
             }
         );
-        serve_config(config).await
+        let result = serve_config(config).await;
+        if let Some(router) = thread_router.as_mut() {
+            if let Err(error) = router.shutdown() {
+                warn!(%error, "OpenThread border-router shutdown failed");
+            }
+        }
+        result
     }
+}
+
+#[cfg(feature = "hobby")]
+fn start_hobby_thread_router(
+    args: &RunArgs,
+) -> Result<Option<extrittio_openthread_runtime::BorderRouter>> {
+    use extrittio_openthread_runtime::{
+        BorderRouter, BorderRouterConfig, default_infrastructure_interface, discover_agent,
+        discover_rcp,
+    };
+
+    if !args.thread_enabled {
+        info!("OpenThread hobby runtime disabled");
+        return Ok(None);
+    }
+
+    let rcp_discovery = match &args.thread_rcp {
+        Some(device) => Ok(Some(device.clone())),
+        None => discover_rcp(),
+    };
+    let rcp_device = match rcp_discovery {
+        Ok(Some(device)) => device,
+        Ok(None) if args.thread_required => anyhow::bail!(
+            "OpenThread is required but no unique RCP was found; pass --thread-rcp <serial-device>"
+        ),
+        Ok(None) => {
+            info!("No OpenThread RCP detected; continuing in Wi-Fi-only hobby mode");
+            return Ok(None);
+        }
+        Err(error) if args.thread_required || args.thread_rcp.is_some() => {
+            return Err(error.context("Failed to discover the OpenThread RCP"));
+        }
+        Err(error) => {
+            warn!(%error, "Unable to discover an OpenThread RCP; continuing in Wi-Fi-only hobby mode");
+            return Ok(None);
+        }
+    };
+
+    let agent_path = match discover_agent(args.thread_otbr_agent.as_deref())? {
+        Some(path) => path,
+        None if args.thread_required || args.thread_rcp.is_some() => anyhow::bail!(
+            "OpenThread RCP found at {} but bundled otbr-agent is unavailable. Set --thread-otbr-agent or EXTRITTIO_OTBR_AGENT while developing from Cargo.",
+            rcp_device.display()
+        ),
+        None => {
+            warn!(
+                rcp = %rcp_device.display(),
+                "OpenThread RCP detected but otbr-agent is unavailable; continuing in Wi-Fi-only hobby mode"
+            );
+            return Ok(None);
+        }
+    };
+
+    let config = BorderRouterConfig {
+        agent_path,
+        rcp_device,
+        baud_rate: args.thread_rcp_baud,
+        thread_interface: "wpan0".to_string(),
+        infrastructure_interface: args
+            .thread_infra_interface
+            .clone()
+            .unwrap_or_else(|| default_infrastructure_interface().to_string()),
+    };
+    BorderRouter::start(config).map(Some)
 }
 
 async fn serve_config(config: AppConfig) -> Result<()> {

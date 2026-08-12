@@ -1222,6 +1222,7 @@ dependencies = [
  "dirs",
  "dotenvy",
  "extrittio-backend",
+ "extrittio-openthread-runtime",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -1342,6 +1343,14 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "zenoh",
+]
+
+[[package]]
+name = "extrittio-openthread-runtime"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "tracing",
 ]
 
 [[package]]

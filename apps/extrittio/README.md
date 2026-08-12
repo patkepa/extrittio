@@ -58,18 +58,21 @@ extrittio run
 first-run owner as `admin` / `admin`, and starts the complete stack. Change the
 default password after signing in.
 
-To connect devices over an OpenThread mesh, run the Zenoh listener on IPv6 and
-connect it through an OpenThread Border Router (OTBR):
+The hobby binary includes OpenThread Border Router supervision. `extrittio run`
+detects one connected RCP and starts its `otbr-agent` runtime, then listens on
+IPv6. It remains Wi-Fi-only when no RCP is connected. Make Thread mandatory
+with `--thread-required`:
 
 ```bash
-ZENOH_TLS_ENABLED=true extrittio run --zenoh-listen-host ::
+extrittio run --thread-required
 ```
 
-Provision an OpenThread device with an IPv6 Zenoh locator such as
+Pass `--thread-rcp /dev/cu.usbmodem…` when auto-discovery is ambiguous, and
+`--thread-infra-interface en0` when macOS does not use its usual primary
+interface. Provision a Thread device with an IPv6 Zenoh locator such as
 `tls/[fdxx:...]:7447`. The backend receives the same Extrittio Zenoh topics and
 payloads as it does from Wi-Fi devices. See [OpenThread hobby deployment](../../docs/OPENTHREAD_HOBBY.md)
-for the nRF52840 RCP/OTBR topology, macOS and Linux deployment options, and
-verification steps.
+for RCP firmware, runtime packaging, macOS/Linux configuration, and verification.
 
 Publish a firmware binary and trigger OTA:
 
