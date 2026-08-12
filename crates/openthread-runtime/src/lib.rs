@@ -13,6 +13,7 @@ use std::{
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::{Arc, Mutex},
+    time::{Duration, Instant},
 };
 
 use anyhow::{Context, Result, bail};
@@ -31,6 +32,8 @@ pub struct BorderRouterConfig {
     pub thread_interface: String,
     /// Ethernet or Wi-Fi interface adjacent to the Extrittio host.
     pub infrastructure_interface: String,
+    /// Writable OTBR state directory, including its Thread operational dataset.
+    pub data_path: PathBuf,
 }
 
 impl BorderRouterConfig {
@@ -55,6 +58,11 @@ impl BorderRouterConfig {
             "Extrittio".into(),
             "--model-name".into(),
             "Hobby Appliance".into(),
+            // Keep agent failures with the Extrittio process logs, where they
+            // can be diagnosed without opening the platform syslog.
+            "--syslog-disable".into(),
+            "--data-path".into(),
+            self.data_path.clone().into_os_string(),
             self.radio_url().into(),
         ]
     }
@@ -126,6 +134,7 @@ pub struct ThreadRuntimeConfig {
     pub baud_rate: u32,
     pub thread_interface: String,
     pub infrastructure_interface: String,
+    pub data_path: PathBuf,
 }
 
 /// Non-secret local Thread runtime state, suitable for displaying to an
@@ -310,6 +319,7 @@ impl ThreadRuntime {
             baud_rate: self.config.baud_rate,
             thread_interface: self.config.thread_interface.clone(),
             infrastructure_interface: self.config.infrastructure_interface.clone(),
+            data_path: self.config.data_path.clone(),
         };
         match BorderRouter::start_with_controller(config, controller) {
             Ok((router, controller)) => {
@@ -497,13 +507,37 @@ impl ThreadController {
 
     fn run_locked(&self, arguments: &[&str]) -> Result<String> {
         let mut command = Command::new(&self.ot_ctl_path);
-        command.args(arguments);
+        command
+            .args(arguments)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
         if let Some(address) = &self.dbus_address {
             command.env("DBUS_SYSTEM_BUS_ADDRESS", address);
         }
-        let output = command
-            .output()
+        let mut child = command
+            .spawn()
             .with_context(|| format!("Failed to run {}", self.ot_ctl_path.display()))?;
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if child
+                .try_wait()
+                .context("Failed to inspect OpenThread command")?
+                .is_some()
+            {
+                break;
+            }
+            if Instant::now() >= deadline {
+                child
+                    .kill()
+                    .context("Failed to stop a timed-out OpenThread command")?;
+                let _ = child.wait();
+                bail!("OpenThread command timed out after 5 seconds");
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        let output = child
+            .wait_with_output()
+            .context("Failed to collect OpenThread command output")?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             bail!("OpenThread command failed: {}", stderr.trim());
@@ -558,6 +592,11 @@ impl BorderRouter {
                 config.agent_path.display()
             )
         })?;
+
+        // A number of agent configuration failures are reported just after
+        // spawn rather than synchronously. Briefly observe the child so the
+        // status endpoint does not claim a dead router is controllable.
+        std::thread::sleep(Duration::from_millis(250));
 
         if let Some(status) = child
             .try_wait()
@@ -727,6 +766,12 @@ fn validate_config(config: &BorderRouterConfig) -> Result<()> {
         bail!("OpenThread interface names must not be empty");
     }
     executable_if_present(&config.agent_path)?;
+    fs::create_dir_all(&config.data_path).with_context(|| {
+        format!(
+            "Failed to create OpenThread data directory: {}",
+            config.data_path.display()
+        )
+    })?;
     if !config.rcp_device.exists() {
         bail!(
             "OpenThread RCP device does not exist: {}",
@@ -952,6 +997,7 @@ mod tests {
             baud_rate: 460_800,
             thread_interface: "wpan0".into(),
             infrastructure_interface: "en0".into(),
+            data_path: "/tmp/extrittio-thread-test".into(),
         };
 
         assert_eq!(
@@ -969,6 +1015,9 @@ mod tests {
                 "Extrittio",
                 "--model-name",
                 "Hobby Appliance",
+                "--syslog-disable",
+                "--data-path",
+                "/tmp/extrittio-thread-test",
                 "spinel+hdlc+uart:///dev/cu.usbmodem14101?uart-baudrate=460800"
             ]
         );

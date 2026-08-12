@@ -51,11 +51,11 @@ target. It builds the embedded UI, the hobby binary, and a pinned OpenThread
 Border Router agent in the location used automatically by `extrittio run`:
 
 ```bash
-make hobby
+make install-hobby-release
 extrittio run
 ```
 
-`make install-extrittio` is an equivalent target. A direct Cargo hobby install
+Use `make install-hobby-debug` for a debug build. A direct Cargo hobby install
 is suitable for development, but does not package `otbr-agent`; pass
 `--thread-otbr-agent <path>` in that case.
 

@@ -30,7 +30,7 @@ auto-detects exactly one connected RCP, starts its `otbr-agent` child, and
 changes the Zenoh listener from its secure loopback default to IPv6. It shuts
 OTBR down with Extrittio so stale Thread routes are not left on the host.
 
-When installed with `make hobby`, Extrittio also packages the matching
+When installed with `make install-hobby-release` or `make install-hobby-debug`, Extrittio also packages the matching
 `ot-ctl` tool. The **Settings → Thread Network** panel uses that local control
 channel to show non-secret mesh status, form a new network, or import an
 existing Active Operational Dataset. Creating or importing a dataset replaces
@@ -43,10 +43,10 @@ Build the default hobby installation from the repository root. It installs
 installation root, so no separate OTBR installation is needed:
 
 ```bash
-make hobby
+make install-hobby-release
 ```
 
-`make install-extrittio` is equivalent. Override
+Use `make install-hobby-debug` for a debug build. Override
 `EXTRITTIO_INSTALL_ROOT=/path` when a different installation prefix is needed.
 
 ```bash

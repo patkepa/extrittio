@@ -30,6 +30,25 @@ OTBR_AGENT := $(OTBR_BUILD_DIR)/src/agent/otbr-agent
 # `ot-ctl` is built by OpenThread itself, which OTBR embeds as a subproject.
 OTBR_CTL := $(OTBR_BUILD_DIR)/third_party/openthread/repo/src/posix/ot-ctl
 OTBR_INSTALL_DIR := $(EXTRITTIO_INSTALL_ROOT)/libexec/extrittio
+EXTRITTIO_BIN_DIR := $(EXTRITTIO_INSTALL_ROOT)/bin
+
+# npm ci creates this lockfile inside node_modules. Using it as the Make target
+# reruns installation only after the frontend dependency inputs change (or when
+# node_modules has been removed).
+FRONTEND_NODE_MODULES := apps/frontend/node_modules/.package-lock.json
+# Keep the build marker inside dist so deleting the distribution directory also
+# invalidates the cache.
+FRONTEND_BUILD_STAMP := apps/frontend/dist/.extrittio-build-stamp
+FRONTEND_BUILD_INPUTS := \
+	$(shell find apps/frontend/src apps/frontend/public ui/packages -type f 2>/dev/null) \
+	apps/frontend/index.html \
+	apps/frontend/vite.config.ts \
+	apps/frontend/tsconfig.json \
+	apps/frontend/tsconfig.package.json \
+	ui/package.json \
+	ui/package-lock.json \
+	ui/tsconfig.json \
+	ui/tsconfig.package.json
 
 OTBR_CMAKE_OPTIONS := \
 	-DCMAKE_BUILD_TYPE=Release \
@@ -54,27 +73,41 @@ endif
 # Install the standard PostgreSQL-backed server. The frontend is not embedded
 # in this build; serve it from apps/frontend/dist or EXTRITTIO_UI_DIR.
 install-release:
-	cargo install --root "$(EXTRITTIO_INSTALL_ROOT)" --path apps/extrittio --locked
+	cargo build --release --locked -p extrittio
+	install -d "$(EXTRITTIO_BIN_DIR)"
+	install -m 0755 target/release/extrittio "$(EXTRITTIO_BIN_DIR)/extrittio"
 
 install-debug:
-	cargo install --debug --root "$(EXTRITTIO_INSTALL_ROOT)" --path apps/extrittio --locked
+	cargo build --locked -p extrittio
+	install -d "$(EXTRITTIO_BIN_DIR)"
+	install -m 0755 target/debug/extrittio "$(EXTRITTIO_BIN_DIR)/extrittio"
 
 # Build assets shared by the standalone hobby appliance. OTBR intentionally
 # stays a release CMake build for a stable host runtime in both Rust modes.
-hobby-assets:
+$(FRONTEND_NODE_MODULES): apps/frontend/package.json apps/frontend/package-lock.json apps/frontend/.npmrc
 	npm --prefix apps/frontend ci
+	test -f "$(FRONTEND_NODE_MODULES)"
+
+$(FRONTEND_BUILD_STAMP): $(FRONTEND_NODE_MODULES) $(FRONTEND_BUILD_INPUTS)
 	npm --prefix apps/frontend run build
+	touch "$(FRONTEND_BUILD_STAMP)"
+
+hobby-assets: $(FRONTEND_BUILD_STAMP)
 
 # Install the complete single-node hobby appliance, including the OpenThread
 # Border Router agent used automatically by `extrittio run`.
 install-hobby-release: hobby-assets otbr-agent
-	cargo install --root "$(EXTRITTIO_INSTALL_ROOT)" --path apps/extrittio --locked --no-default-features --features hobby
+	cargo build --release --locked -p extrittio --no-default-features --features hobby
+	install -d "$(EXTRITTIO_BIN_DIR)"
+	install -m 0755 target/release/extrittio "$(EXTRITTIO_BIN_DIR)/extrittio"
 	install -d "$(OTBR_INSTALL_DIR)"
 	install -m 0755 "$(OTBR_AGENT)" "$(OTBR_INSTALL_DIR)/otbr-agent"
 	install -m 0755 "$(OTBR_CTL)" "$(OTBR_INSTALL_DIR)/ot-ctl"
 
 install-hobby-debug: hobby-assets otbr-agent
-	cargo install --debug --root "$(EXTRITTIO_INSTALL_ROOT)" --path apps/extrittio --locked --no-default-features --features hobby
+	cargo build --locked -p extrittio --no-default-features --features hobby
+	install -d "$(EXTRITTIO_BIN_DIR)"
+	install -m 0755 target/debug/extrittio "$(EXTRITTIO_BIN_DIR)/extrittio"
 	install -d "$(OTBR_INSTALL_DIR)"
 	install -m 0755 "$(OTBR_AGENT)" "$(OTBR_INSTALL_DIR)/otbr-agent"
 	install -m 0755 "$(OTBR_CTL)" "$(OTBR_INSTALL_DIR)/ot-ctl"

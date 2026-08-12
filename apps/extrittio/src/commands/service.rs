@@ -48,7 +48,7 @@ pub(crate) async fn run_hobby(args: RunArgs) -> Result<()> {
             .public_url
             .clone()
             .unwrap_or_else(|| format!("http://localhost:{}", args.port));
-        let thread_runtime = start_hobby_thread_runtime(&args)?;
+        let thread_runtime = start_hobby_thread_runtime(&args, &data_dir)?;
         let zenoh_listen_host = args
             .zenoh_listen_host
             .clone()
@@ -108,6 +108,7 @@ pub(crate) async fn run_hobby(args: RunArgs) -> Result<()> {
 #[cfg(feature = "hobby")]
 fn start_hobby_thread_runtime(
     args: &RunArgs,
+    data_dir: &std::path::Path,
 ) -> Result<Option<std::sync::Arc<extrittio_openthread_runtime::ThreadRuntime>>> {
     use extrittio_openthread_runtime::{
         ThreadRuntime, ThreadRuntimeConfig, default_infrastructure_interface,
@@ -127,6 +128,7 @@ fn start_hobby_thread_runtime(
             .thread_infra_interface
             .clone()
             .unwrap_or_else(|| default_infrastructure_interface().to_string()),
+        data_path: data_dir.join("thread"),
     }));
     let snapshot = runtime.refresh();
     if !snapshot.available {
