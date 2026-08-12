@@ -41,6 +41,8 @@ pub mod server_metrics;
 pub mod shadows;
 #[path = "../domains/operations/system.rs"]
 pub mod system;
+#[path = "../domains/operations/thread.rs"]
+pub mod thread;
 #[path = "../domains/telemetry/telemetry.rs"]
 pub mod telemetry;
 #[path = "../domains/identity/users.rs"]
@@ -80,6 +82,7 @@ pub fn router(max_firmware_size: usize, enable_api_docs: bool) -> Router<Arc<App
         .merge(server_metrics::router())
         .merge(outbox::router())
         .merge(system::router())
+        .merge(thread::router())
         .merge(zones::router());
 
     if enable_api_docs {

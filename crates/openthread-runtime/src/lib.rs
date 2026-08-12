@@ -12,6 +12,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
+    sync::{Arc, Mutex},
 };
 
 use anyhow::{Context, Result, bail};
@@ -59,6 +60,155 @@ impl BorderRouterConfig {
 pub struct BorderRouter {
     child: Child,
     config: BorderRouterConfig,
+}
+
+/// Controlled access to the local OTBR instance.
+///
+/// `ot-ctl` is the supported OpenThread CLI client for an OTBR agent. Keeping
+/// all calls behind this type prevents the web application from ever accepting
+/// arbitrary CLI input and serializes state-changing dataset operations.
+#[derive(Clone)]
+pub struct ThreadController {
+    ot_ctl_path: PathBuf,
+    command_lock: Arc<Mutex<()>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThreadStatus {
+    pub role: Option<String>,
+    pub network_name: Option<String>,
+    pub channel: Option<u16>,
+    pub pan_id: Option<String>,
+    pub extended_pan_id: Option<String>,
+    pub mesh_local_prefix: Option<String>,
+    pub addresses: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CreateNetwork {
+    pub network_name: String,
+    pub channel: Option<u16>,
+    pub pan_id: Option<String>,
+    pub extended_pan_id: Option<String>,
+    pub network_key: Option<String>,
+}
+
+impl ThreadController {
+    /// Creates a controller for the OTBR companion binary installed beside the
+    /// agent. The binary may also be supplied explicitly for development.
+    pub fn discover(agent_path: &Path, explicit: Option<&Path>) -> Result<Option<Self>> {
+        let path = match explicit {
+            Some(path) => executable_if_present(path)?,
+            None => match discover_ctl(agent_path) {
+                Some(path) => path,
+                None => return Ok(None),
+            },
+        };
+        Ok(Some(Self {
+            ot_ctl_path: path,
+            command_lock: Arc::new(Mutex::new(())),
+        }))
+    }
+
+    #[must_use]
+    pub fn path(&self) -> &Path {
+        &self.ot_ctl_path
+    }
+
+    pub fn status(&self) -> Result<ThreadStatus> {
+        let role = single_value(&self.run(&["state"])?);
+        let dataset = self.run(&["dataset", "active"])?;
+        let addresses = self
+            .run(&["ipaddr"])?
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty() && *line != "Done")
+            .map(ToOwned::to_owned)
+            .collect();
+
+        Ok(ThreadStatus {
+            role,
+            network_name: dataset_value(&dataset, "Network Name"),
+            channel: dataset_value(&dataset, "Channel").and_then(|value| value.parse().ok()),
+            pan_id: dataset_value(&dataset, "PAN ID"),
+            extended_pan_id: dataset_value(&dataset, "Ext PAN ID"),
+            mesh_local_prefix: dataset_value(&dataset, "Mesh Local Prefix"),
+            addresses,
+        })
+    }
+
+    /// Forms a new Thread mesh. Existing devices will be detached, so callers
+    /// must obtain explicit confirmation before invoking this operation.
+    pub fn create_network(&self, network: &CreateNetwork) -> Result<()> {
+        validate_create_network(network)?;
+        let _guard = self.lock();
+        self.run_locked(&["thread", "stop"])?;
+        self.run_locked(&["ifconfig", "down"])?;
+        self.run_locked(&["dataset", "init", "new"])?;
+        self.run_locked(&["dataset", "networkname", &network.network_name])?;
+        if let Some(channel) = network.channel {
+            self.run_locked(&["dataset", "channel", &channel.to_string()])?;
+        }
+        if let Some(pan_id) = &network.pan_id {
+            self.run_locked(&["dataset", "panid", pan_id])?;
+        }
+        if let Some(extended_pan_id) = &network.extended_pan_id {
+            self.run_locked(&["dataset", "extpanid", extended_pan_id])?;
+        }
+        if let Some(network_key) = &network.network_key {
+            self.run_locked(&["dataset", "networkkey", network_key])?;
+        }
+        self.activate_locked()
+    }
+
+    /// Replaces the active dataset with a complete, hex-encoded Thread
+    /// operational dataset. The dataset is write-only and is never returned by
+    /// this API because it includes the mesh network key.
+    pub fn import_active_dataset(&self, dataset_tlvs: &str) -> Result<()> {
+        let dataset_tlvs = dataset_tlvs.trim();
+        if dataset_tlvs.len() < 4
+            || !dataset_tlvs.len().is_multiple_of(2)
+            || !dataset_tlvs.bytes().all(|byte| byte.is_ascii_hexdigit())
+        {
+            bail!("Thread operational dataset must be an even-length hexadecimal value");
+        }
+
+        let _guard = self.lock();
+        self.run_locked(&["thread", "stop"])?;
+        self.run_locked(&["ifconfig", "down"])?;
+        self.run_locked(&["dataset", "set", "active", dataset_tlvs])?;
+        self.activate_locked()
+    }
+
+    fn activate_locked(&self) -> Result<()> {
+        self.run_locked(&["dataset", "commit", "active"])?;
+        self.run_locked(&["ifconfig", "up"])?;
+        self.run_locked(&["thread", "start"])?;
+        Ok(())
+    }
+
+    fn run(&self, arguments: &[&str]) -> Result<String> {
+        let _guard = self.lock();
+        self.run_locked(arguments)
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, ()> {
+        self.command_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn run_locked(&self, arguments: &[&str]) -> Result<String> {
+        let output = Command::new(&self.ot_ctl_path)
+            .args(arguments)
+            .output()
+            .with_context(|| format!("Failed to run {}", self.ot_ctl_path.display()))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            bail!("OpenThread command failed: {}", stderr.trim());
+        }
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    }
 }
 
 impl BorderRouter {
@@ -220,6 +370,73 @@ fn find_in_path(program: &str) -> Option<PathBuf> {
             .map(|directory| directory.join(program))
             .find(|candidate| candidate.is_file())
     })
+}
+
+fn discover_ctl(agent_path: &Path) -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Some(directory) = agent_path.parent() {
+        candidates.push(directory.join("ot-ctl"));
+    }
+    candidates.extend(bundled_ctl_paths());
+    candidates.into_iter().find(|candidate| candidate.is_file())
+        .or_else(|| find_in_path("ot-ctl"))
+}
+
+fn bundled_ctl_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    if let Ok(executable) = env::current_exe()
+        && let Some(bin_dir) = executable.parent()
+    {
+        paths.push(bin_dir.join("../libexec/extrittio/ot-ctl"));
+        paths.push(bin_dir.join("ot-ctl"));
+    }
+    paths
+}
+
+fn single_value(output: &str) -> Option<String> {
+    output
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty() && *line != "Done")
+        .map(ToOwned::to_owned)
+}
+
+fn dataset_value(dataset: &str, key: &str) -> Option<String> {
+    dataset.lines().find_map(|line| {
+        line.trim()
+            .strip_prefix(key)
+            .and_then(|value| value.strip_prefix(':'))
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+    })
+}
+
+fn validate_create_network(network: &CreateNetwork) -> Result<()> {
+    let name = network.network_name.trim();
+    if name.is_empty() || name.len() > 16 || !name.is_ascii() {
+        bail!("Thread network name must be 1 to 16 ASCII characters");
+    }
+    if let Some(channel) = network.channel
+        && !(11..=26).contains(&channel)
+    {
+        bail!("Thread channel must be between 11 and 26");
+    }
+    validate_hex("Thread PAN ID", network.pan_id.as_deref(), 4)?;
+    validate_hex("Thread extended PAN ID", network.extended_pan_id.as_deref(), 16)?;
+    validate_hex("Thread network key", network.network_key.as_deref(), 32)?;
+    Ok(())
+}
+
+fn validate_hex(label: &str, value: Option<&str>, length: usize) -> Result<()> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    let value = value.trim().trim_start_matches("0x");
+    if value.len() != length || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        bail!("{label} must be {length} hexadecimal characters");
+    }
+    Ok(())
 }
 
 fn serial_candidates() -> Result<Vec<PathBuf>> {

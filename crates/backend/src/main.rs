@@ -42,7 +42,7 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
-    let state = app::boot::initialize_state(&config).await?;
+    let state = app::boot::initialize_state(&config, None).await?;
     let supervisor = app::workers::spawn_background_tasks(&config, state.clone());
     let server_result = app::http::serve(&config, state, supervisor.cancellation_token()).await;
     let worker_result = supervisor.shutdown().await;

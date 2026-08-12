@@ -19,6 +19,9 @@ use utoipa::{Modify, OpenApi};
         super::health::ready,
         // System
         super::system::get_version,
+        super::thread::get_thread_status,
+        super::thread::create_thread_network,
+        super::thread::import_thread_dataset,
         // Auth
         super::auth_routes::login,
         super::auth_routes::logout,
@@ -230,6 +233,9 @@ use utoipa::{Modify, OpenApi};
         super::health::ReadyResponse,
         // System
         super::system::SystemVersionResponse,
+        super::thread::ThreadStatusResponse,
+        super::thread::CreateThreadNetworkRequest,
+        super::thread::ImportThreadDatasetRequest,
         // Outbox
         super::outbox::RuleActionOutboxSummaryResponse,
         super::outbox::DeadLetterEventResponse,

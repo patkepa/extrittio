@@ -13,11 +13,12 @@ OTBR_REPOSITORY := https://github.com/openthread/ot-br-posix.git
 OTBR_SOURCE_DIR := target/openthread/ot-br-posix
 OTBR_BUILD_DIR := target/openthread/build
 OTBR_AGENT := $(OTBR_BUILD_DIR)/src/agent/otbr-agent
+OTBR_CTL := $(OTBR_BUILD_DIR)/src/cli/ot-ctl
 OTBR_INSTALL_DIR := $(EXTRITTIO_INSTALL_ROOT)/libexec/extrittio
 
 OTBR_CMAKE_OPTIONS := \
 	-DCMAKE_BUILD_TYPE=Release \
-	-DOTBR_DBUS=OFF \
+	-DOTBR_DBUS=ON \
 	-DOTBR_WEB=OFF \
 	-DOTBR_REST=OFF \
 	-DOTBR_NAT64=OFF \
@@ -45,13 +46,17 @@ install-extrittio: otbr-agent
 	cargo install --root "$(EXTRITTIO_INSTALL_ROOT)" --path apps/extrittio --locked --no-default-features --features hobby
 	install -d "$(OTBR_INSTALL_DIR)"
 	install -m 0755 "$(OTBR_AGENT)" "$(OTBR_INSTALL_DIR)/otbr-agent"
+	install -m 0755 "$(OTBR_CTL)" "$(OTBR_INSTALL_DIR)/ot-ctl"
 
-otbr-agent: $(OTBR_AGENT)
+otbr-agent: $(OTBR_AGENT) $(OTBR_CTL)
 
 $(OTBR_AGENT): check-otbr-source
 	cmake -S "$(OTBR_SOURCE_DIR)" -B "$(OTBR_BUILD_DIR)" $(OTBR_CMAKE_OPTIONS)
-	cmake --build "$(OTBR_BUILD_DIR)" --target otbr-agent --parallel
+	cmake --build "$(OTBR_BUILD_DIR)" --target otbr-agent ot-ctl --parallel
 	test -x "$(OTBR_AGENT)"
+	test -x "$(OTBR_CTL)"
+
+$(OTBR_CTL): $(OTBR_AGENT)
 
 check-otbr-source: $(OTBR_SOURCE_DIR)/.git
 	test "$$(git -C "$(OTBR_SOURCE_DIR)" rev-parse HEAD)" = "$(OTBR_COMMIT)"

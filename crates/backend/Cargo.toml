@@ -18,6 +18,7 @@ phase0-turso = ["turso"]
 
 [dependencies]
 extrittio-common = { version = "0.1.0", path = "../common" }
+extrittio-openthread-runtime = { version = "0.1.0", path = "../openthread-runtime" }
 axum = { version = "0.8", features = ["multipart"] }
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["rt"] }

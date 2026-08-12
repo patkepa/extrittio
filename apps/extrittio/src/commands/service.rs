@@ -25,7 +25,7 @@ pub(crate) async fn serve(args: ServeArgs) -> Result<()> {
     if args.no_ui {
         config.serve_ui = false;
     }
-    serve_config(config).await
+    serve_config(config, None).await
 }
 
 pub(crate) async fn run_hobby(args: RunArgs) -> Result<()> {
@@ -48,11 +48,11 @@ pub(crate) async fn run_hobby(args: RunArgs) -> Result<()> {
             .public_url
             .clone()
             .unwrap_or_else(|| format!("http://localhost:{}", args.port));
-        let mut thread_router = start_hobby_thread_router(&args)?;
+        let mut thread_runtime = start_hobby_thread_router(&args)?;
         let zenoh_listen_host = args
             .zenoh_listen_host
             .clone()
-            .or_else(|| thread_router.as_ref().map(|_| "::".to_string()));
+            .or_else(|| thread_runtime.as_ref().map(|_| "::".to_string()));
         let mut config = app_config(ServiceConfigArgs {
             database: DatabaseArgs {
                 database_backend: Some("turso".into()),
@@ -101,8 +101,12 @@ pub(crate) async fn run_hobby(args: RunArgs) -> Result<()> {
                 DatabaseConfig::Postgres { .. } => unreachable!(),
             }
         );
-        let result = serve_config(config).await;
-        if let Some(router) = thread_router.as_mut() {
+        let thread_controller = thread_runtime
+            .as_ref()
+            .and_then(|runtime| runtime.controller.clone());
+        let result = serve_config(config, thread_controller).await;
+        if let Some(runtime) = thread_runtime.as_mut() {
+            let router = &mut runtime.router;
             if let Err(error) = router.shutdown() {
                 warn!(%error, "OpenThread border-router shutdown failed");
             }
@@ -112,12 +116,16 @@ pub(crate) async fn run_hobby(args: RunArgs) -> Result<()> {
 }
 
 #[cfg(feature = "hobby")]
-fn start_hobby_thread_router(
-    args: &RunArgs,
-) -> Result<Option<extrittio_openthread_runtime::BorderRouter>> {
+struct HobbyThreadRuntime {
+    router: extrittio_openthread_runtime::BorderRouter,
+    controller: Option<std::sync::Arc<extrittio_openthread_runtime::ThreadController>>,
+}
+
+#[cfg(feature = "hobby")]
+fn start_hobby_thread_router(args: &RunArgs) -> Result<Option<HobbyThreadRuntime>> {
     use extrittio_openthread_runtime::{
-        BorderRouter, BorderRouterConfig, default_infrastructure_interface, discover_agent,
-        discover_rcp,
+        BorderRouter, BorderRouterConfig, ThreadController, default_infrastructure_interface,
+        discover_agent, discover_rcp,
     };
 
     if !args.thread_enabled {
@@ -163,7 +171,7 @@ fn start_hobby_thread_router(
     };
 
     let config = BorderRouterConfig {
-        agent_path,
+        agent_path: agent_path.clone(),
         rcp_device,
         baud_rate: args.thread_rcp_baud,
         thread_interface: "wpan0".to_string(),
@@ -172,14 +180,27 @@ fn start_hobby_thread_router(
             .clone()
             .unwrap_or_else(|| default_infrastructure_interface().to_string()),
     };
-    BorderRouter::start(config).map(Some)
+    let controller = ThreadController::discover(&agent_path, None)?;
+    if controller.is_none() {
+        warn!(
+            "OpenThread controller tool is unavailable; rebuild with `make hobby` to enable Thread settings"
+        );
+    }
+    let router = BorderRouter::start(config)?;
+    Ok(Some(HobbyThreadRuntime {
+        router,
+        controller: controller.map(std::sync::Arc::new),
+    }))
 }
 
-async fn serve_config(config: AppConfig) -> Result<()> {
+async fn serve_config(
+    config: AppConfig,
+    thread_controller: Option<std::sync::Arc<extrittio_openthread_runtime::ThreadController>>,
+) -> Result<()> {
     let observability = observability::init("extrittio", "extrittio=info,extrittio_backend=info")?;
     info!("Starting extrittio on port {}", config.port);
 
-    let state = app::boot::initialize_state(&config).await?;
+    let state = app::boot::initialize_state(&config, thread_controller).await?;
     let supervisor = app::workers::spawn_background_tasks(&config, state.clone());
     let server_result = app::http::serve(&config, state, supervisor.cancellation_token()).await;
     let worker_result = supervisor.shutdown().await;
