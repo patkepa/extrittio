@@ -103,7 +103,7 @@ fn ingress(record: &Row) -> Result<DeviceIngressContext, PersistenceError> {
     })
 }
 
-async fn enqueue(
+pub(super) async fn enqueue(
     connection: &Connection,
     actions: &[PendingAction],
 ) -> Result<usize, PersistenceError> {

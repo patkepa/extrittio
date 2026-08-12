@@ -1,8 +1,10 @@
 mod api_keys;
+mod audit;
 mod bootstrap;
 mod certificates;
 mod commands;
 mod configuration;
+mod dashboard;
 mod database;
 mod device_types;
 mod devices;
@@ -11,6 +13,7 @@ mod logs;
 mod roles;
 mod row;
 mod shadows;
+mod telemetry;
 mod users;
 
 use std::sync::Arc;
@@ -37,6 +40,8 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::domains::commands::port::CommandRepository;
+    use crate::domains::commands::types::NewCommandRecord;
     use crate::domains::configuration::repository::DeviceConfigRepository;
     use crate::domains::configuration::types::MergeDeviceConfigOutcome;
     use crate::domains::device_types::repository::DeviceTypeRepository;
@@ -53,7 +58,10 @@ mod tests {
     };
     use crate::domains::identity::user_repository::UserRepository;
     use crate::domains::identity::user_types::{CreateUserOutcome, CreateUserRecord};
+    use crate::domains::logs::port::LogRepository;
     use crate::domains::shadows::repository::ShadowRepository;
+    use crate::domains::telemetry::port::TelemetryRepository;
+    use crate::domains::telemetry::types::{TelemetryQuery, TelemetryWrite};
     use crate::persistence::{BootstrapOwner, BootstrapRepository, BuiltinDeviceType};
     use crate::tenancy::{DEFAULT_TENANT_ID, TenantId};
 
@@ -194,6 +202,78 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(shadow.version, 2);
+
+        let identity = crate::tenancy::DeviceIdentity::new(tenant.as_str(), "device-1").unwrap();
+        assert!(
+            LogRepository::record(&adapter, &identity, "INFO".into(), "ready".into())
+                .await
+                .unwrap()
+        );
+        assert!(
+            CommandRepository::create(
+                &adapter,
+                &tenant,
+                "device-1",
+                NewCommandRecord {
+                    id: "command-1".into(),
+                    command: "reboot".into(),
+                    params: "{}".into(),
+                },
+            )
+            .await
+            .unwrap()
+            .is_some()
+        );
+        let observed_at = Utc::now().naive_utc();
+        let telemetry = TelemetryRepository::record(
+            &adapter,
+            &identity,
+            TelemetryWrite {
+                expected_device_type_id: device_type.id,
+                expected_fleet_id: Some(fleet.id),
+                payload: vec![1, 2, 3],
+                temperature: Some(21.5),
+                humidity: Some(45.0),
+                battery_level: Some(90.0),
+                custom_json: Some(json!({"kind": "sample"})),
+                latitude: Some(52.0),
+                longitude: Some(21.0),
+                speed: None,
+                altitude: None,
+                heading: None,
+                declared_connections: None,
+                observed_network_hosts: None,
+                pending_actions: Vec::new(),
+                observed_at,
+            },
+        )
+        .await
+        .unwrap();
+        assert!(telemetry.recorded);
+        let samples = TelemetryRepository::list(
+            &adapter,
+            &tenant,
+            "device-1",
+            TelemetryQuery {
+                since: None,
+                before: None,
+                limit: 10,
+            },
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(samples.len(), 1);
+        assert_eq!(samples[0].temperature, Some(21.5));
+        let maintenance = TelemetryRepository::maintain(
+            &adapter,
+            observed_at - chrono::Duration::hours(1),
+            observed_at + chrono::Duration::hours(1),
+            observed_at - chrono::Duration::days(1),
+        )
+        .await
+        .unwrap();
+        assert_eq!(maintenance.rollups_upserted, 1);
 
         let ca = adapter
             .insert_ca_if_absent(NewCaCertificateRecord {
