@@ -600,7 +600,10 @@ impl NativeBonjourRegistration {
         // `dns-sd -P` is Apple's supported custom-host registration interface.
         // It atomically publishes PTR/SRV/TXT/AAAA records for the Thread ULA;
         // macOS 26 rejects the corresponding low-level record sequence.
-        let port = service.port.to_string();
+        // `dns-sd -P` passes its numeric port argument directly to the C
+        // API, whose port parameter is network byte order. Convert here so a
+        // configured 7447 is published as 7447 rather than byte-swapped 5917.
+        let port = service.port.to_be().to_string();
         let host = format!("{}.local.", service.instance_name);
         let address = address.to_string();
         let child = Command::new("/usr/bin/dns-sd")
