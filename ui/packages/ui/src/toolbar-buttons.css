@@ -1,0 +1,153 @@
+.bp6-button.panel-toolbar-button {
+  min-height: 34px;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid hsla(0, 0%, 100%, 0.08) !important;
+  border-radius: 0 !important;
+  background: hsla(0, 0%, 0%, 0.34) !important;
+  box-shadow: none !important;
+  color: hsl(var(--foreground)) !important;
+  font-size: 12px;
+  font-weight: 600;
+  justify-content: center;
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease;
+}
+
+.bp6-button.panel-toolbar-button:hover {
+  border-color: hsla(0, 0%, 100%, 0.14) !important;
+  background: hsla(0, 0%, 0%, 0.52) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+.bp6-button.panel-toolbar-button:active {
+  border-color: hsla(0, 0%, 100%, 0.18) !important;
+  background: hsla(0, 0%, 0%, 0.68) !important;
+}
+
+.bp6-button.panel-toolbar-button:focus,
+.bp6-button.panel-toolbar-button:focus-visible,
+.bp6-button.panel-toolbar-switch:focus,
+.bp6-button.panel-toolbar-switch:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.bp6-button.panel-toolbar-button:disabled,
+.bp6-button.panel-toolbar-button.bp6-disabled {
+  border-color: hsla(0, 0%, 100%, 0.04) !important;
+  background: hsla(0, 0%, 0%, 0.18) !important;
+  color: hsl(var(--muted)) !important;
+  opacity: 0.58;
+}
+
+.bp6-button.panel-toolbar-button .bp6-icon {
+  color: inherit !important;
+}
+
+.bp6-button.panel-toolbar-button--icon {
+  width: 36px;
+  min-width: 36px;
+  padding: 0;
+}
+
+.bp6-button.panel-toolbar-button--wide {
+  min-width: 136px;
+}
+
+.bp6-button.panel-toolbar-switch {
+  position: relative;
+  overflow: hidden;
+  width: 36px;
+  min-width: 36px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  border: 1px solid hsla(0, 0%, 100%, 0.42) !important;
+  border-radius: 0 !important;
+  background: hsla(0, 0%, 0%, 0.48) !important;
+  box-shadow: none !important;
+  color: hsla(0, 0%, 100%, 0.62) !important;
+  justify-content: center;
+  opacity: 1;
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease,
+    opacity 0.12s ease;
+}
+
+.bp6-button.panel-toolbar-switch:hover {
+  border-color: hsla(0, 0%, 100%, 0.58) !important;
+  background: hsla(0, 0%, 0%, 0.64) !important;
+  color: hsla(0, 0%, 100%, 0.76) !important;
+}
+
+.bp6-button.panel-toolbar-switch--off {
+  border-color: hsla(0, 0%, 100%, 0.12) !important;
+  background: transparent !important;
+  color: hsla(0, 0%, 100%, 0.12) !important;
+  opacity: 1;
+}
+
+.bp6-button.panel-toolbar-switch--off:hover {
+  border-color: hsla(0, 0%, 100%, 0.18) !important;
+  background: hsla(0, 0%, 100%, 0.02) !important;
+  color: hsla(0, 0%, 100%, 0.18) !important;
+  opacity: 1;
+}
+
+.bp6-button.panel-toolbar-switch--off::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 48px;
+  height: 1px;
+  border-radius: 0;
+  background: hsla(0, 0%, 100%, 0.12);
+  opacity: 1;
+  transform: translate(-50%, -50%) rotate(43deg);
+  transform-origin: center;
+  pointer-events: none;
+}
+
+.bp6-button.panel-toolbar-switch .bp6-icon {
+  color: inherit !important;
+}
+
+.bp6-button.panel-toolbar-switch--off:hover::after {
+  background: hsla(0, 0%, 100%, 0.18);
+}
+
+.panel-toolbar-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 220px;
+  padding: 2px 0;
+}
+
+.bp6-tooltip.panel-toolbar-tooltip-popover .bp6-popover-content,
+.bp6-tooltip.panel-toolbar-tooltip-popover.bp6-minimal .bp6-popover-content {
+  border: 1px solid hsla(0, 0%, 100%, 0.18) !important;
+  border-radius: 0 !important;
+  background-color: #000000 !important;
+  box-shadow: none !important;
+  color: #ffffff !important;
+}
+
+.panel-toolbar-tooltip-title {
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.panel-toolbar-tooltip-description {
+  color: hsla(0, 0%, 100%, 0.72);
+  font-size: 11px;
+  line-height: 1.35;
+}

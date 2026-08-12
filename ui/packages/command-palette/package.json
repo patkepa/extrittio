@@ -1,0 +1,52 @@
+{
+  "name": "@extrittio/command-palette",
+  "version": "0.1.0",
+  "description": "Reusable Extrittio command palette shell built around cmdk.",
+  "license": "MIT",
+  "homepage": "https://github.com/extrittio/ui/tree/main/packages/command-palette#readme",
+  "bugs": {
+    "url": "https://github.com/extrittio/ui/issues"
+  },
+  "keywords": [
+    "extrittio",
+    "react",
+    "command-palette",
+    "cmdk",
+    "keyboard"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": [
+    "*.css"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./styles.css": "./dist/command-palette.css"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && cp src/command-palette.css dist/command-palette.css"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/extrittio/ui.git",
+    "directory": "packages/command-palette"
+  },
+  "peerDependencies": {
+    "@blueprintjs/core": "^6.3.2",
+    "cmdk": "^1.1.1",
+    "react": "^18.3.1"
+  }
+}

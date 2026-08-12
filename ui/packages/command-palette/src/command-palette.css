@@ -1,0 +1,267 @@
+/* Command Palette - cmdk + Radix Dialog overlay */
+
+/* Radix overlay backdrop */
+[cmdk-overlay] {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 50;
+  animation: cmdk-overlay-show 150ms ease;
+}
+
+@keyframes cmdk-overlay-show {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Dialog content wrapper, aligned near the navbar */
+[cmdk-dialog] {
+  position: fixed;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 720px;
+  max-width: calc(100vw - 32px);
+  z-index: 51;
+  animation: cmdk-dialog-show 150ms ease;
+}
+
+@keyframes cmdk-dialog-show {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
+}
+
+/* Root command container */
+[cmdk-root] {
+  --cmdk-surface: var(--navbar-bg, #060606);
+  --cmdk-border: var(--site-navbar-border, hsla(0, 0%, 100%, 0.12));
+  --cmdk-border-strong: var(
+    --site-navbar-border-strong,
+    hsla(0, 0%, 100%, 0.2)
+  );
+  --cmdk-hover-bg: hsla(0, 0%, 100%, 0.06);
+  --cmdk-active-bg: hsla(0, 0%, 100%, 0.1);
+
+  color: hsl(var(--foreground));
+  background: var(--cmdk-surface);
+  border: 1px solid var(--cmdk-border);
+  border-radius: 0;
+  overflow: hidden;
+  box-shadow: 0 22px 54px rgba(0, 0, 0, 0.52);
+}
+
+/* ── Search input row ── */
+.cmdk-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--cmdk-border);
+  background-color: var(--cmdk-surface);
+}
+
+.cmdk-input-wrapper .bp6-icon {
+  color: hsl(var(--muted));
+  flex-shrink: 0;
+}
+
+[cmdk-input] {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 14px;
+  font-weight: 560;
+  color: hsl(var(--foreground));
+  caret-color: hsl(var(--foreground));
+  font-family: inherit;
+  letter-spacing: 0;
+}
+
+[cmdk-input]::placeholder {
+  color: hsl(var(--muted));
+}
+
+.cmdk-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: 700;
+  color: hsl(var(--muted));
+  background: hsla(0, 0%, 100%, 0.04);
+  border: 1px solid var(--cmdk-border);
+  border-radius: 2px;
+  padding: 3px 6px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+/* ── Results list ── */
+[cmdk-list] {
+  max-height: 420px;
+  overflow-y: auto;
+  padding: 8px;
+  scroll-padding: 8px;
+  background-color: var(--cmdk-surface);
+}
+
+/* Group headings */
+[cmdk-group-heading] {
+  font-size: 10px;
+  font-weight: 760;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: hsl(var(--muted));
+  padding: 10px 8px 6px;
+  user-select: none;
+}
+
+/* Individual items */
+[cmdk-item] {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 9px 10px 9px 13px;
+  border: 1px solid transparent;
+  border-radius: 0;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 620;
+  color: hsl(var(--foreground));
+  user-select: none;
+  outline: none;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    color 0.15s ease;
+}
+
+[cmdk-item]::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  background-color: hsl(var(--foreground));
+  opacity: 0;
+  transform: scaleY(0.5);
+  transform-origin: center;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
+
+[cmdk-item][data-selected="true"] {
+  border-color: hsla(0, 0%, 100%, 0.1);
+  background-color: var(--cmdk-hover-bg);
+  box-shadow:
+    0 1px 0 hsla(0, 0%, 100%, 0.04) inset,
+    0 -1px 0 rgba(0, 0, 0, 0.24) inset;
+}
+
+[cmdk-item][data-selected="true"]::before {
+  opacity: 0.9;
+  transform: scaleY(1);
+}
+
+[cmdk-item]:active {
+  background-color: var(--cmdk-active-bg);
+}
+
+[cmdk-item] .bp6-icon {
+  color: hsl(var(--muted));
+  flex-shrink: 0;
+}
+
+[cmdk-item][data-selected="true"] .bp6-icon {
+  color: hsl(var(--foreground));
+}
+
+/* Item layout helpers */
+.cmdk-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cmdk-item-meta {
+  font-size: 11px;
+  font-weight: 500;
+  color: hsl(var(--muted));
+  flex-shrink: 0;
+  letter-spacing: 0;
+}
+
+/* Compact status LED inside command palette */
+.cmdk-status-led {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+}
+
+/* Empty state */
+[cmdk-empty] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  font-size: 14px;
+  color: hsl(var(--muted));
+}
+
+/* Separator */
+[cmdk-separator] {
+  height: 1px;
+  background: var(--cmdk-border);
+  margin: 4px 8px;
+}
+
+/* Scrollbar inside list */
+[cmdk-list]::-webkit-scrollbar {
+  width: 6px;
+}
+
+[cmdk-list]::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+[cmdk-list]::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted) / 0.3);
+  border-radius: 0;
+}
+
+@media (max-width: 640px) {
+  [cmdk-dialog] {
+    top: 56px;
+    max-width: calc(100vw - 16px);
+  }
+
+  [cmdk-list] {
+    max-height: calc(100vh - 140px);
+  }
+
+  .cmdk-input-wrapper {
+    padding: 0 12px;
+  }
+}
