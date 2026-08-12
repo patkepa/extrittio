@@ -48,7 +48,7 @@ pub(crate) async fn run_hobby(args: RunArgs) -> Result<()> {
             .public_url
             .clone()
             .unwrap_or_else(|| format!("http://localhost:{}", args.port));
-        let mut thread_runtime = start_hobby_thread_router(&args)?;
+        let thread_runtime = start_hobby_thread_runtime(&args)?;
         let zenoh_listen_host = args
             .zenoh_listen_host
             .clone()
@@ -101,31 +101,16 @@ pub(crate) async fn run_hobby(args: RunArgs) -> Result<()> {
                 DatabaseConfig::Postgres { .. } => unreachable!(),
             }
         );
-        let thread_controller = thread_runtime
-            .as_ref()
-            .and_then(|runtime| runtime.controller.clone());
-        let result = serve_config(config, thread_controller).await;
-        if let Some(runtime) = thread_runtime.as_mut() {
-            let router = &mut runtime.router;
-            if let Err(error) = router.shutdown() {
-                warn!(%error, "OpenThread border-router shutdown failed");
-            }
-        }
-        result
+        serve_config(config, thread_runtime).await
     }
 }
 
 #[cfg(feature = "hobby")]
-struct HobbyThreadRuntime {
-    router: extrittio_openthread_runtime::BorderRouter,
-    controller: Option<std::sync::Arc<extrittio_openthread_runtime::ThreadController>>,
-}
-
-#[cfg(feature = "hobby")]
-fn start_hobby_thread_router(args: &RunArgs) -> Result<Option<HobbyThreadRuntime>> {
+fn start_hobby_thread_runtime(
+    args: &RunArgs,
+) -> Result<Option<std::sync::Arc<extrittio_openthread_runtime::ThreadRuntime>>> {
     use extrittio_openthread_runtime::{
-        BorderRouter, BorderRouterConfig, ThreadController, default_infrastructure_interface,
-        discover_agent, discover_rcp,
+        ThreadRuntime, ThreadRuntimeConfig, default_infrastructure_interface,
     };
 
     if !args.thread_enabled {
@@ -133,78 +118,38 @@ fn start_hobby_thread_router(args: &RunArgs) -> Result<Option<HobbyThreadRuntime
         return Ok(None);
     }
 
-    let rcp_discovery = match &args.thread_rcp {
-        Some(device) => Ok(Some(device.clone())),
-        None => discover_rcp(),
-    };
-    let rcp_device = match rcp_discovery {
-        Ok(Some(device)) => device,
-        Ok(None) if args.thread_required => anyhow::bail!(
-            "OpenThread is required but no unique RCP was found; pass --thread-rcp <serial-device>"
-        ),
-        Ok(None) => {
-            info!("No OpenThread RCP detected; continuing in Wi-Fi-only hobby mode");
-            return Ok(None);
-        }
-        Err(error) if args.thread_required || args.thread_rcp.is_some() => {
-            return Err(error.context("Failed to discover the OpenThread RCP"));
-        }
-        Err(error) => {
-            warn!(%error, "Unable to discover an OpenThread RCP; continuing in Wi-Fi-only hobby mode");
-            return Ok(None);
-        }
-    };
-
-    let agent_path = match discover_agent(args.thread_otbr_agent.as_deref())? {
-        Some(path) => path,
-        None if args.thread_required || args.thread_rcp.is_some() => anyhow::bail!(
-            "OpenThread RCP found at {} but bundled otbr-agent is unavailable. Set --thread-otbr-agent or EXTRITTIO_OTBR_AGENT while developing from Cargo.",
-            rcp_device.display()
-        ),
-        None => {
-            warn!(
-                rcp = %rcp_device.display(),
-                "OpenThread RCP detected but otbr-agent is unavailable; continuing in Wi-Fi-only hobby mode"
-            );
-            return Ok(None);
-        }
-    };
-
-    let config = BorderRouterConfig {
-        agent_path: agent_path.clone(),
-        rcp_device,
+    let runtime = std::sync::Arc::new(ThreadRuntime::new(ThreadRuntimeConfig {
+        rcp_device: args.thread_rcp.clone(),
+        agent_path: args.thread_otbr_agent.clone(),
         baud_rate: args.thread_rcp_baud,
         thread_interface: "wpan0".to_string(),
         infrastructure_interface: args
             .thread_infra_interface
             .clone()
             .unwrap_or_else(|| default_infrastructure_interface().to_string()),
-    };
-    let Some(controller) = ThreadController::discover(&agent_path, None)? else {
-        warn!(
-            "OpenThread controller tool is unavailable; rebuild with `make hobby` to enable Thread settings"
-        );
-        let router = BorderRouter::start(config)?;
-        return Ok(Some(HobbyThreadRuntime {
-            router,
-            controller: None,
-        }));
-    };
-    let (router, controller) = BorderRouter::start_with_controller(config, controller)?;
-    Ok(Some(HobbyThreadRuntime {
-        router,
-        controller: Some(std::sync::Arc::new(controller)),
-    }))
+    }));
+    let snapshot = runtime.refresh();
+    if !snapshot.available {
+        let message = snapshot
+            .message
+            .as_deref()
+            .unwrap_or("Thread runtime is unavailable");
+        if args.thread_required {
+            anyhow::bail!("OpenThread is required but unavailable: {message}");
+        }
+        warn!(%message, "OpenThread runtime is waiting for an RCP");
+    }
+    Ok(Some(runtime))
 }
 
 async fn serve_config(
     config: AppConfig,
-    thread_controller: Option<std::sync::Arc<extrittio_openthread_runtime::ThreadController>>,
+    thread_runtime: Option<std::sync::Arc<extrittio_openthread_runtime::ThreadRuntime>>,
 ) -> Result<()> {
     let observability = observability::init("extrittio", "extrittio=info,extrittio_backend=info")?;
     info!("Starting extrittio on port {}", config.port);
 
-    let state = app::boot::initialize_state(&config, thread_controller).await?;
+    let state = app::boot::initialize_state(&config, thread_runtime).await?;
     let supervisor = app::workers::spawn_background_tasks(&config, state.clone());
     let server_result = app::http::serve(&config, state, supervisor.cancellation_token()).await;
     let worker_result = supervisor.shutdown().await;

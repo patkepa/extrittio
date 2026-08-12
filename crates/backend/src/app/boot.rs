@@ -13,7 +13,7 @@ use crate::state::{AppState, MetricsAccumulator, ReadinessRegistry, ZenohMetrics
 /// Initialize infrastructure and shared application state.
 pub async fn initialize_state(
     config: &AppConfig,
-    thread_controller: Option<Arc<extrittio_openthread_runtime::ThreadController>>,
+    thread_runtime: Option<Arc<extrittio_openthread_runtime::ThreadRuntime>>,
 ) -> anyhow::Result<Arc<AppState>> {
     let persistence = crate::persistence::factory::create(&config.database).await?;
     info!(
@@ -118,6 +118,6 @@ pub async fn initialize_state(
         http_client,
         firmware_store,
         readiness: Arc::new(ReadinessRegistry::new(true, true)),
-        thread_controller,
+        thread_runtime,
     }))
 }

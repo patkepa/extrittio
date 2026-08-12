@@ -7421,6 +7421,12 @@
               "null"
             ]
           },
+          "rcp_device": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "role": {
             "type": [
               "string",

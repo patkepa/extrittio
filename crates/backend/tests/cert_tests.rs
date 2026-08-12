@@ -122,7 +122,7 @@ async fn setup_app_with_ca() -> (axum::Router, Pool<ConnectionManager<PgConnecti
         firmware_store: extrittio_backend::domains::firmware_store::FirmwareObjectStore::in_memory(
         ),
         readiness: Arc::new(extrittio_backend::state::ReadinessRegistry::new(true, true)),
-        thread_controller: None,
+        thread_runtime: None,
     });
 
     let router = extrittio_backend::api::router(100 * 1024 * 1024, true)

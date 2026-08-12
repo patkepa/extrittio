@@ -11,7 +11,10 @@ use axum::{
     extract::State,
     routing::{get, post, put},
 };
-use extrittio_openthread_runtime::{CreateNetwork, ThreadController, ThreadNetwork, ThreadStatus};
+use extrittio_openthread_runtime::{
+    CreateNetwork, ThreadController, ThreadNetwork, ThreadRuntime, ThreadRuntimeSnapshot,
+    ThreadStatus,
+};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -23,6 +26,7 @@ pub struct ThreadStatusResponse {
     pub available: bool,
     pub connected: bool,
     pub error: Option<String>,
+    pub rcp_device: Option<String>,
     pub role: Option<String>,
     pub network_name: Option<String>,
     pub channel: Option<u16>,
@@ -69,6 +73,10 @@ pub struct ThreadNetworkScanResponse {
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/api/v1/system/thread", get(get_thread_status))
+        .route(
+            "/api/v1/system/thread/refresh",
+            post(refresh_thread_runtime),
+        )
         .route("/api/v1/system/thread/scan", post(scan_thread_networks))
         .route("/api/v1/system/thread/network", post(create_thread_network))
         .route("/api/v1/system/thread/dataset", put(import_thread_dataset))
@@ -115,15 +123,36 @@ pub(crate) async fn get_thread_status(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ThreadStatusResponse>, AppError> {
     require_owner(&ctx)?;
-    let Some(controller) = state.thread_controller.clone() else {
+    let Some(runtime) = state.thread_runtime.clone() else {
         return Ok(Json(ThreadStatusResponse::unavailable()));
     };
 
-    let response = match run_blocking(controller, |controller| controller.status()).await {
-        Ok(status) => ThreadStatusResponse::connected(status),
-        Err(error) => ThreadStatusResponse::failed(error),
+    Ok(Json(thread_status(runtime).await))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/system/thread/refresh",
+    tag = "system",
+    security(("bearer_auth" = [])),
+    responses(
+        (status = 200, description = "Refreshed local Thread border-router status", body = ThreadStatusResponse),
+        (status = 403, description = "Owner access required"),
+    ),
+)]
+pub(crate) async fn refresh_thread_runtime(
+    Extension(ctx): Extension<RequestContext>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<ThreadStatusResponse>, AppError> {
+    require_owner(&ctx)?;
+    let Some(runtime) = state.thread_runtime.clone() else {
+        return Ok(Json(ThreadStatusResponse::unavailable()));
     };
-    Ok(Json(response))
+    let refreshed_runtime = runtime.clone();
+    tokio::task::spawn_blocking(move || refreshed_runtime.refresh())
+        .await
+        .map_err(|error| AppError::Internal(format!("Thread refresh task failed: {error}")))?;
+    Ok(Json(thread_status(runtime).await))
 }
 
 #[utoipa::path(
@@ -193,6 +222,7 @@ impl ThreadStatusResponse {
             available: false,
             connected: false,
             error: None,
+            rcp_device: None,
             role: None,
             network_name: None,
             channel: None,
@@ -203,11 +233,22 @@ impl ThreadStatusResponse {
         }
     }
 
-    fn connected(status: ThreadStatus) -> Self {
+    fn unavailable_runtime(snapshot: ThreadRuntimeSnapshot) -> Self {
+        Self {
+            error: snapshot.message,
+            rcp_device: snapshot
+                .rcp_device
+                .map(|device| device.display().to_string()),
+            ..Self::unavailable()
+        }
+    }
+
+    fn connected(status: ThreadStatus, rcp_device: Option<String>) -> Self {
         Self {
             available: true,
             connected: true,
             error: None,
+            rcp_device,
             role: status.role,
             network_name: status.network_name,
             channel: status.channel,
@@ -251,19 +292,42 @@ fn require_owner(ctx: &RequestContext) -> Result<(), AppError> {
 }
 
 fn controller(state: &AppState) -> Result<Arc<ThreadController>, AppError> {
-    state.thread_controller.clone().ok_or_else(|| {
-        AppError::Conflict(
-            "The local OpenThread border router is unavailable. Connect an RCP and start the hobby appliance with Thread enabled."
+    let Some(runtime) = state.thread_runtime.as_ref() else {
+        return Err(AppError::Conflict(
+            "The local OpenThread border router is unavailable. Connect an RCP and refresh Thread settings."
                 .to_string(),
+        ));
+    };
+    runtime.controller().ok_or_else(|| {
+        let snapshot = runtime.snapshot();
+        AppError::Conflict(
+            snapshot.message.unwrap_or_else(|| {
+                "The local OpenThread border router is unavailable. Connect an RCP and refresh Thread settings."
+                    .to_string()
+            }),
         )
     })
+}
+
+async fn thread_status(runtime: Arc<ThreadRuntime>) -> ThreadStatusResponse {
+    let snapshot = runtime.snapshot();
+    let Some(controller) = runtime.controller() else {
+        return ThreadStatusResponse::unavailable_runtime(snapshot);
+    };
+    let rcp_device = snapshot
+        .rcp_device
+        .map(|device| device.display().to_string());
+    match run_blocking(controller, |controller| controller.status()).await {
+        Ok(status) => ThreadStatusResponse::connected(status, rcp_device),
+        Err(error) => ThreadStatusResponse::failed(error),
+    }
 }
 
 async fn status_after_change(
     controller: Arc<ThreadController>,
 ) -> Result<ThreadStatusResponse, AppError> {
     let status = run_blocking(controller, |controller| controller.status()).await?;
-    Ok(ThreadStatusResponse::connected(status))
+    Ok(ThreadStatusResponse::connected(status, None))
 }
 
 async fn run_blocking<T, F>(controller: Arc<ThreadController>, operation: F) -> Result<T, AppError>

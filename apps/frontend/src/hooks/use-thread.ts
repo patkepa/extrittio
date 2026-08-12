@@ -3,6 +3,7 @@ import {
   createThreadNetwork,
   getThreadStatus,
   importThreadDataset,
+  refreshThreadRuntime,
   scanThreadNetworks,
 } from '../api/thread';
 import type { CreateThreadNetworkRequest, ImportThreadDatasetRequest } from '../types/api';
@@ -21,6 +22,17 @@ export function useThreadNetworkScan() {
   return useMutation({
     mutationKey: queryKeys.thread.scan,
     mutationFn: scanThreadNetworks,
+  });
+}
+
+export function useThreadRuntimeRefresh() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: queryKeys.thread.refresh,
+    mutationFn: refreshThreadRuntime,
+    onSuccess: (status) => {
+      queryClient.setQueryData(queryKeys.thread.status, status);
+    },
   });
 }
 

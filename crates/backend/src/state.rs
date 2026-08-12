@@ -152,9 +152,9 @@ pub struct AppState {
     pub http_client: reqwest::Client,
     pub firmware_store: crate::domains::firmware_store::FirmwareObjectStore,
     pub readiness: Arc<ReadinessRegistry>,
-    /// Host-local Thread radio control. Present only for a hobby appliance
-    /// that successfully started OTBR with its RCP attached.
-    pub thread_controller: Option<Arc<extrittio_openthread_runtime::ThreadController>>,
+    /// Host-local Thread runtime. It can rediscover an RCP connected after
+    /// the hobby appliance has started.
+    pub thread_runtime: Option<Arc<extrittio_openthread_runtime::ThreadRuntime>>,
 }
 
 use std::collections::BTreeMap;

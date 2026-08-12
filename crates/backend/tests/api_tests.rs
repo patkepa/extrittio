@@ -114,7 +114,7 @@ async fn setup_app_with_context(
         firmware_store: extrittio_backend::domains::firmware_store::FirmwareObjectStore::in_memory(
         ),
         readiness: Arc::new(extrittio_backend::state::ReadinessRegistry::new(true, true)),
-        thread_controller: None,
+        thread_runtime: None,
     });
 
     let app = extrittio_backend::api::router(100 * 1024 * 1024, true)
@@ -1141,7 +1141,7 @@ async fn test_ci_ingest_success() {
         firmware_store: extrittio_backend::domains::firmware_store::FirmwareObjectStore::in_memory(
         ),
         readiness: Arc::new(extrittio_backend::state::ReadinessRegistry::new(true, true)),
-        thread_controller: None,
+        thread_runtime: None,
     });
 
     let app = extrittio_backend::api::router(100 * 1024 * 1024, true).with_state(state);

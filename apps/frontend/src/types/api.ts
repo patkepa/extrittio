@@ -235,6 +235,7 @@ export interface ThreadStatus {
   available: boolean;
   connected: boolean;
   error: string | null;
+  rcp_device: string | null;
   role: string | null;
   network_name: string | null;
   channel: number | null;

@@ -17,6 +17,7 @@ import {
   useCreateThreadNetwork,
   useImportThreadDataset,
   useThreadNetworkScan,
+  useThreadRuntimeRefresh,
   useThreadStatus,
 } from '../../hooks/use-thread';
 import type { ThreadNetwork, ThreadStatus } from '../../types/api';
@@ -39,6 +40,7 @@ export function ThreadSettings() {
   const createMutation = useCreateThreadNetwork();
   const importMutation = useImportThreadDataset();
   const scanMutation = useThreadNetworkScan();
+  const refreshMutation = useThreadRuntimeRefresh();
   const status = statusQuery.data;
 
   const submit = () => {
@@ -97,8 +99,14 @@ export function ThreadSettings() {
         <Button
           icon="refresh"
           minimal
-          loading={statusQuery.isFetching}
-          onClick={() => statusQuery.refetch()}
+          loading={statusQuery.isFetching || refreshMutation.isPending}
+          onClick={() => {
+            refreshMutation.mutate(undefined, {
+              onError: () => {
+                void showErrorToast('Unable to refresh the Thread runtime');
+              },
+            });
+          }}
         >
           Refresh
         </Button>
@@ -112,8 +120,8 @@ export function ThreadSettings() {
         </Callout>
       ) : !status?.available ? (
         <Callout intent="warning" icon="warning-sign">
-          No controllable OpenThread border router is running. Connect an RCP and start Extrittio
-          with its hobby Thread runtime enabled.
+          {status?.error ??
+            'No controllable OpenThread border router is running. Connect an RCP and refresh this page.'}
         </Callout>
       ) : (
         <div className="settings-content">

@@ -2102,6 +2102,7 @@ export interface components {
             mesh_local_prefix?: string | null;
             network_name?: string | null;
             pan_id?: string | null;
+            rcp_device?: string | null;
             role?: string | null;
         };
         TriggerOtaRequest: {

@@ -51,6 +51,10 @@ impl BorderRouterConfig {
             self.thread_interface.clone().into(),
             "-B".into(),
             self.infrastructure_interface.clone().into(),
+            "--vendor-name".into(),
+            "Extrittio".into(),
+            "--model-name".into(),
+            "Hobby Appliance".into(),
             self.radio_url().into(),
         ]
     }
@@ -111,6 +115,267 @@ pub struct ThreadNetwork {
     pub channel: u16,
     pub rssi: i16,
     pub lqi: u8,
+}
+
+/// Configuration used to discover and supervise a local Thread border router
+/// after the application has started.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThreadRuntimeConfig {
+    pub rcp_device: Option<PathBuf>,
+    pub agent_path: Option<PathBuf>,
+    pub baud_rate: u32,
+    pub thread_interface: String,
+    pub infrastructure_interface: String,
+}
+
+/// Non-secret local Thread runtime state, suitable for displaying to an
+/// appliance owner.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThreadRuntimeSnapshot {
+    pub available: bool,
+    pub rcp_device: Option<PathBuf>,
+    pub message: Option<String>,
+}
+
+impl ThreadRuntimeSnapshot {
+    #[must_use]
+    pub fn unavailable(message: impl Into<String>) -> Self {
+        Self {
+            available: false,
+            rcp_device: None,
+            message: Some(message.into()),
+        }
+    }
+
+    #[must_use]
+    pub fn ready(rcp_device: PathBuf) -> Self {
+        Self {
+            available: true,
+            rcp_device: Some(rcp_device),
+            message: None,
+        }
+    }
+}
+
+/// Owns an OTBR instance and can discover a newly attached RCP on demand.
+///
+/// Refreshing is intentionally explicit: it avoids a background process
+/// repeatedly opening arbitrary serial devices, while letting the UI recover
+/// when an RCP is connected after Extrittio has started.
+pub struct ThreadRuntime {
+    config: ThreadRuntimeConfig,
+    state: Mutex<ThreadRuntimeState>,
+}
+
+struct ThreadRuntimeState {
+    active: Option<ActiveThreadRuntime>,
+    snapshot: ThreadRuntimeSnapshot,
+}
+
+struct ActiveThreadRuntime {
+    router: BorderRouter,
+    controller: Arc<ThreadController>,
+}
+
+impl ThreadRuntime {
+    #[must_use]
+    pub fn new(config: ThreadRuntimeConfig) -> Self {
+        let rcp_device = config.rcp_device.clone();
+        Self {
+            config,
+            state: Mutex::new(ThreadRuntimeState {
+                active: None,
+                snapshot: ThreadRuntimeSnapshot {
+                    available: false,
+                    rcp_device,
+                    message: Some("Thread runtime has not checked for an RCP yet".to_string()),
+                },
+            }),
+        }
+    }
+
+    /// Recheck the serial RCP and start OTBR when a usable radio is present.
+    /// If the radio was unplugged or OTBR exited, its old runtime is stopped
+    /// before discovery is retried.
+    #[must_use]
+    pub fn refresh(&self) -> ThreadRuntimeSnapshot {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        if let Some(active) = state.active.as_mut() {
+            let rcp_present = active.router.config().rcp_device.exists();
+            let running = active.router.is_running().unwrap_or(false);
+            if rcp_present && running {
+                let snapshot =
+                    ThreadRuntimeSnapshot::ready(active.router.config().rcp_device.clone());
+                state.snapshot = snapshot.clone();
+                return snapshot;
+            }
+
+            let mut inactive = state
+                .active
+                .take()
+                .expect("active runtime was checked above");
+            if let Err(error) = inactive.router.shutdown() {
+                warn!(%error, "Failed to stop an unavailable OpenThread border router");
+            }
+        }
+
+        let rcp_device = match self
+            .config
+            .rcp_device
+            .clone()
+            .map_or_else(discover_rcp, |device| Ok(Some(device)))
+        {
+            Ok(Some(device)) => device,
+            Ok(None) => {
+                return Self::set_snapshot(
+                    &mut state,
+                    ThreadRuntimeSnapshot::unavailable(
+                        "No unique Thread RCP serial device was detected. Connect an RCP or select its serial port explicitly.",
+                    ),
+                );
+            }
+            Err(error) => {
+                return Self::set_snapshot(
+                    &mut state,
+                    ThreadRuntimeSnapshot::unavailable(format!(
+                        "Unable to discover a Thread RCP: {error}"
+                    )),
+                );
+            }
+        };
+
+        let agent_path = match discover_agent(self.config.agent_path.as_deref()) {
+            Ok(Some(path)) => path,
+            Ok(None) => {
+                return Self::set_snapshot(
+                    &mut state,
+                    ThreadRuntimeSnapshot {
+                        available: false,
+                        rcp_device: Some(rcp_device),
+                        message: Some(
+                            "The OpenThread border-router executable is unavailable".to_string(),
+                        ),
+                    },
+                );
+            }
+            Err(error) => {
+                return Self::set_snapshot(
+                    &mut state,
+                    ThreadRuntimeSnapshot {
+                        available: false,
+                        rcp_device: Some(rcp_device),
+                        message: Some(format!(
+                            "Unable to locate the OpenThread border-router executable: {error}"
+                        )),
+                    },
+                );
+            }
+        };
+
+        let controller = match ThreadController::discover(&agent_path, None) {
+            Ok(Some(controller)) => controller,
+            Ok(None) => {
+                return Self::set_snapshot(
+                    &mut state,
+                    ThreadRuntimeSnapshot {
+                        available: false,
+                        rcp_device: Some(rcp_device),
+                        message: Some(
+                            "The OpenThread controller tool (ot-ctl) is unavailable".to_string(),
+                        ),
+                    },
+                );
+            }
+            Err(error) => {
+                return Self::set_snapshot(
+                    &mut state,
+                    ThreadRuntimeSnapshot {
+                        available: false,
+                        rcp_device: Some(rcp_device),
+                        message: Some(format!(
+                            "Unable to locate the OpenThread controller tool: {error}"
+                        )),
+                    },
+                );
+            }
+        };
+
+        let config = BorderRouterConfig {
+            agent_path,
+            rcp_device: rcp_device.clone(),
+            baud_rate: self.config.baud_rate,
+            thread_interface: self.config.thread_interface.clone(),
+            infrastructure_interface: self.config.infrastructure_interface.clone(),
+        };
+        match BorderRouter::start_with_controller(config, controller) {
+            Ok((router, controller)) => {
+                state.active = Some(ActiveThreadRuntime {
+                    router,
+                    controller: Arc::new(controller),
+                });
+                Self::set_snapshot(&mut state, ThreadRuntimeSnapshot::ready(rcp_device))
+            }
+            Err(error) => Self::set_snapshot(
+                &mut state,
+                ThreadRuntimeSnapshot {
+                    available: false,
+                    rcp_device: Some(rcp_device),
+                    message: Some(format!(
+                        "Unable to start the OpenThread border router: {error}"
+                    )),
+                },
+            ),
+        }
+    }
+
+    #[must_use]
+    pub fn snapshot(&self) -> ThreadRuntimeSnapshot {
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .snapshot
+            .clone()
+    }
+
+    #[must_use]
+    pub fn controller(&self) -> Option<Arc<ThreadController>> {
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .active
+            .as_ref()
+            .map(|active| active.controller.clone())
+    }
+
+    pub fn shutdown(&self) {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(mut active) = state.active.take()
+            && let Err(error) = active.router.shutdown()
+        {
+            warn!(%error, "OpenThread border-router shutdown failed");
+        }
+    }
+
+    fn set_snapshot(
+        state: &mut ThreadRuntimeState,
+        snapshot: ThreadRuntimeSnapshot,
+    ) -> ThreadRuntimeSnapshot {
+        state.snapshot = snapshot.clone();
+        snapshot
+    }
+}
+
+impl Drop for ThreadRuntime {
+    fn drop(&mut self) {
+        self.shutdown();
+    }
 }
 
 impl ThreadController {
@@ -313,6 +578,15 @@ impl BorderRouter {
         &self.config
     }
 
+    /// Returns whether the OTBR child process is still running.
+    pub fn is_running(&mut self) -> Result<bool> {
+        Ok(self
+            .child
+            .try_wait()
+            .context("Failed to inspect OpenThread border router")?
+            .is_none())
+    }
+
     /// Stop OTBR when Extrittio exits. OTBR is a child of the hobby process and
     /// must not be left behind with routes pointing to a disconnected RCP.
     pub fn shutdown(&mut self) -> Result<()> {
@@ -345,6 +619,11 @@ impl DbusDaemon {
         let output = Command::new("dbus-daemon")
             .args([
                 "--session",
+                // Homebrew's session configuration uses a launchd-provided
+                // socket on macOS. OTBR needs an isolated bus instead, so
+                // explicitly create a private Unix-domain socket on every
+                // supported host.
+                "--address=unix:tmpdir=/tmp",
                 "--fork",
                 "--print-address=1",
                 "--print-pid=1",
@@ -686,6 +965,10 @@ mod tests {
                 "wpan0",
                 "-B",
                 "en0",
+                "--vendor-name",
+                "Extrittio",
+                "--model-name",
+                "Hobby Appliance",
                 "spinel+hdlc+uart:///dev/cu.usbmodem14101?uart-baudrate=460800"
             ]
         );
