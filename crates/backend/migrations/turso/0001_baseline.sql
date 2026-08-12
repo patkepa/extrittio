@@ -173,3 +173,8 @@ CREATE TABLE app_metrics (
 );
 INSERT INTO organizations (id, name, created_at, updated_at)
 VALUES ('default', 'Default', CAST(unixepoch('subsec') * 1000000 AS INTEGER), CAST(unixepoch('subsec') * 1000000 AS INTEGER));
+INSERT INTO roles (tenant_id, name, description, is_system, created_at, updated_at) VALUES
+('default', 'owner', 'Full tenant owner with all permissions and lockout protection.', 1, CAST(unixepoch('subsec') * 1000000 AS INTEGER), CAST(unixepoch('subsec') * 1000000 AS INTEGER)),
+('default', 'admin', 'Administrative access to tenant resources and security settings.', 1, CAST(unixepoch('subsec') * 1000000 AS INTEGER), CAST(unixepoch('subsec') * 1000000 AS INTEGER)),
+('default', 'operator', 'Operational access without security administration.', 1, CAST(unixepoch('subsec') * 1000000 AS INTEGER), CAST(unixepoch('subsec') * 1000000 AS INTEGER)),
+('default', 'viewer', 'Read-only operational visibility.', 1, CAST(unixepoch('subsec') * 1000000 AS INTEGER), CAST(unixepoch('subsec') * 1000000 AS INTEGER));
