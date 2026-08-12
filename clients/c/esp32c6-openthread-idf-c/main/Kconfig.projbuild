@@ -14,6 +14,15 @@ config EXTRITTIO_THREAD_ZENOH_SERVICE_NAME
         server. The default matches EXTRITTIO_THREAD_ZENOH_SERVICE_NAME on the
         server and OTBR's default service-discovery domain.
 
+config EXTRITTIO_THREAD_ZENOH_LOCATOR
+    string "Thread Zenoh locator fallback"
+    default ""
+    help
+        Optional direct Zenoh locator used when Thread DNS-SD is unavailable.
+        For example: tcp/[fdxx:...]:7447. Obtain this address from the
+        Extrittio Thread DNS-SD advertisement log. Keep it empty to require
+        DNS-SD discovery.
+
 config EXTRITTIO_THREAD_ACTIVE_DATASET_TLVS
     string "Thread Active Operational Dataset (hex TLVs)"
     default ""

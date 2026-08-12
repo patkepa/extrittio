@@ -196,6 +196,25 @@ static bool discover_backend(backend_endpoint_t *endpoint)
                          pdMS_TO_TICKS(10 * 1000)) == pdTRUE;
 }
 
+static bool configured_backend(backend_endpoint_t *endpoint)
+{
+    const char *locator = CONFIG_EXTRITTIO_THREAD_ZENOH_LOCATOR;
+
+    if (locator[0] == '\0') {
+        return false;
+    }
+    if (strlen(locator) >= sizeof(endpoint->locator)) {
+        ESP_LOGE(TAG, "Configured Thread Zenoh locator is too long");
+        return false;
+    }
+    memset(endpoint, 0, sizeof(*endpoint));
+    strcpy(endpoint->locator, locator);
+    endpoint->tls_enabled = strncmp(locator, "tls/", 4) == 0;
+    ESP_LOGW(TAG, "Using configured Thread Zenoh locator after DNS-SD timeout: %s",
+             endpoint->locator);
+    return true;
+}
+
 static esp_netif_t *init_openthread_netif(const esp_openthread_platform_config_t *config)
 {
     esp_netif_config_t netif_config = ESP_NETIF_DEFAULT_OPENTHREAD();
@@ -255,8 +274,8 @@ static void publish_loop(void)
         }
 
         backend_endpoint_t endpoint;
-        if (!discover_backend(&endpoint)) {
-            ESP_LOGW(TAG, "Extrittio DNS-SD service not found; retrying");
+        if (!discover_backend(&endpoint) && !configured_backend(&endpoint)) {
+            ESP_LOGW(TAG, "Extrittio DNS-SD service not found and no locator fallback is configured; retrying");
             vTaskDelay(pdMS_TO_TICKS(5000));
             continue;
         }

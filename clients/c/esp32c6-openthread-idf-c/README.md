@@ -11,6 +11,11 @@ This project requires an **ESP32-C6**. An ESP32-S3 has no 802.15.4 radio, so it
 cannot run this native-radio example; use an external Thread RCP with an S3
 instead.
 
+The example is intentionally a Minimal Thread Device (MTD): it joins an
+existing RCP border-router mesh and cannot elect itself leader. If its log
+remains detached, place it near the RCP and check the configured dataset rather
+than treating an isolated partition as a working connection.
+
 ## Prerequisites
 
 - ESP-IDF 6.0 with ESP32-C6 support (the project is compile-verified with this
@@ -43,6 +48,10 @@ Under `Extrittio Thread Device`, set:
 - `Device ID` — a new device ID, for example `esp32c6-thread-001`.
 - `Thread DNS-SD Zenoh service` — keep the default unless the server uses a
   custom Thread DNS-SD service name.
+- `Thread Zenoh locator fallback` — normally leave empty. On a host where the
+  OTBR DNS-SD proxy is unavailable, enter the `tcp/[fdxx:...]:7447` address
+  from the backend's `Advertised Zenoh DNS-SD service on the Thread mesh` log.
+  The example uses it after a DNS-SD timeout.
 - `Thread Active Operational Dataset (hex TLVs)` — leave the supplied
   development value unchanged to join the backend's default network. Replace
   it with the exact exported active dataset whenever the backend uses a custom
@@ -72,8 +81,9 @@ connected`, telemetry and heartbeats appear in the Extrittio device view.
 
 The log distinguishes the two layers:
 
-1. `Attached to the configured Thread network` proves the supplied dataset
-   joined the same mesh as the hobby OTBR.
+1. `Attached to the configured Thread network` proves the ESP32-C6 joined a
+   parent on the hobby OTBR's mesh. As an MTD, it cannot form a separate leader
+   partition.
 2. `Discovered Extrittio Zenoh endpoint` proves Thread DNS-SD found the
    backend's current service record.
 3. `Zenoh connected` proves IPv6 routing from that mesh to the hobby server.
