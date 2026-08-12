@@ -46,13 +46,18 @@ API-only mode. `migrate` only applies pending database migrations. `init`
 applies migrations, seeds built-in records, creates the initial admin user when
 needed, and writes service certificates.
 
-For the installed, single-node appliance experience, build `apps/frontend/dist`
-and install the hobby feature:
+For the installed, single-node appliance experience, use the repository Make
+target. It builds the embedded UI, the hobby binary, and a pinned OpenThread
+Border Router agent in the location used automatically by `extrittio run`:
 
 ```bash
-cargo install --path apps/extrittio --locked --no-default-features --features hobby
+make hobby
 extrittio run
 ```
+
+`make install-extrittio` is an equivalent target. A direct Cargo hobby install
+is suitable for development, but does not package `otbr-agent`; pass
+`--thread-otbr-agent <path>` in that case.
 
 `run` fixes the backend/profile to local Turso, embeds the web UI, creates the
 first-run owner as `admin` / `admin`, and starts the complete stack. Change the

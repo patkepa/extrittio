@@ -30,6 +30,17 @@ auto-detects exactly one connected RCP, starts its `otbr-agent` child, and
 changes the Zenoh listener from its secure loopback default to IPv6. It shuts
 OTBR down with Extrittio so stale Thread routes are not left on the host.
 
+Build the default hobby installation from the repository root. It installs
+`extrittio` and the pinned upstream `otbr-agent` together under the Cargo
+installation root, so no separate OTBR installation is needed:
+
+```bash
+make hobby
+```
+
+`make install-extrittio` is equivalent. Override
+`EXTRITTIO_INSTALL_ROOT=/path` when a different installation prefix is needed.
+
 ```bash
 extrittio run --thread-required
 ```
@@ -48,7 +59,8 @@ extrittio run \
   --thread-infra-interface en0
 ```
 
-For a Cargo development build, point Extrittio to the locally built OTBR agent:
+For a direct Cargo development build, point Extrittio to the locally built OTBR
+agent:
 
 ```bash
 extrittio run --thread-required \

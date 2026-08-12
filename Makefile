@@ -1,7 +1,62 @@
-.PHONY: install-extrittio
+.PHONY: hobby install-extrittio otbr-agent check-otbr-source
+.DEFAULT_GOAL := hobby
 
-# Build the embedded web UI and install the local Turso hobby appliance.
-install-extrittio:
+# The hobby install places both executables under this root:
+#   bin/extrittio
+#   libexec/extrittio/otbr-agent
+# The hobby runtime resolves the latter relative to its own executable.
+EXTRITTIO_INSTALL_ROOT ?= $(HOME)/.cargo
+
+OTBR_VERSION := v2026.08.0
+OTBR_COMMIT := 337711e7038d0b9c8fb46a1ce888ce7f9c4c0c35
+OTBR_REPOSITORY := https://github.com/openthread/ot-br-posix.git
+OTBR_SOURCE_DIR := target/openthread/ot-br-posix
+OTBR_BUILD_DIR := target/openthread/build
+OTBR_AGENT := $(OTBR_BUILD_DIR)/src/agent/otbr-agent
+OTBR_INSTALL_DIR := $(EXTRITTIO_INSTALL_ROOT)/libexec/extrittio
+
+OTBR_CMAKE_OPTIONS := \
+	-DCMAKE_BUILD_TYPE=Release \
+	-DOTBR_DBUS=OFF \
+	-DOTBR_WEB=OFF \
+	-DOTBR_REST=OFF \
+	-DOTBR_NAT64=OFF \
+	-DOTBR_DNSSD_PLAT=OFF \
+	-DOTBR_TREL=OFF \
+	-DBUILD_TESTING=OFF
+
+# OpenThread's Backbone Router multicast routing and firewall integrations are
+# Linux-specific. Basic Thread Border Router and commissioning functionality
+# remain enabled on macOS.
+ifeq ($(shell uname -s),Darwin)
+OTBR_CMAKE_OPTIONS += \
+	-DOTBR_BACKBONE_ROUTER=OFF \
+	-DOT_FIREWALL=OFF \
+	-DCMAKE_C_FLAGS=-Wno-error=uninitialized-const-pointer
+endif
+
+# Build and install the complete single-node hobby appliance, including the
+# OpenThread Border Router agent used automatically by `extrittio run`.
+hobby: install-extrittio
+
+install-extrittio: otbr-agent
 	npm --prefix apps/frontend ci
 	npm --prefix apps/frontend run build
-	cargo install --path apps/extrittio --locked --no-default-features --features hobby
+	cargo install --root "$(EXTRITTIO_INSTALL_ROOT)" --path apps/extrittio --locked --no-default-features --features hobby
+	install -d "$(OTBR_INSTALL_DIR)"
+	install -m 0755 "$(OTBR_AGENT)" "$(OTBR_INSTALL_DIR)/otbr-agent"
+
+otbr-agent: $(OTBR_AGENT)
+
+$(OTBR_AGENT): check-otbr-source
+	cmake -S "$(OTBR_SOURCE_DIR)" -B "$(OTBR_BUILD_DIR)" $(OTBR_CMAKE_OPTIONS)
+	cmake --build "$(OTBR_BUILD_DIR)" --target otbr-agent --parallel
+	test -x "$(OTBR_AGENT)"
+
+check-otbr-source: $(OTBR_SOURCE_DIR)/.git
+	test "$$(git -C "$(OTBR_SOURCE_DIR)" rev-parse HEAD)" = "$(OTBR_COMMIT)"
+	git -C "$(OTBR_SOURCE_DIR)" submodule update --init --recursive --depth 1
+
+$(OTBR_SOURCE_DIR)/.git:
+	mkdir -p "$(dir $(OTBR_SOURCE_DIR))"
+	git clone --depth 1 --branch "$(OTBR_VERSION)" --recurse-submodules "$(OTBR_REPOSITORY)" "$(OTBR_SOURCE_DIR)"
