@@ -75,7 +75,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["get_summary"];
+        get: operations["get_alert_summary"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1000,7 +1000,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["get_summary"];
+        get: operations["get_rule_action_outbox_summary"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2179,7 +2179,7 @@ export interface operations {
             };
         };
     };
-    get_summary: {
+    get_alert_summary: {
         parameters: {
             query?: never;
             header?: never;
@@ -4293,7 +4293,7 @@ export interface operations {
             };
         };
     };
-    get_summary: {
+    get_rule_action_outbox_summary: {
         parameters: {
             query?: never;
             header?: never;

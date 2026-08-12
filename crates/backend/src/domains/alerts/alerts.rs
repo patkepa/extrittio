@@ -163,7 +163,7 @@ pub(crate) async fn list_alerts(
 }
 
 #[utoipa::path(
-    get, path = "/api/v1/alerts/summary", tag = "alerts", security(("bearer_auth" = [])),
+    get, path = "/api/v1/alerts/summary", operation_id = "get_alert_summary", tag = "alerts", security(("bearer_auth" = [])),
     responses((status = 200, body = AlertSummary))
 )]
 pub(crate) async fn get_summary(

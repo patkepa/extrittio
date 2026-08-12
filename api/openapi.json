@@ -221,7 +221,7 @@
         "tags": [
           "alerts"
         ],
-        "operationId": "get_summary",
+        "operationId": "get_alert_summary",
         "responses": {
           "200": {
             "description": "",
@@ -3476,7 +3476,7 @@
         "tags": [
           "server-metrics"
         ],
-        "operationId": "get_summary",
+        "operationId": "get_rule_action_outbox_summary",
         "responses": {
           "200": {
             "description": "Rule action outbox summary",

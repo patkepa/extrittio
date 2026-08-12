@@ -159,6 +159,7 @@ pub(crate) async fn replay_dead_letters(
 #[utoipa::path(
     get,
     path = "/api/v1/server/outbox/rule-actions",
+    operation_id = "get_rule_action_outbox_summary",
     tag = "server-metrics",
     security(("bearer_auth" = [])),
     responses(
