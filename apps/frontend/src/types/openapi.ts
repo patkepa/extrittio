@@ -2083,6 +2083,7 @@ export interface components {
             extended_address: string;
             /** Format: int32 */
             lqi: number;
+            network_name?: string | null;
             pan_id: string;
             /** Format: int32 */
             rssi: number;

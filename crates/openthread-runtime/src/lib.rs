@@ -120,6 +120,7 @@ pub struct CreateNetwork {
 /// a scan and is not represented here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ThreadNetwork {
+    pub network_name: Option<String>,
     pub pan_id: String,
     pub extended_address: String,
     pub channel: u16,
@@ -935,6 +936,7 @@ fn parse_dbus_scan(output: &str) -> Vec<ThreadNetwork> {
 
 fn parse_dbus_scan_entry(entry: &str) -> Option<ThreadNetwork> {
     let mut ext_address = None;
+    let mut network_name = None;
     let mut pan_id = None;
     let mut channel = None;
     let mut rssi = None;
@@ -943,6 +945,10 @@ fn parse_dbus_scan_entry(entry: &str) -> Option<ThreadNetwork> {
     for line in entry.lines().map(str::trim) {
         if let Some(value) = line.strip_prefix("uint64 ") {
             ext_address.get_or_insert_with(|| value.trim().to_string());
+        } else if let Some(value) = line.strip_prefix("string ") {
+            if network_name.is_none() {
+                network_name = serde_json::from_str(value.trim()).ok();
+            }
         } else if let Some(value) = line.strip_prefix("uint16 ") {
             if pan_id.is_none() {
                 pan_id = value
@@ -963,6 +969,7 @@ fn parse_dbus_scan_entry(entry: &str) -> Option<ThreadNetwork> {
     }
 
     Some(ThreadNetwork {
+        network_name,
         pan_id: pan_id?,
         extended_address: format!("{:016x}", ext_address?.parse::<u64>().ok()?),
         channel: channel?,
@@ -1144,6 +1151,7 @@ array [
         assert_eq!(
             super::parse_dbus_scan(output),
             vec![super::ThreadNetwork {
+                network_name: Some("Example".into()),
                 pan_id: "1234".into(),
                 extended_address: "0011223344556677".into(),
                 channel: 15,

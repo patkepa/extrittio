@@ -258,6 +258,7 @@ export interface ImportThreadDatasetRequest {
 }
 
 export interface ThreadNetwork {
+  network_name: string | null;
   pan_id: string;
   extended_address: string;
   channel: number;

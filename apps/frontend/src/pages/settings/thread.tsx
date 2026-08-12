@@ -345,6 +345,7 @@ function ThreadNetworkList({ networks }: { networks: ThreadNetwork[] }) {
       <HTMLTable compact striped interactive>
         <thead>
           <tr>
+            <th>Network name</th>
             <th>PAN ID</th>
             <th>MAC address</th>
             <th>Channel</th>
@@ -354,6 +355,7 @@ function ThreadNetworkList({ networks }: { networks: ThreadNetwork[] }) {
         <tbody>
           {networks.map((network) => (
             <tr key={`${network.extended_address}-${network.pan_id}-${network.channel}`}>
+              <td>{network.network_name || 'Unnamed network'}</td>
               <td>{network.pan_id}</td>
               <td className="thread-network-address">{network.extended_address}</td>
               <td>{network.channel}</td>

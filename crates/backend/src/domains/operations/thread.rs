@@ -58,6 +58,7 @@ pub struct ImportThreadDatasetRequest {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ThreadNetworkResponse {
+    pub network_name: Option<String>,
     pub pan_id: String,
     pub extended_address: String,
     pub channel: u16,
@@ -273,6 +274,7 @@ impl ThreadStatusResponse {
 impl From<ThreadNetwork> for ThreadNetworkResponse {
     fn from(network: ThreadNetwork) -> Self {
         Self {
+            network_name: network.network_name,
             pan_id: network.pan_id,
             extended_address: network.extended_address,
             channel: network.channel,

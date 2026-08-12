@@ -7339,6 +7339,12 @@
             "format": "int32",
             "minimum": 0
           },
+          "network_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "pan_id": {
             "type": "string"
           },
