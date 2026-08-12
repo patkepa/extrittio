@@ -3,7 +3,7 @@ index 286ed3e..a405bed 100644
 --- a/third_party/openthread/repo/src/posix/platform/infra_if.cpp
 +++ b/third_party/openthread/repo/src/posix/platform/infra_if.cpp
 @@ -181,7 +181,13 @@ int InfraNetif::CreateIcmp6Socket(const char *aInfraIfName)
- 
+
  #ifdef __linux__
      rval = setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, aInfraIfName, strlen(aInfraIfName));
 -#else  // __NetBSD__ || __FreeBSD__ || __APPLE__
@@ -70,3 +70,31 @@ index e805331..c7ccad7 100644
 +        aRequest.ReplyOtResult(error);
 +    }
  }
+@@ -382,6 +407,8 @@ void DBusThreadObjectRcp::ReplyScanResult(DBusRequest                           &aRequest,
+ {
+     std::vector<ActiveScanResult> results;
+
++    otbrLogInfo("Active Thread scan completed with %zu result(s)", aResult.size());
++
+     if (aError != OT_ERROR_NONE)
+     {
+         aRequest.ReplyOtResult(aError);
+     }
+diff --git a/src/host/thread_helper.cpp b/src/host/thread_helper.cpp
+index 2888f61..4d7623a 100644
+--- a/src/host/thread_helper.cpp
++++ b/src/host/thread_helper.cpp
+@@ -185,8 +185,11 @@ void ThreadHelper::Scan(ScanHandler aHandler)
+     mScanHandler = aHandler;
+     mScanResults.clear();
+
+-    error =
+-        otLinkActiveScan(mInstance, /*scanChannels =*/0, /*scanDuration=*/0, &ThreadHelper::ActiveScanHandler, this);
++    // Give USB-attached RCPs a full second on each Thread channel. The
++    // OpenThread default is 300 ms, which can miss responses in congested
++    // 2.4 GHz environments.
++    error = otLinkActiveScan(mInstance, /*scanChannels =*/0, /*scanDuration=*/1000,
++                             &ThreadHelper::ActiveScanHandler, this);
+
+ exit:
+     if (error != OT_ERROR_NONE)
