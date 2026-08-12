@@ -23,6 +23,11 @@ use std::{
 use anyhow::{Context, Result, bail};
 use tracing::{info, warn};
 
+/// Public development dataset shared by the hobby border router and the
+/// ESP32-C6 OpenThread example. It is intentionally not suitable for a
+/// private or production Thread mesh.
+pub const DEFAULT_DEVELOPMENT_DATASET_TLVS: &str = "0e080000000000010000000300001235060004001fffe00208ef1398c2fd504b670708fd35344133d1d73e0510fda7c771a27202e232ecd04cf934f476030f4f70656e5468726561642d633634650102c64e04105e9b9b360f80b88be2603fb0135c8d650c0402a0f7f8";
+
 /// Configuration for one local OTBR instance.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BorderRouterConfig {
@@ -372,6 +377,19 @@ impl ThreadRuntime {
             .map(|active| active.controller.clone())
     }
 
+    /// Seeds the shared public development mesh only when OTBR has no active
+    /// dataset. User-created and imported datasets are always left intact.
+    pub fn ensure_default_development_network(&self) -> Result<bool> {
+        let controller = self
+            .controller()
+            .context("The local OpenThread border router is unavailable")?;
+        let seeded = controller.ensure_default_development_network()?;
+        if seeded {
+            self.mark_network_changed();
+        }
+        Ok(seeded)
+    }
+
     pub fn shutdown(&self) {
         let mut state = self
             .state
@@ -399,15 +417,51 @@ impl ThreadRuntime {
     /// interface. This is deliberately not derived from a Zenoh wildcard
     /// listener; DNS-SD clients must receive a concrete, mesh-reachable host.
     pub fn thread_ipv6_address(&self) -> Result<Ipv6Addr> {
-        let thread_interface = self
+        let (thread_interface, controller) = self
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .active
             .as_ref()
-            .map(|active| active.router.config().thread_interface.clone())
+            .map(|active| {
+                (
+                    active.router.config().thread_interface.clone(),
+                    active.controller.clone(),
+                )
+            })
             .context("The local OpenThread border router is unavailable")?;
-        thread_interface_ipv6_address(&thread_interface)
+        match thread_interface_ipv6_address(&thread_interface) {
+            Ok(address) => Ok(address),
+            Err(_primary_error) => {
+                #[cfg(target_os = "macos")]
+                {
+                    // macOS assigns OTBR's TUN device a dynamic `utunN` name
+                    // instead of the Linux-style `wpan0` requested from the
+                    // agent. Find it by OTBR's authoritative mesh-local prefix.
+                    let mesh_local_prefix = controller
+                        .status()?
+                        .mesh_local_prefix
+                        .context("OTBR did not report a mesh-local IPv6 prefix")?;
+                    let address = macos_mesh_local_ipv6_address(&mesh_local_prefix)
+                        .with_context(|| {
+                            format!(
+                                "Failed to find the macOS OTBR interface for mesh-local prefix {mesh_local_prefix}"
+                            )
+                        })?;
+                    info!(
+                        configured_interface = %thread_interface,
+                        mesh_local_prefix,
+                        address = %address,
+                        "Using the macOS OTBR tunnel interface for Thread DNS-SD"
+                    );
+                    Ok(address)
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    Err(_primary_error)
+                }
+            }
+        }
     }
 
     fn set_snapshot(
@@ -546,6 +600,29 @@ impl ThreadController {
         )
     }
 
+    /// Imports the bundled development mesh when the RCP has no active
+    /// network. The ESP32-C6 example carries the same dataset by default.
+    pub fn ensure_default_development_network(&self) -> Result<bool> {
+        let _guard = self.lock();
+        // OTBR returns Active Operational Datasets as raw TLV hex rather than
+        // JSON. A non-empty dataset is an existing user or OTBR network and
+        // must never be replaced by the development mesh.
+        if !self.rest_text("/node/dataset/active")?.trim().is_empty() {
+            return Ok(false);
+        }
+
+        self.rest_put_json(
+            "/node/state",
+            &serde_json::Value::String("disable".to_string()),
+        )?;
+        self.rest_put_plain("/node/dataset/active", DEFAULT_DEVELOPMENT_DATASET_TLVS)?;
+        self.rest_put_json(
+            "/node/state",
+            &serde_json::Value::String("enable".to_string()),
+        )?;
+        Ok(true)
+    }
+
     /// Replaces the active dataset with a complete, hex-encoded Thread
     /// operational dataset. The dataset is write-only and is never returned by
     /// this API because it includes the mesh network key.
@@ -595,6 +672,19 @@ impl ThreadController {
         response
             .json()
             .with_context(|| format!("OTBR REST endpoint returned invalid JSON for {url}"))
+    }
+
+    fn rest_text(&self, path: &str) -> Result<String> {
+        let url = self.url(path);
+        self.client()?
+            .get(&url)
+            .header(reqwest::header::ACCEPT, "text/plain")
+            .send()
+            .with_context(|| format!("Failed to reach local OTBR REST endpoint at {url}"))?
+            .error_for_status()
+            .with_context(|| format!("OTBR REST endpoint rejected {url}"))?
+            .text()
+            .with_context(|| format!("OTBR REST endpoint returned invalid text for {url}"))
     }
 
     fn rest_put_json(&self, path: &str, body: &serde_json::Value) -> Result<()> {
@@ -976,6 +1066,60 @@ fn thread_interface_ipv6_address(interface: &str) -> Result<Ipv6Addr> {
         .context("OTBR has no usable IPv6 address on its Thread interface")
 }
 
+#[cfg(target_os = "macos")]
+fn macos_mesh_local_ipv6_address(mesh_local_prefix: &str) -> Result<Ipv6Addr> {
+    let prefix = mesh_local_prefix
+        .trim()
+        .split_once('/')
+        .map_or(mesh_local_prefix.trim(), |(address, _)| address)
+        .parse::<Ipv6Addr>()
+        .context("OTBR returned an invalid mesh-local IPv6 prefix")?;
+    let interfaces = Command::new("ifconfig")
+        .arg("-l")
+        .output()
+        .context("Failed to list macOS network interfaces")?;
+    anyhow::ensure!(
+        interfaces.status.success(),
+        "Failed to list macOS network interfaces: {}",
+        String::from_utf8_lossy(&interfaces.stderr).trim()
+    );
+
+    for interface in String::from_utf8_lossy(&interfaces.stdout).split_whitespace() {
+        if !interface.starts_with("utun") {
+            continue;
+        }
+        let Ok(addresses) = thread_interface_ipv6_addresses(interface) else {
+            continue;
+        };
+        if let Some(address) = addresses
+            .into_iter()
+            .find(|address| same_ipv6_prefix_64(*address, prefix))
+        {
+            return Ok(address);
+        }
+    }
+    bail!("No macOS utun interface has an address in the OTBR mesh-local prefix")
+}
+
+fn thread_interface_ipv6_addresses(interface: &str) -> Result<Vec<Ipv6Addr>> {
+    let output = Command::new("ifconfig")
+        .arg(interface)
+        .output()
+        .with_context(|| format!("Failed to inspect IPv6 addresses on {interface}"))?;
+    anyhow::ensure!(
+        output.status.success(),
+        "Failed to inspect IPv6 addresses on {interface}: {}",
+        String::from_utf8_lossy(&output.stderr).trim()
+    );
+    Ok(parse_thread_ipv6_addresses(&String::from_utf8_lossy(
+        &output.stdout,
+    )))
+}
+
+fn same_ipv6_prefix_64(left: Ipv6Addr, right: Ipv6Addr) -> bool {
+    left.octets()[..8] == right.octets()[..8]
+}
+
 fn parse_thread_ipv6_addresses(output: &str) -> Vec<Ipv6Addr> {
     output
         .lines()
@@ -1143,8 +1287,8 @@ fn is_rcp_candidate_name(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        BorderRouterConfig, CreateNetwork, default_infrastructure_interface,
-        parse_thread_ipv6_addresses, validate_create_network,
+        BorderRouterConfig, CreateNetwork, DEFAULT_DEVELOPMENT_DATASET_TLVS,
+        default_infrastructure_interface, parse_thread_ipv6_addresses, validate_create_network,
     };
     use std::{net::Ipv6Addr, path::PathBuf};
 
@@ -1212,6 +1356,16 @@ mod tests {
     }
 
     #[test]
+    fn bundled_development_dataset_is_valid_hex() {
+        assert!(DEFAULT_DEVELOPMENT_DATASET_TLVS.len().is_multiple_of(2));
+        assert!(
+            DEFAULT_DEVELOPMENT_DATASET_TLVS
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
+        );
+    }
+
+    #[test]
     fn parses_rcp_dbus_scan_results_without_network_credentials() {
         let output = r#"
 array [
@@ -1254,5 +1408,17 @@ array [
             addresses,
             vec!["fd12:3456::20".parse::<Ipv6Addr>().unwrap()]
         );
+    }
+
+    #[test]
+    fn compares_mesh_local_ipv6_prefixes_at_sixty_four_bits() {
+        assert!(super::same_ipv6_prefix_64(
+            "fd35:3441:33d1:d73e::1".parse().unwrap(),
+            "fd35:3441:33d1:d73e::".parse().unwrap(),
+        ));
+        assert!(!super::same_ipv6_prefix_64(
+            "fd35:3441:33d1:d73f::1".parse().unwrap(),
+            "fd35:3441:33d1:d73e::".parse().unwrap(),
+        ));
     }
 }

@@ -17,17 +17,19 @@ instead.
   version).
 - An Extrittio hobby server running with its OpenThread Border Router enabled
   (`extrittio run --thread-required`).
-- A formed/imported Thread network in **Settings → Thread Network**.
+- The default Extrittio development Thread network, or a network imported in
+  **Settings → Thread Network**.
 - The default Extrittio Thread DNS-SD advertisement. It is started
   automatically by the hobby server with OTBR; no backend IPv6 address is
   configured on the device.
 
 ## Configure and flash
 
-Start the hobby server. With OTBR enabled it advertises
+Start the hobby server. On its first successful OTBR start, it creates the
+public development network embedded in this example. With OTBR enabled it advertises
 `_extrittio-zenoh._tcp.default.service.arpa.` on the Thread mesh and supplies
-the current IPv6 address, Zenoh port, and TLS flag. Copy the Active Operational
-Dataset TLVs from OTBR after creating/importing the same network, then:
+the current IPv6 address, Zenoh port, and TLS flag. The default
+`sdkconfig.defaults` already contains the matching development dataset, then:
 
 ```bash
 cd clients/c/esp32c6-openthread-idf-c
@@ -41,9 +43,16 @@ Under `Extrittio Thread Device`, set:
 - `Device ID` — a new device ID, for example `esp32c6-thread-001`.
 - `Thread DNS-SD Zenoh service` — keep the default unless the server uses a
   custom Thread DNS-SD service name.
-- `Thread Active Operational Dataset (hex TLVs)` — the exact exported active
-  dataset hex value. This includes the Thread network key; do not commit
-  `sdkconfig` after configuring it.
+- `Thread Active Operational Dataset (hex TLVs)` — leave the supplied
+  development value unchanged to join the backend's default network. Replace
+  it with the exact exported active dataset whenever the backend uses a custom
+  network. This includes the Thread network key; do not commit `sdkconfig`
+  after configuring it.
+
+The bundled development network has a public key and is only for a controlled
+local test mesh. Create or import a private network in the backend before any
+non-test deployment, then replace this ESP32-C6 dataset with that network's
+exported Active Operational Dataset.
 
 Create the matching Extrittio device before flashing. A generic device type is
 enough for this telemetry example:

@@ -425,6 +425,19 @@ async fn run_thread_dns_sd_advertiser(
                     continue;
                 }
 
+                let seed_runtime = runtime.clone();
+                match tokio::task::spawn_blocking(move || seed_runtime.ensure_default_development_network()).await {
+                    Ok(Ok(true)) => info!(
+                        "Created the shared Extrittio development Thread network for the ESP32-C6 example"
+                    ),
+                    Ok(Ok(false)) => {}
+                    Ok(Err(error)) => {
+                        warn!(%error, "Thread network initialization is waiting for OTBR");
+                        continue;
+                    }
+                    Err(error) => return Err(format!("Thread network initialization task failed: {error}")),
+                }
+
                 let generation = runtime.network_generation();
                 if registration.as_ref().is_some_and(|registration: &ThreadDnsSdRegistration| registration.generation == generation) {
                     continue;
