@@ -43,6 +43,17 @@ typedef struct {
     bool tls_enabled;
 } backend_endpoint_t;
 
+static void initialize_nvs(void)
+{
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_LOGW(TAG, "NVS needs recovery (%s); erasing its partition", esp_err_to_name(err));
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(err);
+}
+
 static int hex_nibble(char value)
 {
     if (value >= '0' && value <= '9') {
@@ -331,7 +342,7 @@ static void publish_loop(void)
 
 void app_main(void)
 {
-    ESP_ERROR_CHECK(nvs_flash_init());
+    initialize_nvs();
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
