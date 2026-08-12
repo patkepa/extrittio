@@ -66,9 +66,9 @@ install-extrittio: otbr-agent
 # previously packaged frontend and OpenThread tools. Run `make hobby` after
 # frontend, frontend-dependency, or OpenThread changes.
 install-extrittio-fast:
-	cargo build --release -p extrittio --no-default-features --features hobby
+	cargo build --profile ci-release -p extrittio --no-default-features --features hobby
 	install -d "$(EXTRITTIO_INSTALL_ROOT)/bin"
-	install -m 0755 target/release/extrittio "$(EXTRITTIO_INSTALL_ROOT)/bin/extrittio"
+	install -m 0755 target/ci-release/extrittio "$(EXTRITTIO_INSTALL_ROOT)/bin/extrittio"
 
 otbr-agent: $(OTBR_AGENT) $(OTBR_CTL)
 
