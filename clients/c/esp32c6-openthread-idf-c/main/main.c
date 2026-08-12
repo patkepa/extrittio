@@ -1,6 +1,7 @@
 #include <ctype.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -18,16 +19,28 @@
 #include "freertos/task.h"
 #include "nvs_flash.h"
 #include "openthread/dataset.h"
+#include "openthread/dns_client.h"
 #include "openthread/error.h"
+#include "openthread/ip6.h"
 #include "sdkconfig.h"
 
 #include "extrittio/extrittio.h"
 #include <zenoh-pico.h>
 
 #define THREAD_ATTACHED_BIT BIT0
+#define BACKEND_DISCOVERY_QUEUE_DEPTH 1
+#define BACKEND_HOSTNAME_MAX_LENGTH 128
+#define BACKEND_TXT_MAX_LENGTH 128
+#define BACKEND_LOCATOR_MAX_LENGTH 128
 
 static const char *TAG = "extrittio_thread";
 static EventGroupHandle_t s_thread_events;
+static QueueHandle_t s_backend_discovery_queue;
+
+typedef struct {
+    char locator[BACKEND_LOCATOR_MAX_LENGTH];
+    bool tls_enabled;
+} backend_endpoint_t;
 
 static int hex_nibble(char value)
 {
@@ -93,6 +106,96 @@ static void thread_event_handler(void *arg, esp_event_base_t event_base,
     }
 }
 
+static bool txt_property_is_true(const uint8_t *txt, uint16_t txt_length, const char *name)
+{
+    size_t name_length = strlen(name);
+    uint16_t offset = 0;
+
+    while (offset < txt_length) {
+        uint8_t length = txt[offset++];
+        if (length == 0 || length > txt_length - offset) {
+            return false;
+        }
+        const uint8_t *property = &txt[offset];
+        if (length == name_length + 2 && memcmp(property, name, name_length) == 0 &&
+            property[name_length] == '=' && property[name_length + 1] == '1') {
+            return true;
+        }
+        offset += length;
+    }
+    return false;
+}
+
+static void backend_discovery_callback(otError error, const otDnsBrowseResponse *response,
+                                       void *context)
+{
+    (void)context;
+    if (error != OT_ERROR_NONE) {
+        ESP_LOGW(TAG, "Thread DNS-SD browse failed: %d", error);
+        return;
+    }
+
+    for (uint16_t index = 0;; index++) {
+        char instance[64];
+        otError result = otDnsBrowseResponseGetServiceInstance(response, index, instance,
+                                                                 sizeof(instance));
+        if (result == OT_ERROR_NOT_FOUND) {
+            break;
+        }
+        if (result != OT_ERROR_NONE) {
+            ESP_LOGW(TAG, "Unable to read Thread DNS-SD instance: %d", result);
+            continue;
+        }
+
+        char hostname[BACKEND_HOSTNAME_MAX_LENGTH] = {0};
+        uint8_t txt[BACKEND_TXT_MAX_LENGTH] = {0};
+        otDnsServiceInfo service = {
+            .mHostNameBuffer = hostname,
+            .mHostNameBufferSize = sizeof(hostname),
+            .mTxtData = txt,
+            .mTxtDataSize = sizeof(txt),
+        };
+        result = otDnsBrowseResponseGetServiceInfo(response, instance, &service);
+        if (result != OT_ERROR_NONE || otIp6IsAddressUnspecified(&service.mHostAddress) ||
+            service.mPort == 0) {
+            ESP_LOGW(TAG, "Thread DNS-SD instance %s has no usable IPv6 endpoint (%d)",
+                     instance, result);
+            continue;
+        }
+
+        backend_endpoint_t endpoint = {0};
+        char address[OT_IP6_ADDRESS_STRING_SIZE];
+        otIp6AddressToString(&service.mHostAddress, address, sizeof(address));
+        endpoint.tls_enabled = txt_property_is_true(txt, service.mTxtDataSize, "tls");
+        int written = snprintf(endpoint.locator, sizeof(endpoint.locator), "%s/[%s]:%u",
+                               endpoint.tls_enabled ? "tls" : "tcp", address,
+                               service.mPort);
+        if (written < 0 || written >= sizeof(endpoint.locator)) {
+            ESP_LOGW(TAG, "Discovered Zenoh endpoint is too long");
+            continue;
+        }
+        xQueueOverwrite(s_backend_discovery_queue, &endpoint);
+        ESP_LOGI(TAG, "Discovered Extrittio Zenoh endpoint: %s", endpoint.locator);
+        return;
+    }
+}
+
+static bool discover_backend(backend_endpoint_t *endpoint)
+{
+    xQueueReset(s_backend_discovery_queue);
+    esp_openthread_lock_acquire(portMAX_DELAY);
+    otError error = otDnsClientBrowse(esp_openthread_get_instance(),
+                                      CONFIG_EXTRITTIO_THREAD_ZENOH_SERVICE_NAME,
+                                      backend_discovery_callback, NULL, NULL);
+    esp_openthread_lock_release();
+    if (error != OT_ERROR_NONE) {
+        ESP_LOGW(TAG, "Could not start Thread DNS-SD browse: %d", error);
+        return false;
+    }
+    return xQueueReceive(s_backend_discovery_queue, endpoint,
+                         pdMS_TO_TICKS(10 * 1000)) == pdTRUE;
+}
+
 static esp_netif_t *init_openthread_netif(const esp_openthread_platform_config_t *config)
 {
     esp_netif_config_t netif_config = ESP_NETIF_DEFAULT_OPENTHREAD();
@@ -138,25 +241,6 @@ static void openthread_task(void *context)
 
 static void publish_loop(void)
 {
-    z_owned_config_t config;
-    z_config_default(&config);
-    zp_config_insert(z_loan_mut(config), Z_CONFIG_CONNECT_KEY,
-                     CONFIG_EXTRITTIO_ZENOH_CONNECT);
-
-    z_owned_session_t session;
-    if (z_open(&session, z_move(config), NULL) != 0) {
-        ESP_LOGE(TAG, "Zenoh connection failed: %s", CONFIG_EXTRITTIO_ZENOH_CONNECT);
-        return;
-    }
-    if (zp_start_read_task(z_loan_mut(session), NULL) != 0 ||
-        zp_start_lease_task(z_loan_mut(session), NULL) != 0) {
-        ESP_LOGE(TAG, "Failed to start Zenoh background tasks");
-        z_drop(z_move(session));
-        return;
-    }
-
-    ESP_LOGI(TAG, "Zenoh connected: device=%s endpoint=%s",
-             CONFIG_EXTRITTIO_DEVICE_ID, CONFIG_EXTRITTIO_ZENOH_CONNECT);
     int64_t boot_time_us = esp_timer_get_time();
     int64_t last_heartbeat_ms = 0;
     extrittio_sensor_state_t sensor;
@@ -170,32 +254,66 @@ static void publish_loop(void)
             continue;
         }
 
-        int64_t now = extrittio_now_millis();
-        float temperature_offset = ((float)(rand() % 100) / 100.0f) - 0.5f;
-        float humidity_offset = ((float)(rand() % 200) / 100.0f) - 1.0f;
-        extrittio_sensor_step(&sensor, temperature_offset, humidity_offset, 0.05f);
+        backend_endpoint_t endpoint;
+        if (!discover_backend(&endpoint)) {
+            ESP_LOGW(TAG, "Extrittio DNS-SD service not found; retrying");
+            vTaskDelay(pdMS_TO_TICKS(5000));
+            continue;
+        }
+        if (endpoint.tls_enabled) {
+            ESP_LOGE(TAG, "Discovered TLS Zenoh service, but this example has no mTLS credentials");
+            vTaskDelay(pdMS_TO_TICKS(10000));
+            continue;
+        }
 
-        extrittio_telemetry_t telemetry = {
-            .device_id = CONFIG_EXTRITTIO_DEVICE_ID,
-            .timestamp = now,
-            .temperature = sensor.temperature,
-            .humidity = sensor.humidity,
-            .battery_level = sensor.battery,
-        };
-        extrittio_telemetry_publish(z_loan_mut(session), &telemetry);
+        z_owned_config_t config;
+        z_config_default(&config);
+        zp_config_insert(z_loan_mut(config), Z_CONFIG_CONNECT_KEY, endpoint.locator);
+        z_owned_session_t session;
+        if (z_open(&session, z_move(config), NULL) != 0) {
+            ESP_LOGW(TAG, "Zenoh connection failed: %s", endpoint.locator);
+            vTaskDelay(pdMS_TO_TICKS(5000));
+            continue;
+        }
+        if (zp_start_read_task(z_loan_mut(session), NULL) != 0 ||
+            zp_start_lease_task(z_loan_mut(session), NULL) != 0) {
+            ESP_LOGE(TAG, "Failed to start Zenoh background tasks");
+            z_drop(z_move(session));
+            vTaskDelay(pdMS_TO_TICKS(5000));
+            continue;
+        }
+        ESP_LOGI(TAG, "Zenoh connected: device=%s endpoint=%s",
+                 CONFIG_EXTRITTIO_DEVICE_ID, endpoint.locator);
 
-        if (now - last_heartbeat_ms >= CONFIG_EXTRITTIO_HEARTBEAT_INTERVAL_S * 1000LL) {
-            extrittio_heartbeat_t heartbeat = {
+        while (xEventGroupGetBits(s_thread_events) & THREAD_ATTACHED_BIT) {
+            int64_t now = extrittio_now_millis();
+            float temperature_offset = ((float)(rand() % 100) / 100.0f) - 0.5f;
+            float humidity_offset = ((float)(rand() % 200) / 100.0f) - 1.0f;
+            extrittio_sensor_step(&sensor, temperature_offset, humidity_offset, 0.05f);
+
+            extrittio_telemetry_t telemetry = {
                 .device_id = CONFIG_EXTRITTIO_DEVICE_ID,
                 .timestamp = now,
-                .status = EXTRITTIO_STATUS_ONLINE,
-                .firmware = CONFIG_EXTRITTIO_FIRMWARE_VERSION,
-                .uptime_seconds = (esp_timer_get_time() - boot_time_us) / 1000000,
+                .temperature = sensor.temperature,
+                .humidity = sensor.humidity,
+                .battery_level = sensor.battery,
             };
-            extrittio_heartbeat_publish(z_loan_mut(session), &heartbeat);
-            last_heartbeat_ms = now;
+            extrittio_telemetry_publish(z_loan_mut(session), &telemetry);
+
+            if (now - last_heartbeat_ms >= CONFIG_EXTRITTIO_HEARTBEAT_INTERVAL_S * 1000LL) {
+                extrittio_heartbeat_t heartbeat = {
+                    .device_id = CONFIG_EXTRITTIO_DEVICE_ID,
+                    .timestamp = now,
+                    .status = EXTRITTIO_STATUS_ONLINE,
+                    .firmware = CONFIG_EXTRITTIO_FIRMWARE_VERSION,
+                    .uptime_seconds = (esp_timer_get_time() - boot_time_us) / 1000000,
+                };
+                extrittio_heartbeat_publish(z_loan_mut(session), &heartbeat);
+                last_heartbeat_ms = now;
+            }
+            vTaskDelay(pdMS_TO_TICKS(CONFIG_EXTRITTIO_TELEMETRY_INTERVAL_S * 1000));
         }
-        vTaskDelay(pdMS_TO_TICKS(CONFIG_EXTRITTIO_TELEMETRY_INTERVAL_S * 1000));
+        z_drop(z_move(session));
     }
 }
 
@@ -210,6 +328,9 @@ void app_main(void)
 
     s_thread_events = xEventGroupCreate();
     configASSERT(s_thread_events != NULL);
+    s_backend_discovery_queue = xQueueCreate(BACKEND_DISCOVERY_QUEUE_DEPTH,
+                                              sizeof(backend_endpoint_t));
+    configASSERT(s_backend_discovery_queue != NULL);
     ESP_ERROR_CHECK(esp_event_handler_register(OPENTHREAD_EVENT, ESP_EVENT_ANY_ID,
                                                 thread_event_handler, NULL));
 

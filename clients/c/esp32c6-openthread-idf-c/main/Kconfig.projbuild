@@ -6,12 +6,13 @@ config EXTRITTIO_DEVICE_ID
     help
         Unique identifier registered in Extrittio.
 
-config EXTRITTIO_ZENOH_CONNECT
-    string "Zenoh IPv6 endpoint"
-    default "tcp/[fd00::1]:7447"
+config EXTRITTIO_THREAD_ZENOH_SERVICE_NAME
+    string "Thread DNS-SD Zenoh service"
+    default "_extrittio-zenoh._tcp.default.service.arpa."
     help
-        Routable IPv6 address of the Extrittio hobby host, formatted as a Zenoh
-        locator. IPv6 literals must be enclosed in square brackets.
+        Fully-qualified Thread DNS-SD service advertised by the Extrittio hobby
+        server. The default matches EXTRITTIO_THREAD_ZENOH_SERVICE_NAME on the
+        server and OTBR's default service-discovery domain.
 
 config EXTRITTIO_THREAD_ACTIVE_DATASET_TLVS
     string "Thread Active Operational Dataset (hex TLVs)"
