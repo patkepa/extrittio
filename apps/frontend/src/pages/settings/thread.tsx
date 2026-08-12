@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { AxiosError } from 'axios';
 import {
   Alert,
   Button,
@@ -26,6 +27,11 @@ import './settings.css';
 import './thread.css';
 
 const CHANNELS = Array.from({ length: 16 }, (_, index) => index + 11);
+
+function apiErrorMessage(error: unknown, fallback: string): string {
+  const axiosError = error as AxiosError<{ error?: string }>;
+  return axiosError.response?.data?.error ?? fallback;
+}
 
 export function ThreadSettings() {
   const [networkName, setNetworkName] = useState('Extrittio-Thread');
@@ -142,8 +148,10 @@ export function ThreadSettings() {
                 disabled={!status.connected}
                 onClick={() => {
                   scanMutation.mutate(undefined, {
-                    onError: () => {
-                      void showErrorToast('Unable to scan for Thread networks');
+                    onError: (error) => {
+                      void showErrorToast(
+                        apiErrorMessage(error, 'Unable to scan for Thread networks'),
+                      );
                     },
                   });
                 }}

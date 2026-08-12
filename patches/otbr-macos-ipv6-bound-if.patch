@@ -35,3 +35,38 @@ index 328d8e2..95f718d 100644
  static constexpr char kSocketSuffix[]     = ".sock";
  static constexpr char kSocketLockSuffix[] = ".lock";
  static constexpr char kTruncatedMsg[]     = "(truncated ...)";
+diff --git a/src/dbus/server/dbus_thread_object_rcp.cpp b/src/dbus/server/dbus_thread_object_rcp.cpp
+index e805331..c7ccad7 100644
+--- a/src/dbus/server/dbus_thread_object_rcp.cpp
++++ b/src/dbus/server/dbus_thread_object_rcp.cpp
+@@ -349,4 +349,29 @@ void DBusThreadObjectRcp::ScanHandler(DBusRequest &aRequest)
+ {
++    otError    error         = OT_ERROR_NONE;
++    const bool enableRawLink = !otLinkIsEnabled(mHost.GetInstance());
+     auto threadHelper = mHost.GetThreadHelper();
+-    threadHelper->Scan(std::bind(&DBusThreadObjectRcp::ReplyScanResult, this, aRequest, _1, _2));
++
++    // A newly connected RCP has no operational dataset, so enabling the
++    // Thread interface makes it immediately detach again. Active scan only
++    // needs the IEEE 802.15.4 MAC, which can be enabled independently while
++    // the Thread interface is disabled.
++    if (enableRawLink)
++    {
++        SuccessOrExit(error = otLinkSetEnabled(mHost.GetInstance(), true));
++    }
++
++    threadHelper->Scan([this, aRequest, enableRawLink](otError aError,
++                                                        const std::vector<otActiveScanResult> &aResult) mutable {
++        if (enableRawLink)
++        {
++            IgnoreError(otLinkSetEnabled(mHost.GetInstance(), false));
++        }
++        ReplyScanResult(aRequest, aError, aResult);
++    });
++
++exit:
++    if (error != OT_ERROR_NONE)
++    {
++        aRequest.ReplyOtResult(error);
++    }
+ }

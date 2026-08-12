@@ -443,9 +443,13 @@ impl ThreadController {
             .context("The local OTBR RCP control bus is unavailable")?;
         let service = format!("io.openthread.BorderRouter.{}", self.thread_interface);
         let object = format!("/io/openthread/BorderRouter/{}", self.thread_interface);
-        let output = Command::new("dbus-send")
+        Command::new("dbus-send")
+            // OTBR connects with `dbus_bus_get(DBUS_BUS_SYSTEM)`. Point that
+            // lookup at our private daemon so the client uses the identical
+            // system-bus handshake instead of a direct peer connection.
+            .env("DBUS_SYSTEM_BUS_ADDRESS", address)
             .args([
-                format!("--address={address}"),
+                "--system".to_string(),
                 "--print-reply".to_string(),
                 "--reply-timeout=35000".to_string(),
                 format!("--dest={service}"),
@@ -453,14 +457,16 @@ impl ThreadController {
                 "io.openthread.BorderRouter.Scan".to_string(),
             ])
             .output()
-            .context("Failed to run the OTBR RCP scan controller")?;
-        if !output.status.success() {
-            bail!(
-                "OpenThread RCP scan failed: {}",
-                String::from_utf8_lossy(&output.stderr).trim()
-            );
-        }
-        Ok(parse_dbus_scan(&String::from_utf8_lossy(&output.stdout)))
+            .context("Failed to run the OTBR RCP scan controller")
+            .and_then(|output| {
+                if !output.status.success() {
+                    bail!(
+                        "OpenThread RCP scan failed: {}",
+                        String::from_utf8_lossy(&output.stderr).trim()
+                    );
+                }
+                Ok(parse_dbus_scan(&String::from_utf8_lossy(&output.stdout)))
+            })
     }
 
     /// Forms a new Thread mesh. Existing devices will be detached, so callers
