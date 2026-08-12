@@ -180,16 +180,20 @@ fn start_hobby_thread_router(args: &RunArgs) -> Result<Option<HobbyThreadRuntime
             .clone()
             .unwrap_or_else(|| default_infrastructure_interface().to_string()),
     };
-    let controller = ThreadController::discover(&agent_path, None)?;
-    if controller.is_none() {
+    let Some(controller) = ThreadController::discover(&agent_path, None)? else {
         warn!(
             "OpenThread controller tool is unavailable; rebuild with `make hobby` to enable Thread settings"
         );
-    }
-    let router = BorderRouter::start(config)?;
+        let router = BorderRouter::start(config)?;
+        return Ok(Some(HobbyThreadRuntime {
+            router,
+            controller: None,
+        }));
+    };
+    let (router, controller) = BorderRouter::start_with_controller(config, controller)?;
     Ok(Some(HobbyThreadRuntime {
         router,
-        controller: controller.map(std::sync::Arc::new),
+        controller: Some(std::sync::Arc::new(controller)),
     }))
 }
 

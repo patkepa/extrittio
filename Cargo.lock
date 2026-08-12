@@ -1246,6 +1246,7 @@ dependencies = [
  "diesel_migrations",
  "dotenvy",
  "extrittio-common",
+ "extrittio-openthread-runtime",
  "http-body-util",
  "include_dir",
  "jsonwebtoken",

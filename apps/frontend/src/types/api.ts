@@ -228,6 +228,35 @@ export type DeviceCertificateStatusResponse =
   components['schemas']['DeviceCertificateStatusResponse'];
 
 // ---------------------------------------------------------------------------
+// Local Thread Border Router
+// ---------------------------------------------------------------------------
+
+export interface ThreadStatus {
+  available: boolean;
+  connected: boolean;
+  error: string | null;
+  role: string | null;
+  network_name: string | null;
+  channel: number | null;
+  pan_id: string | null;
+  extended_pan_id: string | null;
+  mesh_local_prefix: string | null;
+  addresses: string[];
+}
+
+export interface CreateThreadNetworkRequest {
+  network_name: string;
+  channel?: number;
+  pan_id?: string;
+  extended_pan_id?: string;
+  network_key?: string;
+}
+
+export interface ImportThreadDatasetRequest {
+  active_dataset_tlvs: string;
+}
+
+// ---------------------------------------------------------------------------
 // API Keys
 // ---------------------------------------------------------------------------
 

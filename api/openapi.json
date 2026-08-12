@@ -3597,6 +3597,131 @@
         ]
       }
     },
+    "/api/v1/system/thread": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "operationId": "get_thread_status",
+        "responses": {
+          "200": {
+            "description": "Local Thread border-router status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadStatusResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Owner access required"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/system/thread/dataset": {
+      "put": {
+        "tags": [
+          "system"
+        ],
+        "operationId": "import_thread_dataset",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportThreadDatasetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Thread dataset imported",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid operational dataset"
+          },
+          "403": {
+            "description": "Owner access required"
+          },
+          "409": {
+            "description": "Thread is unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/system/thread/network": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "operationId": "create_thread_network",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateThreadNetworkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "New Thread network formed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid network configuration"
+          },
+          "403": {
+            "description": "Owner access required"
+          },
+          "409": {
+            "description": "Thread is unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
     "/api/v1/system/version": {
       "get": {
         "tags": [
@@ -4948,6 +5073,45 @@
           }
         }
       },
+      "CreateThreadNetworkRequest": {
+        "type": "object",
+        "required": [
+          "network_name"
+        ],
+        "properties": {
+          "channel": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "extended_pan_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "network_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional 16-byte Thread network key, as 32 hexadecimal characters.\nOmit it to have OpenThread generate a secure random key.",
+            "writeOnly": true
+          },
+          "network_name": {
+            "type": "string"
+          },
+          "pan_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "CreateUserRequest": {
         "type": "object",
         "required": [
@@ -5678,6 +5842,19 @@
           "sample_count": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "ImportThreadDatasetRequest": {
+        "type": "object",
+        "required": [
+          "active_dataset_tlvs"
+        ],
+        "properties": {
+          "active_dataset_tlvs": {
+            "type": "string",
+            "description": "Complete hex-encoded Active Operational Dataset TLVs. This value is\nwrite-only because it contains the Thread network key.",
+            "writeOnly": true
           }
         }
       },
@@ -7136,6 +7313,73 @@
               "null"
             ],
             "format": "float"
+          }
+        }
+      },
+      "ThreadStatusResponse": {
+        "type": "object",
+        "required": [
+          "available",
+          "connected",
+          "addresses"
+        ],
+        "properties": {
+          "addresses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "available": {
+            "type": "boolean",
+            "description": "Whether this process is the hobby appliance with a controllable OTBR."
+          },
+          "channel": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "connected": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "extended_pan_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mesh_local_prefix": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "network_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pan_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },

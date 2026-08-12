@@ -7,6 +7,7 @@ import { RolesSettings } from './roles';
 import { FirmwareSettings } from './firmware';
 import { CertificatesSettings } from './certificates';
 import { ApiKeysSettings } from './api-keys';
+import { ThreadSettings } from './thread';
 import { getAccessibleSettingsRoutes, getDefaultSettingsPath } from '../../app/routes';
 import { useAuthStore } from '../../stores/auth-store';
 
@@ -19,6 +20,7 @@ const settingsElements = {
   firmware: <FirmwareSettings />,
   certificates: <CertificatesSettings />,
   'api-keys': <ApiKeysSettings />,
+  thread: <ThreadSettings />,
 } as const;
 
 export const Settings = () => {

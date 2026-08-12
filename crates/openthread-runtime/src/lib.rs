@@ -60,6 +60,11 @@ impl BorderRouterConfig {
 pub struct BorderRouter {
     child: Child,
     config: BorderRouterConfig,
+    dbus_daemon: Option<DbusDaemon>,
+}
+
+struct DbusDaemon {
+    process_id: u32,
 }
 
 /// Controlled access to the local OTBR instance.
@@ -71,6 +76,7 @@ pub struct BorderRouter {
 pub struct ThreadController {
     ot_ctl_path: PathBuf,
     command_lock: Arc<Mutex<()>>,
+    dbus_address: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -107,12 +113,18 @@ impl ThreadController {
         Ok(Some(Self {
             ot_ctl_path: path,
             command_lock: Arc::new(Mutex::new(())),
+            dbus_address: None,
         }))
     }
 
     #[must_use]
     pub fn path(&self) -> &Path {
         &self.ot_ctl_path
+    }
+
+    fn with_dbus_address(mut self, address: String) -> Self {
+        self.dbus_address = Some(address);
+        self
     }
 
     pub fn status(&self) -> Result<ThreadStatus> {
@@ -199,8 +211,12 @@ impl ThreadController {
     }
 
     fn run_locked(&self, arguments: &[&str]) -> Result<String> {
-        let output = Command::new(&self.ot_ctl_path)
-            .args(arguments)
+        let mut command = Command::new(&self.ot_ctl_path);
+        command.args(arguments);
+        if let Some(address) = &self.dbus_address {
+            command.env("DBUS_SYSTEM_BUS_ADDRESS", address);
+        }
+        let output = command
             .output()
             .with_context(|| format!("Failed to run {}", self.ot_ctl_path.display()))?;
         if !output.status.success() {
@@ -214,6 +230,26 @@ impl ThreadController {
 impl BorderRouter {
     /// Start OTBR and confirm that it did not fail immediately.
     pub fn start(config: BorderRouterConfig) -> Result<Self> {
+        Self::start_inner(config, None, None)
+    }
+
+    /// Starts OTBR with a private D-Bus control bus and returns the paired
+    /// `ot-ctl` controller. This avoids exposing or depending on the host's
+    /// system D-Bus service.
+    pub fn start_with_controller(
+        config: BorderRouterConfig,
+        controller: ThreadController,
+    ) -> Result<(Self, ThreadController)> {
+        let (daemon, address) = DbusDaemon::start()?;
+        let router = Self::start_inner(config, Some(address.clone()), Some(daemon))?;
+        Ok((router, controller.with_dbus_address(address)))
+    }
+
+    fn start_inner(
+        config: BorderRouterConfig,
+        dbus_address: Option<String>,
+        dbus_daemon: Option<DbusDaemon>,
+    ) -> Result<Self> {
         validate_config(&config)?;
         let args = config.agent_args();
         info!(
@@ -222,18 +258,21 @@ impl BorderRouter {
             infrastructure_interface = %config.infrastructure_interface,
             "Starting OpenThread border router"
         );
-        let mut child = Command::new(&config.agent_path)
+        let mut command = Command::new(&config.agent_path);
+        command
             .args(&args)
             .stdin(Stdio::null())
             .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .spawn()
-            .with_context(|| {
-                format!(
-                    "Failed to start OpenThread border router at {}",
-                    config.agent_path.display()
-                )
-            })?;
+            .stderr(Stdio::inherit());
+        if let Some(address) = dbus_address {
+            command.env("DBUS_SYSTEM_BUS_ADDRESS", address);
+        }
+        let mut child = command.spawn().with_context(|| {
+            format!(
+                "Failed to start OpenThread border router at {}",
+                config.agent_path.display()
+            )
+        })?;
 
         if let Some(status) = child
             .try_wait()
@@ -242,7 +281,11 @@ impl BorderRouter {
             bail!("OpenThread border router exited immediately with status {status}");
         }
 
-        Ok(Self { child, config })
+        Ok(Self {
+            child,
+            config,
+            dbus_daemon,
+        })
     }
 
     #[must_use]
@@ -266,7 +309,58 @@ impl BorderRouter {
                 .wait()
                 .context("Failed to wait for OpenThread border router shutdown")?;
         }
+        self.stop_dbus_daemon();
         Ok(())
+    }
+
+    fn stop_dbus_daemon(&mut self) {
+        if let Some(daemon) = self.dbus_daemon.take() {
+            drop(daemon);
+        }
+    }
+}
+
+impl DbusDaemon {
+    fn start() -> Result<(Self, String)> {
+        let output = Command::new("dbus-daemon")
+            .args([
+                "--session",
+                "--fork",
+                "--print-address=1",
+                "--print-pid=1",
+                "--nopidfile",
+            ])
+            .output()
+            .context("Failed to start the local D-Bus daemon required for OpenThread control")?;
+        if !output.status.success() {
+            bail!(
+                "Failed to start the local D-Bus daemon required for OpenThread control: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+        }
+        let output = String::from_utf8_lossy(&output.stdout);
+        let mut lines = output.lines();
+        let address = lines
+            .next()
+            .filter(|value| !value.trim().is_empty())
+            .map(str::to_owned)
+            .context("D-Bus daemon did not provide a bus address")?;
+        let process_id = lines
+            .next()
+            .context("D-Bus daemon did not provide a process ID")?
+            .trim()
+            .parse()
+            .context("D-Bus daemon returned an invalid process ID")?;
+        Ok((Self { process_id }, address))
+    }
+}
+
+impl Drop for DbusDaemon {
+    fn drop(&mut self) {
+        let _ = Command::new("kill")
+            .arg("-TERM")
+            .arg(self.process_id.to_string())
+            .status();
     }
 }
 
@@ -378,7 +472,9 @@ fn discover_ctl(agent_path: &Path) -> Option<PathBuf> {
         candidates.push(directory.join("ot-ctl"));
     }
     candidates.extend(bundled_ctl_paths());
-    candidates.into_iter().find(|candidate| candidate.is_file())
+    candidates
+        .into_iter()
+        .find(|candidate| candidate.is_file())
         .or_else(|| find_in_path("ot-ctl"))
 }
 
@@ -423,7 +519,11 @@ fn validate_create_network(network: &CreateNetwork) -> Result<()> {
         bail!("Thread channel must be between 11 and 26");
     }
     validate_hex("Thread PAN ID", network.pan_id.as_deref(), 4)?;
-    validate_hex("Thread extended PAN ID", network.extended_pan_id.as_deref(), 16)?;
+    validate_hex(
+        "Thread extended PAN ID",
+        network.extended_pan_id.as_deref(),
+        16,
+    )?;
     validate_hex("Thread network key", network.network_key.as_deref(), 32)?;
     Ok(())
 }

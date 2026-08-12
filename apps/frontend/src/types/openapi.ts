@@ -1041,6 +1041,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/thread": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_thread_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/thread/dataset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["import_thread_dataset"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/thread/network": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["create_thread_network"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/system/version": {
         parameters: {
             query?: never;
@@ -1413,6 +1461,18 @@ export interface components {
             target_type: string;
             trigger_type: string;
         };
+        CreateThreadNetworkRequest: {
+            /** Format: int32 */
+            channel?: number | null;
+            extended_pan_id?: string | null;
+            /**
+             * @description Optional 16-byte Thread network key, as 32 hexadecimal characters.
+             *     Omit it to have OpenThread generate a secure random key.
+             */
+            network_key?: string | null;
+            network_name: string;
+            pan_id?: string | null;
+        };
         CreateUserRequest: {
             password: string;
             role_ids?: number[] | null;
@@ -1604,6 +1664,13 @@ export interface components {
             min_temperature?: number | null;
             /** Format: int64 */
             sample_count: number;
+        };
+        ImportThreadDatasetRequest: {
+            /**
+             * @description Complete hex-encoded Active Operational Dataset TLVs. This value is
+             *     write-only because it contains the Thread network key.
+             */
+            active_dataset_tlvs: string;
         };
         LocationResponse: {
             /** Format: float */
@@ -2009,6 +2076,20 @@ export interface components {
             speed?: number | null;
             /** Format: float */
             temperature?: number | null;
+        };
+        ThreadStatusResponse: {
+            addresses: string[];
+            /** @description Whether this process is the hobby appliance with a controllable OTBR. */
+            available: boolean;
+            /** Format: int32 */
+            channel?: number | null;
+            connected: boolean;
+            error?: string | null;
+            extended_pan_id?: string | null;
+            mesh_local_prefix?: string | null;
+            network_name?: string | null;
+            pan_id?: string | null;
+            role?: string | null;
         };
         TriggerOtaRequest: {
             /** Format: int32 */
@@ -4368,6 +4449,123 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
+            };
+        };
+    };
+    get_thread_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Local Thread border-router status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadStatusResponse"];
+                };
+            };
+            /** @description Owner access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    import_thread_dataset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportThreadDatasetRequest"];
+            };
+        };
+        responses: {
+            /** @description Thread dataset imported */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadStatusResponse"];
+                };
+            };
+            /** @description Invalid operational dataset */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Owner access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Thread is unavailable */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    create_thread_network: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateThreadNetworkRequest"];
+            };
+        };
+        responses: {
+            /** @description New Thread network formed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadStatusResponse"];
+                };
+            };
+            /** @description Invalid network configuration */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Owner access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Thread is unavailable */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

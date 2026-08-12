@@ -15,11 +15,7 @@ use extrittio_openthread_runtime::{CreateNetwork, ThreadController, ThreadStatus
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::{
-    auth::context::RequestContext,
-    error::AppError,
-    state::AppState,
-};
+use crate::{auth::context::RequestContext, error::AppError, state::AppState};
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ThreadStatusResponse {
@@ -116,7 +112,10 @@ pub(crate) async fn create_thread_network(
         extended_pan_id: request.extended_pan_id,
         network_key: request.network_key,
     };
-    run_blocking(controller.clone(), move |controller| controller.create_network(&network)).await?;
+    run_blocking(controller.clone(), move |controller| {
+        controller.create_network(&network)
+    })
+    .await?;
     Ok(Json(status_after_change(controller).await?))
 }
 

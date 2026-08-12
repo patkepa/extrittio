@@ -77,4 +77,7 @@ export const queryKeys = {
   locations: {
     latest: (deviceId: string) => ['device-location', deviceId, 'latest'] as const,
   },
+  thread: {
+    status: ['system', 'thread'] as const,
+  },
 } as const;

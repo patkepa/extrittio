@@ -41,10 +41,10 @@ pub mod server_metrics;
 pub mod shadows;
 #[path = "../domains/operations/system.rs"]
 pub mod system;
-#[path = "../domains/operations/thread.rs"]
-pub mod thread;
 #[path = "../domains/telemetry/telemetry.rs"]
 pub mod telemetry;
+#[path = "../domains/operations/thread.rs"]
+pub mod thread;
 #[path = "../domains/identity/users.rs"]
 pub mod users;
 #[path = "../domains/zones/zones.rs"]

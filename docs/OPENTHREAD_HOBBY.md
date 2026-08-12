@@ -30,6 +30,14 @@ auto-detects exactly one connected RCP, starts its `otbr-agent` child, and
 changes the Zenoh listener from its secure loopback default to IPv6. It shuts
 OTBR down with Extrittio so stale Thread routes are not left on the host.
 
+When installed with `make hobby`, Extrittio also packages the matching
+`ot-ctl` tool. The **Settings → Thread Network** panel uses that local control
+channel to show non-secret mesh status, form a new network, or import an
+existing Active Operational Dataset. Creating or importing a dataset replaces
+the current mesh and disconnects existing Thread devices. Dataset and network
+key values are write-only: Extrittio does not return or store them in its own
+database. The panel is restricted to the appliance owner.
+
 Build the default hobby installation from the repository root. It installs
 `extrittio` and the pinned upstream `otbr-agent` together under the Cargo
 installation root, so no separate OTBR installation is needed:
@@ -73,6 +81,11 @@ for development and custom packaging. OTBR needs the privileges required to
 create its Thread interface and configure IPv6 routing. Install the packaged
 agent with those privileges, or run the explicitly configured local setup using
 your platform's normal privilege mechanism.
+
+The control panel starts an isolated local D-Bus daemon for OTBR and stops it
+with Extrittio. Ensure `dbus-daemon` is installed and available on `PATH`
+(`dbus` on common Linux distributions; `brew install dbus` on macOS) when
+building a local development environment.
 
 Extrittio emits a valid IPv6 listen locator such as `tls/[::]:7447` when
 `ZENOH_TLS_ENABLED=true`. A Thread client must use a *routable server address*,

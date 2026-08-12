@@ -92,6 +92,13 @@ export const settingsRoutes: SettingsRoute[] = [
     path: 'api-keys',
     requiredPermissions: ['api_keys.manage'],
   },
+  {
+    id: 'thread',
+    label: 'Thread Network',
+    icon: 'satellite',
+    path: 'thread',
+    requiredPermissions: ['roles.manage'],
+  },
 ];
 
 export const appRoutes: AppRoute[] = [
