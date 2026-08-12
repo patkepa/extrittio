@@ -1,13 +1,14 @@
-.PHONY: help hobby install-extrittio install-extrittio-fast otbr-agent check-otbr-source
-.DEFAULT_GOAL := hobby
+.PHONY: help install-release install-debug install-hobby-release install-hobby-debug hobby-assets otbr-agent check-otbr-source
+.DEFAULT_GOAL := help
 
 help:
 	@printf '%s\n' \
 		'Extrittio build targets:' \
 		'  make help                    Show this list of supported commands.' \
-		'  make hobby                   Build and install the complete hobby appliance (default).' \
-		'  make install-extrittio       Package the frontend, build OTBR, and install Extrittio.' \
-		'  make install-extrittio-fast  Quickly rebuild and install the existing hobby package.' \
+		'  make install-release         Install the PostgreSQL server with release optimizations.' \
+		'  make install-debug           Install the PostgreSQL server with debug settings.' \
+		'  make install-hobby-release   Install the complete hobby appliance with release optimizations.' \
+		'  make install-hobby-debug     Install the complete hobby appliance with debug settings.' \
 		'  make otbr-agent              Build the OpenThread Border Router agent and ot-ctl.' \
 		'  make check-otbr-source       Verify and initialize the pinned OpenThread source.' \
 		'' \
@@ -50,25 +51,33 @@ OTBR_CMAKE_OPTIONS += \
 	-DCMAKE_C_FLAGS=-Wno-error=uninitialized-const-pointer
 endif
 
-# Build and install the complete single-node hobby appliance, including the
-# OpenThread Border Router agent used automatically by `extrittio run`.
-hobby: install-extrittio
+# Install the standard PostgreSQL-backed server. The frontend is not embedded
+# in this build; serve it from apps/frontend/dist or EXTRITTIO_UI_DIR.
+install-release:
+	cargo install --root "$(EXTRITTIO_INSTALL_ROOT)" --path apps/extrittio --locked
 
-install-extrittio: otbr-agent
+install-debug:
+	cargo install --debug --root "$(EXTRITTIO_INSTALL_ROOT)" --path apps/extrittio --locked
+
+# Build assets shared by the standalone hobby appliance. OTBR intentionally
+# stays a release CMake build for a stable host runtime in both Rust modes.
+hobby-assets:
 	npm --prefix apps/frontend ci
 	npm --prefix apps/frontend run build
+
+# Install the complete single-node hobby appliance, including the OpenThread
+# Border Router agent used automatically by `extrittio run`.
+install-hobby-release: hobby-assets otbr-agent
 	cargo install --root "$(EXTRITTIO_INSTALL_ROOT)" --path apps/extrittio --locked --no-default-features --features hobby
 	install -d "$(OTBR_INSTALL_DIR)"
 	install -m 0755 "$(OTBR_AGENT)" "$(OTBR_INSTALL_DIR)/otbr-agent"
 	install -m 0755 "$(OTBR_CTL)" "$(OTBR_INSTALL_DIR)/ot-ctl"
 
-# Fast local iteration: reuses the workspace Cargo target cache and keeps the
-# previously packaged frontend and OpenThread tools. Run `make hobby` after
-# frontend, frontend-dependency, or OpenThread changes.
-install-extrittio-fast:
-	cargo build --profile ci-release -p extrittio --no-default-features --features hobby
-	install -d "$(EXTRITTIO_INSTALL_ROOT)/bin"
-	install -m 0755 target/ci-release/extrittio "$(EXTRITTIO_INSTALL_ROOT)/bin/extrittio"
+install-hobby-debug: hobby-assets otbr-agent
+	cargo install --debug --root "$(EXTRITTIO_INSTALL_ROOT)" --path apps/extrittio --locked --no-default-features --features hobby
+	install -d "$(OTBR_INSTALL_DIR)"
+	install -m 0755 "$(OTBR_AGENT)" "$(OTBR_INSTALL_DIR)/otbr-agent"
+	install -m 0755 "$(OTBR_CTL)" "$(OTBR_INSTALL_DIR)/ot-ctl"
 
 otbr-agent: $(OTBR_AGENT) $(OTBR_CTL)
 
