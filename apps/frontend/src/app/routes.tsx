@@ -173,6 +173,14 @@ export const appRoutes: AppRoute[] = [
         showInCommandPalette: true,
         requiredPermissions: ['roles.manage'],
       },
+      {
+        id: 'openthread-scanner',
+        label: 'Network Scanner',
+        icon: 'signal-search',
+        path: '/openthread/scanner',
+        showInCommandPalette: true,
+        requiredPermissions: ['roles.manage'],
+      },
     ],
   },
   {

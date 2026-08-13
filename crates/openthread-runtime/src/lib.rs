@@ -137,6 +137,43 @@ pub struct ThreadNetwork {
     pub lqi: u8,
 }
 
+/// Radio conditions observed on one IEEE 802.15.4 channel.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThreadChannelDiagnostics {
+    pub channel: u16,
+    /// Maximum RSSI observed during the point-in-time energy scan, in dBm.
+    pub max_rssi: Option<i16>,
+    /// OpenThread channel-monitor occupancy, where `u16::MAX` represents 100%.
+    pub occupancy: Option<u16>,
+    pub network_count: usize,
+    pub strongest_network_rssi: Option<i16>,
+}
+
+/// Cumulative radio statistics reported by the local OpenThread instance.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThreadRadioStatistics {
+    /// OpenThread CCA failure rate, where `u16::MAX` represents 100%.
+    pub cca_failure_rate: Option<u16>,
+    pub latest_rssi: Option<i16>,
+    pub monitor_sample_count: Option<u32>,
+    pub tx_total: Option<u32>,
+    pub rx_total: Option<u32>,
+    pub tx_retries: Option<u32>,
+    pub tx_errors: Option<u32>,
+    pub rx_errors: Option<u32>,
+}
+
+/// A point-in-time scan combining nearby Thread networks, channel energy,
+/// long-running channel occupancy, and cumulative radio statistics.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThreadNetworkDiagnostics {
+    pub channels: Vec<ThreadChannelDiagnostics>,
+    pub networks: Vec<ThreadNetwork>,
+    pub statistics: ThreadRadioStatistics,
+    /// Diagnostics that were unavailable on this OTBR/RCP combination.
+    pub warnings: Vec<String>,
+}
+
 /// One node discovered on the active Thread mesh through OTBR diagnostics.
 ///
 /// These fields intentionally exclude credentials and mutable operational
@@ -575,13 +612,126 @@ impl ThreadController {
     /// networks. This does not alter the active operational dataset.
     pub fn scan_networks(&self) -> Result<Vec<ThreadNetwork>> {
         let _guard = self.lock();
+        self.scan_networks_locked()
+    }
+
+    /// Combines an active Thread scan with channel energy, occupancy, and
+    /// cumulative radio statistics from the local OTBR instance.
+    pub fn scan_network_diagnostics(&self) -> Result<ThreadNetworkDiagnostics> {
+        let _guard = self.lock();
+        let networks = self.scan_networks_locked()?;
+        let mut warnings = Vec::new();
+
+        let energy = match self.energy_scan_locked(100) {
+            Ok(energy) => energy,
+            Err(error) => {
+                warnings.push(format!("Channel energy scan is unavailable: {error}"));
+                Vec::new()
+            }
+        };
+        let occupancy = match self.dbus_property("ChannelMonitorAllChannelQualities") {
+            Ok(output) => parse_dbus_channel_occupancy(&output),
+            Err(error) => {
+                warnings.push(format!("Channel utilization is unavailable: {error}"));
+                Vec::new()
+            }
+        };
+        let monitor_sample_count = self
+            .dbus_property("ChannelMonitorSampleCount")
+            .ok()
+            .and_then(|output| parse_dbus_scalar::<u32>(&output, "uint32"));
+        let cca_failure_rate = self
+            .dbus_property("CcaFailureRate")
+            .ok()
+            .and_then(|output| parse_dbus_scalar::<u16>(&output, "uint16"));
+        let latest_rssi = self
+            .dbus_property("InstantRssi")
+            .ok()
+            .and_then(|output| parse_dbus_byte(&output));
+        let mac_counters = self
+            .dbus_property("LinkCounters")
+            .ok()
+            .and_then(|output| parse_dbus_mac_counters(&output));
+
+        let channels = (11..=26)
+            .map(|channel| ThreadChannelDiagnostics {
+                channel,
+                max_rssi: energy
+                    .iter()
+                    .find(|result| result.channel == channel)
+                    .map(|result| result.max_rssi),
+                occupancy: occupancy
+                    .iter()
+                    .find(|result| result.channel == channel)
+                    .map(|result| result.occupancy),
+                network_count: networks
+                    .iter()
+                    .filter(|network| network.channel == channel)
+                    .count(),
+                strongest_network_rssi: networks
+                    .iter()
+                    .filter(|network| network.channel == channel)
+                    .map(|network| network.rssi)
+                    .max(),
+            })
+            .collect();
+
+        Ok(ThreadNetworkDiagnostics {
+            channels,
+            networks,
+            statistics: ThreadRadioStatistics {
+                cca_failure_rate,
+                latest_rssi,
+                monitor_sample_count,
+                tx_total: mac_counters.as_ref().map(|counters| counters.tx_total),
+                rx_total: mac_counters.as_ref().map(|counters| counters.rx_total),
+                tx_retries: mac_counters.as_ref().map(|counters| counters.tx_retries),
+                tx_errors: mac_counters.as_ref().map(|counters| counters.tx_errors),
+                rx_errors: mac_counters.as_ref().map(|counters| counters.rx_errors),
+            },
+            warnings,
+        })
+    }
+
+    fn scan_networks_locked(&self) -> Result<Vec<ThreadNetwork>> {
+        let output = self.dbus_method("Scan", &[], 35_000)?;
+        Ok(parse_dbus_scan(&output))
+    }
+
+    fn energy_scan_locked(&self, duration_ms: u32) -> Result<Vec<ThreadEnergyResult>> {
+        let duration = format!("uint32:{duration_ms}");
+        let output = self.dbus_method("EnergyScan", &[duration], 35_000)?;
+        Ok(parse_dbus_energy_scan(&output))
+    }
+
+    fn dbus_property(&self, property: &str) -> Result<String> {
+        self.dbus_call(
+            "org.freedesktop.DBus.Properties.Get",
+            &[
+                "string:io.openthread.BorderRouter".to_string(),
+                format!("string:{property}"),
+            ],
+            5_000,
+        )
+    }
+
+    fn dbus_method(&self, method: &str, arguments: &[String], timeout_ms: u32) -> Result<String> {
+        self.dbus_call(
+            &format!("io.openthread.BorderRouter.{method}"),
+            arguments,
+            timeout_ms,
+        )
+    }
+
+    fn dbus_call(&self, member: &str, arguments: &[String], timeout_ms: u32) -> Result<String> {
         let address = self
             .dbus_address
             .as_deref()
             .context("The local OTBR RCP control bus is unavailable")?;
         let service = format!("io.openthread.BorderRouter.{}", self.thread_interface);
         let object = format!("/io/openthread/BorderRouter/{}", self.thread_interface);
-        Command::new("dbus-send")
+        let mut command = Command::new("dbus-send");
+        command
             // OTBR connects with `dbus_bus_get(DBUS_BUS_SYSTEM)`. Point that
             // lookup at our private daemon so the client uses the identical
             // system-bus handshake instead of a direct peer connection.
@@ -589,21 +739,23 @@ impl ThreadController {
             .args([
                 "--system".to_string(),
                 "--print-reply".to_string(),
-                "--reply-timeout=35000".to_string(),
+                format!("--reply-timeout={timeout_ms}"),
                 format!("--dest={service}"),
                 object,
-                "io.openthread.BorderRouter.Scan".to_string(),
+                member.to_string(),
             ])
+            .args(arguments);
+        command
             .output()
-            .context("Failed to run the OTBR RCP scan controller")
+            .context("Failed to run the OTBR RCP controller")
             .and_then(|output| {
                 if !output.status.success() {
                     bail!(
-                        "OpenThread RCP scan failed: {}",
+                        "OpenThread RCP request failed: {}",
                         String::from_utf8_lossy(&output.stderr).trim()
                     );
                 }
-                Ok(parse_dbus_scan(&String::from_utf8_lossy(&output.stdout)))
+                Ok(String::from_utf8_lossy(&output.stdout).into_owned())
             })
     }
 
@@ -1304,6 +1456,98 @@ fn dataset_u16(dataset: &serde_json::Value, key: &str) -> Option<u16> {
         .and_then(|value| u16::try_from(value).ok())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ThreadEnergyResult {
+    channel: u16,
+    max_rssi: i16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ThreadChannelOccupancy {
+    channel: u16,
+    occupancy: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ThreadMacCounters {
+    tx_total: u32,
+    rx_total: u32,
+    tx_retries: u32,
+    tx_errors: u32,
+    rx_errors: u32,
+}
+
+fn parse_dbus_energy_scan(output: &str) -> Vec<ThreadEnergyResult> {
+    output
+        .split("struct {")
+        .skip(1)
+        .filter_map(|entry| entry.split('}').next())
+        .filter_map(|entry| {
+            let bytes = dbus_values::<u8>(entry, "byte");
+            Some(ThreadEnergyResult {
+                channel: u16::from(*bytes.first()?),
+                max_rssi: i16::from(*bytes.get(1)? as i8),
+            })
+        })
+        .collect()
+}
+
+fn parse_dbus_channel_occupancy(output: &str) -> Vec<ThreadChannelOccupancy> {
+    output
+        .split("struct {")
+        .skip(1)
+        .filter_map(|entry| entry.split('}').next())
+        .filter_map(|entry| {
+            Some(ThreadChannelOccupancy {
+                channel: u16::from(*dbus_values::<u8>(entry, "byte").first()?),
+                occupancy: *dbus_values::<u16>(entry, "uint16").first()?,
+            })
+        })
+        .collect()
+}
+
+fn parse_dbus_scalar<T>(output: &str, kind: &str) -> Option<T>
+where
+    T: std::str::FromStr,
+{
+    dbus_values(output, kind).into_iter().next()
+}
+
+fn parse_dbus_byte(output: &str) -> Option<i16> {
+    parse_dbus_scalar::<u8>(output, "byte").map(|value| i16::from(value as i8))
+}
+
+fn parse_dbus_mac_counters(output: &str) -> Option<ThreadMacCounters> {
+    let values = dbus_values::<u32>(output, "uint32");
+    Some(ThreadMacCounters {
+        tx_total: *values.first()?,
+        tx_retries: *values.get(11)?,
+        tx_errors: values
+            .get(12..=14)?
+            .iter()
+            .copied()
+            .fold(0, u32::saturating_add),
+        rx_total: *values.get(15)?,
+        rx_errors: values
+            .get(26..=31)?
+            .iter()
+            .copied()
+            .fold(0, u32::saturating_add),
+    })
+}
+
+fn dbus_values<T>(output: &str, kind: &str) -> Vec<T>
+where
+    T: std::str::FromStr,
+{
+    output
+        .lines()
+        .map(str::trim)
+        .filter_map(|line| line.strip_prefix(kind))
+        .filter_map(|value| value.trim().parse().ok())
+        .collect()
+}
+
 fn parse_dbus_scan(output: &str) -> Vec<ThreadNetwork> {
     output
         .split("struct {")
@@ -1659,6 +1903,80 @@ array [
                 rssi: -28,
                 lqi: 3,
             }]
+        );
+    }
+
+    #[test]
+    fn parses_rcp_energy_scan_signed_rssi_values() {
+        let output = r#"
+array [
+   struct {
+      byte 11
+      byte 197
+   }
+   struct {
+      byte 12
+      byte 169
+   }
+]
+"#;
+
+        assert_eq!(
+            super::parse_dbus_energy_scan(output),
+            vec![
+                super::ThreadEnergyResult {
+                    channel: 11,
+                    max_rssi: -59,
+                },
+                super::ThreadEnergyResult {
+                    channel: 12,
+                    max_rssi: -87,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn parses_channel_monitor_occupancy_and_radio_counters() {
+        let occupancy = r#"
+variant array [
+   struct {
+      byte 11
+      uint16 8192
+   }
+   struct {
+      byte 12
+      uint16 49151
+   }
+]
+"#;
+        assert_eq!(
+            super::parse_dbus_channel_occupancy(occupancy),
+            vec![
+                super::ThreadChannelOccupancy {
+                    channel: 11,
+                    occupancy: 8192,
+                },
+                super::ThreadChannelOccupancy {
+                    channel: 12,
+                    occupancy: 49151,
+                },
+            ]
+        );
+
+        let counters = (0..32)
+            .map(|value| format!("uint32 {value}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_eq!(
+            super::parse_dbus_mac_counters(&counters),
+            Some(super::ThreadMacCounters {
+                tx_total: 0,
+                tx_retries: 11,
+                tx_errors: 39,
+                rx_total: 15,
+                rx_errors: 171,
+            })
         );
     }
 

@@ -271,6 +271,32 @@ export interface ThreadNetworkScan {
   networks: ThreadNetwork[];
 }
 
+export interface ThreadChannelDiagnostics {
+  channel: number;
+  utilization_percent: number | null;
+  max_rssi_dbm: number | null;
+  network_count: number;
+  strongest_network_rssi_dbm: number | null;
+}
+
+export interface ThreadRadioStatistics {
+  cca_failure_rate_percent: number | null;
+  latest_rssi_dbm: number | null;
+  monitor_sample_count: number | null;
+  tx_total: number | null;
+  rx_total: number | null;
+  tx_retries: number | null;
+  tx_errors: number | null;
+  rx_errors: number | null;
+}
+
+export interface ThreadNetworkDiagnostics {
+  channels: ThreadChannelDiagnostics[];
+  networks: ThreadNetwork[];
+  statistics: ThreadRadioStatistics;
+  warnings: string[];
+}
+
 export interface ThreadMeshDevice {
   id: string;
   is_border_router: boolean;

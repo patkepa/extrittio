@@ -1105,6 +1105,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/thread/radio/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["scan_thread_network_diagnostics"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/system/version": {
         parameters: {
             query?: never;
@@ -2093,6 +2109,23 @@ export interface components {
             /** Format: float */
             temperature?: number | null;
         };
+        ThreadChannelDiagnosticsResponse: {
+            /** Format: int32 */
+            channel: number;
+            /**
+             * Format: int32
+             * @description Maximum energy observed during this scan, in dBm.
+             */
+            max_rssi_dbm?: number | null;
+            network_count: number;
+            /** Format: int32 */
+            strongest_network_rssi_dbm?: number | null;
+            /**
+             * Format: double
+             * @description Percentage of channel-monitor RSSI samples above OpenThread's noise threshold.
+             */
+            utilization_percent?: number | null;
+        };
         ThreadMeshDeviceResponse: {
             border_agent_id?: string | null;
             border_agent_state?: string | null;
@@ -2130,6 +2163,13 @@ export interface components {
             devices: components["schemas"]["ThreadMeshDeviceResponse"][];
             networks: components["schemas"]["ThreadNetworkResponse"][];
         };
+        ThreadNetworkDiagnosticsResponse: {
+            channels: components["schemas"]["ThreadChannelDiagnosticsResponse"][];
+            networks: components["schemas"]["ThreadNetworkResponse"][];
+            statistics: components["schemas"]["ThreadRadioStatisticsResponse"];
+            /** @description Measurements unsupported by the current OTBR/RCP combination. */
+            warnings: string[];
+        };
         ThreadNetworkResponse: {
             /** Format: int32 */
             channel: number;
@@ -2143,6 +2183,24 @@ export interface components {
         };
         ThreadNetworkScanResponse: {
             networks: components["schemas"]["ThreadNetworkResponse"][];
+        };
+        ThreadRadioStatisticsResponse: {
+            /** Format: double */
+            cca_failure_rate_percent?: number | null;
+            /** Format: int32 */
+            latest_rssi_dbm?: number | null;
+            /** Format: int32 */
+            monitor_sample_count?: number | null;
+            /** Format: int32 */
+            rx_errors?: number | null;
+            /** Format: int32 */
+            rx_total?: number | null;
+            /** Format: int32 */
+            tx_errors?: number | null;
+            /** Format: int32 */
+            tx_retries?: number | null;
+            /** Format: int32 */
+            tx_total?: number | null;
         };
         ThreadStatusResponse: {
             addresses: string[];
@@ -4656,6 +4714,40 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Owner access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Thread is unavailable */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    scan_thread_network_diagnostics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Thread channel utilization, energy, nearby networks, and radio statistics */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadNetworkDiagnosticsResponse"];
+                };
             };
             /** @description Owner access required */
             403: {

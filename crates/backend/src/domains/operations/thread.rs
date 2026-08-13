@@ -12,8 +12,9 @@ use axum::{
     routing::{get, post, put},
 };
 use extrittio_openthread_runtime::{
-    CreateNetwork, ThreadController, ThreadMeshDevice, ThreadNetwork, ThreadRuntime,
-    ThreadRuntimeSnapshot, ThreadStatus,
+    CreateNetwork, ThreadChannelDiagnostics, ThreadController, ThreadMeshDevice, ThreadNetwork,
+    ThreadNetworkDiagnostics, ThreadRadioStatistics, ThreadRuntime, ThreadRuntimeSnapshot,
+    ThreadStatus,
 };
 use serde::{Deserialize, Serialize};
 use tracing::warn;
@@ -75,6 +76,38 @@ pub struct ThreadNetworkScanResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+pub struct ThreadChannelDiagnosticsResponse {
+    pub channel: u16,
+    /// Percentage of channel-monitor RSSI samples above OpenThread's noise threshold.
+    pub utilization_percent: Option<f64>,
+    /// Maximum energy observed during this scan, in dBm.
+    pub max_rssi_dbm: Option<i16>,
+    pub network_count: usize,
+    pub strongest_network_rssi_dbm: Option<i16>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ThreadRadioStatisticsResponse {
+    pub cca_failure_rate_percent: Option<f64>,
+    pub latest_rssi_dbm: Option<i16>,
+    pub monitor_sample_count: Option<u32>,
+    pub tx_total: Option<u32>,
+    pub rx_total: Option<u32>,
+    pub tx_retries: Option<u32>,
+    pub tx_errors: Option<u32>,
+    pub rx_errors: Option<u32>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ThreadNetworkDiagnosticsResponse {
+    pub channels: Vec<ThreadChannelDiagnosticsResponse>,
+    pub networks: Vec<ThreadNetworkResponse>,
+    pub statistics: ThreadRadioStatisticsResponse,
+    /// Measurements unsupported by the current OTBR/RCP combination.
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ThreadMeshDeviceResponse {
     pub id: String,
     pub is_border_router: bool,
@@ -117,9 +150,37 @@ pub fn router() -> Router<Arc<AppState>> {
             post(refresh_thread_runtime),
         )
         .route("/api/v1/system/thread/scan", post(scan_thread_networks))
+        .route(
+            "/api/v1/system/thread/radio/scan",
+            post(scan_thread_network_diagnostics),
+        )
         .route("/api/v1/system/thread/mesh/scan", post(scan_thread_mesh))
         .route("/api/v1/system/thread/network", post(create_thread_network))
         .route("/api/v1/system/thread/dataset", put(import_thread_dataset))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/system/thread/radio/scan",
+    tag = "system",
+    security(("bearer_auth" = [])),
+    responses(
+        (status = 200, description = "Thread channel utilization, energy, nearby networks, and radio statistics", body = ThreadNetworkDiagnosticsResponse),
+        (status = 403, description = "Owner access required"),
+        (status = 409, description = "Thread is unavailable"),
+    ),
+)]
+pub(crate) async fn scan_thread_network_diagnostics(
+    Extension(ctx): Extension<RequestContext>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<ThreadNetworkDiagnosticsResponse>, AppError> {
+    require_owner(&ctx)?;
+    let controller = controller(&state)?;
+    let diagnostics = run_blocking(controller, |controller| {
+        controller.scan_network_diagnostics()
+    })
+    .await?;
+    Ok(Json(ThreadNetworkDiagnosticsResponse::from(diagnostics)))
 }
 
 #[utoipa::path(
@@ -378,6 +439,56 @@ impl From<ThreadNetwork> for ThreadNetworkResponse {
             lqi: network.lqi,
         }
     }
+}
+
+impl From<ThreadChannelDiagnostics> for ThreadChannelDiagnosticsResponse {
+    fn from(channel: ThreadChannelDiagnostics) -> Self {
+        Self {
+            channel: channel.channel,
+            utilization_percent: channel.occupancy.map(thread_ratio_percent),
+            max_rssi_dbm: channel.max_rssi,
+            network_count: channel.network_count,
+            strongest_network_rssi_dbm: channel.strongest_network_rssi,
+        }
+    }
+}
+
+impl From<ThreadRadioStatistics> for ThreadRadioStatisticsResponse {
+    fn from(statistics: ThreadRadioStatistics) -> Self {
+        Self {
+            cca_failure_rate_percent: statistics.cca_failure_rate.map(thread_ratio_percent),
+            latest_rssi_dbm: statistics.latest_rssi,
+            monitor_sample_count: statistics.monitor_sample_count,
+            tx_total: statistics.tx_total,
+            rx_total: statistics.rx_total,
+            tx_retries: statistics.tx_retries,
+            tx_errors: statistics.tx_errors,
+            rx_errors: statistics.rx_errors,
+        }
+    }
+}
+
+impl From<ThreadNetworkDiagnostics> for ThreadNetworkDiagnosticsResponse {
+    fn from(diagnostics: ThreadNetworkDiagnostics) -> Self {
+        Self {
+            channels: diagnostics
+                .channels
+                .into_iter()
+                .map(ThreadChannelDiagnosticsResponse::from)
+                .collect(),
+            networks: diagnostics
+                .networks
+                .into_iter()
+                .map(ThreadNetworkResponse::from)
+                .collect(),
+            statistics: ThreadRadioStatisticsResponse::from(diagnostics.statistics),
+            warnings: diagnostics.warnings,
+        }
+    }
+}
+
+fn thread_ratio_percent(value: u16) -> f64 {
+    (f64::from(value) * 1_000.0 / f64::from(u16::MAX)).round() / 10.0
 }
 
 impl From<ThreadMeshDevice> for ThreadMeshDeviceResponse {

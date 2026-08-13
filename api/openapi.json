@@ -3756,6 +3756,40 @@
         ]
       }
     },
+    "/api/v1/system/thread/radio/scan": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "operationId": "scan_thread_network_diagnostics",
+        "responses": {
+          "200": {
+            "description": "Thread channel utilization, energy, nearby networks, and radio statistics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadNetworkDiagnosticsResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Owner access required"
+          },
+          "409": {
+            "description": "Thread is unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
     "/api/v1/system/version": {
       "get": {
         "tags": [
@@ -7350,6 +7384,47 @@
           }
         }
       },
+      "ThreadChannelDiagnosticsResponse": {
+        "type": "object",
+        "required": [
+          "channel",
+          "network_count"
+        ],
+        "properties": {
+          "channel": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "max_rssi_dbm": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Maximum energy observed during this scan, in dBm."
+          },
+          "network_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "strongest_network_rssi_dbm": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "utilization_percent": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Percentage of channel-monitor RSSI samples above OpenThread's noise threshold."
+          }
+        }
+      },
       "ThreadMeshDeviceResponse": {
         "type": "object",
         "required": [
@@ -7537,6 +7612,39 @@
           }
         }
       },
+      "ThreadNetworkDiagnosticsResponse": {
+        "type": "object",
+        "required": [
+          "channels",
+          "networks",
+          "statistics",
+          "warnings"
+        ],
+        "properties": {
+          "channels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ThreadChannelDiagnosticsResponse"
+            }
+          },
+          "networks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ThreadNetworkResponse"
+            }
+          },
+          "statistics": {
+            "$ref": "#/components/schemas/ThreadRadioStatisticsResponse"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Measurements unsupported by the current OTBR/RCP combination."
+          }
+        }
+      },
       "ThreadNetworkResponse": {
         "type": "object",
         "required": [
@@ -7586,6 +7694,73 @@
             "items": {
               "$ref": "#/components/schemas/ThreadNetworkResponse"
             }
+          }
+        }
+      },
+      "ThreadRadioStatisticsResponse": {
+        "type": "object",
+        "properties": {
+          "cca_failure_rate_percent": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "latest_rssi_dbm": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "monitor_sample_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "rx_errors": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "rx_total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "tx_errors": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "tx_retries": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "tx_total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
           }
         }
       },
