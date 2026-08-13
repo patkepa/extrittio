@@ -34,6 +34,7 @@
 #define BACKEND_TXT_MAX_LENGTH 128
 #define BACKEND_LOCATOR_MAX_LENGTH 128
 #define BACKEND_DISCOVERY_TIMEOUT_MS 20000
+#define BACKEND_DISCOVERY_MAX_ATTEMPTS 3
 
 static const char *TAG = "extrittio_thread";
 static EventGroupHandle_t s_thread_events;
@@ -220,6 +221,23 @@ static bool configured_backend(backend_endpoint_t *endpoint)
     return true;
 }
 
+static bool discover_backend_with_fallback(backend_endpoint_t *endpoint)
+{
+    for (uint8_t attempt = 1; attempt <= BACKEND_DISCOVERY_MAX_ATTEMPTS; attempt++) {
+        if (discover_backend(endpoint)) {
+            return true;
+        }
+
+        ESP_LOGW(TAG, "Thread DNS-SD discovery attempt %u/%u failed", attempt,
+                 BACKEND_DISCOVERY_MAX_ATTEMPTS);
+        if (attempt < BACKEND_DISCOVERY_MAX_ATTEMPTS) {
+            vTaskDelay(pdMS_TO_TICKS(5000));
+        }
+    }
+
+    return configured_backend(endpoint);
+}
+
 static esp_netif_t *init_openthread_netif(const esp_openthread_platform_config_t *config)
 {
     esp_netif_config_t netif_config = ESP_NETIF_DEFAULT_OPENTHREAD();
@@ -291,8 +309,8 @@ static void publish_loop(void)
         }
 
         backend_endpoint_t endpoint;
-        if (!discover_backend(&endpoint) && !configured_backend(&endpoint)) {
-            ESP_LOGW(TAG, "Extrittio DNS-SD service not found and no locator fallback is configured; retrying");
+        if (!discover_backend_with_fallback(&endpoint)) {
+            ESP_LOGW(TAG, "Extrittio DNS-SD service was unavailable and no locator fallback is configured; retrying");
             vTaskDelay(pdMS_TO_TICKS(5000));
             continue;
         }

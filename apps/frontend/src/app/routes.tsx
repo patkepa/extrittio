@@ -12,6 +12,9 @@ const DeviceDetail = lazy(() =>
 const FleetGraph = lazy(() =>
   import('../pages/fleet-graph').then((m) => ({ default: m.FleetGraph })),
 );
+const OpenThread = lazy(() =>
+  import('../pages/openthread').then((m) => ({ default: m.OpenThread })),
+);
 const Settings = lazy(() =>
   import('../pages/settings/index').then((m) => ({ default: m.Settings })),
 );
@@ -92,13 +95,6 @@ export const settingsRoutes: SettingsRoute[] = [
     path: 'api-keys',
     requiredPermissions: ['api_keys.manage'],
   },
-  {
-    id: 'thread',
-    label: 'Thread Network',
-    icon: 'satellite',
-    path: 'thread',
-    requiredPermissions: ['roles.manage'],
-  },
 ];
 
 export const appRoutes: AppRoute[] = [
@@ -149,6 +145,35 @@ export const appRoutes: AppRoute[] = [
     navGroup: 'General',
     showInCommandPalette: true,
     requiredPermissions: ['devices.read', 'zones.read'],
+  },
+  {
+    id: 'openthread',
+    label: 'OpenThread',
+    icon: 'satellite',
+    path: '/openthread/*',
+    href: '/openthread/settings',
+    element: <OpenThread />,
+    navGroup: 'General',
+    showInCommandPalette: true,
+    requiredPermissions: ['roles.manage'],
+    children: [
+      {
+        id: 'openthread-settings',
+        label: 'OpenThread Settings',
+        icon: 'cog',
+        path: '/openthread/settings',
+        showInCommandPalette: true,
+        requiredPermissions: ['roles.manage'],
+      },
+      {
+        id: 'openthread-mesh',
+        label: 'OpenThread Mesh',
+        icon: 'graph',
+        path: '/openthread/mesh',
+        showInCommandPalette: true,
+        requiredPermissions: ['roles.manage'],
+      },
+    ],
   },
   {
     id: 'updates',

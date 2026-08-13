@@ -4,6 +4,7 @@ import {
   getThreadStatus,
   importThreadDataset,
   refreshThreadRuntime,
+  scanThreadMesh,
   scanThreadNetworks,
 } from '../api/thread';
 import type { CreateThreadNetworkRequest, ImportThreadDatasetRequest } from '../types/api';
@@ -22,6 +23,13 @@ export function useThreadNetworkScan() {
   return useMutation({
     mutationKey: queryKeys.thread.scan,
     mutationFn: scanThreadNetworks,
+  });
+}
+
+export function useThreadMeshScan() {
+  return useMutation({
+    mutationKey: queryKeys.thread.meshScan,
+    mutationFn: scanThreadMesh,
   });
 }
 

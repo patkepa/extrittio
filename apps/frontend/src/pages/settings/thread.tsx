@@ -97,9 +97,9 @@ export function ThreadSettings() {
     <div className="settings-page">
       <div className="page-header">
         <div>
-          <H3>Thread Network</H3>
+          <H3>OpenThread Settings</H3>
           <p className="page-description">
-            Configure the local OpenThread border router used by this hobby appliance.
+            Configure the local border router and operational dataset used by this hobby appliance.
           </p>
         </div>
         <Button

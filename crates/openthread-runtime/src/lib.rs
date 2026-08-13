@@ -17,7 +17,7 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicU64, Ordering},
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use anyhow::{Context, Result, bail};
@@ -26,7 +26,7 @@ use tracing::{info, warn};
 /// Public development dataset shared by the hobby border router and the
 /// ESP32-C6 OpenThread example. It is intentionally not suitable for a
 /// private or production Thread mesh.
-pub const DEFAULT_DEVELOPMENT_DATASET_TLVS: &str = "0e080000000000010000000300001235060004001fffe00208ef1398c2fd504b670708fd35344133d1d73e0510fda7c771a27202e232ecd04cf934f476030f4f70656e5468726561642d633634650102c64e04105e9b9b360f80b88be2603fb0135c8d650c0402a0f7f8";
+pub const DEFAULT_DEVELOPMENT_DATASET_TLVS: &str = "0e080000000000010000000300001935060004001fffe00208ef1398c2fd504b670708fd35344133d1d73e0510fda7c771a27202e232ecd04cf934f476030f4f70656e5468726561642d633634650102c64e04105e9b9b360f80b88be2603fb0135c8d650c0402a0f7f8";
 
 /// Configuration for one local OTBR instance.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -135,6 +135,47 @@ pub struct ThreadNetwork {
     pub channel: u16,
     pub rssi: i16,
     pub lqi: u8,
+}
+
+/// One node discovered on the active Thread mesh through OTBR diagnostics.
+///
+/// These fields intentionally exclude credentials and mutable operational
+/// datasets. They are the non-secret inventory attributes exposed by OTBR's
+/// device-discovery collection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThreadMeshDevice {
+    pub id: String,
+    pub is_border_router: bool,
+    pub extended_address: Option<String>,
+    pub mesh_local_eid_iid: Option<String>,
+    pub omr_ipv6_addresses: Vec<String>,
+    pub hostname: Option<String>,
+    pub eui64: Option<String>,
+    pub role: Option<String>,
+    pub full_thread_device: Option<bool>,
+    pub rx_on_when_idle: Option<bool>,
+    pub full_network_data: Option<bool>,
+    pub rloc16: Option<String>,
+    pub rloc_address: Option<String>,
+    pub router_id: Option<u16>,
+    pub router_count: Option<u16>,
+    pub network_name: Option<String>,
+    pub extended_pan_id: Option<String>,
+    pub border_agent_id: Option<String>,
+    pub border_agent_state: Option<String>,
+    pub partition_id: Option<u32>,
+    pub leader_router_id: Option<u16>,
+    pub data_version: Option<u16>,
+    pub stable_data_version: Option<u16>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+/// A point-in-time view of nearby Thread networks and the active mesh.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThreadMeshScan {
+    pub networks: Vec<ThreadNetwork>,
+    pub devices: Vec<ThreadMeshDevice>,
 }
 
 /// Configuration used to discover and supervise a local Thread border router
@@ -564,6 +605,108 @@ impl ThreadController {
                 }
                 Ok(parse_dbus_scan(&String::from_utf8_lossy(&output.stdout)))
             })
+    }
+
+    /// Discovers nearby Thread networks and refreshes OTBR's inventory for the
+    /// active mesh. The diagnostics collection is an ephemeral OTBR cache, so
+    /// it is cleared before discovery to avoid showing nodes from a previous
+    /// operational dataset.
+    pub fn scan_mesh(&self) -> Result<ThreadMeshScan> {
+        let networks = self.scan_networks()?;
+        let _guard = self.lock();
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(12))
+            .build()
+            .context("Failed to initialize the OTBR mesh diagnostics client")?;
+
+        let devices_url = self.url("/api/devices");
+        client
+            .delete(&devices_url)
+            .send()
+            .with_context(|| format!("Failed to clear stale OTBR mesh inventory at {devices_url}"))?
+            .error_for_status()
+            .with_context(|| {
+                format!("OTBR rejected clearing its mesh inventory at {devices_url}")
+            })?;
+
+        let actions_url = self.url("/api/actions");
+        let response = client
+            .post(&actions_url)
+            .header(reqwest::header::CONTENT_TYPE, "application/vnd.api+json")
+            .json(&serde_json::json!({
+                "data": [{
+                    "type": "updateDeviceCollectionTask",
+                    "attributes": {
+                        "maxAge": 0,
+                        "maxRetries": 1,
+                        "deviceCount": 200,
+                        "timeout": 8
+                    }
+                }]
+            }))
+            .send()
+            .with_context(|| format!("Failed to start OTBR mesh discovery at {actions_url}"))?
+            .error_for_status()
+            .with_context(|| format!("OTBR rejected mesh discovery at {actions_url}"))?
+            .json::<serde_json::Value>()
+            .with_context(|| format!("OTBR returned an invalid mesh action from {actions_url}"))?;
+        let action_id = response
+            .pointer("/data/0/id")
+            .and_then(serde_json::Value::as_str)
+            .context("OTBR mesh discovery did not return an action identifier")?;
+        self.wait_for_mesh_discovery(&client, action_id)?;
+
+        let devices = client
+            .get(&devices_url)
+            .header(reqwest::header::ACCEPT, "application/vnd.api+json")
+            .send()
+            .with_context(|| format!("Failed to read OTBR mesh inventory at {devices_url}"))?
+            .error_for_status()
+            .with_context(|| format!("OTBR rejected its mesh inventory request at {devices_url}"))?
+            .json::<serde_json::Value>()
+            .with_context(|| format!("OTBR returned invalid mesh inventory from {devices_url}"))?;
+
+        Ok(ThreadMeshScan {
+            networks,
+            devices: parse_thread_mesh_devices(&devices)?,
+        })
+    }
+
+    fn wait_for_mesh_discovery(
+        &self,
+        client: &reqwest::blocking::Client,
+        action_id: &str,
+    ) -> Result<()> {
+        let action_url = self.url(&format!("/api/actions/{action_id}"));
+        let deadline = Instant::now() + Duration::from_secs(10);
+
+        loop {
+            let response = client
+                .get(&action_url)
+                .header(reqwest::header::ACCEPT, "application/vnd.api+json")
+                .send()
+                .with_context(|| format!("Failed to inspect OTBR mesh discovery at {action_url}"))?
+                .error_for_status()
+                .with_context(|| format!("OTBR rejected mesh discovery status at {action_url}"))?
+                .json::<serde_json::Value>()
+                .with_context(|| {
+                    format!("OTBR returned an invalid mesh discovery status from {action_url}")
+                })?;
+            let status = response
+                .pointer("/data/attributes/status")
+                .and_then(serde_json::Value::as_str)
+                .context("OTBR mesh discovery status is missing")?;
+
+            match status {
+                "completed" | "stopped" => return Ok(()),
+                "failed" => bail!("OTBR mesh discovery failed"),
+                "pending" | "active" if Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(250));
+                }
+                "pending" | "active" => bail!("OTBR mesh discovery timed out"),
+                other => bail!("OTBR returned an unknown mesh discovery status: {other}"),
+            }
+        }
     }
 
     /// Forms a new Thread mesh. Existing devices will be detached, so callers
@@ -1214,6 +1357,118 @@ fn parse_dbus_scan_entry(entry: &str) -> Option<ThreadNetwork> {
     })
 }
 
+fn parse_thread_mesh_devices(value: &serde_json::Value) -> Result<Vec<ThreadMeshDevice>> {
+    let items = value
+        .get("data")
+        .and_then(serde_json::Value::as_array)
+        .context("OTBR mesh inventory is missing its data collection")?;
+
+    items
+        .iter()
+        .map(|item| {
+            let id = item
+                .get("id")
+                .and_then(serde_json::Value::as_str)
+                .context("OTBR mesh device is missing its identifier")?
+                .to_string();
+            let item_type = item
+                .get("type")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("threadDevice");
+            let attributes = item
+                .get("attributes")
+                .and_then(serde_json::Value::as_object)
+                .context("OTBR mesh device is missing its attributes")?;
+            let mode = attributes
+                .get("mode")
+                .and_then(serde_json::Value::as_object);
+            let leader_data = attributes
+                .get("leaderData")
+                .and_then(serde_json::Value::as_object);
+
+            Ok(ThreadMeshDevice {
+                id,
+                is_border_router: item_type == "threadBorderRouter",
+                extended_address: json_object_string(attributes, "extAddress"),
+                mesh_local_eid_iid: json_object_string(attributes, "mlEidIid"),
+                omr_ipv6_addresses: json_object_strings(attributes, "omrIpv6Address"),
+                hostname: json_object_string(attributes, "hostname"),
+                eui64: json_object_string(attributes, "eui"),
+                role: json_object_string(attributes, "role")
+                    .or_else(|| json_object_string(attributes, "state")),
+                full_thread_device: mode
+                    .and_then(|mode| json_object_bool(mode, "fullThreadDevice")),
+                rx_on_when_idle: mode.and_then(|mode| json_object_bool(mode, "rxOnWhenIdle")),
+                full_network_data: mode.and_then(|mode| json_object_bool(mode, "fullNetworkData")),
+                rloc16: json_object_string(attributes, "rloc16"),
+                rloc_address: json_object_string(attributes, "rlocAddress"),
+                router_id: json_object_u16(attributes, "routerId"),
+                router_count: json_object_u16(attributes, "routerCount"),
+                network_name: json_object_string(attributes, "networkName"),
+                extended_pan_id: json_object_string(attributes, "extPanId"),
+                border_agent_id: json_object_string(attributes, "baId"),
+                border_agent_state: json_object_string(attributes, "baState"),
+                partition_id: leader_data.and_then(|data| json_object_u32(data, "partitionId")),
+                leader_router_id: leader_data
+                    .and_then(|data| json_object_u16(data, "leaderRouterId")),
+                data_version: leader_data.and_then(|data| json_object_u16(data, "dataVersion")),
+                stable_data_version: leader_data
+                    .and_then(|data| json_object_u16(data, "stableDataVersion")),
+                created_at: json_object_string(attributes, "created"),
+                updated_at: json_object_string(attributes, "updated"),
+            })
+        })
+        .collect()
+}
+
+fn json_object_string(
+    object: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> Option<String> {
+    object
+        .get(key)?
+        .as_str()
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn json_object_strings(
+    object: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> Vec<String> {
+    match object.get(key) {
+        Some(serde_json::Value::String(value)) if !value.is_empty() => vec![value.clone()],
+        Some(serde_json::Value::Array(values)) => values
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn json_object_bool(
+    object: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> Option<bool> {
+    object.get(key)?.as_bool()
+}
+
+fn json_object_u16(object: &serde_json::Map<String, serde_json::Value>, key: &str) -> Option<u16> {
+    object
+        .get(key)?
+        .as_u64()
+        .and_then(|value| u16::try_from(value).ok())
+}
+
+fn json_object_u32(object: &serde_json::Map<String, serde_json::Value>, key: &str) -> Option<u32> {
+    object
+        .get(key)?
+        .as_u64()
+        .and_then(|value| u32::try_from(value).ok())
+}
+
 fn strip_hex_prefix(value: &str) -> &str {
     value.trim().trim_start_matches("0x")
 }
@@ -1405,6 +1660,71 @@ array [
                 lqi: 3,
             }]
         );
+    }
+
+    #[test]
+    fn parses_otbr_mesh_inventory_without_operational_credentials() {
+        let inventory = serde_json::json!({
+            "data": [
+                {
+                    "id": "96518e5497d5b9f3",
+                    "type": "threadBorderRouter",
+                    "attributes": {
+                        "extAddress": "96518e5497d5b9f3",
+                        "mlEidIid": "731f529f1266a17d",
+                        "omrIpv6Address": "fd11:22::1",
+                        "hostname": "extrittio.local",
+                        "role": "leader",
+                        "mode": {
+                            "fullThreadDevice": true,
+                            "rxOnWhenIdle": true,
+                            "fullNetworkData": true
+                        },
+                        "rloc16": "0xf000",
+                        "routerId": 60,
+                        "routerCount": 2,
+                        "rlocAddress": "fd35:3441:33d1:d73e:0:ff:fe00:f000",
+                        "networkName": "Extrittio-Thread",
+                        "extPanId": "ef1398c2fd504b67",
+                        "baId": "e11e23c164311ce642f93297b095b2f8",
+                        "baState": "active",
+                        "leaderData": {
+                            "partitionId": 1794764107,
+                            "dataVersion": 64,
+                            "stableDataVersion": 63,
+                            "leaderRouterId": 60
+                        },
+                        "created": "2026-08-13T12:00:00Z"
+                    }
+                },
+                {
+                    "id": "2a55d952bc7b4008",
+                    "type": "threadDevice",
+                    "attributes": {
+                        "extAddress": "2a55d952bc7b4008",
+                        "omrIpv6Address": ["fd11:22::2", "fd11:22::3"],
+                        "role": "child",
+                        "mode": {
+                            "fullThreadDevice": false,
+                            "rxOnWhenIdle": false,
+                            "fullNetworkData": true
+                        }
+                    }
+                }
+            ]
+        });
+
+        let devices = super::parse_thread_mesh_devices(&inventory).unwrap();
+        assert_eq!(devices.len(), 2);
+        assert!(devices[0].is_border_router);
+        assert_eq!(devices[0].network_name.as_deref(), Some("Extrittio-Thread"));
+        assert_eq!(devices[0].router_count, Some(2));
+        assert_eq!(devices[0].partition_id, Some(1_794_764_107));
+        assert_eq!(
+            devices[1].omr_ipv6_addresses,
+            vec!["fd11:22::2", "fd11:22::3"]
+        );
+        assert_eq!(devices[1].rx_on_when_idle, Some(false));
     }
 
     #[test]

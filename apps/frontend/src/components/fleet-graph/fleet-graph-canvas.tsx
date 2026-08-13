@@ -75,6 +75,10 @@ function formatTimestamp(value?: string | null): string | undefined {
 }
 
 function formatExternalTooltip(node: GraphNode): string {
+  if (node.details && node.details.length > 0) {
+    return formatNodeTooltip(node.name, node.details);
+  }
+
   const connection = node.connection;
   if (!connection) return '';
 
@@ -92,12 +96,19 @@ function formatExternalTooltip(node: GraphNode): string {
 
   if (rows.length === 0) return escapeHtml(node.name);
 
+  return formatNodeTooltip(
+    node.name,
+    rows.map(([label, value]) => ({ label, value })),
+  );
+}
+
+function formatNodeTooltip(name: string, rows: Array<{ label: string; value: string }>): string {
   return `
     <div class="fleet-graph-node-tooltip">
-      <div class="fleet-graph-node-tooltip-title">${escapeHtml(node.name)}</div>
+      <div class="fleet-graph-node-tooltip-title">${escapeHtml(name)}</div>
       ${rows
         .map(
-          ([label, value]) => `
+          ({ label, value }) => `
             <div class="fleet-graph-node-tooltip-row">
               <span>${escapeHtml(label)}</span>
               <strong>${escapeHtml(value)}</strong>
@@ -194,7 +205,8 @@ interface FleetGraphCanvasProps {
   graphData: GraphData;
   width: number;
   height: number;
-  onNodeClick: (device: Device, position: { x: number; y: number }) => void;
+  onNodeClick?: (device: Device, position: { x: number; y: number }) => void;
+  onGraphNodeClick?: (node: GraphNode, position: { x: number; y: number }) => void;
   onBackgroundClick: (event?: MouseEvent) => void;
   onNodeRightClick?: (node: GraphNode, event: MouseEvent) => void;
   selectedNodeId?: string | null;
@@ -213,6 +225,7 @@ export const FleetGraphCanvas = memo(
     width,
     height,
     onNodeClick,
+    onGraphNodeClick,
     onBackgroundClick,
     onNodeRightClick,
     selectedNodeId,
@@ -267,13 +280,8 @@ export const FleetGraphCanvas = memo(
       hasInitialFit,
     );
 
-    const {
-      shiftHeld,
-      selectedDeviceIds,
-      toggleDevice,
-      clearSelection,
-      paintLasso,
-    } = useLassoSelection(graphRef, canvasWrapperRef, graphData);
+    const { shiftHeld, selectedDeviceIds, toggleDevice, clearSelection, paintLasso } =
+      useLassoSelection(graphRef, canvasWrapperRef, graphData);
 
     const activeHoverNode = useMemo(() => {
       if (!hoveredNodeId) return hoverNode;
@@ -436,9 +444,11 @@ export const FleetGraphCanvas = memo(
         const node = start.node ?? hoverNodeRef.current;
 
         if (node) {
-          if (e.shiftKey && node.type === 'device') {
+          if (onGraphNodeClick) {
+            onGraphNodeClick(node, { x: e.clientX, y: e.clientY });
+          } else if (e.shiftKey && node.type === 'device') {
             toggleDevice(node.id);
-          } else if (node.type === 'device' && node.device) {
+          } else if (node.type === 'device' && node.device && onNodeClick) {
             onNodeClick(node.device, { x: e.clientX, y: e.clientY });
           } else {
             // Fleet hub node or unknown — treat as background
@@ -451,7 +461,7 @@ export const FleetGraphCanvas = memo(
           onBackgroundClick();
         }
       },
-      [onNodeClick, onBackgroundClick, toggleDevice, clearSelection],
+      [onGraphNodeClick, onNodeClick, onBackgroundClick, toggleDevice, clearSelection],
     );
 
     // --- Pointer hit-area callback ---
@@ -501,6 +511,7 @@ export const FleetGraphCanvas = memo(
         const isExternal = node.type === 'external';
         const baseRadius = isFleet ? FLEET_RADIUS : isExternal ? EXTERNAL_RADIUS : DEVICE_RADIUS;
         const isHovered = node === activeHoverNode;
+        const isSelected = node.id === selectedNodeId;
         const isHighlighted = hoverHighlight.nodes.has(node);
         const shouldDim = activeHoverNode && !isHighlighted;
 
@@ -566,8 +577,8 @@ export const FleetGraphCanvas = memo(
             ctx.stroke();
           }
 
-          ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-          ctx.lineWidth = 0.5;
+          ctx.strokeStyle = isSelected ? SELECTION_COLOR : 'rgba(0,0,0,0.6)';
+          ctx.lineWidth = isSelected ? 2 : 0.5;
           ctx.strokeRect(rx, ry, rectW, rectH);
 
           ctx.font = FLEET_LABEL_FONT;
@@ -597,8 +608,10 @@ export const FleetGraphCanvas = memo(
           ctx.fill();
           ctx.strokeStyle = shouldDim
             ? colorWithAlpha(typeColor, DIM_OPACITY)
-            : colorWithAlpha(typeColor, isHovered ? 0.95 : 0.72);
-          ctx.lineWidth = isHovered ? 2 : 1.4;
+            : isSelected
+              ? SELECTION_COLOR
+              : colorWithAlpha(typeColor, isHovered ? 0.95 : 0.72);
+          ctx.lineWidth = isSelected || isHovered ? 2 : 1.4;
           ctx.stroke();
 
           const stripHeight = Math.max(2, side * 0.14);
@@ -731,6 +744,7 @@ export const FleetGraphCanvas = memo(
         hoverHighlight,
         iconCacheVersion,
         selectedDeviceIds,
+        selectedNodeId,
         showAlertBadges,
         showDeviceLabels,
       ],
@@ -876,7 +890,7 @@ export const FleetGraphCanvas = memo(
     );
 
     const getNodeLabel = useCallback((node: GraphNode) => {
-      if (node.type !== 'external') return '';
+      if (node.type !== 'external' && !node.details) return '';
       return formatExternalTooltip(node);
     }, []);
 

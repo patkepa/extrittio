@@ -48,10 +48,10 @@ Under `Extrittio Thread Device`, set:
 - `Device ID` — a new device ID, for example `esp32c6-thread-001`.
 - `Thread DNS-SD Zenoh service` — keep the default unless the server uses a
   custom Thread DNS-SD service name.
-- `Thread Zenoh locator fallback` — normally leave empty. On a host where the
-  OTBR DNS-SD proxy is unavailable, enter the `tcp/[fdxx:...]:7447` address
-  from the backend's `Advertised Zenoh DNS-SD service on the Thread mesh` log.
-  The example uses it after a DNS-SD timeout.
+- `Thread Zenoh locator fallback` — used after three failed DNS-SD discovery
+  attempts. The development default targets the bundled Thread network. For a
+  custom network, replace it with the `tcp/[fdxx:...]:7447` address from the
+  backend's `Advertised Zenoh DNS-SD service on the Thread mesh` log.
 - `Thread Active Operational Dataset (hex TLVs)` — leave the supplied
   development value unchanged to join the backend's default network. Replace
   it with the exact exported active dataset whenever the backend uses a custom

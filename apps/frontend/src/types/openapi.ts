@@ -1073,6 +1073,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/thread/mesh/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["scan_thread_mesh"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/system/thread/network": {
         parameters: {
             query?: never;
@@ -2076,6 +2092,43 @@ export interface components {
             speed?: number | null;
             /** Format: float */
             temperature?: number | null;
+        };
+        ThreadMeshDeviceResponse: {
+            border_agent_id?: string | null;
+            border_agent_state?: string | null;
+            created_at?: string | null;
+            /** Format: int32 */
+            data_version?: number | null;
+            eui64?: string | null;
+            extended_address?: string | null;
+            extended_pan_id?: string | null;
+            full_network_data?: boolean | null;
+            full_thread_device?: boolean | null;
+            hostname?: string | null;
+            id: string;
+            is_border_router: boolean;
+            /** Format: int32 */
+            leader_router_id?: number | null;
+            mesh_local_eid_iid?: string | null;
+            network_name?: string | null;
+            omr_ipv6_addresses: string[];
+            /** Format: int32 */
+            partition_id?: number | null;
+            rloc16?: string | null;
+            rloc_address?: string | null;
+            role?: string | null;
+            /** Format: int32 */
+            router_count?: number | null;
+            /** Format: int32 */
+            router_id?: number | null;
+            rx_on_when_idle?: boolean | null;
+            /** Format: int32 */
+            stable_data_version?: number | null;
+            updated_at?: string | null;
+        };
+        ThreadMeshScanResponse: {
+            devices: components["schemas"]["ThreadMeshDeviceResponse"][];
+            networks: components["schemas"]["ThreadNetworkResponse"][];
         };
         ThreadNetworkResponse: {
             /** Format: int32 */
@@ -4524,6 +4577,40 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Owner access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Thread is unavailable */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    scan_thread_mesh: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Nearby Thread networks and devices on the active mesh */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadMeshScanResponse"];
+                };
             };
             /** @description Owner access required */
             403: {

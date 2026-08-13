@@ -3,6 +3,7 @@ import type {
   CreateThreadNetworkRequest,
   ImportThreadDatasetRequest,
   ThreadNetworkScan,
+  ThreadMeshScan,
   ThreadStatus,
 } from '../types/api';
 
@@ -18,6 +19,11 @@ export async function refreshThreadRuntime(): Promise<ThreadStatus> {
 
 export async function scanThreadNetworks(): Promise<ThreadNetworkScan> {
   const { data } = await client.post<ThreadNetworkScan>('/system/thread/scan');
+  return data;
+}
+
+export async function scanThreadMesh(): Promise<ThreadMeshScan> {
+  const { data } = await client.post<ThreadMeshScan>('/system/thread/mesh/scan');
   return data;
 }
 

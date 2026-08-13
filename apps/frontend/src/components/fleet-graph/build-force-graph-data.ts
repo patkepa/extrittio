@@ -16,6 +16,8 @@ export interface GraphNode {
   deviceCount?: number;
   device?: Device;
   connection?: NonNullable<Device['declared_connections']>[number];
+  /** Generic metadata rows used by other topology views reusing this canvas. */
+  details?: Array<{ label: string; value: string }>;
   status?: string;
   deviceTypeName?: string;
   deviceTypeIcon?: string;

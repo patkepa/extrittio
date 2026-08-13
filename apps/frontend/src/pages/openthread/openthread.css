@@ -1,0 +1,358 @@
+.openthread-page {
+  height: calc(100vh - 48px);
+  margin: -24px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--content-bg);
+}
+
+.openthread-tabs {
+  flex: 0 0 49px;
+  display: flex;
+  align-items: flex-end;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--card-bg);
+}
+
+.openthread-tabs .bp6-tabs,
+.openthread-tabs .bp6-tab-list {
+  height: 100%;
+}
+
+.openthread-tabs .bp6-tab-list {
+  align-items: flex-end;
+  gap: 24px;
+}
+
+.openthread-tabs .bp6-tab {
+  display: inline-flex;
+  align-items: center;
+  height: 48px;
+  margin: 0;
+  color: hsl(var(--muted));
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.openthread-tabs .bp6-tab[aria-selected='true'] {
+  color: hsl(var(--foreground));
+}
+
+.openthread-tabs .bp6-tab-indicator-wrapper .bp6-tab-indicator {
+  background-color: hsl(var(--accent));
+}
+
+.openthread-content {
+  flex: 1;
+  min-height: 0;
+}
+
+.openthread-content--settings {
+  padding: 24px;
+  overflow: auto;
+}
+
+.thread-mesh-view {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #171717;
+}
+
+.thread-mesh-toolbar {
+  flex: 0 0 58px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 0 14px 0 18px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--card-bg);
+  overflow-x: auto;
+}
+
+.thread-mesh-toolbar-identity {
+  min-width: 210px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: hsl(var(--foreground));
+}
+
+.thread-mesh-toolbar-identity > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.thread-mesh-toolbar-identity strong,
+.thread-mesh-toolbar-identity span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-mesh-toolbar-identity strong {
+  font-size: 13px;
+}
+
+.thread-mesh-toolbar-identity span {
+  color: hsl(var(--muted));
+  font-size: 11px;
+}
+
+.thread-mesh-metrics {
+  flex: 1;
+  min-width: 490px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(78px, 1fr));
+  gap: 14px;
+}
+
+.thread-mesh-metrics > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.thread-mesh-metrics span {
+  color: hsl(var(--muted));
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.thread-mesh-metrics strong {
+  overflow: hidden;
+  color: hsl(var(--foreground));
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-mesh-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.thread-mesh-actions .bp6-button:last-child {
+  margin-left: 6px;
+}
+
+.thread-mesh-workspace {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.thread-mesh-canvas {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  background: #171717;
+}
+
+.thread-mesh-canvas .scene-tooltip {
+  padding: 0;
+  color: var(--sidebar-foreground);
+  background: var(--sidebar-bg);
+  border: 1px solid var(--sidebar-border);
+  border-radius: 4px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+}
+
+.thread-mesh-empty,
+.thread-mesh-callout {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.thread-mesh-empty {
+  flex-direction: column;
+  gap: 10px;
+  color: hsl(var(--muted));
+  text-align: center;
+}
+
+.thread-mesh-empty .bp6-icon {
+  opacity: 0.45;
+}
+
+.thread-mesh-empty h4,
+.thread-mesh-empty p {
+  margin: 0;
+}
+
+.thread-mesh-empty p {
+  max-width: 440px;
+  color: hsl(var(--muted));
+  font-size: 13px;
+}
+
+.thread-mesh-callout .bp6-callout {
+  width: min(520px, calc(100% - 48px));
+}
+
+.thread-mesh-legend {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  background: color-mix(in srgb, var(--sidebar-bg) 88%, transparent);
+  color: var(--sidebar-muted-foreground);
+  font-size: 10px;
+  pointer-events: none;
+}
+
+.thread-mesh-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.thread-mesh-legend i {
+  width: 7px;
+  height: 7px;
+  display: inline-block;
+  background: currentColor;
+}
+
+.thread-mesh-legend .current-network {
+  color: #2d72d2;
+}
+
+.thread-mesh-legend .border-router {
+  color: #36cfc9;
+}
+
+.thread-mesh-legend .mesh-client {
+  color: #7bd88f;
+}
+
+.thread-mesh-legend .nearby-network {
+  color: #5c7080;
+}
+
+.thread-mesh-scanning {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.thread-node-details {
+  flex: 0 0 330px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border-color);
+  background: var(--sidebar-bg);
+  color: var(--sidebar-foreground);
+}
+
+.thread-node-details-header {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px 10px 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.thread-node-details-header > div {
+  min-width: 0;
+}
+
+.thread-node-details-header span {
+  color: var(--sidebar-muted-foreground);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.thread-node-details-header h4 {
+  margin: 3px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+
+.thread-node-details-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.thread-node-details-body > div {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 12px;
+  padding: 7px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
+}
+
+.thread-node-details-body dt {
+  color: var(--sidebar-muted-foreground);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.thread-node-details-body dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--sidebar-foreground);
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+  .thread-node-details {
+    position: absolute;
+    inset: 58px 0 0 auto;
+    z-index: 3;
+    width: min(330px, 88vw);
+    box-shadow: -10px 0 26px rgba(0, 0, 0, 0.35);
+  }
+}
+
+@media (max-width: 640px) {
+  .openthread-tabs {
+    padding: 0 16px;
+  }
+
+  .openthread-content--settings {
+    padding: 16px;
+  }
+
+  .thread-mesh-toolbar {
+    gap: 12px;
+  }
+
+  .thread-mesh-metrics {
+    display: none;
+  }
+}

@@ -271,6 +271,39 @@ export interface ThreadNetworkScan {
   networks: ThreadNetwork[];
 }
 
+export interface ThreadMeshDevice {
+  id: string;
+  is_border_router: boolean;
+  extended_address: string | null;
+  mesh_local_eid_iid: string | null;
+  omr_ipv6_addresses: string[];
+  hostname: string | null;
+  eui64: string | null;
+  role: string | null;
+  full_thread_device: boolean | null;
+  rx_on_when_idle: boolean | null;
+  full_network_data: boolean | null;
+  rloc16: string | null;
+  rloc_address: string | null;
+  router_id: number | null;
+  router_count: number | null;
+  network_name: string | null;
+  extended_pan_id: string | null;
+  border_agent_id: string | null;
+  border_agent_state: string | null;
+  partition_id: number | null;
+  leader_router_id: number | null;
+  data_version: number | null;
+  stable_data_version: number | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface ThreadMeshScan {
+  networks: ThreadNetwork[];
+  devices: ThreadMeshDevice[];
+}
+
 // ---------------------------------------------------------------------------
 // API Keys
 // ---------------------------------------------------------------------------

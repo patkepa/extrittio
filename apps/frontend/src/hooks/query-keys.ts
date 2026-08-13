@@ -81,5 +81,6 @@ export const queryKeys = {
     status: ['system', 'thread'] as const,
     refresh: ['system', 'thread', 'refresh'] as const,
     scan: ['system', 'thread', 'scan'] as const,
+    meshScan: ['system', 'thread', 'mesh', 'scan'] as const,
   },
 } as const;

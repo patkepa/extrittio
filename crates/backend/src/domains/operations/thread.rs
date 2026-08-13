@@ -12,8 +12,8 @@ use axum::{
     routing::{get, post, put},
 };
 use extrittio_openthread_runtime::{
-    CreateNetwork, ThreadController, ThreadNetwork, ThreadRuntime, ThreadRuntimeSnapshot,
-    ThreadStatus,
+    CreateNetwork, ThreadController, ThreadMeshDevice, ThreadNetwork, ThreadRuntime,
+    ThreadRuntimeSnapshot, ThreadStatus,
 };
 use serde::{Deserialize, Serialize};
 use tracing::warn;
@@ -74,6 +74,41 @@ pub struct ThreadNetworkScanResponse {
     pub networks: Vec<ThreadNetworkResponse>,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ThreadMeshDeviceResponse {
+    pub id: String,
+    pub is_border_router: bool,
+    pub extended_address: Option<String>,
+    pub mesh_local_eid_iid: Option<String>,
+    pub omr_ipv6_addresses: Vec<String>,
+    pub hostname: Option<String>,
+    pub eui64: Option<String>,
+    pub role: Option<String>,
+    pub full_thread_device: Option<bool>,
+    pub rx_on_when_idle: Option<bool>,
+    pub full_network_data: Option<bool>,
+    pub rloc16: Option<String>,
+    pub rloc_address: Option<String>,
+    pub router_id: Option<u16>,
+    pub router_count: Option<u16>,
+    pub network_name: Option<String>,
+    pub extended_pan_id: Option<String>,
+    pub border_agent_id: Option<String>,
+    pub border_agent_state: Option<String>,
+    pub partition_id: Option<u32>,
+    pub leader_router_id: Option<u16>,
+    pub data_version: Option<u16>,
+    pub stable_data_version: Option<u16>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ThreadMeshScanResponse {
+    pub networks: Vec<ThreadNetworkResponse>,
+    pub devices: Vec<ThreadMeshDeviceResponse>,
+}
+
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/api/v1/system/thread", get(get_thread_status))
@@ -82,8 +117,41 @@ pub fn router() -> Router<Arc<AppState>> {
             post(refresh_thread_runtime),
         )
         .route("/api/v1/system/thread/scan", post(scan_thread_networks))
+        .route("/api/v1/system/thread/mesh/scan", post(scan_thread_mesh))
         .route("/api/v1/system/thread/network", post(create_thread_network))
         .route("/api/v1/system/thread/dataset", put(import_thread_dataset))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/system/thread/mesh/scan",
+    tag = "system",
+    security(("bearer_auth" = [])),
+    responses(
+        (status = 200, description = "Nearby Thread networks and devices on the active mesh", body = ThreadMeshScanResponse),
+        (status = 403, description = "Owner access required"),
+        (status = 409, description = "Thread is unavailable"),
+    ),
+)]
+pub(crate) async fn scan_thread_mesh(
+    Extension(ctx): Extension<RequestContext>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<ThreadMeshScanResponse>, AppError> {
+    require_owner(&ctx)?;
+    let controller = controller(&state)?;
+    let mesh = run_blocking(controller, |controller| controller.scan_mesh()).await?;
+    Ok(Json(ThreadMeshScanResponse {
+        networks: mesh
+            .networks
+            .into_iter()
+            .map(ThreadNetworkResponse::from)
+            .collect(),
+        devices: mesh
+            .devices
+            .into_iter()
+            .map(ThreadMeshDeviceResponse::from)
+            .collect(),
+    }))
 }
 
 #[utoipa::path(
@@ -308,6 +376,38 @@ impl From<ThreadNetwork> for ThreadNetworkResponse {
             channel: network.channel,
             rssi: network.rssi,
             lqi: network.lqi,
+        }
+    }
+}
+
+impl From<ThreadMeshDevice> for ThreadMeshDeviceResponse {
+    fn from(device: ThreadMeshDevice) -> Self {
+        Self {
+            id: device.id,
+            is_border_router: device.is_border_router,
+            extended_address: device.extended_address,
+            mesh_local_eid_iid: device.mesh_local_eid_iid,
+            omr_ipv6_addresses: device.omr_ipv6_addresses,
+            hostname: device.hostname,
+            eui64: device.eui64,
+            role: device.role,
+            full_thread_device: device.full_thread_device,
+            rx_on_when_idle: device.rx_on_when_idle,
+            full_network_data: device.full_network_data,
+            rloc16: device.rloc16,
+            rloc_address: device.rloc_address,
+            router_id: device.router_id,
+            router_count: device.router_count,
+            network_name: device.network_name,
+            extended_pan_id: device.extended_pan_id,
+            border_agent_id: device.border_agent_id,
+            border_agent_state: device.border_agent_state,
+            partition_id: device.partition_id,
+            leader_router_id: device.leader_router_id,
+            data_version: device.data_version,
+            stable_data_version: device.stable_data_version,
+            created_at: device.created_at,
+            updated_at: device.updated_at,
         }
     }
 }

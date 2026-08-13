@@ -3675,6 +3675,40 @@
         ]
       }
     },
+    "/api/v1/system/thread/mesh/scan": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "operationId": "scan_thread_mesh",
+        "responses": {
+          "200": {
+            "description": "Nearby Thread networks and devices on the active mesh",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadMeshScanResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Owner access required"
+          },
+          "409": {
+            "description": "Thread is unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
     "/api/v1/system/thread/network": {
       "post": {
         "tags": [
@@ -7313,6 +7347,193 @@
               "null"
             ],
             "format": "float"
+          }
+        }
+      },
+      "ThreadMeshDeviceResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "is_border_router",
+          "omr_ipv6_addresses"
+        ],
+        "properties": {
+          "border_agent_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "border_agent_state": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "data_version": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "eui64": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "extended_address": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "extended_pan_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "full_network_data": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "full_thread_device": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "hostname": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "is_border_router": {
+            "type": "boolean"
+          },
+          "leader_router_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "mesh_local_eid_iid": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "network_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "omr_ipv6_addresses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "partition_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "rloc16": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rloc_address": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "router_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "router_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "rx_on_when_idle": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "stable_data_version": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ThreadMeshScanResponse": {
+        "type": "object",
+        "required": [
+          "networks",
+          "devices"
+        ],
+        "properties": {
+          "devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ThreadMeshDeviceResponse"
+            }
+          },
+          "networks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ThreadNetworkResponse"
+            }
           }
         }
       },

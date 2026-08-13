@@ -23,12 +23,13 @@ config EXTRITTIO_THREAD_ZENOH_INSTANCE_NAME
 
 config EXTRITTIO_THREAD_ZENOH_LOCATOR
     string "Thread Zenoh locator fallback"
-    default ""
+    default "tcp/[fd35:3441:33d1:d73e:9ead:6dbd:a06b:da7]:7447"
     help
-        Optional direct Zenoh locator used when Thread DNS-SD is unavailable.
-        For example: tcp/[fdxx:...]:7447. Obtain this address from the
-        Extrittio Thread DNS-SD advertisement log. Keep it empty to require
-        DNS-SD discovery.
+        Direct Zenoh locator used after three failed Thread DNS-SD discovery
+        attempts. The development default targets the bundled development
+        Thread network. For a custom network, replace it with the address from
+        the Extrittio Thread DNS-SD advertisement log. Leave it empty to
+        require DNS-SD discovery.
 
 config EXTRITTIO_THREAD_ACTIVE_DATASET_TLVS
     string "Thread Active Operational Dataset (hex TLVs)"

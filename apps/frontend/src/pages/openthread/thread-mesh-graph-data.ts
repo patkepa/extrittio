@@ -1,0 +1,264 @@
+import type {
+  GraphData,
+  GraphLink,
+  GraphNode,
+} from '../../components/fleet-graph/build-force-graph-data';
+import type {
+  ThreadMeshDevice,
+  ThreadMeshScan,
+  ThreadNetwork,
+  ThreadStatus,
+} from '../../types/api';
+
+const CURRENT_NETWORK_COLOR = '#2D72D2';
+const NEARBY_NETWORK_COLOR = '#5C7080';
+const BORDER_ROUTER_COLOR = '#36CFC9';
+const ROUTER_COLOR = '#8ABBFF';
+const CHILD_COLOR = '#7BD88F';
+const SLEEPY_CHILD_COLOR = '#D982FF';
+
+function normalizedHex(value?: string | null): string {
+  return value?.trim().toLowerCase().replace(/^0x/, '').padStart(4, '0') ?? '';
+}
+
+export function isCurrentThreadNetwork(network: ThreadNetwork, status: ThreadStatus): boolean {
+  const panMatches = normalizedHex(network.pan_id) === normalizedHex(status.pan_id);
+  const nameMatches = Boolean(network.network_name) && network.network_name === status.network_name;
+  return network.channel === status.channel && (panMatches || nameMatches);
+}
+
+function text(value: string | number | boolean | null | undefined): string | undefined {
+  if (value == null || value === '') return undefined;
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  return String(value);
+}
+
+function details(
+  rows: Array<[string, string | number | boolean | null | undefined]>,
+): Array<{ label: string; value: string }> {
+  return rows.flatMap(([label, value]) => {
+    const formatted = text(value);
+    return formatted ? [{ label, value: formatted }] : [];
+  });
+}
+
+function roleLabel(role?: string | null): string {
+  if (!role) return 'Thread node';
+  return role
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function deviceName(device: ThreadMeshDevice): string {
+  if (device.is_border_router) return device.hostname || 'Extrittio Border Router';
+  return device.hostname || `${roleLabel(device.role)} · ${device.id.slice(-6)}`;
+}
+
+function deviceVisual(device: ThreadMeshDevice): { color: string; icon: string } {
+  if (device.is_border_router) return { color: BORDER_ROUTER_COLOR, icon: 'satellite' };
+  if (device.role === 'router' || device.role === 'leader') {
+    return { color: ROUTER_COLOR, icon: 'globe-network' };
+  }
+  if (device.rx_on_when_idle === false) {
+    return { color: SLEEPY_CHILD_COLOR, icon: 'moon' };
+  }
+  return { color: CHILD_COLOR, icon: 'data-connection' };
+}
+
+function deviceDetails(device: ThreadMeshDevice) {
+  return details([
+    ['Node type', device.is_border_router ? 'Extrittio border router' : 'Thread client'],
+    ['Role', roleLabel(device.role)],
+    ['Hostname', device.hostname],
+    ['Extended address', device.extended_address],
+    ['EUI-64', device.eui64],
+    ['RLOC16', device.rloc16],
+    ['RLOC address', device.rloc_address],
+    ['Mesh-local EID IID', device.mesh_local_eid_iid],
+    ['OMR IPv6', device.omr_ipv6_addresses.join(', ')],
+    ['Full Thread device', device.full_thread_device],
+    ['Receiver always on', device.rx_on_when_idle],
+    ['Full network data', device.full_network_data],
+    ['Router ID', device.router_id],
+    ['Network', device.network_name],
+    ['Extended PAN ID', device.extended_pan_id],
+    ['Known routers', device.router_count],
+    ['Partition ID', device.partition_id],
+    ['Leader router ID', device.leader_router_id],
+    ['Data version', device.data_version],
+    ['Stable data version', device.stable_data_version],
+    ['Border Agent state', device.border_agent_state],
+    ['Border Agent ID', device.border_agent_id],
+    ['First discovered', device.created_at],
+    ['Last updated', device.updated_at],
+  ]);
+}
+
+function nearbyNetworkDetails(network: ThreadNetwork) {
+  return details([
+    ['Node type', 'Nearby Thread network'],
+    ['Network name', network.network_name || 'Unnamed network'],
+    ['PAN ID', network.pan_id],
+    ['Beacon address', network.extended_address],
+    ['Channel', network.channel],
+    ['Signal', `${network.rssi} dBm`],
+    ['Link quality', network.lqi],
+  ]);
+}
+
+function currentNetworkDetails(status: ThreadStatus) {
+  return details([
+    ['Node type', 'Active Thread network'],
+    ['Network name', status.network_name],
+    ['Border-router role', roleLabel(status.role)],
+    ['Channel', status.channel],
+    ['PAN ID', status.pan_id],
+    ['Extended PAN ID', status.extended_pan_id],
+    ['Mesh-local prefix', status.mesh_local_prefix],
+    ['Border-router addresses', status.addresses.join(', ')],
+  ]);
+}
+
+function ringPosition(index: number, total: number, radius: number, offset = 0) {
+  const angle = offset + (index / Math.max(total, 1)) * Math.PI * 2;
+  return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+}
+
+export function buildThreadMeshGraphData(
+  scan: ThreadMeshScan,
+  status: ThreadStatus,
+  previousNodes?: GraphNode[],
+): GraphData {
+  const nodes: GraphNode[] = [];
+  const links: GraphLink[] = [];
+  const nodeMap = new Map<string, GraphNode>();
+  const previousById = new Map((previousNodes ?? []).map((node) => [node.id, node]));
+  const meshDevices = scan.devices.filter((device) => !device.is_border_router);
+  const nearbyNetworks = scan.networks.filter(
+    (network) => !isCurrentThreadNetwork(network, status),
+  );
+  const currentNetworkId = 'thread-network-current';
+
+  const addNode = (node: GraphNode) => {
+    const previous = previousById.get(node.id);
+    const merged = previous ? { ...node, x: previous.x, y: previous.y } : node;
+    nodes.push(merged);
+    nodeMap.set(merged.id, merged);
+    return merged;
+  };
+
+  addNode({
+    id: currentNetworkId,
+    name: status.network_name || 'Active Thread network',
+    type: 'fleet',
+    val: 32,
+    color: CURRENT_NETWORK_COLOR,
+    deviceCount: meshDevices.length,
+    details: currentNetworkDetails(status),
+    neighbors: [],
+    links: [],
+    layoutX: 0,
+    layoutY: 0,
+    layoutRadius: 0,
+    x: 0,
+    y: 0,
+  });
+
+  const discoveredBorderRouter = scan.devices.find((device) => device.is_border_router);
+  const borderRouterId = discoveredBorderRouter
+    ? `thread-device-${discoveredBorderRouter.id}`
+    : 'thread-device-border-router';
+  addNode({
+    id: borderRouterId,
+    name: discoveredBorderRouter ? deviceName(discoveredBorderRouter) : 'Extrittio Border Router',
+    type: 'external',
+    val: 6,
+    color: BORDER_ROUTER_COLOR,
+    deviceTypeColor: BORDER_ROUTER_COLOR,
+    deviceTypeIcon: 'satellite',
+    deviceTypeName: 'Border router',
+    details: discoveredBorderRouter
+      ? deviceDetails(discoveredBorderRouter)
+      : details([
+          ['Node type', 'Extrittio border router'],
+          ['Role', roleLabel(status.role)],
+          ['Network', status.network_name],
+          ['RCP device', status.rcp_device],
+          ['Addresses', status.addresses.join(', ')],
+        ]),
+    neighbors: [],
+    links: [],
+    layoutX: 0,
+    layoutY: -135,
+    layoutRadius: 135,
+    x: 0,
+    y: -135,
+  });
+  links.push({ source: currentNetworkId, target: borderRouterId, kind: 'declared' });
+
+  meshDevices.forEach((device, index) => {
+    const visual = deviceVisual(device);
+    const ring = Math.floor(index / 12);
+    const position = ringPosition(
+      index % 12,
+      Math.min(meshDevices.length - ring * 12, 12),
+      155 + ring * 72,
+      -Math.PI / 2,
+    );
+    const id = `thread-device-${device.id}`;
+    addNode({
+      id,
+      name: deviceName(device),
+      type: 'external',
+      val: 3,
+      color: visual.color,
+      deviceTypeColor: visual.color,
+      deviceTypeIcon: visual.icon,
+      deviceTypeName: roleLabel(device.role),
+      details: deviceDetails(device),
+      neighbors: [],
+      links: [],
+      layoutX: position.x,
+      layoutY: position.y,
+      layoutRadius: 155 + ring * 72,
+      x: position.x,
+      y: position.y,
+    });
+    links.push({ source: currentNetworkId, target: id, kind: 'declared' });
+  });
+
+  nearbyNetworks.forEach((network, index) => {
+    const position = ringPosition(index, nearbyNetworks.length, 355, Math.PI / 6);
+    const id = `thread-network-nearby-${network.extended_address}-${network.pan_id}-${network.channel}`;
+    addNode({
+      id,
+      name: network.network_name || `Unnamed · ${network.pan_id}`,
+      type: 'fleet',
+      val: 24,
+      color: NEARBY_NETWORK_COLOR,
+      details: nearbyNetworkDetails(network),
+      neighbors: [],
+      links: [],
+      layoutX: position.x,
+      layoutY: position.y,
+      layoutRadius: 355,
+      x: position.x,
+      y: position.y,
+    });
+    links.push({ source: borderRouterId, target: id, kind: 'declared' });
+  });
+
+  for (const link of links) {
+    const source = nodeMap.get(link.source as string);
+    const target = nodeMap.get(link.target as string);
+    if (!source || !target) continue;
+    source.neighbors.push(target);
+    target.neighbors.push(source);
+    source.links.push(link);
+    target.links.push(link);
+  }
+
+  return { nodes, links };
+}
