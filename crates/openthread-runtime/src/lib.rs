@@ -788,14 +788,23 @@ impl ThreadController {
     pub fn scan_network_diagnostics(&self) -> Result<ThreadNetworkDiagnostics> {
         let _guard = self.lock();
         let networks = self.scan_networks_locked()?;
-        self.scan_network_diagnostics_locked(networks)
+        Ok(self.scan_network_diagnostics_locked(networks))
     }
 
     /// Performs the single complete scan used by every OpenThread view.
     pub fn scan_all(&self) -> Result<ThreadScan> {
         let _guard = self.lock();
-        let networks = self.scan_networks_locked()?;
-        let mut diagnostics = self.scan_network_diagnostics_locked(networks)?;
+        let (networks, network_scan_warning) = match self.scan_networks_locked() {
+            Ok(networks) => (networks, None),
+            Err(error) => (
+                Vec::new(),
+                Some(format!("Nearby-network discovery is unavailable: {error}")),
+            ),
+        };
+        let mut diagnostics = self.scan_network_diagnostics_locked(networks);
+        if let Some(warning) = network_scan_warning {
+            diagnostics.warnings.push(warning);
+        }
         let devices = match self.scan_mesh_devices_locked() {
             Ok(devices) => devices,
             Err(error) => {
@@ -818,7 +827,7 @@ impl ThreadController {
     fn scan_network_diagnostics_locked(
         &self,
         networks: Vec<ThreadNetwork>,
-    ) -> Result<ThreadNetworkDiagnostics> {
+    ) -> ThreadNetworkDiagnostics {
         let mut warnings = Vec::new();
 
         let energy = match self.energy_scan_locked(100) {
@@ -875,7 +884,7 @@ impl ThreadController {
             })
             .collect();
 
-        Ok(ThreadNetworkDiagnostics {
+        ThreadNetworkDiagnostics {
             channels,
             networks,
             statistics: ThreadRadioStatistics {
@@ -889,7 +898,7 @@ impl ThreadController {
                 rx_errors: mac_counters.as_ref().map(|counters| counters.rx_errors),
             },
             warnings,
-        })
+        }
     }
 
     fn scan_networks_locked(&self) -> Result<Vec<ThreadNetwork>> {
@@ -2130,6 +2139,7 @@ mod tests {
             })
         });
         started_rx.recv().unwrap();
+        assert!(runtime.scan_snapshot().scanning);
 
         let second_runtime = runtime.clone();
         let second_calls = calls.clone();

@@ -127,7 +127,7 @@ function ringPosition(index: number, total: number, radius: number, offset = 0) 
 }
 
 export function buildThreadMeshGraphData(
-  scan: ThreadNetworkDiagnostics,
+  scan: Pick<ThreadNetworkDiagnostics, 'networks' | 'devices'>,
   status: ThreadStatus,
   previousNodes?: GraphNode[],
 ): GraphData {

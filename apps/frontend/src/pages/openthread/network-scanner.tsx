@@ -1,7 +1,7 @@
 import { useMemo, type CSSProperties, type ReactNode } from 'react';
 import type { AxiosError } from 'axios';
-import { Button, Callout, Icon, Spinner, Tag } from '@blueprintjs/core';
-import { useForceThreadScan, useThreadScan, useThreadStatus } from '../../hooks/use-thread';
+import { Callout, Icon, Spinner, Tag } from '@blueprintjs/core';
+import { useThreadScan, useThreadStatus } from '../../hooks/use-thread';
 import type {
   ThreadChannelDiagnostics,
   ThreadNetwork,
@@ -18,6 +18,7 @@ import {
   type NetworkCondition,
 } from './network-scanner-metrics';
 import { isCurrentThreadNetwork } from './thread-mesh-graph-data';
+import { ThreadScanStatus } from './thread-scan-status';
 
 const INTEGER_FORMATTER = new Intl.NumberFormat();
 
@@ -27,14 +28,18 @@ type ChannelStyle = CSSProperties & {
 };
 
 function apiErrorMessage(error: unknown): string {
-  const axiosError = error as AxiosError<{ error?: string }>;
-  return axiosError.response?.data?.error ?? 'Unable to scan the OpenThread radio environment.';
+  const axiosError = error as AxiosError<{ error?: string; message?: string }>;
+  return (
+    axiosError.response?.data?.error ??
+    axiosError.response?.data?.message ??
+    'Unable to scan the OpenThread radio environment.'
+  );
 }
 
 function scanTimestamp(value: string | null | undefined, scanning: boolean): string {
-  if (!value) return scanning ? 'Initial shared scan in progress' : 'Waiting for the shared scan';
+  if (!value) return scanning ? 'Initial scan in progress' : 'Waiting for automatic scanning';
   const scannedAt = new Date(value);
-  if (Number.isNaN(scannedAt.getTime())) return 'Latest shared radio observation';
+  if (Number.isNaN(scannedAt.getTime())) return 'Latest radio observation';
   return `Last scan ${scannedAt.toLocaleTimeString()}`;
 }
 
@@ -63,14 +68,9 @@ function conditionIntent(
 export function NetworkScanner() {
   const statusQuery = useThreadStatus();
   const scanQuery = useThreadScan();
-  const {
-    mutate: forceScan,
-    isPending: forceScanPending,
-    error: forceScanError,
-  } = useForceThreadScan();
   const status = statusQuery.data;
   const diagnostics = scanQuery.data;
-  const scanning = Boolean(diagnostics?.scanning || forceScanPending);
+  const scanning = Boolean(diagnostics?.scanning);
   const activeChannel = useMemo(
     () => diagnostics?.channels.find((channel) => channel.channel === status?.channel) ?? null,
     [diagnostics?.channels, status?.channel],
@@ -84,7 +84,8 @@ export function NetworkScanner() {
     diagnostics?.statistics.cca_failure_rate_percent,
   );
   const signal = signalCondition(diagnostics?.statistics.latest_rssi_dbm);
-  const scanError = forceScanError ?? scanQuery.error;
+  const scanError = scanQuery.error;
+  const scanStatusError = diagnostics?.error ?? (scanError ? apiErrorMessage(scanError) : null);
 
   return (
     <div className="network-scanner-view">
@@ -104,15 +105,12 @@ export function NetworkScanner() {
             Active channel <strong>{status?.channel ?? '—'}</strong>
           </span>
         </div>
-        <Button
-          icon="search"
-          intent="primary"
-          loading={scanning}
-          disabled={!status?.connected}
-          onClick={() => forceScan()}
-        >
-          Scan Now
-        </Button>
+        <ThreadScanStatus
+          connected={Boolean(status?.connected)}
+          scanning={scanning}
+          scannedAt={diagnostics?.scanned_at}
+          error={scanStatusError}
+        />
       </header>
 
       <main className="network-scanner-content">
@@ -123,12 +121,15 @@ export function NetworkScanner() {
             The border-router status could not be loaded.
           </ScannerCallout>
         ) : !status?.connected ? (
-          <ScannerCallout intent="warning" title="Border router is not connected">
-            Open OpenThread Settings, connect an RCP, and refresh the runtime before scanning the
-            radio environment.
+          <ScannerCallout
+            intent="warning"
+            title={status?.available ? 'Border router is unavailable' : 'Thread radio not detected'}
+          >
+            {status?.error ?? 'Connect a compatible Thread RCP dongle.'} Detection, connection, and
+            scanning retry automatically.
           </ScannerCallout>
         ) : scanQuery.isLoading && !diagnostics ? (
-          <ScannerEmptyState loading title="Loading the shared OpenThread scan" />
+          <ScannerEmptyState loading title="Loading the OpenThread scan" />
         ) : (scanError || diagnostics?.error) && !diagnostics?.scanned_at && !scanning ? (
           <ScannerCallout intent="danger" title="Network scan failed">
             {diagnostics?.error ?? apiErrorMessage(scanError)}
@@ -136,7 +137,7 @@ export function NetworkScanner() {
         ) : scanning && !diagnostics?.scanned_at ? (
           <ScannerEmptyState
             loading
-            title="Updating the shared OpenThread scan"
+            title="Scanning the radio environment"
             description="Sampling channel energy, nearby Thread networks, mesh nodes, and radio counters…"
           />
         ) : diagnostics?.scanned_at ? (
@@ -152,8 +153,8 @@ export function NetworkScanner() {
           />
         ) : (
           <ScannerEmptyState
-            title="Waiting for the first shared scan"
-            description="The server scans automatically every minute. You can also scan now."
+            title="Waiting for automatic scanning"
+            description="Scanning starts when the Thread radio connects and refreshes about once a minute."
           />
         )}
       </main>
@@ -188,7 +189,7 @@ function ScannerResults({
     <div className="network-scanner-results" aria-busy={scanning}>
       {diagnostics.error ? (
         <Callout intent="danger" icon="error" title="Latest refresh failed">
-          The previous shared scan is still shown. {diagnostics.error}
+          The previous scan is still shown. {diagnostics.error}
         </Callout>
       ) : null}
       {diagnostics.warnings.map((warning) => (

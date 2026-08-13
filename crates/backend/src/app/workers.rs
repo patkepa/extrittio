@@ -417,12 +417,15 @@ async fn run_thread_scanner(
         tokio::select! {
             () = cancellation.cancelled() => return Ok(()),
             _ = interval.tick() => {
-                if runtime.controller().is_none() {
-                    continue;
-                }
                 let scan_runtime = runtime.clone();
                 match tokio::task::spawn_blocking(move || {
-                    scan_runtime.refresh_scan(std::time::Duration::from_secs(60), false)
+                    let snapshot = scan_runtime.refresh();
+                    if !snapshot.available {
+                        return Ok(false);
+                    }
+                    scan_runtime
+                        .refresh_scan(std::time::Duration::from_secs(60), false)
+                        .map(|_| true)
                 }).await {
                     Ok(Ok(_)) => {}
                     Ok(Err(error)) => warn!(%error, "OpenThread background scan failed; will retry"),
@@ -451,10 +454,7 @@ async fn run_thread_dns_sd_advertiser(
                 return Ok(());
             }
             _ = interval.tick() => {
-                let refresh_runtime = runtime.clone();
-                let snapshot = tokio::task::spawn_blocking(move || refresh_runtime.refresh())
-                    .await
-                    .map_err(|error| format!("Thread DNS-SD refresh task failed: {error}"))?;
+                let snapshot = runtime.snapshot();
                 if !snapshot.available {
                     if let Some(registration) = registration.take() {
                         withdraw_thread_service(registration).await;

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { buildThreadMeshGraphData } from '../src/pages/openthread/thread-mesh-graph-data.ts';
-import type { ThreadMeshDevice, ThreadMeshScan, ThreadStatus } from '../src/types/api.ts';
+import type { ThreadMeshDevice, ThreadNetworkDiagnostics, ThreadStatus } from '../src/types/api.ts';
 
 const status: ThreadStatus = {
   available: true,
@@ -51,7 +51,11 @@ function meshDevice(overrides: Partial<ThreadMeshDevice>): ThreadMeshDevice {
 }
 
 test('builds active mesh clients and nearby networks into one reusable graph', () => {
-  const scan: ThreadMeshScan = {
+  const scan: ThreadNetworkDiagnostics = {
+    scanning: false,
+    scanned_at: '2026-08-13T12:00:00.000Z',
+    error: null,
+    channels: [],
     networks: [
       {
         network_name: 'Extrittio-Thread',
@@ -79,6 +83,17 @@ test('builds active mesh clients and nearby networks into one reusable graph', (
       }),
       meshDevice({}),
     ],
+    statistics: {
+      cca_failure_rate_percent: null,
+      latest_rssi_dbm: null,
+      monitor_sample_count: null,
+      tx_total: null,
+      rx_total: null,
+      tx_retries: null,
+      tx_errors: null,
+      rx_errors: null,
+    },
+    warnings: [],
   };
 
   const graph = buildThreadMeshGraphData(scan, status);
@@ -99,4 +114,13 @@ test('builds active mesh clients and nearby networks into one reusable graph', (
       ?.details?.find((row) => row.label === 'Role')?.value,
     'Child',
   );
+});
+
+test('builds the current mesh before the first scan completes', () => {
+  const graph = buildThreadMeshGraphData({ networks: [], devices: [] }, status);
+
+  assert.equal(graph.nodes.length, 2);
+  assert.equal(graph.links.length, 1);
+  assert.equal(graph.nodes[0]?.name, 'Extrittio-Thread');
+  assert.equal(graph.nodes[1]?.name, 'Extrittio Border Router');
 });

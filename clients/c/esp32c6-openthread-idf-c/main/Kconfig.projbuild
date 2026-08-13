@@ -39,6 +39,15 @@ config EXTRITTIO_THREAD_ACTIVE_DATASET_TLVS
         Network settings. The dataset contains the Thread network key; do not
         commit it to source control or share a generated sdkconfig file.
 
+config EXTRITTIO_THREAD_CLEAR_PERSISTENT_STATE_ON_BOOT
+    bool "Clear persisted OpenThread state before joining"
+    default y
+    help
+        Rejoin the configured Thread network on every boot instead of restoring
+        the prior child state. This prevents stale link-security counters after
+        the local OTBR or device firmware is restarted. Disable only when the
+        device must preserve a network joined through commissioning.
+
 config EXTRITTIO_THREAD_TX_POWER_DBM
     int "Thread radio transmit power (dBm)"
     range -24 20

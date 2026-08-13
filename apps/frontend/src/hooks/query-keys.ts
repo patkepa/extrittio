@@ -79,8 +79,6 @@ export const queryKeys = {
   },
   thread: {
     status: ['system', 'thread'] as const,
-    refresh: ['system', 'thread', 'refresh'] as const,
     scan: ['system', 'thread', 'scan'] as const,
-    forceScan: ['system', 'thread', 'scan', 'force'] as const,
   },
 } as const;

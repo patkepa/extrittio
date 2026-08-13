@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import type { AxiosError } from 'axios';
 import {
   Alert,
   Button,
@@ -16,23 +15,17 @@ import {
 } from '@blueprintjs/core';
 import {
   useCreateThreadNetwork,
-  useForceThreadScan,
   useImportThreadDataset,
-  useThreadRuntimeRefresh,
   useThreadScan,
   useThreadStatus,
 } from '../../hooks/use-thread';
 import type { ThreadNetwork, ThreadStatus } from '../../types/api';
 import { showErrorToast, showSuccessToast } from '../../utils/toaster';
+import { ThreadScanStatus } from '../openthread/thread-scan-status';
 import './settings.css';
 import './thread.css';
 
 const CHANNELS = Array.from({ length: 16 }, (_, index) => index + 11);
-
-function apiErrorMessage(error: unknown, fallback: string): string {
-  const axiosError = error as AxiosError<{ error?: string }>;
-  return axiosError.response?.data?.error ?? fallback;
-}
 
 export function ThreadSettings() {
   const [networkName, setNetworkName] = useState('Extrittio-Thread');
@@ -47,8 +40,6 @@ export function ThreadSettings() {
   const createMutation = useCreateThreadNetwork();
   const importMutation = useImportThreadDataset();
   const scanQuery = useThreadScan();
-  const scanMutation = useForceThreadScan();
-  const refreshMutation = useThreadRuntimeRefresh();
   const status = statusQuery.data;
 
   const submit = () => {
@@ -94,6 +85,9 @@ export function ThreadSettings() {
 
   const busy = createMutation.isPending || importMutation.isPending;
   const scan = scanQuery.data;
+  const nearbyScanWarning = scan?.warnings.find((warning) =>
+    warning.startsWith('Nearby-network discovery is unavailable'),
+  );
 
   return (
     <div className="settings-page">
@@ -104,20 +98,6 @@ export function ThreadSettings() {
             Configure the local border router and operational dataset used by this hobby appliance.
           </p>
         </div>
-        <Button
-          icon="refresh"
-          minimal
-          loading={statusQuery.isFetching || refreshMutation.isPending}
-          onClick={() => {
-            refreshMutation.mutate(undefined, {
-              onError: () => {
-                void showErrorToast('Unable to refresh the Thread runtime');
-              },
-            });
-          }}
-        >
-          Refresh
-        </Button>
       </div>
 
       {statusQuery.isLoading ? (
@@ -144,29 +124,35 @@ export function ThreadSettings() {
           <Card elevation={Elevation.ONE} className="settings-card">
             <div className="thread-status-heading">
               <span className="section-label">Nearby Thread Networks</span>
-              <Button
-                icon="search"
-                loading={scanMutation.isPending || scan?.scanning}
-                disabled={!status.connected}
-                onClick={() => {
-                  scanMutation.mutate(undefined, {
-                    onError: (error) => {
-                      void showErrorToast(
-                        apiErrorMessage(error, 'Unable to scan for Thread networks'),
-                      );
-                    },
-                  });
-                }}
-              >
-                Scan Local Radio
-              </Button>
+              <ThreadScanStatus
+                connected={status.connected}
+                scanning={Boolean(scan?.scanning)}
+                scannedAt={scan?.scanned_at}
+                error={scan?.error ?? nearbyScanWarning}
+              />
             </div>
             <p className="thread-help">
-              Scan with this border router&apos;s local radio to find nearby Thread networks. A scan
-              reveals PAN, MAC address, channel, and signal only; you still need an Active
-              Operational Dataset to join.
+              The border router monitors nearby Thread networks automatically. Observations include
+              PAN, MAC address, channel, and signal only; an Active Operational Dataset is still
+              required to join.
             </p>
-            {scan?.scanned_at ? <ThreadNetworkList networks={scan.networks} /> : null}
+            {scanQuery.isError ? (
+              <Callout intent="warning" icon="warning-sign">
+                Automatic scan status is temporarily unavailable.
+              </Callout>
+            ) : nearbyScanWarning ? (
+              <Callout intent="warning" icon="warning-sign">
+                {nearbyScanWarning}
+              </Callout>
+            ) : scan?.scanned_at ? (
+              <ThreadNetworkList networks={scan.networks} />
+            ) : (
+              <Callout icon={scan?.scanning ? 'search' : 'time'}>
+                {scan?.scanning
+                  ? 'Scanning the local radio environment now.'
+                  : 'Waiting for the first automatic scan.'}
+              </Callout>
+            )}
           </Card>
 
           <Card elevation={Elevation.ONE} className="settings-card">
@@ -296,7 +282,7 @@ export function ThreadSettings() {
 function ThreadRuntimeNotice({ status }: { status?: ThreadStatus }) {
   const error =
     status?.error ??
-    'No controllable OpenThread border router is running. Connect an RCP and refresh this page.';
+    'No controllable OpenThread border router is running. Connect a compatible Thread RCP dongle.';
   const nextStep = threadRuntimeNextStep(error);
 
   return (
@@ -324,14 +310,16 @@ function ThreadRuntimeNotice({ status }: { status?: ThreadStatus }) {
           <dd>Extrittio data directory/thread/otbr-agent.log</dd>
         </div>
       </dl>
-      <p className="thread-runtime-help">Refresh rechecks the RCP and restarts the local router.</p>
+      <p className="thread-runtime-help">
+        RCP detection and border-router recovery retry automatically.
+      </p>
     </Callout>
   );
 }
 
 function threadRuntimeNextStep(error: string) {
   if (error.includes('connect session failed')) {
-    return 'OTBR exited after starting. Press Refresh to restart it, then inspect the OTBR log.';
+    return 'OTBR exited after starting. Recovery will retry automatically; inspect the OTBR log for the cause.';
   }
   if (error.includes('Operation not permitted')) {
     return 'Start the hobby appliance with the macOS network privileges required by OTBR.';
@@ -342,7 +330,7 @@ function threadRuntimeNextStep(error: string) {
   if (error.includes('No unique Thread RCP')) {
     return 'Connect one RCP, or restart Extrittio with --thread-rcp and its serial-device path.';
   }
-  return 'Inspect the OTBR log, then correct the reported startup issue and press Refresh.';
+  return 'Inspect the OTBR log and correct the reported startup issue; recovery will retry automatically.';
 }
 
 function ThreadNetworkList({ networks }: { networks: ThreadNetwork[] }) {

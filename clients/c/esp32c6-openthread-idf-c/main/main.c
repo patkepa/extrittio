@@ -22,6 +22,7 @@
 #include "openthread/dns_client.h"
 #include "openthread/error.h"
 #include "openthread/ip6.h"
+#include "openthread/instance.h"
 #include "openthread/platform/radio.h"
 #include "sdkconfig.h"
 
@@ -264,12 +265,30 @@ static void openthread_task(void *context)
     esp_netif_t *netif = init_openthread_netif(&config);
     esp_netif_set_default_netif(netif);
 
+    otInstance *instance = esp_openthread_get_instance();
+    otError error;
+#if CONFIG_EXTRITTIO_THREAD_CLEAR_PERSISTENT_STATE_ON_BOOT
+    /*
+     * This standalone example always carries its configured operational dataset.
+     * Rejoining from scratch prevents stale child link counters from rejecting
+     * encrypted parent traffic after the local OTBR or firmware is restarted.
+    */
+    esp_openthread_lock_acquire(portMAX_DELAY);
+    error = otInstanceErasePersistentInfo(instance);
+    esp_openthread_lock_release();
+    if (error != OT_ERROR_NONE) {
+        ESP_LOGE(TAG, "Unable to clear persisted OpenThread state: %d", error);
+        abort();
+    }
+    ESP_LOGI(TAG, "Cleared persisted OpenThread state before configured network join");
+#endif
+
     otOperationalDatasetTlvs dataset;
     ESP_ERROR_CHECK(parse_dataset_tlvs(CONFIG_EXTRITTIO_THREAD_ACTIVE_DATASET_TLVS,
                                        &dataset));
 
     esp_openthread_lock_acquire(portMAX_DELAY);
-    otError error = otDatasetSetActiveTlvs(esp_openthread_get_instance(), &dataset);
+    error = otDatasetSetActiveTlvs(instance, &dataset);
     esp_openthread_lock_release();
     if (error != OT_ERROR_NONE) {
         ESP_LOGE(TAG, "Active Operational Dataset was rejected: %d", error);
@@ -279,8 +298,7 @@ static void openthread_task(void *context)
     ESP_ERROR_CHECK(esp_openthread_auto_start(&dataset));
 
     esp_openthread_lock_acquire(portMAX_DELAY);
-    error = otPlatRadioSetTransmitPower(esp_openthread_get_instance(),
-                                        CONFIG_EXTRITTIO_THREAD_TX_POWER_DBM);
+    error = otPlatRadioSetTransmitPower(instance, CONFIG_EXTRITTIO_THREAD_TX_POWER_DBM);
     esp_openthread_lock_release();
     if (error != OT_ERROR_NONE) {
         ESP_LOGE(TAG, "Unable to set Thread transmit power: %d", error);
@@ -352,7 +370,11 @@ static void publish_loop(void)
                 .humidity = sensor.humidity,
                 .battery_level = sensor.battery,
             };
-            extrittio_telemetry_publish(z_loan_mut(session), &telemetry);
+            int publish_result = extrittio_telemetry_publish(z_loan_mut(session), &telemetry);
+            if (publish_result != 0) {
+                ESP_LOGW(TAG, "Telemetry publish failed (rc=%d); reconnecting Zenoh", publish_result);
+                break;
+            }
 
             if (now - last_heartbeat_ms >= CONFIG_EXTRITTIO_HEARTBEAT_INTERVAL_S * 1000LL) {
                 extrittio_heartbeat_t heartbeat = {
@@ -362,12 +384,17 @@ static void publish_loop(void)
                     .firmware = CONFIG_EXTRITTIO_FIRMWARE_VERSION,
                     .uptime_seconds = (esp_timer_get_time() - boot_time_us) / 1000000,
                 };
-                extrittio_heartbeat_publish(z_loan_mut(session), &heartbeat);
+                publish_result = extrittio_heartbeat_publish(z_loan_mut(session), &heartbeat);
+                if (publish_result != 0) {
+                    ESP_LOGW(TAG, "Heartbeat publish failed (rc=%d); reconnecting Zenoh", publish_result);
+                    break;
+                }
                 last_heartbeat_ms = now;
             }
             vTaskDelay(pdMS_TO_TICKS(CONFIG_EXTRITTIO_TELEMETRY_INTERVAL_S * 1000));
         }
         z_drop(z_move(session));
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
 

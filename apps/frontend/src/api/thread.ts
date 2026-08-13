@@ -11,18 +11,8 @@ export async function getThreadStatus(): Promise<ThreadStatus> {
   return data;
 }
 
-export async function refreshThreadRuntime(): Promise<ThreadStatus> {
-  const { data } = await client.post<ThreadStatus>('/system/thread/refresh');
-  return data;
-}
-
 export async function getThreadScan(): Promise<ThreadNetworkDiagnostics> {
   const { data } = await client.get<ThreadNetworkDiagnostics>('/system/thread/scan');
-  return data;
-}
-
-export async function forceThreadScan(): Promise<ThreadNetworkDiagnostics> {
-  const { data } = await client.post<ThreadNetworkDiagnostics>('/system/thread/scan');
   return data;
 }
 
