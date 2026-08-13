@@ -1129,7 +1129,9 @@ impl ThreadController {
     /// This includes credentials and must only be exposed through an
     /// authenticated, explicitly requested control-plane operation.
     pub fn active_dataset(&self) -> Result<ThreadActiveDataset> {
-        let _guard = self.lock();
+        // This is a read-only REST request, so it must not wait behind radio
+        // and mesh scans that can hold the command lock for tens of seconds.
+        // Dataset mutations remain serialized by the lock below.
         let active_dataset_tlvs = self.rest_text("/node/dataset/active")?;
         parse_active_dataset(&active_dataset_tlvs)
     }
@@ -2121,15 +2123,18 @@ fn is_rcp_candidate_name(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        BorderRouterConfig, CreateNetwork, DEFAULT_DEVELOPMENT_DATASET_TLVS, ThreadRadioStatistics,
-        ThreadRuntime, ThreadRuntimeConfig, ThreadScan, default_infrastructure_interface,
-        parse_active_dataset, parse_thread_ipv6_addresses, validate_create_network,
+        BorderRouterConfig, CreateNetwork, DEFAULT_DEVELOPMENT_DATASET_TLVS, ThreadController,
+        ThreadRadioStatistics, ThreadRuntime, ThreadRuntimeConfig, ThreadScan,
+        default_infrastructure_interface, parse_active_dataset, parse_thread_ipv6_addresses,
+        validate_create_network,
     };
     use std::{
+        io::{Read, Write},
         net::Ipv6Addr,
+        net::TcpListener,
         path::PathBuf,
         sync::{
-            Arc,
+            Arc, Mutex,
             atomic::{AtomicUsize, Ordering},
             mpsc,
         },
@@ -2366,6 +2371,48 @@ mod tests {
             dataset.active_dataset_tlvs,
             DEFAULT_DEVELOPMENT_DATASET_TLVS
         );
+    }
+
+    #[test]
+    fn active_dataset_does_not_wait_for_the_scan_command_lock() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let controller = ThreadController {
+            rest_endpoint: format!("http://{}", listener.local_addr().unwrap()),
+            dbus_address: None,
+            thread_interface: "wpan0".into(),
+            command_lock: Arc::new(Mutex::new(())),
+        };
+        let reader = controller.clone();
+        let scan_guard = controller.command_lock.lock().unwrap();
+
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request).unwrap();
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                DEFAULT_DEVELOPMENT_DATASET_TLVS.len(),
+                DEFAULT_DEVELOPMENT_DATASET_TLVS
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+        });
+        let (result_tx, result_rx) = mpsc::channel();
+        let request = thread::spawn(move || {
+            result_tx.send(reader.active_dataset()).unwrap();
+        });
+
+        let dataset = result_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("a read-only dataset request should not wait for the scan lock")
+            .unwrap();
+        assert_eq!(
+            dataset.active_dataset_tlvs,
+            DEFAULT_DEVELOPMENT_DATASET_TLVS
+        );
+
+        drop(scan_guard);
+        request.join().unwrap();
+        server.join().unwrap();
     }
 
     #[test]
