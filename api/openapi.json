@@ -3675,40 +3675,6 @@
         ]
       }
     },
-    "/api/v1/system/thread/mesh/scan": {
-      "post": {
-        "tags": [
-          "system"
-        ],
-        "operationId": "scan_thread_mesh",
-        "responses": {
-          "200": {
-            "description": "Nearby Thread networks and devices on the active mesh",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ThreadMeshScanResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Owner access required"
-          },
-          "409": {
-            "description": "Thread is unavailable"
-          }
-        },
-        "security": [
-          {
-            "bearer_auth": []
-          },
-          {
-            "session_cookie": []
-          }
-        ]
-      }
-    },
     "/api/v1/system/thread/network": {
       "post": {
         "tags": [
@@ -3756,15 +3722,44 @@
         ]
       }
     },
-    "/api/v1/system/thread/radio/scan": {
+    "/api/v1/system/thread/scan": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "operationId": "get_thread_scan",
+        "responses": {
+          "200": {
+            "description": "Latest shared OpenThread topology and radio scan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadNetworkDiagnosticsResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Owner access required"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      },
       "post": {
         "tags": [
           "system"
         ],
-        "operationId": "scan_thread_network_diagnostics",
+        "operationId": "force_thread_scan",
         "responses": {
           "200": {
-            "description": "Thread channel utilization, energy, nearby networks, and radio statistics",
+            "description": "Refreshed shared OpenThread topology and radio scan",
             "content": {
               "application/json": {
                 "schema": {
@@ -7591,32 +7586,13 @@
           }
         }
       },
-      "ThreadMeshScanResponse": {
-        "type": "object",
-        "required": [
-          "networks",
-          "devices"
-        ],
-        "properties": {
-          "devices": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ThreadMeshDeviceResponse"
-            }
-          },
-          "networks": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ThreadNetworkResponse"
-            }
-          }
-        }
-      },
       "ThreadNetworkDiagnosticsResponse": {
         "type": "object",
         "required": [
+          "scanning",
           "channels",
           "networks",
+          "devices",
           "statistics",
           "warnings"
         ],
@@ -7627,11 +7603,32 @@
               "$ref": "#/components/schemas/ThreadChannelDiagnosticsResponse"
             }
           },
+          "devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ThreadMeshDeviceResponse"
+            }
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "networks": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ThreadNetworkResponse"
             }
+          },
+          "scanned_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scanning": {
+            "type": "boolean"
           },
           "statistics": {
             "$ref": "#/components/schemas/ThreadRadioStatisticsResponse"
@@ -7680,20 +7677,6 @@
           "rssi": {
             "type": "integer",
             "format": "int32"
-          }
-        }
-      },
-      "ThreadNetworkScanResponse": {
-        "type": "object",
-        "required": [
-          "networks"
-        ],
-        "properties": {
-          "networks": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ThreadNetworkResponse"
-            }
           }
         }
       },

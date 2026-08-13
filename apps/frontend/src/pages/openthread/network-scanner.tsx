@@ -1,19 +1,11 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-  type ReactNode,
-} from 'react';
+import { useMemo, type CSSProperties, type ReactNode } from 'react';
 import type { AxiosError } from 'axios';
 import { Button, Callout, Icon, Spinner, Tag } from '@blueprintjs/core';
-import { useThreadNetworkDiagnosticsScan, useThreadStatus } from '../../hooks/use-thread';
+import { useForceThreadScan, useThreadScan, useThreadStatus } from '../../hooks/use-thread';
 import type {
   ThreadChannelDiagnostics,
   ThreadNetwork,
-  ThreadRadioStatistics,
+  ThreadNetworkDiagnostics,
 } from '../../types/api';
 import {
   combinedErrorRate,
@@ -37,6 +29,13 @@ type ChannelStyle = CSSProperties & {
 function apiErrorMessage(error: unknown): string {
   const axiosError = error as AxiosError<{ error?: string }>;
   return axiosError.response?.data?.error ?? 'Unable to scan the OpenThread radio environment.';
+}
+
+function scanTimestamp(value: string | null | undefined, scanning: boolean): string {
+  if (!value) return scanning ? 'Initial shared scan in progress' : 'Waiting for the shared scan';
+  const scannedAt = new Date(value);
+  if (Number.isNaN(scannedAt.getTime())) return 'Latest shared radio observation';
+  return `Last scan ${scannedAt.toLocaleTimeString()}`;
 }
 
 function formatPercent(value: number | null | undefined, digits = 1): string {
@@ -63,25 +62,15 @@ function conditionIntent(
 
 export function NetworkScanner() {
   const statusQuery = useThreadStatus();
-  const diagnosticsScan = useThreadNetworkDiagnosticsScan();
-  const { mutate: scan, isPending } = diagnosticsScan;
+  const scanQuery = useThreadScan();
+  const {
+    mutate: forceScan,
+    isPending: forceScanPending,
+    error: forceScanError,
+  } = useForceThreadScan();
   const status = statusQuery.data;
-  const [lastScannedAt, setLastScannedAt] = useState<Date | null>(null);
-  const autoScanStartedRef = useRef(false);
-
-  const runScan = useCallback(() => {
-    scan(undefined, {
-      onSuccess: () => setLastScannedAt(new Date()),
-    });
-  }, [scan]);
-
-  useEffect(() => {
-    if (!status?.connected || autoScanStartedRef.current) return;
-    autoScanStartedRef.current = true;
-    runScan();
-  }, [runScan, status?.connected]);
-
-  const diagnostics = diagnosticsScan.data;
+  const diagnostics = scanQuery.data;
+  const scanning = Boolean(diagnostics?.scanning || forceScanPending);
   const activeChannel = useMemo(
     () => diagnostics?.channels.find((channel) => channel.channel === status?.channel) ?? null,
     [diagnostics?.channels, status?.channel],
@@ -95,6 +84,7 @@ export function NetworkScanner() {
     diagnostics?.statistics.cca_failure_rate_percent,
   );
   const signal = signalCondition(diagnostics?.statistics.latest_rssi_dbm);
+  const scanError = forceScanError ?? scanQuery.error;
 
   return (
     <div className="network-scanner-view">
@@ -103,11 +93,7 @@ export function NetworkScanner() {
           <Icon icon="satellite" size={18} />
           <div>
             <strong>Network Scanner</strong>
-            <span>
-              {lastScannedAt
-                ? `Last scan ${lastScannedAt.toLocaleTimeString()}`
-                : 'Live IEEE 802.15.4 radio conditions'}
-            </span>
+            <span>{scanTimestamp(diagnostics?.scanned_at, scanning)}</span>
           </div>
         </div>
         <div className="network-scanner-toolbar-context">
@@ -121,11 +107,11 @@ export function NetworkScanner() {
         <Button
           icon="search"
           intent="primary"
-          loading={isPending}
+          loading={scanning}
           disabled={!status?.connected}
-          onClick={runScan}
+          onClick={() => forceScan()}
         >
-          Scan Network
+          Scan Now
         </Button>
       </header>
 
@@ -141,17 +127,19 @@ export function NetworkScanner() {
             Open OpenThread Settings, connect an RCP, and refresh the runtime before scanning the
             radio environment.
           </ScannerCallout>
-        ) : diagnosticsScan.isError && !diagnostics ? (
+        ) : scanQuery.isLoading && !diagnostics ? (
+          <ScannerEmptyState loading title="Loading the shared OpenThread scan" />
+        ) : (scanError || diagnostics?.error) && !diagnostics?.scanned_at && !scanning ? (
           <ScannerCallout intent="danger" title="Network scan failed">
-            {apiErrorMessage(diagnosticsScan.error)}
+            {diagnostics?.error ?? apiErrorMessage(scanError)}
           </ScannerCallout>
-        ) : isPending && !diagnostics ? (
+        ) : scanning && !diagnostics?.scanned_at ? (
           <ScannerEmptyState
             loading
-            title="Scanning the radio environment"
-            description="Sampling channel energy, nearby Thread networks, and radio counters…"
+            title="Updating the shared OpenThread scan"
+            description="Sampling channel energy, nearby Thread networks, mesh nodes, and radio counters…"
           />
-        ) : diagnostics ? (
+        ) : diagnostics?.scanned_at ? (
           <ScannerResults
             diagnostics={diagnostics}
             activeChannel={activeChannel}
@@ -159,13 +147,13 @@ export function NetworkScanner() {
             suggestedChannel={suggestedChannel}
             networkCondition={networkCondition}
             signal={signal}
-            scanning={isPending}
+            scanning={scanning}
             currentNetwork={(network) => isCurrentThreadNetwork(network, status)}
           />
         ) : (
           <ScannerEmptyState
-            title="No network scan yet"
-            description="Scan to measure all Thread channels and inspect the surrounding radio conditions."
+            title="Waiting for the first shared scan"
+            description="The server scans automatically every minute. You can also scan now."
           />
         )}
       </main>
@@ -183,12 +171,7 @@ function ScannerResults({
   scanning,
   currentNetwork,
 }: {
-  diagnostics: {
-    channels: ThreadChannelDiagnostics[];
-    networks: ThreadNetwork[];
-    statistics: ThreadRadioStatistics;
-    warnings: string[];
-  };
+  diagnostics: ThreadNetworkDiagnostics;
   activeChannel: ThreadChannelDiagnostics | null;
   activeChannelNumber: number | null;
   suggestedChannel: number | null;
@@ -203,6 +186,11 @@ function ScannerResults({
 
   return (
     <div className="network-scanner-results" aria-busy={scanning}>
+      {diagnostics.error ? (
+        <Callout intent="danger" icon="error" title="Latest refresh failed">
+          The previous shared scan is still shown. {diagnostics.error}
+        </Callout>
+      ) : null}
       {diagnostics.warnings.map((warning) => (
         <Callout key={warning} intent="warning" icon="warning-sign">
           {warning}

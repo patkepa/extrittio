@@ -5,7 +5,7 @@ import type {
 } from '../../components/fleet-graph/build-force-graph-data';
 import type {
   ThreadMeshDevice,
-  ThreadMeshScan,
+  ThreadNetworkDiagnostics,
   ThreadNetwork,
   ThreadStatus,
 } from '../../types/api';
@@ -127,7 +127,7 @@ function ringPosition(index: number, total: number, radius: number, offset = 0) 
 }
 
 export function buildThreadMeshGraphData(
-  scan: ThreadMeshScan,
+  scan: ThreadNetworkDiagnostics,
   status: ThreadStatus,
   previousNodes?: GraphNode[],
 ): GraphData {

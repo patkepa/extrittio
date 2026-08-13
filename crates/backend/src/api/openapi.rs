@@ -20,8 +20,8 @@ use utoipa::{Modify, OpenApi};
         // System
         super::system::get_version,
         super::thread::get_thread_status,
-        super::thread::scan_thread_network_diagnostics,
-        super::thread::scan_thread_mesh,
+        super::thread::get_thread_scan,
+        super::thread::force_thread_scan,
         super::thread::create_thread_network,
         super::thread::import_thread_dataset,
         // Auth
@@ -237,12 +237,10 @@ use utoipa::{Modify, OpenApi};
         super::system::SystemVersionResponse,
         super::thread::ThreadStatusResponse,
         super::thread::ThreadNetworkResponse,
-        super::thread::ThreadNetworkScanResponse,
         super::thread::ThreadChannelDiagnosticsResponse,
         super::thread::ThreadRadioStatisticsResponse,
         super::thread::ThreadNetworkDiagnosticsResponse,
         super::thread::ThreadMeshDeviceResponse,
-        super::thread::ThreadMeshScanResponse,
         super::thread::CreateThreadNetworkRequest,
         super::thread::ImportThreadDatasetRequest,
         // Outbox

@@ -11,9 +11,10 @@ use axum::{
     extract::State,
     routing::{get, post, put},
 };
+use chrono::{DateTime, SecondsFormat, Utc};
 use extrittio_openthread_runtime::{
     CreateNetwork, ThreadChannelDiagnostics, ThreadController, ThreadMeshDevice, ThreadNetwork,
-    ThreadNetworkDiagnostics, ThreadRadioStatistics, ThreadRuntime, ThreadRuntimeSnapshot,
+    ThreadRadioStatistics, ThreadRuntime, ThreadRuntimeSnapshot, ThreadScan, ThreadScanSnapshot,
     ThreadStatus,
 };
 use serde::{Deserialize, Serialize};
@@ -71,11 +72,6 @@ pub struct ThreadNetworkResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub struct ThreadNetworkScanResponse {
-    pub networks: Vec<ThreadNetworkResponse>,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
 pub struct ThreadChannelDiagnosticsResponse {
     pub channel: u16,
     /// Percentage of channel-monitor RSSI samples above OpenThread's noise threshold.
@@ -100,8 +96,12 @@ pub struct ThreadRadioStatisticsResponse {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ThreadNetworkDiagnosticsResponse {
+    pub scanning: bool,
+    pub scanned_at: Option<String>,
+    pub error: Option<String>,
     pub channels: Vec<ThreadChannelDiagnosticsResponse>,
     pub networks: Vec<ThreadNetworkResponse>,
+    pub devices: Vec<ThreadMeshDeviceResponse>,
     pub statistics: ThreadRadioStatisticsResponse,
     /// Measurements unsupported by the current OTBR/RCP combination.
     pub warnings: Vec<String>,
@@ -136,12 +136,6 @@ pub struct ThreadMeshDeviceResponse {
     pub updated_at: Option<String>,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
-pub struct ThreadMeshScanResponse {
-    pub networks: Vec<ThreadNetworkResponse>,
-    pub devices: Vec<ThreadMeshDeviceResponse>,
-}
-
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/api/v1/system/thread", get(get_thread_status))
@@ -149,70 +143,39 @@ pub fn router() -> Router<Arc<AppState>> {
             "/api/v1/system/thread/refresh",
             post(refresh_thread_runtime),
         )
-        .route("/api/v1/system/thread/scan", post(scan_thread_networks))
         .route(
-            "/api/v1/system/thread/radio/scan",
-            post(scan_thread_network_diagnostics),
+            "/api/v1/system/thread/scan",
+            get(get_thread_scan).post(force_thread_scan),
         )
-        .route("/api/v1/system/thread/mesh/scan", post(scan_thread_mesh))
+        .route("/api/v1/system/thread/radio/scan", post(force_thread_scan))
+        .route("/api/v1/system/thread/mesh/scan", post(force_thread_scan))
         .route("/api/v1/system/thread/network", post(create_thread_network))
         .route("/api/v1/system/thread/dataset", put(import_thread_dataset))
 }
 
 #[utoipa::path(
-    post,
-    path = "/api/v1/system/thread/radio/scan",
+    get,
+    path = "/api/v1/system/thread/scan",
     tag = "system",
     security(("bearer_auth" = [])),
     responses(
-        (status = 200, description = "Thread channel utilization, energy, nearby networks, and radio statistics", body = ThreadNetworkDiagnosticsResponse),
+        (status = 200, description = "Latest shared OpenThread topology and radio scan", body = ThreadNetworkDiagnosticsResponse),
         (status = 403, description = "Owner access required"),
-        (status = 409, description = "Thread is unavailable"),
     ),
 )]
-pub(crate) async fn scan_thread_network_diagnostics(
+pub(crate) async fn get_thread_scan(
     Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ThreadNetworkDiagnosticsResponse>, AppError> {
     require_owner(&ctx)?;
-    let controller = controller(&state)?;
-    let diagnostics = run_blocking(controller, |controller| {
-        controller.scan_network_diagnostics()
-    })
-    .await?;
-    Ok(Json(ThreadNetworkDiagnosticsResponse::from(diagnostics)))
-}
-
-#[utoipa::path(
-    post,
-    path = "/api/v1/system/thread/mesh/scan",
-    tag = "system",
-    security(("bearer_auth" = [])),
-    responses(
-        (status = 200, description = "Nearby Thread networks and devices on the active mesh", body = ThreadMeshScanResponse),
-        (status = 403, description = "Owner access required"),
-        (status = 409, description = "Thread is unavailable"),
-    ),
-)]
-pub(crate) async fn scan_thread_mesh(
-    Extension(ctx): Extension<RequestContext>,
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<ThreadMeshScanResponse>, AppError> {
-    require_owner(&ctx)?;
-    let controller = controller(&state)?;
-    let mesh = run_blocking(controller, |controller| controller.scan_mesh()).await?;
-    Ok(Json(ThreadMeshScanResponse {
-        networks: mesh
-            .networks
-            .into_iter()
-            .map(ThreadNetworkResponse::from)
-            .collect(),
-        devices: mesh
-            .devices
-            .into_iter()
-            .map(ThreadMeshDeviceResponse::from)
-            .collect(),
-    }))
+    let Some(runtime) = state.thread_runtime.as_ref() else {
+        return Ok(Json(ThreadNetworkDiagnosticsResponse::empty(Some(
+            "The local OpenThread border router is unavailable".to_string(),
+        ))));
+    };
+    Ok(Json(ThreadNetworkDiagnosticsResponse::from(
+        runtime.scan_snapshot(),
+    )))
 }
 
 #[utoipa::path(
@@ -221,24 +184,28 @@ pub(crate) async fn scan_thread_mesh(
     tag = "system",
     security(("bearer_auth" = [])),
     responses(
-        (status = 200, description = "Nearby Thread networks discovered by the local radio", body = ThreadNetworkScanResponse),
+        (status = 200, description = "Refreshed shared OpenThread topology and radio scan", body = ThreadNetworkDiagnosticsResponse),
         (status = 403, description = "Owner access required"),
         (status = 409, description = "Thread is unavailable"),
     ),
 )]
-pub(crate) async fn scan_thread_networks(
+pub(crate) async fn force_thread_scan(
     Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
-) -> Result<Json<ThreadNetworkScanResponse>, AppError> {
+) -> Result<Json<ThreadNetworkDiagnosticsResponse>, AppError> {
     require_owner(&ctx)?;
-    let controller = controller(&state)?;
-    let networks = run_blocking(controller, |controller| controller.scan_networks()).await?;
-    Ok(Json(ThreadNetworkScanResponse {
-        networks: networks
-            .into_iter()
-            .map(ThreadNetworkResponse::from)
-            .collect(),
-    }))
+    controller(&state)?;
+    let runtime = state
+        .thread_runtime
+        .clone()
+        .expect("a Thread controller requires a Thread runtime");
+    let snapshot = tokio::task::spawn_blocking(move || {
+        runtime.refresh_scan(std::time::Duration::from_secs(60), true)
+    })
+    .await
+    .map_err(|error| AppError::Internal(format!("Thread scan task failed: {error}")))?
+    .map_err(|error| AppError::BadRequest(error.to_string()))?;
+    Ok(Json(ThreadNetworkDiagnosticsResponse::from(snapshot)))
 }
 
 #[utoipa::path(
@@ -468,22 +435,76 @@ impl From<ThreadRadioStatistics> for ThreadRadioStatisticsResponse {
     }
 }
 
-impl From<ThreadNetworkDiagnostics> for ThreadNetworkDiagnosticsResponse {
-    fn from(diagnostics: ThreadNetworkDiagnostics) -> Self {
+impl ThreadRadioStatisticsResponse {
+    fn empty() -> Self {
         Self {
-            channels: diagnostics
+            cca_failure_rate_percent: None,
+            latest_rssi_dbm: None,
+            monitor_sample_count: None,
+            tx_total: None,
+            rx_total: None,
+            tx_retries: None,
+            tx_errors: None,
+            rx_errors: None,
+        }
+    }
+}
+
+impl ThreadNetworkDiagnosticsResponse {
+    fn empty(error: Option<String>) -> Self {
+        Self {
+            scanning: false,
+            scanned_at: None,
+            error,
+            channels: Vec::new(),
+            networks: Vec::new(),
+            devices: Vec::new(),
+            statistics: ThreadRadioStatisticsResponse::empty(),
+            warnings: Vec::new(),
+        }
+    }
+
+    fn from_scan(scan: ThreadScan) -> Self {
+        Self {
+            scanning: false,
+            scanned_at: None,
+            error: None,
+            channels: scan
                 .channels
                 .into_iter()
                 .map(ThreadChannelDiagnosticsResponse::from)
                 .collect(),
-            networks: diagnostics
+            networks: scan
                 .networks
                 .into_iter()
                 .map(ThreadNetworkResponse::from)
                 .collect(),
-            statistics: ThreadRadioStatisticsResponse::from(diagnostics.statistics),
-            warnings: diagnostics.warnings,
+            devices: scan
+                .devices
+                .into_iter()
+                .map(ThreadMeshDeviceResponse::from)
+                .collect(),
+            statistics: ThreadRadioStatisticsResponse::from(scan.statistics),
+            warnings: scan.warnings,
         }
+    }
+}
+
+impl From<ThreadScanSnapshot> for ThreadNetworkDiagnosticsResponse {
+    fn from(snapshot: ThreadScanSnapshot) -> Self {
+        let ThreadScanSnapshot {
+            scan,
+            scanning,
+            completed_at,
+            error,
+        } = snapshot;
+        let mut response = scan.map_or_else(|| Self::empty(error.clone()), Self::from_scan);
+        response.scanning = scanning;
+        response.error = error;
+        response.scanned_at = completed_at.map(|completed_at| {
+            DateTime::<Utc>::from(completed_at).to_rfc3339_opts(SecondsFormat::Millis, true)
+        });
+        response
     }
 }
 

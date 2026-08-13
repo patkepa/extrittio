@@ -267,10 +267,6 @@ export interface ThreadNetwork {
   lqi: number;
 }
 
-export interface ThreadNetworkScan {
-  networks: ThreadNetwork[];
-}
-
 export interface ThreadChannelDiagnostics {
   channel: number;
   utilization_percent: number | null;
@@ -291,8 +287,12 @@ export interface ThreadRadioStatistics {
 }
 
 export interface ThreadNetworkDiagnostics {
+  scanning: boolean;
+  scanned_at: string | null;
+  error: string | null;
   channels: ThreadChannelDiagnostics[];
   networks: ThreadNetwork[];
+  devices: ThreadMeshDevice[];
   statistics: ThreadRadioStatistics;
   warnings: string[];
 }
@@ -323,11 +323,6 @@ export interface ThreadMeshDevice {
   stable_data_version: number | null;
   created_at: string | null;
   updated_at: string | null;
-}
-
-export interface ThreadMeshScan {
-  networks: ThreadNetwork[];
-  devices: ThreadMeshDevice[];
 }
 
 // ---------------------------------------------------------------------------

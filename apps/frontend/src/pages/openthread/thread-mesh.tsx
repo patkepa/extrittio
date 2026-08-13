@@ -4,7 +4,7 @@ import { Button, Callout, H4, Icon, Spinner, Tag } from '@blueprintjs/core';
 import { FleetGraphCanvas } from '../../components/fleet-graph/fleet-graph-canvas';
 import type { GraphActions } from '../../components/fleet-graph/fleet-graph-canvas';
 import type { GraphNode } from '../../components/fleet-graph/build-force-graph-data';
-import { useThreadMeshScan, useThreadStatus } from '../../hooks/use-thread';
+import { useForceThreadScan, useThreadScan, useThreadStatus } from '../../hooks/use-thread';
 import { buildThreadMeshGraphData, isCurrentThreadNetwork } from './thread-mesh-graph-data';
 
 function apiErrorMessage(error: unknown): string {
@@ -12,33 +12,32 @@ function apiErrorMessage(error: unknown): string {
   return axiosError.response?.data?.error ?? 'Unable to scan the OpenThread mesh.';
 }
 
-function scanTimestamp(value: Date | null): string {
-  return value ? `Last scan ${value.toLocaleTimeString()}` : 'Live radio and mesh diagnostics';
+function scanTimestamp(value: string | null | undefined, scanning: boolean): string {
+  if (!value) return scanning ? 'Initial shared scan in progress' : 'Waiting for the shared scan';
+  const scannedAt = new Date(value);
+  if (Number.isNaN(scannedAt.getTime())) return 'Latest shared mesh observation';
+  return `Last scan ${scannedAt.toLocaleTimeString()}`;
 }
 
 export function ThreadMesh() {
   const statusQuery = useThreadStatus();
-  const meshScan = useThreadMeshScan();
-  const { mutate: scan, isPending } = meshScan;
+  const scanQuery = useThreadScan();
+  const {
+    mutate: forceScan,
+    isPending: forceScanPending,
+    error: forceScanError,
+  } = useForceThreadScan();
   const status = statusQuery.data;
-  const [lastScannedAt, setLastScannedAt] = useState<Date | null>(null);
+  const scan = scanQuery.data;
+  const scanning = Boolean(scan?.scanning || forceScanPending);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const graphActionsRef = useRef<GraphActions | null>(null);
-  const autoScanStartedRef = useRef(false);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
   const runScan = useCallback(() => {
-    scan(undefined, {
-      onSuccess: () => setLastScannedAt(new Date()),
-    });
-  }, [scan]);
-
-  useEffect(() => {
-    if (!status?.connected || autoScanStartedRef.current) return;
-    autoScanStartedRef.current = true;
-    runScan();
-  }, [runScan, status?.connected]);
+    forceScan();
+  }, [forceScan]);
 
   useEffect(() => {
     const element = canvasRef.current;
@@ -55,9 +54,9 @@ export function ThreadMesh() {
   }, []);
 
   const graphData = useMemo(() => {
-    if (!meshScan.data || !status) return null;
-    return buildThreadMeshGraphData(meshScan.data, status);
-  }, [meshScan.data, status]);
+    if (!scan?.scanned_at || !status) return null;
+    return buildThreadMeshGraphData(scan, status);
+  }, [scan, status]);
 
   const selectedNode = useMemo(
     () => graphData?.nodes.find((node) => node.id === selectedNodeId) ?? null,
@@ -65,16 +64,15 @@ export function ThreadMesh() {
   );
 
   const nearbyNetworkCount = useMemo(() => {
-    if (!meshScan.data || !status) return 0;
-    return meshScan.data.networks.filter((network) => !isCurrentThreadNetwork(network, status))
-      .length;
-  }, [meshScan.data, status]);
-  const clientCount =
-    meshScan.data?.devices.filter((device) => !device.is_border_router).length ?? 0;
+    if (!scan || !status) return 0;
+    return scan.networks.filter((network) => !isCurrentThreadNetwork(network, status)).length;
+  }, [scan, status]);
+  const clientCount = scan?.devices.filter((device) => !device.is_border_router).length ?? 0;
   const routerCount =
-    meshScan.data?.devices.filter(
+    scan?.devices.filter(
       (device) => !device.is_border_router && ['router', 'leader'].includes(device.role ?? ''),
     ).length ?? 0;
+  const scanError = forceScanError ?? scanQuery.error;
 
   const handleGraphNodeClick = useCallback((node: GraphNode) => {
     setSelectedNodeId(node.id);
@@ -87,7 +85,9 @@ export function ThreadMesh() {
           <Icon icon="satellite" size={16} />
           <div>
             <strong>{selectedNode?.name ?? 'OpenThread Mesh'}</strong>
-            <span>{selectedNode ? 'Selected topology node' : scanTimestamp(lastScannedAt)}</span>
+            <span>
+              {selectedNode ? 'Selected topology node' : scanTimestamp(scan?.scanned_at, scanning)}
+            </span>
           </div>
         </div>
 
@@ -140,11 +140,11 @@ export function ThreadMesh() {
           <Button
             icon="search"
             intent="primary"
-            loading={isPending}
+            loading={scanning}
             disabled={!status?.connected}
             onClick={runScan}
           >
-            Scan Mesh
+            Scan Now
           </Button>
         </div>
       </div>
@@ -166,17 +166,19 @@ export function ThreadMesh() {
                 the mesh.
               </Callout>
             </div>
-          ) : meshScan.isError && !graphData ? (
+          ) : scanQuery.isLoading && !scan ? (
+            <MeshEmptyState loading title="Loading the shared OpenThread scan" />
+          ) : (scanError || scan?.error) && !graphData && !scanning ? (
             <div className="thread-mesh-callout">
               <Callout intent="danger" icon="error" title="Mesh scan failed">
-                {apiErrorMessage(meshScan.error)}
+                {scan?.error ?? apiErrorMessage(scanError)}
               </Callout>
             </div>
-          ) : isPending && !graphData ? (
+          ) : scanning && !graphData ? (
             <MeshEmptyState
               loading
-              title="Scanning the OpenThread mesh"
-              description="Discovering nearby networks and querying attached Thread nodes…"
+              title="Updating the shared OpenThread scan"
+              description="Sampling radio conditions, discovering nearby networks, and querying attached Thread nodes…"
             />
           ) : graphData && dimensions.width > 0 && dimensions.height > 0 ? (
             <FleetGraphCanvas
@@ -192,8 +194,8 @@ export function ThreadMesh() {
             />
           ) : (
             <MeshEmptyState
-              title="No mesh scan yet"
-              description="Scan to map the active network, its clients, and nearby Thread networks."
+              title="Waiting for the first shared scan"
+              description="The server scans automatically every minute. You can also scan now."
             />
           )}
 
@@ -218,9 +220,19 @@ export function ThreadMesh() {
             </div>
           ) : null}
 
-          {isPending && graphData ? (
+          {scanning && graphData ? (
             <Tag className="thread-mesh-scanning" icon="search" intent="primary" round>
-              Updating topology…
+              Updating shared scan…
+            </Tag>
+          ) : scan?.error && graphData ? (
+            <Tag
+              className="thread-mesh-scanning"
+              icon="error"
+              intent="danger"
+              round
+              title={scan.error}
+            >
+              Latest refresh failed
             </Tag>
           ) : null}
         </div>

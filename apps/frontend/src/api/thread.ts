@@ -3,8 +3,6 @@ import type {
   CreateThreadNetworkRequest,
   ImportThreadDatasetRequest,
   ThreadNetworkDiagnostics,
-  ThreadNetworkScan,
-  ThreadMeshScan,
   ThreadStatus,
 } from '../types/api';
 
@@ -18,18 +16,13 @@ export async function refreshThreadRuntime(): Promise<ThreadStatus> {
   return data;
 }
 
-export async function scanThreadNetworks(): Promise<ThreadNetworkScan> {
-  const { data } = await client.post<ThreadNetworkScan>('/system/thread/scan');
+export async function getThreadScan(): Promise<ThreadNetworkDiagnostics> {
+  const { data } = await client.get<ThreadNetworkDiagnostics>('/system/thread/scan');
   return data;
 }
 
-export async function scanThreadNetworkDiagnostics(): Promise<ThreadNetworkDiagnostics> {
-  const { data } = await client.post<ThreadNetworkDiagnostics>('/system/thread/radio/scan');
-  return data;
-}
-
-export async function scanThreadMesh(): Promise<ThreadMeshScan> {
-  const { data } = await client.post<ThreadMeshScan>('/system/thread/mesh/scan');
+export async function forceThreadScan(): Promise<ThreadNetworkDiagnostics> {
+  const { data } = await client.post<ThreadNetworkDiagnostics>('/system/thread/scan');
   return data;
 }
 

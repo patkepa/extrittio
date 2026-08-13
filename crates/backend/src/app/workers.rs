@@ -91,6 +91,15 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
     let mut workers = JoinSet::new();
 
     if let Some(thread_runtime) = state.thread_runtime.clone() {
+        let scan_runtime = thread_runtime.clone();
+        spawn_shutdown_worker(
+            &mut workers,
+            &cancellation,
+            &state.readiness,
+            "thread-scanner",
+            move |cancellation| async move { run_thread_scanner(scan_runtime, cancellation).await },
+        );
+
         let service = ThreadDnsSdService {
             instance_name: config.thread_zenoh_service_instance.clone(),
             service_name: config.thread_zenoh_service_name.clone(),
@@ -394,6 +403,33 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         cancellation,
         monitor,
         persistence: state.persistence.clone(),
+    }
+}
+
+async fn run_thread_scanner(
+    runtime: Arc<extrittio_openthread_runtime::ThreadRuntime>,
+    cancellation: CancellationToken,
+) -> Result<(), String> {
+    let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+    loop {
+        tokio::select! {
+            () = cancellation.cancelled() => return Ok(()),
+            _ = interval.tick() => {
+                if runtime.controller().is_none() {
+                    continue;
+                }
+                let scan_runtime = runtime.clone();
+                match tokio::task::spawn_blocking(move || {
+                    scan_runtime.refresh_scan(std::time::Duration::from_secs(60), false)
+                }).await {
+                    Ok(Ok(_)) => {}
+                    Ok(Err(error)) => warn!(%error, "OpenThread background scan failed; will retry"),
+                    Err(error) => return Err(format!("OpenThread scanner task failed: {error}")),
+                }
+            }
+        }
     }
 }
 

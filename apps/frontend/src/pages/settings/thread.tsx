@@ -16,9 +16,10 @@ import {
 } from '@blueprintjs/core';
 import {
   useCreateThreadNetwork,
+  useForceThreadScan,
   useImportThreadDataset,
-  useThreadNetworkScan,
   useThreadRuntimeRefresh,
+  useThreadScan,
   useThreadStatus,
 } from '../../hooks/use-thread';
 import type { ThreadNetwork, ThreadStatus } from '../../types/api';
@@ -45,7 +46,8 @@ export function ThreadSettings() {
   const statusQuery = useThreadStatus();
   const createMutation = useCreateThreadNetwork();
   const importMutation = useImportThreadDataset();
-  const scanMutation = useThreadNetworkScan();
+  const scanQuery = useThreadScan();
+  const scanMutation = useForceThreadScan();
   const refreshMutation = useThreadRuntimeRefresh();
   const status = statusQuery.data;
 
@@ -91,7 +93,7 @@ export function ThreadSettings() {
   };
 
   const busy = createMutation.isPending || importMutation.isPending;
-  const scan = scanMutation.data;
+  const scan = scanQuery.data;
 
   return (
     <div className="settings-page">
@@ -144,7 +146,7 @@ export function ThreadSettings() {
               <span className="section-label">Nearby Thread Networks</span>
               <Button
                 icon="search"
-                loading={scanMutation.isPending}
+                loading={scanMutation.isPending || scan?.scanning}
                 disabled={!status.connected}
                 onClick={() => {
                   scanMutation.mutate(undefined, {
@@ -164,7 +166,7 @@ export function ThreadSettings() {
               reveals PAN, MAC address, channel, and signal only; you still need an Active
               Operational Dataset to join.
             </p>
-            {scan ? <ThreadNetworkList networks={scan.networks} /> : null}
+            {scan?.scanned_at ? <ThreadNetworkList networks={scan.networks} /> : null}
           </Card>
 
           <Card elevation={Elevation.ONE} className="settings-card">

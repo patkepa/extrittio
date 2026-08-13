@@ -14,10 +14,10 @@ use std::{
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::{
-        Arc, Mutex,
+        Arc, Condvar, Mutex,
         atomic::{AtomicU64, Ordering},
     },
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 
 use anyhow::{Context, Result, bail};
@@ -174,6 +174,26 @@ pub struct ThreadNetworkDiagnostics {
     pub warnings: Vec<String>,
 }
 
+/// One complete observation shared by the topology and radio-condition views.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThreadScan {
+    pub channels: Vec<ThreadChannelDiagnostics>,
+    pub networks: Vec<ThreadNetwork>,
+    pub devices: Vec<ThreadMeshDevice>,
+    pub statistics: ThreadRadioStatistics,
+    pub warnings: Vec<String>,
+}
+
+/// Server-owned scan state. The most recent successful observation remains
+/// available while a refresh runs or after a later refresh fails.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThreadScanSnapshot {
+    pub scan: Option<ThreadScan>,
+    pub scanning: bool,
+    pub completed_at: Option<SystemTime>,
+    pub error: Option<String>,
+}
+
 /// One node discovered on the active Thread mesh through OTBR diagnostics.
 ///
 /// These fields intentionally exclude credentials and mutable operational
@@ -264,12 +284,24 @@ impl ThreadRuntimeSnapshot {
 pub struct ThreadRuntime {
     config: ThreadRuntimeConfig,
     state: Mutex<ThreadRuntimeState>,
+    scan_state: Mutex<ThreadScanState>,
+    scan_changed: Condvar,
     network_generation: AtomicU64,
 }
 
 struct ThreadRuntimeState {
     active: Option<ActiveThreadRuntime>,
     snapshot: ThreadRuntimeSnapshot,
+}
+
+struct ThreadScanState {
+    scan: Option<ThreadScan>,
+    scanning: bool,
+    generation: u64,
+    completed_at: Option<SystemTime>,
+    completed_at_instant: Option<Instant>,
+    last_attempt_at: Option<Instant>,
+    error: Option<String>,
 }
 
 struct ActiveThreadRuntime {
@@ -291,6 +323,16 @@ impl ThreadRuntime {
                     message: Some("Thread runtime has not checked for an RCP yet".to_string()),
                 },
             }),
+            scan_state: Mutex::new(ThreadScanState {
+                scan: None,
+                scanning: false,
+                generation: 0,
+                completed_at: None,
+                completed_at_instant: None,
+                last_attempt_at: None,
+                error: None,
+            }),
+            scan_changed: Condvar::new(),
             network_generation: AtomicU64::new(0),
         }
     }
@@ -421,6 +463,7 @@ impl ThreadRuntime {
                     controller: Arc::new(controller),
                 });
                 self.network_generation.fetch_add(1, Ordering::Relaxed);
+                self.invalidate_scan();
                 Self::set_snapshot(&mut state, ThreadRuntimeSnapshot::ready(rcp_device))
             }
             Err(error) => Self::set_snapshot(
@@ -463,6 +506,130 @@ impl ThreadRuntime {
             .map(|active| active.controller.clone())
     }
 
+    /// Returns the shared scan cache without starting radio work.
+    #[must_use]
+    pub fn scan_snapshot(&self) -> ThreadScanSnapshot {
+        let state = self
+            .scan_state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        Self::scan_snapshot_from_state(&state)
+    }
+
+    /// Refreshes the complete Thread observation at most once for concurrent
+    /// callers. Non-forced callers reuse a result younger than `max_age`.
+    /// Forced callers that arrive during the same scan join that scan instead
+    /// of starting another one when it completes.
+    pub fn refresh_scan(&self, max_age: Duration, force: bool) -> Result<ThreadScanSnapshot> {
+        let controller = self
+            .controller()
+            .context("The local OpenThread border router is unavailable")?;
+        self.refresh_scan_with(max_age, force, move || controller.scan_all())
+    }
+
+    fn refresh_scan_with<F>(
+        &self,
+        max_age: Duration,
+        force: bool,
+        scan: F,
+    ) -> Result<ThreadScanSnapshot>
+    where
+        F: FnOnce() -> Result<ThreadScan>,
+    {
+        let requested_at = Instant::now();
+        let scan_generation;
+        let mut state = self
+            .scan_state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        loop {
+            if state
+                .last_attempt_at
+                .is_some_and(|completed| completed >= requested_at)
+            {
+                return Self::scan_result_from_state(&state);
+            }
+
+            let fresh = state
+                .completed_at_instant
+                .is_some_and(|completed| completed.elapsed() < max_age);
+            if !force && fresh {
+                return Ok(Self::scan_snapshot_from_state(&state));
+            }
+
+            if !state.scanning {
+                state.scanning = true;
+                state.error = None;
+                scan_generation = state.generation;
+                break;
+            }
+
+            state = self
+                .scan_changed
+                .wait(state)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+        }
+
+        drop(state);
+        let result = scan();
+        let now = Instant::now();
+        let mut state = self
+            .scan_state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.scanning = false;
+        state.last_attempt_at = Some(now);
+        if state.generation != scan_generation {
+            state.error = Some(
+                "The Thread network changed while the scan was running; a fresh scan is required"
+                    .to_string(),
+            );
+        } else {
+            match result {
+                Ok(scan) => {
+                    state.scan = Some(scan);
+                    state.completed_at = Some(SystemTime::now());
+                    state.completed_at_instant = Some(now);
+                    state.error = None;
+                }
+                Err(error) => state.error = Some(error.to_string()),
+            }
+        }
+        self.scan_changed.notify_all();
+        Self::scan_result_from_state(&state)
+    }
+
+    fn scan_result_from_state(state: &ThreadScanState) -> Result<ThreadScanSnapshot> {
+        if state.scan.is_none()
+            && let Some(error) = &state.error
+        {
+            bail!(error.clone());
+        }
+        Ok(Self::scan_snapshot_from_state(state))
+    }
+
+    fn scan_snapshot_from_state(state: &ThreadScanState) -> ThreadScanSnapshot {
+        ThreadScanSnapshot {
+            scan: state.scan.clone(),
+            scanning: state.scanning,
+            completed_at: state.completed_at,
+            error: state.error.clone(),
+        }
+    }
+
+    fn invalidate_scan(&self) {
+        let mut state = self
+            .scan_state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.scan = None;
+        state.generation = state.generation.wrapping_add(1);
+        state.completed_at = None;
+        state.completed_at_instant = None;
+        state.error = None;
+    }
+
     /// Seeds the shared public development mesh only when OTBR has no active
     /// dataset. User-created and imported datasets are always left intact.
     pub fn ensure_default_development_network(&self) -> Result<bool> {
@@ -492,6 +659,7 @@ impl ThreadRuntime {
     /// Callers use this to re-register the backend service on the new mesh.
     pub fn mark_network_changed(&self) {
         self.network_generation.fetch_add(1, Ordering::Relaxed);
+        self.invalidate_scan();
     }
 
     #[must_use]
@@ -620,6 +788,37 @@ impl ThreadController {
     pub fn scan_network_diagnostics(&self) -> Result<ThreadNetworkDiagnostics> {
         let _guard = self.lock();
         let networks = self.scan_networks_locked()?;
+        self.scan_network_diagnostics_locked(networks)
+    }
+
+    /// Performs the single complete scan used by every OpenThread view.
+    pub fn scan_all(&self) -> Result<ThreadScan> {
+        let _guard = self.lock();
+        let networks = self.scan_networks_locked()?;
+        let mut diagnostics = self.scan_network_diagnostics_locked(networks)?;
+        let devices = match self.scan_mesh_devices_locked() {
+            Ok(devices) => devices,
+            Err(error) => {
+                diagnostics
+                    .warnings
+                    .push(format!("Mesh discovery is unavailable: {error}"));
+                Vec::new()
+            }
+        };
+
+        Ok(ThreadScan {
+            channels: diagnostics.channels,
+            networks: diagnostics.networks,
+            devices,
+            statistics: diagnostics.statistics,
+            warnings: diagnostics.warnings,
+        })
+    }
+
+    fn scan_network_diagnostics_locked(
+        &self,
+        networks: Vec<ThreadNetwork>,
+    ) -> Result<ThreadNetworkDiagnostics> {
         let mut warnings = Vec::new();
 
         let energy = match self.energy_scan_locked(100) {
@@ -764,8 +963,13 @@ impl ThreadController {
     /// it is cleared before discovery to avoid showing nodes from a previous
     /// operational dataset.
     pub fn scan_mesh(&self) -> Result<ThreadMeshScan> {
-        let networks = self.scan_networks()?;
         let _guard = self.lock();
+        let networks = self.scan_networks_locked()?;
+        let devices = self.scan_mesh_devices_locked()?;
+        Ok(ThreadMeshScan { networks, devices })
+    }
+
+    fn scan_mesh_devices_locked(&self) -> Result<Vec<ThreadMeshDevice>> {
         let client = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(12))
             .build()
@@ -818,10 +1022,7 @@ impl ThreadController {
             .json::<serde_json::Value>()
             .with_context(|| format!("OTBR returned invalid mesh inventory from {devices_url}"))?;
 
-        Ok(ThreadMeshScan {
-            networks,
-            devices: parse_thread_mesh_devices(&devices)?,
-        })
+        parse_thread_mesh_devices(&devices)
     }
 
     fn wait_for_mesh_discovery(
@@ -1794,10 +1995,58 @@ fn is_rcp_candidate_name(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        BorderRouterConfig, CreateNetwork, DEFAULT_DEVELOPMENT_DATASET_TLVS,
-        default_infrastructure_interface, parse_thread_ipv6_addresses, validate_create_network,
+        BorderRouterConfig, CreateNetwork, DEFAULT_DEVELOPMENT_DATASET_TLVS, ThreadRadioStatistics,
+        ThreadRuntime, ThreadRuntimeConfig, ThreadScan, default_infrastructure_interface,
+        parse_thread_ipv6_addresses, validate_create_network,
     };
-    use std::{net::Ipv6Addr, path::PathBuf};
+    use std::{
+        net::Ipv6Addr,
+        path::PathBuf,
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+            mpsc,
+        },
+        thread,
+        time::Duration,
+    };
+
+    fn test_runtime() -> ThreadRuntime {
+        ThreadRuntime::new(ThreadRuntimeConfig {
+            rcp_device: None,
+            agent_path: None,
+            baud_rate: 460_800,
+            thread_interface: "wpan0".into(),
+            infrastructure_interface: "en0".into(),
+            data_path: "/tmp/extrittio-thread-runtime-test".into(),
+        })
+    }
+
+    fn test_scan(network_name: &str) -> ThreadScan {
+        ThreadScan {
+            channels: Vec::new(),
+            networks: vec![super::ThreadNetwork {
+                network_name: Some(network_name.into()),
+                pan_id: "1234".into(),
+                extended_address: "0011223344556677".into(),
+                channel: 15,
+                rssi: -40,
+                lqi: 3,
+            }],
+            devices: Vec::new(),
+            statistics: ThreadRadioStatistics {
+                cca_failure_rate: None,
+                latest_rssi: None,
+                monitor_sample_count: None,
+                tx_total: None,
+                rx_total: None,
+                tx_retries: None,
+                tx_errors: None,
+                rx_errors: None,
+            },
+            warnings: Vec::new(),
+        }
+    }
 
     #[test]
     fn builds_the_standard_spinel_uart_url_and_otbr_arguments() {
@@ -1836,6 +2085,108 @@ mod tests {
     #[test]
     fn chooses_a_sensible_default_infrastructure_interface() {
         assert!(!default_infrastructure_interface().is_empty());
+    }
+
+    #[test]
+    fn shared_scan_reuses_a_fresh_cached_observation() {
+        let runtime = test_runtime();
+        let calls = AtomicUsize::new(0);
+
+        runtime
+            .refresh_scan_with(Duration::from_secs(60), false, || {
+                calls.fetch_add(1, Ordering::Relaxed);
+                Ok(test_scan("first"))
+            })
+            .unwrap();
+        let snapshot = runtime
+            .refresh_scan_with(Duration::from_secs(60), false, || {
+                calls.fetch_add(1, Ordering::Relaxed);
+                Ok(test_scan("duplicate"))
+            })
+            .unwrap();
+
+        assert_eq!(calls.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            snapshot.scan.unwrap().networks[0].network_name.as_deref(),
+            Some("first")
+        );
+    }
+
+    #[test]
+    fn concurrent_forced_scans_join_the_same_radio_work() {
+        let runtime = Arc::new(test_runtime());
+        let calls = Arc::new(AtomicUsize::new(0));
+        let (started_tx, started_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+
+        let first_runtime = runtime.clone();
+        let first_calls = calls.clone();
+        let first = thread::spawn(move || {
+            first_runtime.refresh_scan_with(Duration::ZERO, true, || {
+                first_calls.fetch_add(1, Ordering::Relaxed);
+                started_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+                Ok(test_scan("shared"))
+            })
+        });
+        started_rx.recv().unwrap();
+
+        let second_runtime = runtime.clone();
+        let second_calls = calls.clone();
+        let second = thread::spawn(move || {
+            second_runtime.refresh_scan_with(Duration::ZERO, true, || {
+                second_calls.fetch_add(1, Ordering::Relaxed);
+                Ok(test_scan("duplicate"))
+            })
+        });
+        thread::sleep(Duration::from_millis(25));
+        release_tx.send(()).unwrap();
+
+        let first_snapshot = first.join().unwrap().unwrap();
+        let second_snapshot = second.join().unwrap().unwrap();
+        assert_eq!(calls.load(Ordering::Relaxed), 1);
+        assert_eq!(first_snapshot.scan, second_snapshot.scan);
+    }
+
+    #[test]
+    fn failed_refresh_keeps_the_last_successful_observation() {
+        let runtime = test_runtime();
+        runtime
+            .refresh_scan_with(Duration::ZERO, true, || Ok(test_scan("retained")))
+            .unwrap();
+
+        let snapshot = runtime
+            .refresh_scan_with(Duration::ZERO, true, || anyhow::bail!("radio unavailable"))
+            .unwrap();
+
+        assert_eq!(
+            snapshot.scan.unwrap().networks[0].network_name.as_deref(),
+            Some("retained")
+        );
+        assert_eq!(snapshot.error.as_deref(), Some("radio unavailable"));
+    }
+
+    #[test]
+    fn network_change_discards_a_scan_that_was_already_running() {
+        let runtime = Arc::new(test_runtime());
+        let (started_tx, started_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let scan_runtime = runtime.clone();
+        let scan = thread::spawn(move || {
+            scan_runtime.refresh_scan_with(Duration::ZERO, true, || {
+                started_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+                Ok(test_scan("stale"))
+            })
+        });
+
+        started_rx.recv().unwrap();
+        runtime.mark_network_changed();
+        release_tx.send(()).unwrap();
+
+        let error = scan.join().unwrap().unwrap_err();
+        assert!(error.to_string().contains("network changed"));
+        assert!(runtime.scan_snapshot().scan.is_none());
     }
 
     #[test]

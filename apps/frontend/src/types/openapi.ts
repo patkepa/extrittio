@@ -1073,22 +1073,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/system/thread/mesh/scan": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["scan_thread_mesh"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/system/thread/network": {
         parameters: {
             query?: never;
@@ -1105,16 +1089,16 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/system/thread/radio/scan": {
+    "/api/v1/system/thread/scan": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["get_thread_scan"];
         put?: never;
-        post: operations["scan_thread_network_diagnostics"];
+        post: operations["force_thread_scan"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2159,13 +2143,13 @@ export interface components {
             stable_data_version?: number | null;
             updated_at?: string | null;
         };
-        ThreadMeshScanResponse: {
-            devices: components["schemas"]["ThreadMeshDeviceResponse"][];
-            networks: components["schemas"]["ThreadNetworkResponse"][];
-        };
         ThreadNetworkDiagnosticsResponse: {
             channels: components["schemas"]["ThreadChannelDiagnosticsResponse"][];
+            devices: components["schemas"]["ThreadMeshDeviceResponse"][];
+            error?: string | null;
             networks: components["schemas"]["ThreadNetworkResponse"][];
+            scanned_at?: string | null;
+            scanning: boolean;
             statistics: components["schemas"]["ThreadRadioStatisticsResponse"];
             /** @description Measurements unsupported by the current OTBR/RCP combination. */
             warnings: string[];
@@ -2180,9 +2164,6 @@ export interface components {
             pan_id: string;
             /** Format: int32 */
             rssi: number;
-        };
-        ThreadNetworkScanResponse: {
-            networks: components["schemas"]["ThreadNetworkResponse"][];
         };
         ThreadRadioStatisticsResponse: {
             /** Format: double */
@@ -4652,40 +4633,6 @@ export interface operations {
             };
         };
     };
-    scan_thread_mesh: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Nearby Thread networks and devices on the active mesh */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ThreadMeshScanResponse"];
-                };
-            };
-            /** @description Owner access required */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Thread is unavailable */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
     create_thread_network: {
         parameters: {
             query?: never;
@@ -4731,7 +4678,7 @@ export interface operations {
             };
         };
     };
-    scan_thread_network_diagnostics: {
+    get_thread_scan: {
         parameters: {
             query?: never;
             header?: never;
@@ -4740,7 +4687,34 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Thread channel utilization, energy, nearby networks, and radio statistics */
+            /** @description Latest shared OpenThread topology and radio scan */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadNetworkDiagnosticsResponse"];
+                };
+            };
+            /** @description Owner access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    force_thread_scan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Refreshed shared OpenThread topology and radio scan */
             200: {
                 headers: {
                     [name: string]: unknown;
