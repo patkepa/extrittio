@@ -16,6 +16,7 @@ use extrittio_openthread_runtime::{
     ThreadStatus,
 };
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 use utoipa::ToSchema;
 
 use crate::{auth::context::RequestContext, error::AppError, state::AppState};
@@ -27,6 +28,8 @@ pub struct ThreadStatusResponse {
     pub connected: bool,
     pub error: Option<String>,
     pub rcp_device: Option<String>,
+    /// Serial devices currently detected as plausible Thread RCPs.
+    pub available_rcp_devices: Vec<String>,
     pub role: Option<String>,
     pub network_name: Option<String>,
     pub channel: Option<u16>,
@@ -176,6 +179,10 @@ pub(crate) async fn create_thread_network(
 ) -> Result<Json<ThreadStatusResponse>, AppError> {
     require_owner(&ctx)?;
     let controller = controller(&state)?;
+    let runtime = state
+        .thread_runtime
+        .clone()
+        .expect("a Thread controller requires a Thread runtime");
     let network = CreateNetwork {
         network_name: request.network_name,
         channel: request.channel,
@@ -187,10 +194,8 @@ pub(crate) async fn create_thread_network(
         controller.create_network(&network)
     })
     .await?;
-    if let Some(runtime) = state.thread_runtime.as_ref() {
-        runtime.mark_network_changed();
-    }
-    Ok(Json(status_after_change(controller).await?))
+    runtime.mark_network_changed();
+    Ok(Json(status_after_change(runtime, controller).await?))
 }
 
 #[utoipa::path(
@@ -213,14 +218,16 @@ pub(crate) async fn import_thread_dataset(
 ) -> Result<Json<ThreadStatusResponse>, AppError> {
     require_owner(&ctx)?;
     let controller = controller(&state)?;
+    let runtime = state
+        .thread_runtime
+        .clone()
+        .expect("a Thread controller requires a Thread runtime");
     run_blocking(controller.clone(), move |controller| {
         controller.import_active_dataset(&request.active_dataset_tlvs)
     })
     .await?;
-    if let Some(runtime) = state.thread_runtime.as_ref() {
-        runtime.mark_network_changed();
-    }
-    Ok(Json(status_after_change(controller).await?))
+    runtime.mark_network_changed();
+    Ok(Json(status_after_change(runtime, controller).await?))
 }
 
 impl ThreadStatusResponse {
@@ -230,6 +237,7 @@ impl ThreadStatusResponse {
             connected: false,
             error: None,
             rcp_device: None,
+            available_rcp_devices: Vec::new(),
             role: None,
             network_name: None,
             channel: None,
@@ -240,22 +248,31 @@ impl ThreadStatusResponse {
         }
     }
 
-    fn unavailable_runtime(snapshot: ThreadRuntimeSnapshot) -> Self {
+    fn unavailable_runtime(
+        snapshot: ThreadRuntimeSnapshot,
+        available_rcp_devices: Vec<String>,
+    ) -> Self {
         Self {
             error: snapshot.message,
             rcp_device: snapshot
                 .rcp_device
                 .map(|device| device.display().to_string()),
+            available_rcp_devices,
             ..Self::unavailable()
         }
     }
 
-    fn connected(status: ThreadStatus, rcp_device: Option<String>) -> Self {
+    fn connected(
+        status: ThreadStatus,
+        rcp_device: Option<String>,
+        available_rcp_devices: Vec<String>,
+    ) -> Self {
         Self {
             available: true,
             connected: true,
             error: None,
             rcp_device,
+            available_rcp_devices,
             role: status.role,
             network_name: status.network_name,
             channel: status.channel,
@@ -266,12 +283,17 @@ impl ThreadStatusResponse {
         }
     }
 
-    fn failed(error: AppError, rcp_device: Option<String>) -> Self {
+    fn failed(
+        error: AppError,
+        rcp_device: Option<String>,
+        available_rcp_devices: Vec<String>,
+    ) -> Self {
         Self {
             available: true,
             connected: false,
             error: Some(error.to_string()),
             rcp_device,
+            available_rcp_devices,
             ..Self::unavailable()
         }
     }
@@ -320,23 +342,50 @@ fn controller(state: &AppState) -> Result<Arc<ThreadController>, AppError> {
 
 async fn thread_status(runtime: Arc<ThreadRuntime>) -> ThreadStatusResponse {
     let snapshot = runtime.snapshot();
+    let available_rcp_devices = rcp_devices(runtime.clone()).await;
     let Some(controller) = runtime.controller() else {
-        return ThreadStatusResponse::unavailable_runtime(snapshot);
+        return ThreadStatusResponse::unavailable_runtime(snapshot, available_rcp_devices);
     };
     let rcp_device = snapshot
         .rcp_device
         .map(|device| device.display().to_string());
     match run_blocking(controller, |controller| controller.status()).await {
-        Ok(status) => ThreadStatusResponse::connected(status, rcp_device),
-        Err(error) => ThreadStatusResponse::failed(error, rcp_device),
+        Ok(status) => ThreadStatusResponse::connected(status, rcp_device, available_rcp_devices),
+        Err(error) => ThreadStatusResponse::failed(error, rcp_device, available_rcp_devices),
     }
 }
 
 async fn status_after_change(
+    runtime: Arc<ThreadRuntime>,
     controller: Arc<ThreadController>,
 ) -> Result<ThreadStatusResponse, AppError> {
     let status = run_blocking(controller, |controller| controller.status()).await?;
-    Ok(ThreadStatusResponse::connected(status, None))
+    let rcp_device = runtime
+        .snapshot()
+        .rcp_device
+        .map(|device| device.display().to_string());
+    Ok(ThreadStatusResponse::connected(
+        status,
+        rcp_device,
+        rcp_devices(runtime).await,
+    ))
+}
+
+async fn rcp_devices(runtime: Arc<ThreadRuntime>) -> Vec<String> {
+    match tokio::task::spawn_blocking(move || runtime.available_rcp_devices()).await {
+        Ok(Ok(devices)) => devices
+            .into_iter()
+            .map(|device| device.display().to_string())
+            .collect(),
+        Ok(Err(error)) => {
+            warn!(%error, "Unable to inspect available Thread RCP serial devices");
+            Vec::new()
+        }
+        Err(error) => {
+            warn!(%error, "Thread RCP serial-device inspection task failed");
+            Vec::new()
+        }
+    }
 }
 
 async fn run_blocking<T, F>(controller: Arc<ThreadController>, operation: F) -> Result<T, AppError>

@@ -367,6 +367,14 @@ impl ThreadRuntime {
             .clone()
     }
 
+    /// Lists serial devices that could be directly connected Thread RCPs.
+    ///
+    /// This is deliberately diagnostic-only: automatic startup still requires
+    /// exactly one candidate so the runtime never guesses between radios.
+    pub fn available_rcp_devices(&self) -> Result<Vec<PathBuf>> {
+        serial_candidates()
+    }
+
     #[must_use]
     pub fn controller(&self) -> Option<Arc<ThreadController>> {
         self.state

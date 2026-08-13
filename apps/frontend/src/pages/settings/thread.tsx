@@ -306,6 +306,14 @@ function ThreadRuntimeNotice({ status }: { status?: ThreadStatus }) {
           <dd>{status?.rcp_device ?? 'No RCP was detected'}</dd>
         </div>
         <div>
+          <dt>Available serial devices</dt>
+          <dd>
+            {status?.available_rcp_devices.length
+              ? status.available_rcp_devices.join(', ')
+              : 'No compatible serial devices detected'}
+          </dd>
+        </div>
+        <div>
           <dt>Next step</dt>
           <dd>{nextStep}</dd>
         </div>
@@ -337,7 +345,9 @@ function threadRuntimeNextStep(error: string) {
 
 function ThreadNetworkList({ networks }: { networks: ThreadNetwork[] }) {
   if (networks.length === 0) {
-    return <Callout icon="info-sign">No Thread networks were discovered by the local radio.</Callout>;
+    return (
+      <Callout icon="info-sign">No Thread networks were discovered by the local radio.</Callout>
+    );
   }
 
   return (

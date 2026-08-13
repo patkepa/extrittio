@@ -7373,6 +7373,7 @@
         "required": [
           "available",
           "connected",
+          "available_rcp_devices",
           "addresses"
         ],
         "properties": {
@@ -7385,6 +7386,13 @@
           "available": {
             "type": "boolean",
             "description": "Whether this process is the hobby appliance with a controllable OTBR."
+          },
+          "available_rcp_devices": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Serial devices currently detected as plausible Thread RCPs."
           },
           "channel": {
             "type": [

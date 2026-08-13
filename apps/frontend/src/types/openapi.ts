@@ -2095,6 +2095,8 @@ export interface components {
             addresses: string[];
             /** @description Whether this process is the hobby appliance with a controllable OTBR. */
             available: boolean;
+            /** @description Serial devices currently detected as plausible Thread RCPs. */
+            available_rcp_devices: string[];
             /** Format: int32 */
             channel?: number | null;
             connected: boolean;
