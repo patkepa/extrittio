@@ -23,6 +23,7 @@ use utoipa::{Modify, OpenApi};
         super::thread::get_thread_scan,
         super::thread::force_thread_scan,
         super::thread::create_thread_network,
+        super::thread::get_thread_dataset,
         super::thread::import_thread_dataset,
         // Auth
         super::auth_routes::login,
@@ -236,6 +237,7 @@ use utoipa::{Modify, OpenApi};
         // System
         super::system::SystemVersionResponse,
         super::thread::ThreadStatusResponse,
+        super::thread::ThreadDatasetResponse,
         super::thread::ThreadNetworkResponse,
         super::thread::ThreadChannelDiagnosticsResponse,
         super::thread::ThreadRadioStatisticsResponse,

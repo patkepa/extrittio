@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   createThreadNetwork,
+  getThreadDataset,
   getThreadScan,
   getThreadStatus,
   importThreadDataset,
@@ -24,6 +25,10 @@ export function useThreadScan() {
     refetchOnMount: 'always',
     refetchInterval: (query) => (query.state.data?.scanning ? 1_000 : 5_000),
   });
+}
+
+export function useRevealThreadDataset() {
+  return useMutation({ mutationFn: getThreadDataset });
 }
 
 export function useCreateThreadNetwork() {

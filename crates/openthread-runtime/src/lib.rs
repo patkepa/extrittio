@@ -122,6 +122,17 @@ pub struct CreateNetwork {
     pub network_key: Option<String>,
 }
 
+/// The active Thread network configuration, including credentials.
+///
+/// Callers must treat this value as a secret: possession of the operational
+/// dataset is sufficient to provision another device onto the Thread mesh.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThreadActiveDataset {
+    pub active_dataset_tlvs: String,
+    pub network_key: Option<String>,
+    pub pskc: Option<String>,
+}
+
 /// A Thread network discovered by the local radio during an active scan.
 ///
 /// This deliberately contains only the metadata broadcast over the air. A
@@ -1113,6 +1124,16 @@ impl ThreadController {
         )
     }
 
+    /// Reads the complete Active Operational Dataset from the local OTBR.
+    ///
+    /// This includes credentials and must only be exposed through an
+    /// authenticated, explicitly requested control-plane operation.
+    pub fn active_dataset(&self) -> Result<ThreadActiveDataset> {
+        let _guard = self.lock();
+        let active_dataset_tlvs = self.rest_text("/node/dataset/active")?;
+        parse_active_dataset(&active_dataset_tlvs)
+    }
+
     /// Imports the bundled development mesh when the RCP has no active
     /// network. The ESP32-C6 example carries the same dataset by default.
     pub fn ensure_default_development_network(&self) -> Result<bool> {
@@ -1137,8 +1158,7 @@ impl ThreadController {
     }
 
     /// Replaces the active dataset with a complete, hex-encoded Thread
-    /// operational dataset. The dataset is write-only and is never returned by
-    /// this API because it includes the mesh network key.
+    /// operational dataset.
     pub fn import_active_dataset(&self, dataset_tlvs: &str) -> Result<()> {
         let dataset_tlvs = dataset_tlvs.trim();
         if dataset_tlvs.len() < 4
@@ -2009,6 +2029,56 @@ fn validate_hex(label: &str, value: Option<&str>, length: usize) -> Result<()> {
     Ok(())
 }
 
+fn parse_active_dataset(dataset_tlvs: &str) -> Result<ThreadActiveDataset> {
+    const PSKC_TLV: u8 = 4;
+    const NETWORK_KEY_TLV: u8 = 5;
+
+    let dataset_tlvs = dataset_tlvs.trim();
+    if dataset_tlvs.is_empty() {
+        bail!("The local Thread network has no Active Operational Dataset");
+    }
+    if !dataset_tlvs.len().is_multiple_of(2)
+        || !dataset_tlvs.bytes().all(|byte| byte.is_ascii_hexdigit())
+    {
+        bail!("OTBR returned an invalid Active Operational Dataset");
+    }
+
+    let mut network_key = None;
+    let mut pskc = None;
+    let mut cursor = 0;
+    while cursor < dataset_tlvs.len() {
+        if dataset_tlvs.len() - cursor < 4 {
+            bail!("OTBR returned a truncated Active Operational Dataset TLV");
+        }
+
+        let tlv_type = u8::from_str_radix(&dataset_tlvs[cursor..cursor + 2], 16)
+            .context("OTBR returned an invalid Active Operational Dataset TLV type")?;
+        let value_length = usize::from(
+            u8::from_str_radix(&dataset_tlvs[cursor + 2..cursor + 4], 16)
+                .context("OTBR returned an invalid Active Operational Dataset TLV length")?,
+        ) * 2;
+        let value_start = cursor + 4;
+        let value_end = value_start + value_length;
+        if value_end > dataset_tlvs.len() {
+            bail!("OTBR returned a truncated Active Operational Dataset TLV value");
+        }
+
+        let value = &dataset_tlvs[value_start..value_end];
+        match tlv_type {
+            NETWORK_KEY_TLV if value_length == 32 => network_key = Some(value.to_ascii_lowercase()),
+            PSKC_TLV if value_length == 32 => pskc = Some(value.to_ascii_lowercase()),
+            _ => {}
+        }
+        cursor = value_end;
+    }
+
+    Ok(ThreadActiveDataset {
+        active_dataset_tlvs: dataset_tlvs.to_ascii_lowercase(),
+        network_key,
+        pskc,
+    })
+}
+
 fn serial_candidates() -> Result<Vec<PathBuf>> {
     #[cfg(target_os = "macos")]
     let roots = ["/dev"];
@@ -2053,7 +2123,7 @@ mod tests {
     use super::{
         BorderRouterConfig, CreateNetwork, DEFAULT_DEVELOPMENT_DATASET_TLVS, ThreadRadioStatistics,
         ThreadRuntime, ThreadRuntimeConfig, ThreadScan, default_infrastructure_interface,
-        parse_thread_ipv6_addresses, validate_create_network,
+        parse_active_dataset, parse_thread_ipv6_addresses, validate_create_network,
     };
     use std::{
         net::Ipv6Addr,
@@ -2278,6 +2348,31 @@ mod tests {
                 .bytes()
                 .all(|byte| byte.is_ascii_hexdigit())
         );
+    }
+
+    #[test]
+    fn extracts_credentials_from_an_active_dataset() {
+        let dataset = parse_active_dataset(DEFAULT_DEVELOPMENT_DATASET_TLVS).unwrap();
+
+        assert_eq!(
+            dataset.network_key.as_deref(),
+            Some("b7fd07e5ce003cbe047f62c0b8bd7349")
+        );
+        assert_eq!(
+            dataset.pskc.as_deref(),
+            Some("5e9b9b360f80b88be2603fb0135c8d65")
+        );
+        assert_eq!(
+            dataset.active_dataset_tlvs,
+            DEFAULT_DEVELOPMENT_DATASET_TLVS
+        );
+    }
+
+    #[test]
+    fn rejects_a_truncated_active_dataset() {
+        let error = parse_active_dataset("0510abcd").unwrap_err();
+
+        assert!(error.to_string().contains("truncated"));
     }
 
     #[test]

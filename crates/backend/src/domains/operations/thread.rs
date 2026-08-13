@@ -1,21 +1,22 @@
 //! Host-local OpenThread Border Router controls for the hobby appliance.
 //!
-//! Thread credentials never enter persistence and are intentionally omitted
-//! from responses and audit metadata. They are passed once to the local OTBR
-//! controller and retained by OpenThread's own operational dataset storage.
+//! Thread credentials never enter persistence or audit metadata. The active
+//! dataset is returned only from an owner-authenticated, explicitly requested
+//! endpoint and is retained by OpenThread's own operational dataset storage.
 
 use std::sync::Arc;
 
 use axum::{
     Extension, Json, Router,
     extract::State,
-    routing::{get, post, put},
+    http::{HeaderMap, HeaderValue, header},
+    routing::{get, post},
 };
 use chrono::{DateTime, SecondsFormat, Utc};
 use extrittio_openthread_runtime::{
-    CreateNetwork, ThreadChannelDiagnostics, ThreadController, ThreadMeshDevice, ThreadNetwork,
-    ThreadRadioStatistics, ThreadRuntime, ThreadRuntimeSnapshot, ThreadScan, ThreadScanSnapshot,
-    ThreadStatus,
+    CreateNetwork, ThreadActiveDataset, ThreadChannelDiagnostics, ThreadController,
+    ThreadMeshDevice, ThreadNetwork, ThreadRadioStatistics, ThreadRuntime, ThreadRuntimeSnapshot,
+    ThreadScan, ThreadScanSnapshot, ThreadStatus,
 };
 use serde::{Deserialize, Serialize};
 use tracing::warn;
@@ -59,6 +60,18 @@ pub struct ImportThreadDatasetRequest {
     /// write-only because it contains the Thread network key.
     #[schema(write_only = true)]
     pub active_dataset_tlvs: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ThreadDatasetResponse {
+    /// Complete hex-encoded Active Operational Dataset TLVs. Scanning or
+    /// importing this value can grant a device access to the Thread network.
+    pub active_dataset_tlvs: String,
+    /// Thread Network Key extracted from the active dataset, when present.
+    pub network_key: Option<String>,
+    /// Pre-Shared Key for the Commissioner extracted from the active dataset,
+    /// when present.
+    pub pskc: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -150,7 +163,10 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/api/v1/system/thread/radio/scan", post(force_thread_scan))
         .route("/api/v1/system/thread/mesh/scan", post(force_thread_scan))
         .route("/api/v1/system/thread/network", post(create_thread_network))
-        .route("/api/v1/system/thread/dataset", put(import_thread_dataset))
+        .route(
+            "/api/v1/system/thread/dataset",
+            get(get_thread_dataset).put(import_thread_dataset),
+        )
 }
 
 #[utoipa::path(
@@ -295,6 +311,33 @@ pub(crate) async fn create_thread_network(
 }
 
 #[utoipa::path(
+    get,
+    path = "/api/v1/system/thread/dataset",
+    tag = "system",
+    security(("bearer_auth" = [])),
+    responses(
+        (status = 200, description = "Active Thread operational dataset and credentials", body = ThreadDatasetResponse),
+        (status = 403, description = "Owner access required"),
+        (status = 409, description = "Thread is unavailable"),
+    ),
+)]
+pub(crate) async fn get_thread_dataset(
+    Extension(ctx): Extension<RequestContext>,
+    State(state): State<Arc<AppState>>,
+) -> Result<(HeaderMap, Json<ThreadDatasetResponse>), AppError> {
+    require_owner(&ctx)?;
+    let dataset = run_blocking(controller(&state)?, |controller| {
+        controller.active_dataset()
+    })
+    .await?;
+
+    let mut headers = HeaderMap::new();
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    headers.insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
+    Ok((headers, Json(ThreadDatasetResponse::from(dataset))))
+}
+
+#[utoipa::path(
     put,
     path = "/api/v1/system/thread/dataset",
     tag = "system",
@@ -404,6 +447,16 @@ impl From<ThreadNetwork> for ThreadNetworkResponse {
             channel: network.channel,
             rssi: network.rssi,
             lqi: network.lqi,
+        }
+    }
+}
+
+impl From<ThreadActiveDataset> for ThreadDatasetResponse {
+    fn from(dataset: ThreadActiveDataset) -> Self {
+        Self {
+            active_dataset_tlvs: dataset.active_dataset_tlvs,
+            network_key: dataset.network_key,
+            pskc: dataset.pskc,
         }
     }
 }

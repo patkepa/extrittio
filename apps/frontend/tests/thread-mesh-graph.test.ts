@@ -160,25 +160,13 @@ test('keeps dense topology columns vertically compact', () => {
 });
 
 test('preserves a dragged node as its new soft layout target across scan refreshes', () => {
-  const firstGraph = buildThreadMeshGraphData(
-    { networks: [], devices: [meshDevice({ id: 'dragged-device' })] },
-    status,
-  );
-  const dragged = firstGraph.nodes.find((node) => node.id === 'thread-device-dragged-device');
-  assert.ok(dragged);
-  dragged.x = 512;
-  dragged.y = 96;
-  dragged.layoutX = dragged.x;
-  dragged.layoutY = dragged.y;
-
   const refreshedGraph = buildThreadMeshGraphData(
     { networks: [], devices: [meshDevice({ id: 'dragged-device' })] },
     status,
-    firstGraph.nodes,
+    undefined,
+    new Map([['thread-device-dragged-device', { x: 512, y: 96 }]]),
   );
-  const refreshed = refreshedGraph.nodes.find(
-    (node) => node.id === 'thread-device-dragged-device',
-  );
+  const refreshed = refreshedGraph.nodes.find((node) => node.id === 'thread-device-dragged-device');
 
   assert.equal(refreshed?.x, 512);
   assert.equal(refreshed?.y, 96);

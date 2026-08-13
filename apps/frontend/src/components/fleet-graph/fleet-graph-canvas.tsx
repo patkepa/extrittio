@@ -207,6 +207,7 @@ interface FleetGraphCanvasProps {
   height: number;
   onNodeClick?: (device: Device, position: { x: number; y: number }) => void;
   onGraphNodeClick?: (node: GraphNode, position: { x: number; y: number }) => void;
+  onGraphNodeDragEnd?: (node: GraphNode) => void;
   onBackgroundClick: (event?: MouseEvent) => void;
   onNodeRightClick?: (node: GraphNode, event: MouseEvent) => void;
   selectedNodeId?: string | null;
@@ -226,6 +227,7 @@ export const FleetGraphCanvas = memo(
     height,
     onNodeClick,
     onGraphNodeClick,
+    onGraphNodeDragEnd,
     onBackgroundClick,
     onNodeRightClick,
     selectedNodeId,
@@ -371,21 +373,25 @@ export const FleetGraphCanvas = memo(
       }
     }, []);
 
-    const handleNodeDragEnd = useCallback((node: GraphNode) => {
-      // Move the node's gentle force target along with it. Without this, the
-      // layout force immediately pulls a released node back to its old anchor,
-      // which makes dragging feel broken even though the pointer interaction
-      // itself succeeded.
-      if (node.x != null && node.y != null) {
-        node.layoutX = node.x;
-        node.layoutY = node.y;
-      }
+    const handleNodeDragEnd = useCallback(
+      (node: GraphNode) => {
+        // Move the node's gentle force target along with it. Without this, the
+        // layout force immediately pulls a released node back to its old anchor,
+        // which makes dragging feel broken even though the pointer interaction
+        // itself succeeded.
+        if (node.x != null && node.y != null) {
+          node.layoutX = node.x;
+          node.layoutY = node.y;
+        }
+        onGraphNodeDragEnd?.(node);
 
-      isDraggingRef.current = false;
-      const canvas = canvasWrapperRef.current?.querySelector('canvas');
-      if (!canvas) return;
-      canvas.style.cursor = hoverNodeRef.current ? 'pointer' : 'default';
-    }, []);
+        isDraggingRef.current = false;
+        const canvas = canvasWrapperRef.current?.querySelector('canvas');
+        if (!canvas) return;
+        canvas.style.cursor = hoverNodeRef.current ? 'pointer' : 'default';
+      },
+      [onGraphNodeDragEnd],
+    );
 
     // Hover handler — debounced to avoid flickering when quickly brushing over nodes.
     // The raw ref is updated immediately so click detection always has the

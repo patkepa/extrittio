@@ -31,9 +31,11 @@ export function ThreadMesh() {
   const scan = scanQuery.data;
   const scanning = Boolean(scan?.scanning);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [nodePositionOverrides, setNodePositionOverrides] = useState(
+    () => new Map<string, { x: number; y: number }>(),
+  );
   const canvasRef = useRef<HTMLDivElement>(null);
   const graphActionsRef = useRef<GraphActions | null>(null);
-  const previousGraphNodesRef = useRef<GraphNode[]>([]);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
   useEffect(() => {
@@ -55,13 +57,10 @@ export function ThreadMesh() {
     return buildThreadMeshGraphData(
       { networks: scan?.networks ?? [], devices: scan?.devices ?? [] },
       status,
-      previousGraphNodesRef.current,
+      undefined,
+      nodePositionOverrides,
     );
-  }, [scan, status]);
-
-  useEffect(() => {
-    if (graphData) previousGraphNodesRef.current = graphData.nodes;
-  }, [graphData]);
+  }, [nodePositionOverrides, scan, status]);
 
   const selectedNode = useMemo(
     () => graphData?.nodes.find((node) => node.id === selectedNodeId) ?? null,
@@ -85,6 +84,18 @@ export function ThreadMesh() {
 
   const handleGraphNodeClick = useCallback((node: GraphNode) => {
     setSelectedNodeId(node.id);
+  }, []);
+
+  const handleGraphNodeDragEnd = useCallback((node: GraphNode) => {
+    if (node.x == null || node.y == null) return;
+    const position = { x: node.x, y: node.y };
+    setNodePositionOverrides((positions) => {
+      const previous = positions.get(node.id);
+      if (previous?.x === position.x && previous?.y === position.y) return positions;
+      const next = new Map(positions);
+      next.set(node.id, position);
+      return next;
+    });
   }, []);
 
   return (
@@ -184,6 +195,7 @@ export function ThreadMesh() {
               width={dimensions.width}
               height={dimensions.height}
               onGraphNodeClick={handleGraphNodeClick}
+              onGraphNodeDragEnd={handleGraphNodeDragEnd}
               onBackgroundClick={() => setSelectedNodeId(null)}
               selectedNodeId={selectedNodeId}
               graphActionsRef={graphActionsRef}

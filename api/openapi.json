@@ -3629,6 +3629,38 @@
       }
     },
     "/api/v1/system/thread/dataset": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "operationId": "get_thread_dataset",
+        "responses": {
+          "200": {
+            "description": "Active Thread operational dataset and credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadDatasetResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Owner access required"
+          },
+          "409": {
+            "description": "Thread is unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      },
       "put": {
         "tags": [
           "system"
@@ -7417,6 +7449,32 @@
             ],
             "format": "double",
             "description": "Percentage of channel-monitor RSSI samples above OpenThread's noise threshold."
+          }
+        }
+      },
+      "ThreadDatasetResponse": {
+        "type": "object",
+        "required": [
+          "active_dataset_tlvs"
+        ],
+        "properties": {
+          "active_dataset_tlvs": {
+            "type": "string",
+            "description": "Complete hex-encoded Active Operational Dataset TLVs. Scanning or\nimporting this value can grant a device access to the Thread network."
+          },
+          "network_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Thread Network Key extracted from the active dataset, when present."
+          },
+          "pskc": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Pre-Shared Key for the Commissioner extracted from the active dataset,\nwhen present."
           }
         }
       },

@@ -258,6 +258,12 @@ export interface ImportThreadDatasetRequest {
   active_dataset_tlvs: string;
 }
 
+export interface ThreadDataset {
+  active_dataset_tlvs: string;
+  network_key: string | null;
+  pskc: string | null;
+}
+
 export interface ThreadNetwork {
   network_name: string | null;
   pan_id: string;

@@ -160,6 +160,7 @@ export function buildThreadMeshGraphData(
   scan: Pick<ThreadNetworkDiagnostics, 'networks' | 'devices'>,
   status: ThreadStatus,
   previousNodes?: GraphNode[],
+  positionOverrides?: ReadonlyMap<string, { x: number; y: number }>,
 ): GraphData {
   const nodes: GraphNode[] = [];
   const links: GraphLink[] = [];
@@ -173,15 +174,17 @@ export function buildThreadMeshGraphData(
 
   const addNode = (node: GraphNode) => {
     const previous = previousById.get(node.id);
-    const merged = previous
-      ? {
-          ...node,
-          x: previous.x,
-          y: previous.y,
-          layoutX: previous.layoutX ?? node.layoutX,
-          layoutY: previous.layoutY ?? node.layoutY,
-        }
-      : node;
+    const override = positionOverrides?.get(node.id);
+    const merged =
+      previous || override
+        ? {
+            ...node,
+            x: override?.x ?? previous?.x,
+            y: override?.y ?? previous?.y,
+            layoutX: override?.x ?? previous?.layoutX ?? node.layoutX,
+            layoutY: override?.y ?? previous?.layoutY ?? node.layoutY,
+          }
+        : node;
     nodes.push(merged);
     nodeMap.set(merged.id, merged);
     return merged;

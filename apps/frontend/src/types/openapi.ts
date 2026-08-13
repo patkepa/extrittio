@@ -1064,7 +1064,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["get_thread_dataset"];
         put: operations["import_thread_dataset"];
         post?: never;
         delete?: never;
@@ -2109,6 +2109,20 @@ export interface components {
              * @description Percentage of channel-monitor RSSI samples above OpenThread's noise threshold.
              */
             utilization_percent?: number | null;
+        };
+        ThreadDatasetResponse: {
+            /**
+             * @description Complete hex-encoded Active Operational Dataset TLVs. Scanning or
+             *     importing this value can grant a device access to the Thread network.
+             */
+            active_dataset_tlvs: string;
+            /** @description Thread Network Key extracted from the active dataset, when present. */
+            network_key?: string | null;
+            /**
+             * @description Pre-Shared Key for the Commissioner extracted from the active dataset,
+             *     when present.
+             */
+            pskc?: string | null;
         };
         ThreadMeshDeviceResponse: {
             border_agent_id?: string | null;
@@ -4581,6 +4595,40 @@ export interface operations {
             };
             /** @description Owner access required */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_thread_dataset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active Thread operational dataset and credentials */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadDatasetResponse"];
+                };
+            };
+            /** @description Owner access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Thread is unavailable */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
