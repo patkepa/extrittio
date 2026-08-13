@@ -33,6 +33,8 @@ OTBR_MACOS_IPV6_PATCH := patches/otbr-macos-ipv6-bound-if.patch
 OTBR_MACOS_IPV6_PATCH_STAMP := $(OTBR_SOURCE_DIR)/.extrittio-macos-ipv6-bound-if-patched
 OTBR_MACOS_DNSSD_PATCH := patches/otbr-macos-dnssd-link.patch
 OTBR_MACOS_DNSSD_PATCH_STAMP := $(OTBR_SOURCE_DIR)/.extrittio-macos-dnssd-link-patched
+OTBR_DBUS_CHANNEL_MONITOR_PATCH := patches/otbr-dbus-channel-monitor-config.patch
+OTBR_DBUS_CHANNEL_MONITOR_PATCH_STAMP := $(OTBR_SOURCE_DIR)/.extrittio-dbus-channel-monitor-config-patched
 OTBR_INSTALL_DIR := $(EXTRITTIO_INSTALL_ROOT)/libexec/extrittio
 EXTRITTIO_BIN_DIR := $(EXTRITTIO_INSTALL_ROOT)/bin
 
@@ -131,7 +133,7 @@ otbr-agent: $(OTBR_AGENT) $(OTBR_CTL)
 
 # The source verification must run before a build, but it must not mark an
 # already-built OTBR agent stale on every hobby install.
-$(OTBR_AGENT): Makefile $(OTBR_MACOS_IPV6_PATCH_STAMP) $(OTBR_MACOS_DNSSD_PATCH_STAMP) | check-otbr-source
+$(OTBR_AGENT): Makefile $(OTBR_MACOS_IPV6_PATCH_STAMP) $(OTBR_MACOS_DNSSD_PATCH_STAMP) $(OTBR_DBUS_CHANNEL_MONITOR_PATCH_STAMP) | check-otbr-source
 	cmake -S "$(OTBR_SOURCE_DIR)" -B "$(OTBR_BUILD_DIR)" $(OTBR_CMAKE_OPTIONS)
 	cmake --build "$(OTBR_BUILD_DIR)" --target otbr-agent ot-ctl --parallel
 	test -x "$(OTBR_AGENT)"
@@ -157,6 +159,14 @@ ifeq ($(shell uname -s),Darwin)
 		git -C "$(OTBR_SOURCE_DIR)" apply --reverse --check "$(abspath $(OTBR_MACOS_DNSSD_PATCH))"; \
 	fi
 endif
+	touch "$@"
+
+$(OTBR_DBUS_CHANNEL_MONITOR_PATCH_STAMP): $(OTBR_SOURCE_DIR)/.git $(OTBR_DBUS_CHANNEL_MONITOR_PATCH)
+	if git -C "$(OTBR_SOURCE_DIR)" apply --check "$(abspath $(OTBR_DBUS_CHANNEL_MONITOR_PATCH))" 2>/dev/null; then \
+		git -C "$(OTBR_SOURCE_DIR)" apply "$(abspath $(OTBR_DBUS_CHANNEL_MONITOR_PATCH))"; \
+	else \
+		git -C "$(OTBR_SOURCE_DIR)" apply --reverse --check "$(abspath $(OTBR_DBUS_CHANNEL_MONITOR_PATCH))"; \
+	fi
 	touch "$@"
 
 check-otbr-source: $(OTBR_SOURCE_DIR)/.git

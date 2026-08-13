@@ -26,7 +26,7 @@ use tracing::{info, warn};
 /// Public development dataset shared by the hobby border router and the
 /// ESP32-C6 OpenThread example. It is intentionally not suitable for a
 /// private or production Thread mesh.
-pub const DEFAULT_DEVELOPMENT_DATASET_TLVS: &str = "0e080000000000010000000300001935060004001fffe00208ef1398c2fd504b670708fd35344133d1d73e0510fda7c771a27202e232ecd04cf934f476030f4f70656e5468726561642d633634650102c64e04105e9b9b360f80b88be2603fb0135c8d650c0402a0f7f8";
+pub const DEFAULT_DEVELOPMENT_DATASET_TLVS: &str = "4a0300000c0e08000000000001000035060004001fffe00708fd35344133d1d73e04105e9b9b360f80b88be2603fb0135c8d650c0402a0f7f800030000190208a6c9c979b7f141590510b7fd07e5ce003cbe047f62c0b8bd7349031065787472697474696f2d63362d64657601027880";
 
 /// Configuration for one local OTBR instance.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1251,11 +1251,10 @@ impl BorderRouter {
     ) -> Result<(Self, ThreadController)> {
         let (daemon, address) = DbusDaemon::start()?;
         let thread_interface = config.thread_interface.clone();
-        let router = Self::start_inner(config, Some(address.clone()), Some(daemon))?;
-        Ok((
-            router,
-            controller.with_dbus_control(address, thread_interface),
-        ))
+        let mut router = Self::start_inner(config, Some(address.clone()), Some(daemon))?;
+        let controller = controller.with_dbus_control(address, thread_interface);
+        router.wait_for_dbus_service(&controller)?;
+        Ok((router, controller))
     }
 
     fn start_inner(
@@ -1317,6 +1316,54 @@ impl BorderRouter {
             config,
             dbus_daemon,
         })
+    }
+
+    /// Wait until OTBR owns its private D-Bus service before exposing the
+    /// controller. The agent process can remain alive for several seconds
+    /// while its RCP initialization is still in progress; scans started in
+    /// that window otherwise fail with `org.freedesktop.DBus.Error.ServiceUnknown`.
+    fn wait_for_dbus_service(&mut self, controller: &ThreadController) -> Result<()> {
+        const STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
+        const POLL_INTERVAL: Duration = Duration::from_millis(100);
+
+        let started = Instant::now();
+        let timeout_error = loop {
+            if let Some(status) = self
+                .child
+                .try_wait()
+                .context("Failed to inspect OpenThread border router startup")?
+            {
+                bail!(
+                    "OpenThread border router exited with status {status} before registering its RCP control service: {}",
+                    startup_log_tail(&self.config.data_path.join("otbr-agent.log"))
+                );
+            }
+
+            match controller.dbus_call(
+                "org.freedesktop.DBus.Properties.Get",
+                &[
+                    "string:io.openthread.BorderRouter".to_string(),
+                    "string:DeviceRole".to_string(),
+                ],
+                500,
+            ) {
+                Ok(_) => {
+                    info!(
+                        interface = %self.config.thread_interface,
+                        "OpenThread RCP control service is ready"
+                    );
+                    return Ok(());
+                }
+                Err(error) if started.elapsed() >= STARTUP_TIMEOUT => break error,
+                Err(_) => {}
+            }
+            std::thread::sleep(POLL_INTERVAL);
+        };
+        bail!(
+            "OpenThread border router did not register its RCP control service within {} seconds: {timeout_error}. {}",
+            STARTUP_TIMEOUT.as_secs(),
+            startup_log_tail(&self.config.data_path.join("otbr-agent.log"))
+        );
     }
 
     #[must_use]

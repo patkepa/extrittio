@@ -30,7 +30,7 @@ export interface AppRoute {
   href?: string;
   icon: IconName;
   element?: ReactNode;
-  navGroup?: 'General' | 'Automation' | 'Management';
+  navGroup?: 'General' | 'Automation' | 'Mesh Network' | 'Management';
   children?: AppRoute[];
   showInCommandPalette?: boolean;
   requiredPermissions?: PermissionKey[];
@@ -147,41 +147,40 @@ export const appRoutes: AppRoute[] = [
     requiredPermissions: ['devices.read', 'zones.read'],
   },
   {
-    id: 'openthread',
-    label: 'OpenThread',
+    id: 'openthread-router',
+    label: 'Mesh Network',
     icon: 'satellite',
     path: '/openthread/*',
-    href: '/openthread/settings',
+    href: '/openthread/scanner',
     element: <OpenThread />,
-    navGroup: 'General',
+    requiredPermissions: ['roles.manage'],
+  },
+  {
+    id: 'openthread-scanner',
+    label: 'Network Scanner',
+    icon: 'signal-search',
+    path: '/openthread/scanner',
+    navGroup: 'Mesh Network',
     showInCommandPalette: true,
     requiredPermissions: ['roles.manage'],
-    children: [
-      {
-        id: 'openthread-settings',
-        label: 'OpenThread Settings',
-        icon: 'cog',
-        path: '/openthread/settings',
-        showInCommandPalette: true,
-        requiredPermissions: ['roles.manage'],
-      },
-      {
-        id: 'openthread-mesh',
-        label: 'OpenThread Mesh',
-        icon: 'graph',
-        path: '/openthread/mesh',
-        showInCommandPalette: true,
-        requiredPermissions: ['roles.manage'],
-      },
-      {
-        id: 'openthread-scanner',
-        label: 'Network Scanner',
-        icon: 'signal-search',
-        path: '/openthread/scanner',
-        showInCommandPalette: true,
-        requiredPermissions: ['roles.manage'],
-      },
-    ],
+  },
+  {
+    id: 'openthread-mesh',
+    label: 'OpenThread Mesh',
+    icon: 'graph',
+    path: '/openthread/mesh',
+    navGroup: 'Mesh Network',
+    showInCommandPalette: true,
+    requiredPermissions: ['roles.manage'],
+  },
+  {
+    id: 'openthread-settings',
+    label: 'OpenThread Settings',
+    icon: 'cog',
+    path: '/openthread/settings',
+    navGroup: 'Mesh Network',
+    showInCommandPalette: true,
+    requiredPermissions: ['roles.manage'],
   },
   {
     id: 'updates',
@@ -232,6 +231,15 @@ export const appRoutes: AppRoute[] = [
     requiredPermissions: ['fleets.read'],
   },
   {
+    id: 'help',
+    label: 'Help',
+    icon: 'help',
+    path: '/help',
+    element: <Help />,
+    navGroup: 'Management',
+    showInCommandPalette: true,
+  },
+  {
     id: 'settings',
     label: 'Settings',
     icon: 'cog',
@@ -248,15 +256,6 @@ export const appRoutes: AppRoute[] = [
       showInCommandPalette: true,
       requiredPermissions: route.requiredPermissions,
     })),
-  },
-  {
-    id: 'help',
-    label: 'Help',
-    icon: 'help',
-    path: '/help',
-    element: <Help />,
-    navGroup: 'Management',
-    showInCommandPalette: true,
   },
 ];
 
@@ -309,7 +308,7 @@ function toNavItem(route: AppRoute): NavItem {
 }
 
 export function getNavGroups(permissions: readonly string[] | undefined): NavGroup[] {
-  return (['General', 'Automation', 'Management'] as const)
+  return (['General', 'Automation', 'Mesh Network', 'Management'] as const)
     .map((group) => ({
       label: group,
       items: getAccessibleAppRoutes(permissions)

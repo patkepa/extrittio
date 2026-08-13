@@ -1,54 +1,8 @@
-.thread-status-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.thread-status-heading .section-label {
-  flex: 1;
-}
-
 .thread-help {
   margin: 0 0 16px;
   color: hsl(var(--muted) / 0.82);
   font-size: 13px;
   line-height: 1.5;
-}
-
-.thread-runtime-error {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.thread-runtime-details {
-  display: grid;
-  gap: 10px;
-  margin: 16px 0 0;
-}
-
-.thread-runtime-details div {
-  display: grid;
-  gap: 2px;
-}
-
-.thread-runtime-details dt {
-  color: hsl(var(--muted) / 0.82);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.thread-runtime-details dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.thread-runtime-help {
-  margin: 16px 0 0;
-  color: hsl(var(--muted) / 0.82);
-  font-size: 13px;
 }
 
 .thread-form {
@@ -57,49 +11,8 @@
   gap: 0 16px;
 }
 
-.thread-scan-results {
-  overflow-x: auto;
-}
-
-.thread-scan-results .bp6-html-table {
-  width: 100%;
-  margin: 0;
-}
-
-.thread-network-address {
-  color: hsl(var(--muted));
-  font-family: var(--font-mono, monospace);
-  overflow-wrap: anywhere;
-}
-
-.thread-status-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px 20px;
-  margin: 0;
-}
-
-.thread-status-grid dt {
-  margin-bottom: 3px;
-  color: hsl(var(--muted));
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.thread-status-grid dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.thread-addresses {
-  grid-column: 1 / -1;
-}
-
 @media (max-width: 600px) {
-  .thread-form,
-  .thread-status-grid {
+  .thread-form {
     grid-template-columns: 1fr;
   }
 }

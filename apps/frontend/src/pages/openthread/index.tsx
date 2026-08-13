@@ -1,43 +1,22 @@
-import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { Tab, Tabs } from '@blueprintjs/core';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { ThreadSettings } from '../settings/thread';
 import { NetworkScanner } from './network-scanner';
 import { ThreadMesh } from './thread-mesh';
 import './openthread.css';
 
-type OpenThreadTabId = 'settings' | 'mesh' | 'scanner';
-
 export function OpenThread() {
   const location = useLocation();
-  const navigate = useNavigate();
-  const selectedTab: OpenThreadTabId = location.pathname.endsWith('/mesh')
-    ? 'mesh'
-    : location.pathname.endsWith('/scanner')
-      ? 'scanner'
-      : 'settings';
+  const isSettings = location.pathname.endsWith('/settings');
 
   return (
     <div className="openthread-page">
-      <nav className="openthread-tabs" aria-label="OpenThread sections">
-        <Tabs
-          id="openthread-tabs"
-          selectedTabId={selectedTab}
-          onChange={(tabId) => navigate(`/openthread/${String(tabId)}`)}
-        >
-          <Tab id="settings" title="OpenThread Settings" />
-          <Tab id="mesh" title="OpenThread Mesh" />
-          <Tab id="scanner" title="Network Scanner" />
-        </Tabs>
-      </nav>
-      <main
-        className={`openthread-content${selectedTab === 'settings' ? ' openthread-content--settings' : ''}`}
-      >
+      <main className={`openthread-content${isSettings ? ' openthread-content--settings' : ''}`}>
         <Routes>
-          <Route index element={<Navigate to="settings" replace />} />
+          <Route index element={<Navigate to="scanner" replace />} />
           <Route path="settings" element={<ThreadSettings />} />
           <Route path="mesh" element={<ThreadMesh />} />
           <Route path="scanner" element={<NetworkScanner />} />
-          <Route path="*" element={<Navigate to="settings" replace />} />
+          <Route path="*" element={<Navigate to="scanner" replace />} />
         </Routes>
       </main>
     </div>
