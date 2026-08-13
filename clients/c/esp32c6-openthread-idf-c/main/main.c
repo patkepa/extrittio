@@ -9,6 +9,7 @@
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_openthread.h"
+#include "esp_system.h"
 #include "esp_openthread_lock.h"
 #include "esp_openthread_netif_glue.h"
 #include "esp_openthread_types.h"
@@ -272,15 +273,30 @@ static void openthread_task(void *context)
      * This standalone example always carries its configured operational dataset.
      * Rejoining from scratch prevents stale child link counters from rejecting
      * encrypted parent traffic after the local OTBR or firmware is restarted.
+     *
+     * The OpenThread instance has already restored its old child role into RAM
+     * by this point. Wiping its settings alone therefore does not prevent that
+     * one stale role restoration. If a prior dataset exists, erase it and
+     * reboot once; the fresh process then has neither persisted nor in-memory
+     * child state and applies the configured dataset below.
     */
+    otOperationalDatasetTlvs persisted_dataset;
+    bool has_persisted_dataset;
+
     esp_openthread_lock_acquire(portMAX_DELAY);
-    error = otInstanceErasePersistentInfo(instance);
+    has_persisted_dataset =
+        otDatasetGetActiveTlvs(instance, &persisted_dataset) == OT_ERROR_NONE;
+    error = has_persisted_dataset ? otInstanceErasePersistentInfo(instance)
+                                  : OT_ERROR_NONE;
     esp_openthread_lock_release();
     if (error != OT_ERROR_NONE) {
         ESP_LOGE(TAG, "Unable to clear persisted OpenThread state: %d", error);
         abort();
     }
-    ESP_LOGI(TAG, "Cleared persisted OpenThread state before configured network join");
+    if (has_persisted_dataset) {
+        ESP_LOGI(TAG, "Cleared persisted OpenThread state; rebooting for a clean join");
+        esp_restart();
+    }
 #endif
 
     otOperationalDatasetTlvs dataset;

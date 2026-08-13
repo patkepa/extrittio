@@ -1,0 +1,15 @@
+diff --git a/src/dbus/server/CMakeLists.txt b/src/dbus/server/CMakeLists.txt
+index 57a14a4..2b338a7 100644
+--- a/src/dbus/server/CMakeLists.txt
++++ b/src/dbus/server/CMakeLists.txt
+@@ -56,4 +56,10 @@ target_link_libraries(otbr-dbus-server PUBLIC
+     otbr-proto
+ )
+ 
++# These sources gate channel-monitor properties on OpenThread feature macros,
++# so compile them against the same generated configuration as OpenThread itself.
++target_link_libraries(otbr-dbus-server PRIVATE
++    ot-config
++)
++
+ if(OTBR_DOC)
