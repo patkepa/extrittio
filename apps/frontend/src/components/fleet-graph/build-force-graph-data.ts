@@ -45,6 +45,9 @@ export interface GraphLink {
   source: string | GraphNode;
   target: string | GraphNode;
   kind?: 'fleet' | 'declared';
+  /** Optional force tuning for topology views with an intentional composition. */
+  layoutDistance?: number;
+  layoutStrength?: number;
   connection?: NonNullable<Device['declared_connections']>[number];
 }
 

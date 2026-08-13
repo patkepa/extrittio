@@ -259,6 +259,7 @@ export const FleetGraphCanvas = memo(
 
     // Whether a node is currently being dragged (for cursor management).
     const isDraggingRef = useRef(false);
+    const didDragNodeRef = useRef(false);
 
     // --- Custom hooks ---
     const { updateNodeBounds, handleZoom } = useViewportControls(
@@ -362,6 +363,7 @@ export const FleetGraphCanvas = memo(
     // Node drag cursor handlers — set grabbing cursor immediately (without
     // waiting for a React re-render) and restore the correct cursor on end.
     const handleNodeDrag = useCallback(() => {
+      didDragNodeRef.current = true;
       if (!isDraggingRef.current) {
         isDraggingRef.current = true;
         const canvas = canvasWrapperRef.current?.querySelector('canvas');
@@ -369,7 +371,16 @@ export const FleetGraphCanvas = memo(
       }
     }, []);
 
-    const handleNodeDragEnd = useCallback(() => {
+    const handleNodeDragEnd = useCallback((node: GraphNode) => {
+      // Move the node's gentle force target along with it. Without this, the
+      // layout force immediately pulls a released node back to its old anchor,
+      // which makes dragging feel broken even though the pointer interaction
+      // itself succeeded.
+      if (node.x != null && node.y != null) {
+        node.layoutX = node.x;
+        node.layoutY = node.y;
+      }
+
       isDraggingRef.current = false;
       const canvas = canvasWrapperRef.current?.querySelector('canvas');
       if (!canvas) return;
@@ -419,6 +430,7 @@ export const FleetGraphCanvas = memo(
 
     const handleWrapperPointerDown = useCallback((e: React.PointerEvent) => {
       if (e.button !== 0) return; // left-click only
+      didDragNodeRef.current = false;
       pointerStartRef.current = {
         x: e.clientX,
         y: e.clientY,
@@ -432,6 +444,7 @@ export const FleetGraphCanvas = memo(
         const start = pointerStartRef.current;
         pointerStartRef.current = null;
         if (!start) return;
+        if (didDragNodeRef.current) return;
 
         const dx = e.clientX - start.x;
         const dy = e.clientY - start.y;

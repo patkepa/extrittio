@@ -114,6 +114,18 @@ test('builds active mesh clients and nearby networks into one reusable graph', (
       ?.details?.find((row) => row.label === 'Role')?.value,
     'Child',
   );
+
+  const borderRouter = graph.nodes.find((node) => node.name === 'extrittio.local');
+  const currentNetwork = graph.nodes.find((node) => node.id === 'thread-network-current');
+  const nearbyNetwork = graph.nodes.find((node) => node.name === 'Neighbor');
+  const client = graph.nodes.find((node) => node.name === 'sensor-1');
+  assert.ok(borderRouter?.layoutX != null);
+  assert.ok(currentNetwork?.layoutX != null);
+  assert.ok(nearbyNetwork?.layoutX != null);
+  assert.ok(client?.layoutX != null);
+  assert.ok(nearbyNetwork.layoutX < borderRouter.layoutX);
+  assert.ok(borderRouter.layoutX < currentNetwork.layoutX);
+  assert.ok(currentNetwork.layoutX < client.layoutX);
 });
 
 test('builds the current mesh before the first scan completes', () => {
@@ -123,4 +135,53 @@ test('builds the current mesh before the first scan completes', () => {
   assert.equal(graph.links.length, 1);
   assert.equal(graph.nodes[0]?.name, 'Extrittio-Thread');
   assert.equal(graph.nodes[1]?.name, 'Extrittio Border Router');
+});
+
+test('keeps dense topology columns vertically compact', () => {
+  const devices = Array.from({ length: 21 }, (_, index) =>
+    meshDevice({ id: `device-${index}`, hostname: `sensor-${index}` }),
+  );
+  const networks = Array.from({ length: 11 }, (_, index) => ({
+    network_name: `Neighbor ${index}`,
+    pan_id: `a${index.toString().padStart(3, '0')}`,
+    extended_address: `network-${index}`,
+    channel: 11 + index,
+    rssi: -50 - index,
+    lqi: 2,
+  }));
+
+  const graph = buildThreadMeshGraphData({ networks, devices }, status);
+  const peripheralNodes = graph.nodes.filter(
+    (node) => node.id !== 'thread-network-current' && node.type !== 'external',
+  );
+
+  assert.ok(graph.nodes.every((node) => Math.abs(node.layoutY ?? 0) <= 204));
+  assert.ok(peripheralNodes.every((node) => node.layoutX !== 0));
+});
+
+test('preserves a dragged node as its new soft layout target across scan refreshes', () => {
+  const firstGraph = buildThreadMeshGraphData(
+    { networks: [], devices: [meshDevice({ id: 'dragged-device' })] },
+    status,
+  );
+  const dragged = firstGraph.nodes.find((node) => node.id === 'thread-device-dragged-device');
+  assert.ok(dragged);
+  dragged.x = 512;
+  dragged.y = 96;
+  dragged.layoutX = dragged.x;
+  dragged.layoutY = dragged.y;
+
+  const refreshedGraph = buildThreadMeshGraphData(
+    { networks: [], devices: [meshDevice({ id: 'dragged-device' })] },
+    status,
+    firstGraph.nodes,
+  );
+  const refreshed = refreshedGraph.nodes.find(
+    (node) => node.id === 'thread-device-dragged-device',
+  );
+
+  assert.equal(refreshed?.x, 512);
+  assert.equal(refreshed?.y, 96);
+  assert.equal(refreshed?.layoutX, 512);
+  assert.equal(refreshed?.layoutY, 96);
 });

@@ -8,13 +8,11 @@ CONFIG_FREERTOS_HZ=1000
 CONFIG_OPENTHREAD_ENABLED=y
 CONFIG_OPENTHREAD_BORDER_ROUTER=n
 CONFIG_OPENTHREAD_DNS_CLIENT=y
-# This telemetry device must join the hobby RCP's mesh; unlike an FTD, an MTD
-# cannot form an isolated leader partition when it loses radio contact.
-CONFIG_OPENTHREAD_MTD=y
-# CONFIG_OPENTHREAD_FTD is not set
-# Keep the radio awake: Zenoh uses a long-lived TCP session and cannot depend
-# on sleepy-end-device polling to receive server responses.
-CONFIG_OPENTHREAD_RX_ON_WHEN_IDLE=y
+# This powered telemetry node keeps an active Zenoh TCP session, so run it as
+# a Full Thread Device. It attaches directly as a router instead of relying on
+# child indirect transmission from the border router.
+CONFIG_OPENTHREAD_FTD=y
+# CONFIG_OPENTHREAD_MTD is not set
 CONFIG_LWIP_TCPIP_TASK_STACK_SIZE=4096
 CONFIG_LWIP_IPV6_NUM_ADDRESSES=8
 CONFIG_LWIP_HOOK_IP6_SELECT_SRC_ADDR_CUSTOM=y

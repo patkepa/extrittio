@@ -33,6 +33,7 @@ export function ThreadMesh() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const graphActionsRef = useRef<GraphActions | null>(null);
+  const previousGraphNodesRef = useRef<GraphNode[]>([]);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
   useEffect(() => {
@@ -54,8 +55,13 @@ export function ThreadMesh() {
     return buildThreadMeshGraphData(
       { networks: scan?.networks ?? [], devices: scan?.devices ?? [] },
       status,
+      previousGraphNodesRef.current,
     );
   }, [scan, status]);
+
+  useEffect(() => {
+    if (graphData) previousGraphNodesRef.current = graphData.nodes;
+  }, [graphData]);
 
   const selectedNode = useMemo(
     () => graphData?.nodes.find((node) => node.id === selectedNodeId) ?? null,

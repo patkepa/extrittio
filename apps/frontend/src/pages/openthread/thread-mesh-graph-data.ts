@@ -16,6 +16,10 @@ const BORDER_ROUTER_COLOR = '#36CFC9';
 const ROUTER_COLOR = '#8ABBFF';
 const CHILD_COLOR = '#7BD88F';
 const SLEEPY_CHILD_COLOR = '#D982FF';
+const BORDER_ROUTER_X = -80;
+const CURRENT_NETWORK_X = 120;
+const NEARBY_NETWORK_X = -340;
+const MESH_DEVICE_X = 360;
 
 function normalizedHex(value?: string | null): string {
   return value?.trim().toLowerCase().replace(/^0x/, '').padStart(4, '0') ?? '';
@@ -121,9 +125,35 @@ function currentNetworkDetails(status: ThreadStatus) {
   ]);
 }
 
-function ringPosition(index: number, total: number, radius: number, offset = 0) {
-  const angle = offset + (index / Math.max(total, 1)) * Math.PI * 2;
-  return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+function columnPosition(
+  index: number,
+  total: number,
+  options: {
+    startX: number;
+    direction: -1 | 1;
+    maxRows: number;
+    rowSpacing: number;
+    columnSpacing: number;
+  },
+) {
+  const column = Math.floor(index / options.maxRows);
+  const row = index % options.maxRows;
+  const rowsInColumn = Math.min(options.maxRows, total - column * options.maxRows);
+
+  return {
+    x: options.startX + column * options.columnSpacing * options.direction,
+    y: (row - (rowsInColumn - 1) / 2) * options.rowSpacing,
+  };
+}
+
+function distanceBetween(
+  source: Pick<GraphNode, 'layoutX' | 'layoutY'>,
+  target: Pick<GraphNode, 'layoutX' | 'layoutY'>,
+) {
+  return Math.hypot(
+    (target.layoutX ?? 0) - (source.layoutX ?? 0),
+    (target.layoutY ?? 0) - (source.layoutY ?? 0),
+  );
 }
 
 export function buildThreadMeshGraphData(
@@ -143,13 +173,21 @@ export function buildThreadMeshGraphData(
 
   const addNode = (node: GraphNode) => {
     const previous = previousById.get(node.id);
-    const merged = previous ? { ...node, x: previous.x, y: previous.y } : node;
+    const merged = previous
+      ? {
+          ...node,
+          x: previous.x,
+          y: previous.y,
+          layoutX: previous.layoutX ?? node.layoutX,
+          layoutY: previous.layoutY ?? node.layoutY,
+        }
+      : node;
     nodes.push(merged);
     nodeMap.set(merged.id, merged);
     return merged;
   };
 
-  addNode({
+  const currentNetwork = addNode({
     id: currentNetworkId,
     name: status.network_name || 'Active Thread network',
     type: 'fleet',
@@ -159,10 +197,10 @@ export function buildThreadMeshGraphData(
     details: currentNetworkDetails(status),
     neighbors: [],
     links: [],
-    layoutX: 0,
+    layoutX: CURRENT_NETWORK_X,
     layoutY: 0,
     layoutRadius: 0,
-    x: 0,
+    x: CURRENT_NETWORK_X,
     y: 0,
   });
 
@@ -170,7 +208,7 @@ export function buildThreadMeshGraphData(
   const borderRouterId = discoveredBorderRouter
     ? `thread-device-${discoveredBorderRouter.id}`
     : 'thread-device-border-router';
-  addNode({
+  const borderRouter = addNode({
     id: borderRouterId,
     name: discoveredBorderRouter ? deviceName(discoveredBorderRouter) : 'Extrittio Border Router',
     type: 'external',
@@ -190,25 +228,31 @@ export function buildThreadMeshGraphData(
         ]),
     neighbors: [],
     links: [],
-    layoutX: 0,
-    layoutY: -135,
-    layoutRadius: 135,
-    x: 0,
-    y: -135,
+    layoutX: BORDER_ROUTER_X,
+    layoutY: 0,
+    layoutRadius: CURRENT_NETWORK_X - BORDER_ROUTER_X,
+    x: BORDER_ROUTER_X,
+    y: 0,
   });
-  links.push({ source: currentNetworkId, target: borderRouterId, kind: 'declared' });
+  links.push({
+    source: borderRouterId,
+    target: currentNetworkId,
+    kind: 'declared',
+    layoutDistance: distanceBetween(borderRouter, currentNetwork),
+    layoutStrength: 0.14,
+  });
 
   meshDevices.forEach((device, index) => {
     const visual = deviceVisual(device);
-    const ring = Math.floor(index / 12);
-    const position = ringPosition(
-      index % 12,
-      Math.min(meshDevices.length - ring * 12, 12),
-      155 + ring * 72,
-      -Math.PI / 2,
-    );
+    const position = columnPosition(index, meshDevices.length, {
+      startX: MESH_DEVICE_X,
+      direction: 1,
+      maxRows: 7,
+      rowSpacing: 68,
+      columnSpacing: 145,
+    });
     const id = `thread-device-${device.id}`;
-    addNode({
+    const meshDevice = addNode({
       id,
       name: deviceName(device),
       type: 'external',
@@ -222,17 +266,32 @@ export function buildThreadMeshGraphData(
       links: [],
       layoutX: position.x,
       layoutY: position.y,
-      layoutRadius: 155 + ring * 72,
+      layoutRadius: distanceBetween(currentNetwork, {
+        layoutX: position.x,
+        layoutY: position.y,
+      }),
       x: position.x,
       y: position.y,
     });
-    links.push({ source: currentNetworkId, target: id, kind: 'declared' });
+    links.push({
+      source: currentNetworkId,
+      target: id,
+      kind: 'declared',
+      layoutDistance: distanceBetween(currentNetwork, meshDevice),
+      layoutStrength: 0.09,
+    });
   });
 
   nearbyNetworks.forEach((network, index) => {
-    const position = ringPosition(index, nearbyNetworks.length, 355, Math.PI / 6);
+    const position = columnPosition(index, nearbyNetworks.length, {
+      startX: NEARBY_NETWORK_X,
+      direction: -1,
+      maxRows: 5,
+      rowSpacing: 92,
+      columnSpacing: 180,
+    });
     const id = `thread-network-nearby-${network.extended_address}-${network.pan_id}-${network.channel}`;
-    addNode({
+    const nearbyNetwork = addNode({
       id,
       name: network.network_name || `Unnamed · ${network.pan_id}`,
       type: 'fleet',
@@ -243,11 +302,20 @@ export function buildThreadMeshGraphData(
       links: [],
       layoutX: position.x,
       layoutY: position.y,
-      layoutRadius: 355,
+      layoutRadius: distanceBetween(borderRouter, {
+        layoutX: position.x,
+        layoutY: position.y,
+      }),
       x: position.x,
       y: position.y,
     });
-    links.push({ source: borderRouterId, target: id, kind: 'declared' });
+    links.push({
+      source: borderRouterId,
+      target: id,
+      kind: 'declared',
+      layoutDistance: distanceBetween(borderRouter, nearbyNetwork),
+      layoutStrength: 0.08,
+    });
   });
 
   for (const link of links) {

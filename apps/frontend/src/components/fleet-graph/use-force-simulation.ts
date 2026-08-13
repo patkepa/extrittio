@@ -37,11 +37,13 @@ export function useForceSimulation(
       return node.type === 'fleet' ? -120 : -55;
     });
     fg.d3Force('link')?.distance?.((link: GraphLink) => {
+      if (link.layoutDistance != null) return link.layoutDistance;
       if (link.kind === 'declared') return 96;
       const device = getLinkDevice(link);
       return device?.layoutRadius ?? LEGACY_LINK_DISTANCE;
     });
     fg.d3Force('link')?.strength?.((link: GraphLink) => {
+      if (link.layoutStrength != null) return link.layoutStrength;
       if (link.kind === 'declared') return 0.35;
       const device = getLinkDevice(link);
       return device?.layoutRadius == null ? 1 : 0.12;
