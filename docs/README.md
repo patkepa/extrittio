@@ -31,7 +31,7 @@ proposals, not in the operational documentation.
 - [iOS app](../apps/mobile-app-ios/README.md)
 - [Arduino client](../clients/arduino/Extrittio/README.md)
 - [ESP32-C6 OpenThread example](../clients/c/esp32c6-openthread-idf-c/README.md)
-- [Rust ESP32 example](../clients/rust/esp32/README.md)
+- [Rust ESP32 client](../clients/rust/esp32/README.md)
 - [Device simulator](../clients/rust/simulator/README.md)
 
 ## Sources of truth
