@@ -110,7 +110,6 @@ cargo xtask verify protocol
 cargo xtask verify ios
 ```
 
-`cargo xtask verify --changed` selects checks from the current working tree.
 `cargo xtask verify all` includes the native iOS build and therefore requires
 the Apple toolchain.
 

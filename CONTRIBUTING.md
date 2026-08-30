@@ -31,7 +31,6 @@ content, or real device identities.
 Prefer the repository tasks because they match CI:
 
 ```bash
-cargo xtask verify --changed
 cargo xtask verify backend
 cargo xtask verify frontend
 cargo xtask verify protocol
