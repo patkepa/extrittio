@@ -134,39 +134,12 @@ impl TelemetryRepository for TursoAdapter {
                 write.temperature.map(f64::from), write.humidity.map(f64::from), write.battery_level.map(f64::from), custom_json,
                 write.latitude, write.longitude, write.speed.map(f64::from), write.altitude.map(f64::from), write.heading.map(f64::from), observed_at],
         ).await.map_err(row::error)?;
-        if let Some(hosts) = write.observed_network_hosts {
-            transaction.execute("UPDATE network_observed_hosts SET status = 'inactive', updated_at = ?3 WHERE tenant_id = ?1 AND analyzer_device_id = ?2 AND status <> 'inactive'", params![identity.tenant_id_str(), identity.device_id(), observed_at]).await.map_err(row::error)?;
-            for host in hosts {
-                transaction.execute(
-                    "INSERT INTO network_observed_hosts (tenant_id, analyzer_device_id, host_key, label, address, device_type, source, status, first_seen_at, last_seen_at, created_at, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'active', ?8, ?8, ?8, ?8)
-                     ON CONFLICT (tenant_id, analyzer_device_id, host_key) DO UPDATE SET label = excluded.label, address = excluded.address, device_type = excluded.device_type, source = excluded.source, status = 'active', last_seen_at = excluded.last_seen_at, updated_at = excluded.updated_at",
-                    params![identity.tenant_id_str(), identity.device_id(), host.host_key, host.label, host.address, host.device_type, host.source, observed_at],
-                ).await.map_err(row::error)?;
-            }
-            transaction
-                .execute(
-                    "DELETE FROM network_observed_hosts WHERE last_seen_at < ?1",
-                    params![
-                        (write.observed_at - chrono::Duration::days(30))
-                            .and_utc()
-                            .timestamp_micros()
-                    ],
-                )
-                .await
-                .map_err(row::error)?;
-        }
-        let connections = write
-            .declared_connections
-            .map(|value| serde_json::to_string(&value))
-            .transpose()
-            .map_err(|error| PersistenceError::Internal(error.to_string()))?;
         transaction.execute(
-            "UPDATE devices SET last_seen = ?3, updated_at = ?3, declared_connections = COALESCE(?4, declared_connections),
-                    latest_latitude = CASE WHEN ?5 IS NOT NULL AND ?6 IS NOT NULL THEN ?5 ELSE latest_latitude END,
-                    latest_longitude = CASE WHEN ?5 IS NOT NULL AND ?6 IS NOT NULL THEN ?6 ELSE latest_longitude END
+            "UPDATE devices SET last_seen = ?3, updated_at = ?3,
+                    latest_latitude = CASE WHEN ?4 IS NOT NULL AND ?5 IS NOT NULL THEN ?4 ELSE latest_latitude END,
+                    latest_longitude = CASE WHEN ?4 IS NOT NULL AND ?5 IS NOT NULL THEN ?5 ELSE latest_longitude END
              WHERE tenant_id = ?1 AND id = ?2",
-            params![identity.tenant_id_str(), identity.device_id(), observed_at, connections, write.latitude, write.longitude],
+            params![identity.tenant_id_str(), identity.device_id(), observed_at, write.latitude, write.longitude],
         ).await.map_err(row::error)?;
         let actions_enqueued = enqueue(&transaction, &write.pending_actions).await?;
         transaction.commit().await.map_err(row::error)?;

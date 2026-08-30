@@ -58,7 +58,7 @@ struct Args {
     #[arg(long, default_value_t = 5)]
     stats_interval: u64,
 
-    /// Firmware string sent in heartbeats. Backend uses this for device-type inference.
+    /// Firmware string reported by already-provisioned simulated devices.
     #[arg(long, default_value = "simulator-v1.0.0")]
     firmware: String,
 

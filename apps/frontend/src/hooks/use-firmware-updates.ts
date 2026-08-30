@@ -11,6 +11,7 @@ import {
   createFirmwareUpdate,
   deleteFirmwareUpdate,
   getNextVersion,
+  getNextBlueprintVersion,
   getOtaDeployments,
   triggerOta,
   uploadFirmwareUpdate,
@@ -31,6 +32,15 @@ export function useNextVersion(deviceTypeId: number | null) {
     queryKey: queryKeys.firmware.nextVersion(deviceTypeId ?? 0),
     queryFn: () => getNextVersion(deviceTypeId!),
     enabled: !!deviceTypeId,
+    staleTime: 5_000,
+  });
+}
+
+export function useNextBlueprintVersion(revisionId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.firmware.nextBlueprintVersion(revisionId ?? ''),
+    queryFn: () => getNextBlueprintVersion(revisionId!),
+    enabled: !!revisionId,
     staleTime: 5_000,
   });
 }

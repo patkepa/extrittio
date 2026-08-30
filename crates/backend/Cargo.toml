@@ -10,17 +10,31 @@ publish.workspace = true
 
 [features]
 default = ["postgres"]
+production = ["postgres", "jemalloc", "s3", "otlp", "swagger-ui", "mdns"]
+jemalloc = ["dep:tikv-jemallocator"]
 postgres = ["dep:diesel", "dep:diesel_migrations"]
 turso = ["dep:turso"]
 embedded-ui = ["dep:include_dir"]
+openapi = []
+swagger-ui = ["openapi", "dep:utoipa-swagger-ui"]
+s3 = ["object_store/aws"]
+otlp = [
+    "dep:opentelemetry",
+    "dep:opentelemetry_sdk",
+    "dep:opentelemetry-otlp",
+    "dep:tracing-opentelemetry",
+]
+mdns = ["dep:mdns-sd"]
 all-databases = ["postgres", "turso"]
 phase0-turso = ["turso"]
 
 [dependencies]
 extrittio-common = { version = "0.1.0", path = "../common" }
+extrittio-device-contract = { version = "0.1.0", path = "../device-contract" }
 extrittio-openthread-runtime = { version = "0.1.0", path = "../openthread-runtime" }
+extrittio-rule-engine = { version = "0.1.0", path = "../rule-engine" }
 axum = { version = "0.8", features = ["multipart"] }
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["fs", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -31,27 +45,29 @@ uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-tracing-opentelemetry = "0.33"
-opentelemetry = { version = "0.32", features = ["trace"] }
-opentelemetry_sdk = { version = "0.32", features = ["trace"] }
-opentelemetry-otlp = { version = "0.32", features = ["trace"] }
-object_store = { version = "0.14", features = ["aws"] }
+tracing-opentelemetry = { version = "0.33", optional = true }
+zeroize = { version = "1", features = ["serde"] }
+opentelemetry = { version = "0.32", features = ["trace"], optional = true }
+opentelemetry_sdk = { version = "0.32", features = ["trace"], optional = true }
+opentelemetry-otlp = { version = "0.32", default-features = false, features = ["http-proto", "reqwest-client", "trace"], optional = true }
+object_store = { version = "0.14", default-features = false, features = ["fs"] }
 zenoh = { version = "1", default-features = false, features = ["transport_tcp", "transport_tls", "unstable"] }
-prost = "0.13"
+prost = "0.14"
 argon2 = "0.5"
 jsonwebtoken = "9"
 rand = "0.8"
 sha2 = "0.10"
 thiserror = "2"
 utoipa = { version = "5", features = ["axum_extras"] }
-utoipa-swagger-ui = { version = "9", features = ["axum"] }
+utoipa-swagger-ui = { version = "9", default-features = false, features = ["axum", "vendored"], optional = true }
 rcgen = { version = "0.14", features = ["pem", "x509-parser"] }
 time = "0.3"
 pem = "3"
-socket2 = "0.5"
-sysinfo = "0.33"
+socket2 = "0.6"
+sysinfo = "0.34"
 dashmap = "6"
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.13", default-features = false, features = ["charset", "http2", "json", "rustls-no-provider", "system-proxy"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 anyhow = "1"
 async-trait = "0.1"
 dotenvy = "0.15"
@@ -59,12 +75,17 @@ base64 = "0.22"
 ring = "0.17"
 turso = { version = "=0.7.2", default-features = false, optional = true }
 include_dir = { version = "0.7", optional = true }
-mdns-sd = "0.20"
+mdns-sd = { version = "0.20", optional = true }
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
-tikv-jemallocator = "0.6"
+tikv-jemallocator = { version = "0.6", optional = true }
 
 [dev-dependencies]
 http-body-util = "0.1"
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
+
+[[bin]]
+name = "openapi"
+path = "src/bin/openapi.rs"
+required-features = ["openapi"]

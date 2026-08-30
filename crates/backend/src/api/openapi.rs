@@ -20,6 +20,8 @@ use utoipa::{Modify, OpenApi};
         // System
         super::system::get_version,
         super::thread::get_thread_status,
+        super::thread::refresh_thread_runtime,
+        super::thread::configure_thread_runtime,
         super::thread::get_thread_scan,
         super::thread::force_thread_scan,
         super::thread::create_thread_network,
@@ -31,8 +33,13 @@ use utoipa::{Modify, OpenApi};
         super::auth_routes::me,
         // Dashboard
         super::dashboard::get_stats,
+        // Analytics
+        super::analytics::get_catalog,
+        super::analytics::run_query,
         // Audit
         super::audit::list_audit_events,
+        // Activity
+        super::activity::list_activity_events,
         // Users
         super::users::list_users,
         super::users::create_user,
@@ -48,6 +55,7 @@ use utoipa::{Modify, OpenApi};
         // Devices
         super::devices::list_devices,
         super::devices::get_device,
+        super::devices::get_device_contract,
         super::devices::create_device,
         super::devices::update_device,
         super::devices::delete_device,
@@ -64,6 +72,16 @@ use utoipa::{Modify, OpenApi};
         super::device_types::create_device_type,
         super::device_types::update_device_type,
         super::device_types::delete_device_type,
+        // Device blueprints
+        super::device_blueprints::list_blueprints,
+        super::device_blueprints::create_blueprint,
+        super::device_blueprints::get_blueprint,
+        super::device_blueprints::get_blueprint_draft,
+        super::device_blueprints::replace_blueprint_draft,
+        super::device_blueprints::validate_blueprint_draft,
+        super::device_blueprints::publish_blueprint_draft,
+        super::device_blueprints::get_latest_blueprint_revision,
+        super::device_blueprints::get_blueprint_revision,
         // Fleets
         super::fleets::list_fleets,
         super::fleets::create_fleet,
@@ -76,6 +94,7 @@ use utoipa::{Modify, OpenApi};
         super::shadows::delete_shadow,
         // Telemetry
         super::telemetry::get_device_telemetry,
+        super::telemetry::get_device_metrics,
         super::telemetry::get_latest_device_telemetry,
         super::telemetry::get_hourly_device_telemetry,
         // Commands
@@ -89,6 +108,7 @@ use utoipa::{Modify, OpenApi};
         super::firmware_updates::download_firmware_blob,
         super::firmware_updates::delete_firmware_update,
         super::firmware_updates::get_next_version,
+        super::firmware_updates::get_next_blueprint_version,
         // Logs
         super::logs::get_device_logs,
         // Config
@@ -147,9 +167,29 @@ use utoipa::{Modify, OpenApi};
         super::auth_routes::RoleSummary,
         // Dashboard
         super::dashboard::DashboardStats,
+        // Analytics
+        super::analytics::AnalyticsMetricRequest,
+        super::analytics::AnalyticsSeriesModeName,
+        super::analytics::AnalyticsWeightingName,
+        super::analytics::AnalyticsScopeRequest,
+        super::analytics::AnalyticsQueryRequest,
+        super::analytics::AnalyticsMetricCatalogEntry,
+        super::analytics::AnalyticsCatalogResponse,
+        super::analytics::AnalyticsMetricResponse,
+        super::analytics::AnalyticsEffectiveResponse,
+        super::analytics::AnalyticsScopeResponse,
+        super::analytics::AnalyticsStatsResponse,
+        super::analytics::AnalyticsPointResponse,
+        super::analytics::AnalyticsSeriesResponse,
+        super::analytics::AnalyticsDeviceStatsResponse,
+        super::analytics::AnalyticsCoverageResponse,
+        super::analytics::AnalyticsQueryResponse,
         // Audit
         super::audit::AuditEventResponse,
         super::audit::AuditEventListResponse,
+        // Activity
+        super::activity::ActivityEventResponse,
+        super::activity::ActivityEventListResponse,
         // Users
         super::users::CreateUserRequest,
         super::users::ChangePasswordRequest,
@@ -161,6 +201,7 @@ use utoipa::{Modify, OpenApi};
         super::roles::UpdateRoleRequest,
         // Devices
         super::devices::DeviceResponse,
+        super::devices::DeviceContractResponse,
         super::devices::NewDeviceRequest,
         super::devices::UpdateDeviceRequest,
         super::devices::TriggerOtaRequest,
@@ -177,6 +218,13 @@ use utoipa::{Modify, OpenApi};
         super::device_types::DeviceTypeResponse,
         super::device_types::NewDeviceTypeRequest,
         super::device_types::UpdateDeviceTypeRequest,
+        // Device blueprints
+        super::device_blueprints::BlueprintDocumentRequest,
+        super::device_blueprints::BlueprintResponse,
+        super::device_blueprints::BlueprintDraftResponse,
+        super::device_blueprints::BlueprintRevisionResponse,
+        super::device_blueprints::BlueprintValidationIssueResponse,
+        super::device_blueprints::BlueprintValidationResponse,
         // Fleets
         super::fleets::FleetResponse,
         super::fleets::NewFleetRequest,
@@ -186,6 +234,8 @@ use utoipa::{Modify, OpenApi};
         // Telemetry
         super::telemetry::TelemetryResponse,
         super::telemetry::HourlyTelemetryResponse,
+        super::telemetry::MetricValueResponse,
+        super::telemetry::DeviceMetricResponse,
         // Commands
         super::commands::SendCommandRequest,
         super::commands::CommandResponse,
@@ -245,6 +295,7 @@ use utoipa::{Modify, OpenApi};
         super::thread::ThreadMeshDeviceResponse,
         super::thread::CreateThreadNetworkRequest,
         super::thread::ImportThreadDatasetRequest,
+        super::thread::ConfigureThreadRuntimeRequest,
         // Outbox
         super::outbox::RuleActionOutboxSummaryResponse,
         super::outbox::DeadLetterEventResponse,
@@ -261,11 +312,13 @@ use utoipa::{Modify, OpenApi};
         (name = "rules", description = "Rule engine configuration"),
         (name = "zones", description = "Geofence zone management"),
         (name = "dashboard", description = "Dashboard statistics"),
+        (name = "analytics", description = "Fleet and device telemetry analytics"),
         (name = "audit", description = "Security and administrative audit trail"),
         (name = "users", description = "User management"),
         (name = "roles", description = "Role and permission management"),
         (name = "devices", description = "Device management"),
         (name = "device-types", description = "Device type management"),
+        (name = "device-blueprints", description = "Versioned device contract blueprints"),
         (name = "fleets", description = "Fleet management"),
         (name = "shadows", description = "Device shadow (desired/reported state)"),
         (name = "telemetry", description = "Device telemetry data"),

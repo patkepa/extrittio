@@ -7,16 +7,23 @@ struct DeviceSplitView: View {
     @Environment(ConnectionMonitor.self) private var connectionMonitor
     let viewModel: DeviceListViewModel
     let container: DependencyContainer
-    @State private var showingCreateSheet = false
     @State private var restartingDeviceId: String?
     @State private var deletingDeviceId: String?
     @State private var isSelectingDevices = false
     @State private var selectedDeviceIds = Set<String>()
     @State private var pendingBulkAction: DeviceBulkAction?
     @State private var bulkActionInProgress: DeviceBulkAction?
+    let showNearbyDevicePanel: () -> Void
+    let showProvisionDevicePanel: () -> Void
 
     private var canManageDevices: Bool {
         authViewModel.currentUser?.hasPermission(.devicesManage) == true
+    }
+
+    private var canProvisionDevices: Bool {
+        authViewModel.currentUser?.hasRequiredPermissions([
+            .devicesManage, .deviceBlueprintsRead, .fleetsRead
+        ]) == true
     }
 
     private var selectedFleetName: String? {
@@ -35,15 +42,6 @@ struct DeviceSplitView: View {
             Divider()
             detailPanel
                 .frame(maxWidth: .infinity)
-        }
-        .sheet(isPresented: $showingCreateSheet) {
-            CreateDeviceSheet(
-                createDeviceUseCase: container.makeCreateDeviceUseCase(),
-                getDeviceTypesUseCase: container.makeGetDeviceTypesUseCase(),
-                getFleetsUseCase: container.makeGetFleetsUseCase()
-            ) { newDevice in
-                viewModel.insertDevice(newDevice)
-            }
         }
         .confirmationDialog(
             pendingBulkAction?.confirmationTitle ?? "Apply Action?",
@@ -83,15 +81,20 @@ struct DeviceSplitView: View {
                     .disabled(deviceActionInProgress)
                     .accessibilityLabel(isSelectingDevices ? "Done Selecting" : "Select Devices")
                 }
-                if canManageDevices, !isSelectingDevices {
+                if canProvisionDevices, !isSelectingDevices {
                     Button {
-                        showingCreateSheet = true
+                        showProvisionDevicePanel()
                     } label: {
-                        Image(systemName: "plus")
+                        Image(systemName: "sensor.tag.radiowaves.forward")
                     }
                     .disabled(!connectionMonitor.isOnline)
+                    .accessibilityLabel("Provision Device")
                 }
                 if !isSelectingDevices {
+                    Button(action: showNearbyDevicePanel) {
+                        Image(systemName: "dot.radiowaves.left.and.right")
+                    }
+                    .accessibilityLabel("Tap into a device")
                     Menu {
                         Button("All") {
                             viewModel.statusFilter = nil
@@ -337,14 +340,14 @@ struct DeviceSplitView: View {
             icon: "sensor.tag.radiowaves.forward",
             title: "No Devices",
             message: hasActiveFilters ? "No devices match the selected filters." : "No devices have been added yet.",
-            actionTitle: hasActiveFilters ? "Clear Filters" : (canManageDevices ? "Add Device" : nil),
+            actionTitle: hasActiveFilters ? "Clear Filters" : (canProvisionDevices ? "Provision Device" : nil),
             actionSystemImage: hasActiveFilters ? "xmark.circle" : "plus",
             isActionDisabled: !hasActiveFilters && !connectionMonitor.isOnline
         ) {
             if hasActiveFilters {
                 clearFilters()
             } else {
-                showingCreateSheet = true
+                showProvisionDevicePanel()
             }
         }
     }

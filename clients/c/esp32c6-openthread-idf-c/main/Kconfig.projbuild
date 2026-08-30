@@ -10,7 +10,7 @@ config EXTRITTIO_THREAD_ZENOH_SERVICE_NAME
     string "Thread DNS-SD Zenoh service"
     default "_extrittio-zenoh._tcp.default.service.arpa."
     help
-        Fully-qualified Thread DNS-SD service advertised by the Extrittio hobby
+        Fully-qualified Thread DNS-SD service advertised by Extrittio Edge
         server. The default matches EXTRITTIO_THREAD_ZENOH_SERVICE_NAME on the
         server and OTBR's default service-discovery domain.
 
@@ -18,7 +18,7 @@ config EXTRITTIO_THREAD_ZENOH_INSTANCE_NAME
     string "Thread DNS-SD Zenoh instance"
     default "extrittio-backend"
     help
-        Stable DNS-SD instance advertised by the Extrittio hobby server. The
+        Stable DNS-SD instance advertised by the Extrittio Edge server. The
         default matches EXTRITTIO_THREAD_ZENOH_SERVICE_INSTANCE on the server.
 
 config EXTRITTIO_THREAD_ZENOH_LOCATOR

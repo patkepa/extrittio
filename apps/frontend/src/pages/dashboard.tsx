@@ -7,7 +7,7 @@ import { toSparklineData, sparklineOpts } from '../components/charts/uplot-helpe
 import { useDashboardStats } from '../hooks/use-dashboard';
 import { useAlertSummary } from '../features/alerts';
 import { ServerHealth } from '../components/dashboard/server-health';
-import { StatusLed } from '@extrittio/ui';
+import { StatusLed } from '@patkepa/kantzen-ui';
 import { hasPermission } from '../auth/permissions';
 import { useAuthStore } from '../stores/auth-store';
 import './dashboard.css';

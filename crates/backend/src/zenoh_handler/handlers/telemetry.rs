@@ -6,7 +6,6 @@ use crate::persistence::Persistence;
 use crate::rule_engine::cache::RuleCache;
 use crate::rule_engine::evaluate::{evaluate_geofence_for_tenant, evaluate_telemetry_for_tenant};
 use crate::rule_engine::types::TelemetryData;
-use crate::services::device_connections;
 use crate::tenancy::DeviceIdentity;
 
 use extrittio_common::extrittio::DeviceTelemetry;
@@ -39,10 +38,6 @@ pub async fn handle_telemetry(
         serde_json::to_value(&telemetry.metadata).ok()
     };
     let has_location = telemetry.latitude != 0.0 || telemetry.longitude != 0.0;
-    let observed_network_hosts =
-        device_connections::network_analyzer_hosts_from_metadata(&telemetry.metadata);
-    let declared_connections =
-        device_connections::declared_connections_from_metadata(&telemetry.metadata);
     let data = TelemetryData {
         temperature: telemetry.temperature,
         humidity: telemetry.humidity,
@@ -52,6 +47,7 @@ pub async fn handle_telemetry(
         speed: telemetry.speed,
         altitude: telemetry.altitude,
         heading: telemetry.heading,
+        metrics: std::collections::BTreeMap::new(),
     };
 
     for _ in 0..MAX_OPTIMISTIC_RETRIES {
@@ -82,6 +78,7 @@ pub async fn handle_telemetry(
                 context.identity.device_id(),
                 context.device_type_id,
                 context.fleet_id,
+                context.blueprint_id.as_deref(),
                 &data,
                 &cache,
             );
@@ -90,6 +87,7 @@ pub async fn handle_telemetry(
                 context.identity.device_id(),
                 context.device_type_id,
                 context.fleet_id,
+                context.blueprint_id.as_deref(),
                 &data,
                 &cache,
             ));
@@ -112,8 +110,6 @@ pub async fn handle_telemetry(
                     speed: has_location.then_some(telemetry.speed),
                     altitude: has_location.then_some(telemetry.altitude),
                     heading: has_location.then_some(telemetry.heading),
-                    declared_connections: declared_connections.clone(),
-                    observed_network_hosts: observed_network_hosts.clone(),
                     pending_actions,
                     observed_at: chrono::Utc::now().naive_utc(),
                 },

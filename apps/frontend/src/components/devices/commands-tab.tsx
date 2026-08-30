@@ -6,19 +6,39 @@ import {
   Card,
   Divider,
   Elevation,
+  FormGroup,
+  HTMLSelect,
   HTMLTable,
   InputGroup,
   Spinner,
   Tag,
 } from '@blueprintjs/core';
 import { useCommandHistory, useSendCommand } from '../../hooks/use-commands';
-import { useFormNavigation } from '@extrittio/interactions';
+import { useFormNavigation } from '@patkepa/kantzen-ui/interactions';
 import { showSuccessToast, showErrorToast } from '../../utils/toaster';
 import { hasPermission } from '../../auth/permissions';
 import { useAuthStore } from '../../stores/auth-store';
+import { useDeviceContract } from '../../hooks/use-devices';
 
 interface CommandsTabProps {
   deviceId: string;
+}
+
+interface CommandInputProperty {
+  type?: 'number' | 'integer' | 'string' | 'boolean';
+  title?: string;
+  description?: string;
+  default?: unknown;
+}
+
+interface ContractCommand {
+  label: string;
+  description?: string;
+  danger: 'normal' | 'confirm' | 'critical';
+  inputSchema: {
+    properties?: Record<string, CommandInputProperty>;
+    required?: string[];
+  };
 }
 
 export const CommandsTab = ({ deviceId }: CommandsTabProps) => {
@@ -26,46 +46,53 @@ export const CommandsTab = ({ deviceId }: CommandsTabProps) => {
   const permissions = useAuthStore((s) => s.user?.permissions);
   const canSendCommands = hasPermission(permissions, 'commands.send');
   const { data: commands = [], isLoading, isError } = useCommandHistory(deviceId);
+  const contractQuery = useDeviceContract(deviceId);
   const sendCommandMutation = useSendCommand();
 
   const [commandName, setCommandName] = useState('');
-  const [params, setParams] = useState<Array<{ id: number; key: string; value: string }>>([]);
+  const [params, setParams] = useState<Record<string, string>>({});
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
-  const nextParamId = useRef(0);
   useFormNavigation(formRef);
-
-  const addParam = () => setParams([...params, { id: nextParamId.current++, key: '', value: '' }]);
-
-  const updateParam = (id: number, field: 'key' | 'value', value: string) => {
-    setParams(params.map((p) => (p.id === id ? { ...p, [field]: value } : p)));
+  const contractDocument = contractQuery.data?.document as unknown as {
+    commands?: Record<string, ContractCommand>;
   };
-
-  const removeParam = (id: number) => {
-    setParams(params.filter((p) => p.id !== id));
-  };
+  const commandDefinitions = contractDocument?.commands ?? {};
+  const commandEntries = Object.entries(commandDefinitions);
+  const selectedCommandName = commandName || commandEntries[0]?.[0] || '';
+  const selectedCommand = commandDefinitions[selectedCommandName];
+  const inputProperties = Object.entries(selectedCommand?.inputSchema.properties ?? {});
+  const requiredInputs = new Set(selectedCommand?.inputSchema.required ?? []);
+  const commandInputValid = inputProperties.every(
+    ([key]) => !requiredInputs.has(key) || (params[key] ?? '').trim().length > 0,
+  );
 
   const handleSend = () => {
-    if (!commandName.trim()) return;
-
-    const paramsMap: Record<string, string> = {};
-    for (const p of params) {
-      if (p.key.trim()) {
-        paramsMap[p.key.trim()] = p.value;
-      }
-    }
+    if (!selectedCommandName || !selectedCommand) return;
+    const paramsMap = Object.fromEntries(
+      inputProperties
+        .filter(([key]) => (params[key] ?? '').length > 0)
+        .map(([key, definition]) => {
+          const raw = params[key] ?? '';
+          if (definition.type === 'number' || definition.type === 'integer') {
+            return [key, Number(raw)];
+          }
+          if (definition.type === 'boolean') return [key, raw === 'true'];
+          return [key, raw];
+        }),
+    );
 
     sendCommandMutation.mutate(
       {
         deviceId,
         body: {
-          command: commandName.trim(),
-          params: Object.keys(paramsMap).length > 0 ? paramsMap : undefined,
+          command: selectedCommandName,
+          params: paramsMap,
         },
       },
       {
         onSuccess: () => {
           setCommandName('');
-          setParams([]);
+          setParams({});
           setIsConfirmOpen(false);
           void showSuccessToast('Command sent');
         },
@@ -93,7 +120,7 @@ export const CommandsTab = ({ deviceId }: CommandsTabProps) => {
     }
   };
 
-  if (isLoading) return <Spinner />;
+  if (isLoading || contractQuery.isLoading) return <Spinner />;
 
   if (isError) {
     return (
@@ -109,46 +136,75 @@ export const CommandsTab = ({ deviceId }: CommandsTabProps) => {
         <Card elevation={Elevation.ONE} className="tab-card">
           <span className="section-label">Send Command</span>
           <p className="tab-help-text">
-            Send a direct command to the device via Zenoh. The device must be online and listening.
+            Commands and their inputs come from the device's assigned contract.
           </p>
-
-          <InputGroup
-            placeholder="e.g. restart, get_diagnostics, set_mode"
-            value={commandName}
-            onChange={(e) => setCommandName(e.target.value)}
-            className="tab-input-spacing"
-          />
-
-          {params.map((p) => (
-            <div key={p.id} className="tab-param-row">
-              <InputGroup
-                placeholder="Key"
-                value={p.key}
-                onChange={(e) => updateParam(p.id, 'key', e.target.value)}
-                style={{ flex: 1 }}
-              />
-              <InputGroup
-                placeholder="Value"
-                value={p.value}
-                onChange={(e) => updateParam(p.id, 'value', e.target.value)}
-                style={{ flex: 1 }}
-              />
-              <Button minimal icon="cross" onClick={() => removeParam(p.id)} />
-            </div>
-          ))}
-
-          <div className="tab-actions">
-            <Button minimal icon="plus" onClick={addParam}>
-              Add Parameter
-            </Button>
-          </div>
+          {contractQuery.isError || commandEntries.length === 0 ? (
+            <Callout intent="warning" icon="warning-sign" className="tab-callout">
+              This device contract does not declare any commands.
+            </Callout>
+          ) : (
+            <>
+              <FormGroup label="Command" labelInfo="(required)">
+                <HTMLSelect
+                  fill
+                  value={selectedCommandName}
+                  onChange={(event) => {
+                    setCommandName(event.target.value);
+                    setParams({});
+                  }}
+                >
+                  {commandEntries.map(([key, command]) => (
+                    <option key={key} value={key}>
+                      {command.label}
+                    </option>
+                  ))}
+                </HTMLSelect>
+              </FormGroup>
+              {selectedCommand?.description && (
+                <p className="tab-help-text">{selectedCommand.description}</p>
+              )}
+              {inputProperties.map(([key, definition]) => (
+                <FormGroup
+                  key={key}
+                  label={definition.title ?? key}
+                  labelInfo={requiredInputs.has(key) ? '(required)' : '(optional)'}
+                  helperText={definition.description}
+                >
+                  {definition.type === 'boolean' ? (
+                    <HTMLSelect
+                      fill
+                      value={params[key] ?? ''}
+                      onChange={(event) => setParams({ ...params, [key]: event.target.value })}
+                    >
+                      {!requiredInputs.has(key) && <option value="">Use default</option>}
+                      <option value="true">True</option>
+                      <option value="false">False</option>
+                    </HTMLSelect>
+                  ) : (
+                    <InputGroup
+                      type={
+                        definition.type === 'number' || definition.type === 'integer'
+                          ? 'number'
+                          : 'text'
+                      }
+                      placeholder={
+                        definition.default == null ? undefined : String(definition.default)
+                      }
+                      value={params[key] ?? ''}
+                      onChange={(event) => setParams({ ...params, [key]: event.target.value })}
+                    />
+                  )}
+                </FormGroup>
+              ))}
+            </>
+          )}
 
           <div className="tab-callout">
             <Button
               intent="primary"
               icon="send-message"
               loading={sendCommandMutation.isPending}
-              disabled={!commandName.trim()}
+              disabled={!selectedCommandName || !commandInputValid}
               onClick={() => setIsConfirmOpen(true)}
             >
               Send Command
@@ -166,11 +222,12 @@ export const CommandsTab = ({ deviceId }: CommandsTabProps) => {
             loading={sendCommandMutation.isPending}
           >
             <p>
-              Send command <strong>{commandName}</strong> to this device?
+              Send command <strong>{selectedCommand?.label ?? selectedCommandName}</strong> to this
+              device?
             </p>
-            {params.length > 0 && (
+            {Object.keys(params).length > 0 && (
               <p style={{ fontSize: 12, opacity: 0.7 }}>
-                With {params.filter((p) => p.key.trim()).length} parameter(s)
+                With {Object.keys(params).length} parameter(s)
               </p>
             )}
           </Alert>

@@ -4,22 +4,21 @@
 
 1. Install Xcode 26.x.
 2. Install the command line tools listed in `Tools/versions.env`.
-3. From the Extrittio repository root, run `cd apps/mobile-app-ios`.
-4. Run `make bootstrap`.
+3. From the Extrittio repository root, run `cargo xtask ios bootstrap`.
 
 ## Development Loop
 
 Before opening a pull request, run:
 
 ```bash
-make build
-make test
-make lint
-make format-check
-make module-check
+cargo xtask ios build
+cargo xtask ios test
+cargo xtask ios lint
+cargo xtask ios format --check
+cargo xtask ios module-check
 ```
 
-Regenerate the Xcode project with `make generate` after editing `project.yml`, changing build settings, or adding/removing Swift files.
+Regenerate the Xcode project with `cargo xtask ios generate` after editing `project.yml`, changing build settings, or adding/removing Swift files.
 
 ## Code Organization
 
@@ -28,7 +27,7 @@ Regenerate the Xcode project with `make generate` after editing `project.yml`, c
 - Keep SwiftUI views, view models, shared UI, and design system code in `Extrittio/Presentation`.
 - Keep app composition and object wiring in `Extrittio/DI`.
 
-Do not add Data or Presentation dependencies to Domain. Run `make module-check` when touching boundaries.
+Do not add Data or Presentation dependencies to Domain. Run `cargo xtask ios module-check` when touching boundaries.
 
 ## Pull Requests
 

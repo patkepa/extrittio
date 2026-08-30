@@ -1,0 +1,23 @@
+[Unit]
+Description=Extrittio single-node IoT hub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# When an RCP and an otbr-agent executable are available, Extrittio starts the
+# agent itself. OTBR needs to create wpan0 and manage IPv6 routes, so the
+# service must retain the corresponding root privileges. Without either, the
+# application continues as a Wi-Fi/cloud-only hub.
+User=root
+WorkingDirectory=/var/lib/extrittio
+EnvironmentFile=/etc/extrittio/extrittio.env
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/usr/bin/extrittio run
+Restart=on-failure
+RestartSec=3s
+TimeoutStopSec=30s
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

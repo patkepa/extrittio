@@ -232,7 +232,9 @@ export const RolesSettings = () => {
                   key={permission.key}
                   checked={selectedPermissions.includes(permission.key)}
                   label={permissionLabel(permission.key)}
-                  onChange={(event) => togglePermission(permission.key, event.currentTarget.checked)}
+                  onChange={(event) =>
+                    togglePermission(permission.key, event.currentTarget.checked)
+                  }
                 />
               ))}
             </div>

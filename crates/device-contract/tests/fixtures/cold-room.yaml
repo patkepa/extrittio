@@ -1,0 +1,154 @@
+apiVersion: extrittio.io/v1alpha1
+kind: DeviceBlueprint
+metadata:
+  key: cold-room-sensor
+  name: Cold-room sensor
+  icon: thermometer
+  color: "#4C90F0"
+
+spec:
+  runtime:
+    minimumContractApi: 1
+    heartbeat:
+      interval: 30s
+      offlineAfter: 95s
+    limits:
+      maxMessageBytes: 8192
+      maxMessagesPerMinute: 120
+
+  transports:
+    - key: primary
+      binding: primary_zenoh
+      protocol: zenoh
+      qos:
+        delivery: at_least_once
+        ordering: per_device_stream
+
+  routes:
+    - key: environment
+      transport: primary
+      direction: device_to_cloud
+      address: extrittio/devices/{device.id}/events/environment
+      messageSchema: environment@1
+      encoding: json
+    - key: command_requests
+      transport: primary
+      direction: cloud_to_device
+      address: extrittio/devices/{device.id}/commands/request
+      messageSchema: extrittio.command-request@1
+      encoding: protobuf
+    - key: command_results
+      transport: primary
+      direction: device_to_cloud
+      address: extrittio/devices/{device.id}/commands/result
+      messageSchema: extrittio.command-result@1
+      encoding: protobuf
+
+  schemas:
+    - key: environment@1
+      format: json_schema
+      schema:
+        type: object
+        additionalProperties: false
+        required: [temperature, humidity]
+        properties:
+          temperature: { type: number, minimum: -80, maximum: 120 }
+          humidity: { type: number, minimum: 0, maximum: 100 }
+          battery_percent: { type: number, minimum: 0, maximum: 100 }
+
+  streams:
+    - key: environment
+      route: environment
+      timestamp: envelope.occurred_at
+      fields:
+        - path: /temperature
+          type: float64
+          label: Temperature
+          unit: Cel
+          semantic: temperature
+          index: true
+          aggregates: [min, max, avg]
+          presentation: { color: "#4C90F0", chart: line, precision: 1 }
+        - path: /humidity
+          type: float64
+          label: Humidity
+          unit: "%RH"
+          semantic: relative_humidity
+          index: true
+          aggregates: [min, max, avg]
+        - path: /battery_percent
+          type: float64
+          label: Battery
+          unit: "%"
+          semantic: battery_level
+          index: true
+          aggregates: [min, avg]
+
+  commands:
+    - key: identify
+      requestRoute: command_requests
+      responseRoute: command_results
+      label: Identify device
+      description: Blink the status LED.
+      danger: normal
+      timeout: 10s
+      inputSchema:
+        type: object
+        additionalProperties: false
+        properties:
+          duration_seconds: { type: integer, minimum: 1, maximum: 30, default: 5 }
+      resultSchema:
+        type: object
+        additionalProperties: false
+        required: [completed]
+        properties:
+          completed: { type: boolean }
+      availability: reported.features.identify == true
+      idempotency: idempotent
+
+  configuration:
+    schema:
+      type: object
+      additionalProperties: false
+      required: [sample_interval_seconds, temperature_offset]
+      properties:
+        sample_interval_seconds:
+          type: integer
+          minimum: 5
+          maximum: 3600
+          default: 60
+        temperature_offset:
+          type: number
+          minimum: -10
+          maximum: 10
+          default: 0
+    apply:
+      mode: desired_reported
+      acknowledgementTimeout: 60s
+      atomic: true
+
+  reportedState:
+    schema:
+      type: object
+      properties:
+        contract_hash: { type: string, minLength: 64, maxLength: 64 }
+
+  health:
+    signals:
+      - key: battery_low
+        source: metric
+        path: environment./battery_percent
+        operator: lt
+        value: 15
+        severity: warning
+
+  firmware:
+    strategy: binary_replacement
+    compatibility:
+      contractApi: 1
+
+  presentation:
+    summary:
+      - metric: environment./temperature
+      - metric: environment./humidity
+    tabs: [overview, telemetry, commands, configuration, logs, firmware]

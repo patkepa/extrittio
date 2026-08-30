@@ -61,6 +61,9 @@ pub struct FirmwareRecord {
     pub build_timestamp: Option<NaiveDateTime>,
     pub changelog: Option<String>,
     pub source: String,
+    pub blueprint_revision_id: Option<String>,
+    pub compatibility: Value,
+    pub update_strategy: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -82,6 +85,9 @@ pub struct NewFirmwareRecord {
     pub build_timestamp: Option<NaiveDateTime>,
     pub changelog: Option<String>,
     pub source: Option<String>,
+    pub blueprint_revision_id: Option<String>,
+    pub compatibility: Value,
+    pub update_strategy: Option<String>,
 }
 
 #[derive(Debug, Clone)]

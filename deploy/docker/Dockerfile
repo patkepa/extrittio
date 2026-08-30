@@ -33,6 +33,9 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY crates/common/Cargo.toml crates/common/Cargo.toml
 COPY crates/backend/Cargo.toml crates/backend/Cargo.toml
+COPY crates/device-contract/Cargo.toml crates/device-contract/Cargo.toml
+COPY crates/openthread-runtime/Cargo.toml crates/openthread-runtime/Cargo.toml
+COPY crates/rule-engine/Cargo.toml crates/rule-engine/Cargo.toml
 COPY apps/extrittio/Cargo.toml apps/extrittio/Cargo.toml
 COPY clients/rust/linux/Cargo.toml clients/rust/linux/Cargo.toml
 COPY clients/rust/macos/Cargo.toml clients/rust/macos/Cargo.toml
@@ -40,18 +43,23 @@ COPY clients/rust/rpi/Cargo.toml clients/rust/rpi/Cargo.toml
 COPY clients/rust/runtime/Cargo.toml clients/rust/runtime/Cargo.toml
 COPY clients/rust/sdk/Cargo.toml clients/rust/sdk/Cargo.toml
 COPY clients/rust/simulator/Cargo.toml clients/rust/simulator/Cargo.toml
+COPY tools/xtask/Cargo.toml tools/xtask/Cargo.toml
 
 # Create dummy source files to pre-build dependencies
 RUN mkdir -p crates/common/src && echo "fn main() {}" > crates/common/src/lib.rs && \
     mkdir -p crates/common/src/protos && \
     mkdir -p crates/backend/src && echo "fn main() {}" > crates/backend/src/main.rs && echo "" > crates/backend/src/lib.rs && \
+    mkdir -p crates/device-contract/src && echo "" > crates/device-contract/src/lib.rs && \
+    mkdir -p crates/openthread-runtime/src && echo "" > crates/openthread-runtime/src/lib.rs && \
+    mkdir -p crates/rule-engine/src && echo "" > crates/rule-engine/src/lib.rs && \
     mkdir -p apps/extrittio/src && echo "fn main() {}" > apps/extrittio/src/main.rs && echo "" > apps/extrittio/src/lib.rs && \
     mkdir -p clients/rust/linux/src && echo "fn main() {}" > clients/rust/linux/src/main.rs && \
     mkdir -p clients/rust/macos/src && echo "fn main() {}" > clients/rust/macos/src/main.rs && \
     mkdir -p clients/rust/rpi/src && echo "fn main() {}" > clients/rust/rpi/src/main.rs && \
     mkdir -p clients/rust/runtime/src && echo "" > clients/rust/runtime/src/lib.rs && \
     mkdir -p clients/rust/sdk/src && echo "" > clients/rust/sdk/src/lib.rs && \
-    mkdir -p clients/rust/simulator/src && echo "fn main() {}" > clients/rust/simulator/src/main.rs
+    mkdir -p clients/rust/simulator/src && echo "fn main() {}" > clients/rust/simulator/src/main.rs && \
+    mkdir -p tools/xtask/src && echo "fn main() {}" > tools/xtask/src/main.rs
 
 # Determine Rust target triple from TARGETARCH
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
@@ -61,18 +69,24 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
         PKG_CONFIG_ALLOW_CROSS=1 PKG_CONFIG_SYSROOT_DIR=/ \
         PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig \
         OPENSSL_LIB_DIR=/usr/lib/aarch64-linux-gnu OPENSSL_INCLUDE_DIR=/usr/include \
-        cargo build --profile "$CARGO_PROFILE" --target aarch64-unknown-linux-gnu -p extrittio --no-default-features --features postgres 2>/dev/null || true; \
+        cargo build --profile "$CARGO_PROFILE" --target aarch64-unknown-linux-gnu -p extrittio --no-default-features --features production; \
     else \
-        cargo build --profile "$CARGO_PROFILE" -p extrittio --no-default-features --features postgres 2>/dev/null || true; \
+        cargo build --profile "$CARGO_PROFILE" -p extrittio --no-default-features --features production; \
     fi
 
 # Copy actual source code
 COPY crates/common/ crates/common/
 COPY crates/backend/ crates/backend/
+COPY crates/device-contract/ crates/device-contract/
+COPY crates/openthread-runtime/ crates/openthread-runtime/
+COPY crates/rule-engine/ crates/rule-engine/
 COPY apps/extrittio/ apps/extrittio/
 
 # Touch source files to invalidate the dummy build artifacts
-RUN touch crates/common/src/lib.rs crates/common/build.rs crates/backend/src/main.rs crates/backend/src/lib.rs apps/extrittio/src/main.rs apps/extrittio/src/lib.rs
+RUN touch crates/common/src/lib.rs crates/common/build.rs \
+    crates/backend/src/main.rs crates/backend/src/lib.rs crates/backend/build.rs \
+    crates/device-contract/src/lib.rs crates/openthread-runtime/src/lib.rs \
+    crates/rule-engine/src/lib.rs apps/extrittio/src/main.rs apps/extrittio/src/lib.rs
 
 # Build the real binary
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
@@ -83,10 +97,10 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
         PKG_CONFIG_ALLOW_CROSS=1 PKG_CONFIG_SYSROOT_DIR=/ \
         PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig \
         OPENSSL_LIB_DIR=/usr/lib/aarch64-linux-gnu OPENSSL_INCLUDE_DIR=/usr/include \
-        cargo build --profile "$CARGO_PROFILE" --target aarch64-unknown-linux-gnu -p extrittio --no-default-features --features postgres && \
+        cargo build --profile "$CARGO_PROFILE" --target aarch64-unknown-linux-gnu -p extrittio --no-default-features --features production && \
         cp "target/aarch64-unknown-linux-gnu/$CARGO_PROFILE/extrittio" /app/bin/extrittio; \
     else \
-        cargo build --profile "$CARGO_PROFILE" -p extrittio --no-default-features --features postgres && \
+        cargo build --profile "$CARGO_PROFILE" -p extrittio --no-default-features --features production && \
         cp "target/$CARGO_PROFILE/extrittio" /app/bin/extrittio; \
     fi
 
@@ -96,13 +110,7 @@ FROM docker.io/library/node:22-bookworm-slim@sha256:f32b81066cde10a75dbac9664609
 WORKDIR /frontend
 
 COPY apps/frontend/package*.json ./
-COPY apps/frontend/.npmrc ./
-RUN --mount=type=secret,id=node_auth_token,required=false \
-    --mount=type=cache,target=/root/.npm \
-    if [ -f /run/secrets/node_auth_token ]; then \
-        export NODE_AUTH_TOKEN="$(cat /run/secrets/node_auth_token)"; \
-    fi; \
-    npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 COPY apps/frontend/ ./
 RUN npm run build

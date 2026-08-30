@@ -10,24 +10,16 @@ import {
   Callout,
   Tag,
   Spinner,
-  HTMLSelect,
   Icon,
 } from '@blueprintjs/core';
-import { useDeviceTypes } from '../../hooks/use-device-types';
 import { useFirmwareUpdates, useDeleteFirmwareUpdate } from '../../hooks/use-firmware-updates';
 import { AddFirmwareDialog } from '../../components/settings/add-firmware-dialog';
 import './settings.css';
 
 export const FirmwareSettings = () => {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [filterDeviceTypeId, setFilterDeviceTypeId] = useState<number | undefined>(undefined);
 
-  const { data: deviceTypes = [] } = useDeviceTypes();
-  const {
-    data: firmwareUpdates = [],
-    isLoading,
-    error,
-  } = useFirmwareUpdates(filterDeviceTypeId ? { device_type_id: filterDeviceTypeId } : undefined);
+  const { data: firmwareUpdates = [], isLoading, error } = useFirmwareUpdates();
   const deleteMutation = useDeleteFirmwareUpdate();
 
   if (error) {
@@ -63,23 +55,6 @@ export const FirmwareSettings = () => {
         </Button>
       </div>
 
-      <div style={{ marginBottom: 16 }}>
-        <HTMLSelect
-          value={filterDeviceTypeId ?? ''}
-          onChange={(e) =>
-            setFilterDeviceTypeId(e.target.value ? Number(e.target.value) : undefined)
-          }
-          style={{ minWidth: 200 }}
-        >
-          <option value="">All device types</option>
-          {deviceTypes.map((dt) => (
-            <option key={dt.id} value={dt.id}>
-              {dt.name}
-            </option>
-          ))}
-        </HTMLSelect>
-      </div>
-
       <Card elevation={Elevation.ONE} className="settings-table-card">
         {firmwareUpdates.length === 0 ? (
           <div className="settings-empty">
@@ -92,7 +67,7 @@ export const FirmwareSettings = () => {
             <thead>
               <tr>
                 <th>Version</th>
-                <th>Device Type</th>
+                <th>Blueprint Revision</th>
                 <th>Source</th>
                 <th>Description</th>
                 <th className="actions-column">Actions</th>
@@ -121,7 +96,9 @@ export const FirmwareSettings = () => {
                       </div>
                     )}
                   </td>
-                  <td>{fw.device_type_name}</td>
+                  <td className="mono-data">
+                    {fw.blueprint_revision_id ?? `legacy:${fw.device_type_name}`}
+                  </td>
                   <td>
                     <Tag minimal intent={fw.source === 'ci' ? 'primary' : 'none'}>
                       {fw.source === 'ci' ? 'CI' : 'Manual'}

@@ -19,7 +19,6 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN || github.token }}
   RUST_VERSION: "1.90"
 
 jobs:
@@ -113,11 +112,17 @@ jobs:
           sudo apt-get install -y protobuf-compiler libpq-dev libssl-dev postgresql-client
       - name: Check PostgreSQL
         run: pg_isready -h 127.0.0.1 -p 5432 -U extrittio -d extrittio
-      - run: cargo test --workspace --exclude extrittio-macos
+      - run: cargo test --workspace --exclude extrittio-macos --features extrittio-backend/openapi
+      - name: Verify generated OpenAPI contract
+        run: cargo run -p extrittio-backend --features openapi --bin openapi -- api/openapi.json
+      - name: Check generated OpenAPI contract is committed
+        run: git diff --exit-code -- api/openapi.json
 
-  turso-hobby:
-    name: Turso Hobby (${{ matrix.arch }})
+  turso-edge:
+    name: Turso Edge (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
+    env:
+      EDGE_CARGO_PROFILE: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'ci-release' }}
     strategy:
       matrix:
         include:
@@ -150,27 +155,28 @@ jobs:
         run: |
           cargo clippy -p extrittio --no-default-features --features turso --all-targets -- -D warnings
           cargo test -p extrittio-backend --no-default-features --features turso --lib
-      - name: Build standalone hobby executable
+      - name: Build standalone Extrittio Edge executable
         run: |
-          cargo build --release -p extrittio --no-default-features --features hobby
-          cargo install --path apps/extrittio --locked --no-default-features --features hobby --root target/hobby-install
+          cargo build --profile "$EDGE_CARGO_PROFILE" -p extrittio --no-default-features --features edge
+          install -D -m 0755 "target/$EDGE_CARGO_PROFILE/extrittio" target/edge-install/bin/extrittio
       - name: Verify artifact and first-run migration
         run: |
-          if ldd target/release/extrittio | grep -E 'libpq|postgres'; then
-            echo "hobby executable unexpectedly links PostgreSQL runtime libraries" >&2
+          edge_binary="target/$EDGE_CARGO_PROFILE/extrittio"
+          if ldd "$edge_binary" | grep -E 'libpq|postgres'; then
+            echo "Extrittio Edge executable unexpectedly links PostgreSQL runtime libraries" >&2
             exit 1
           fi
           smoke_dir="$(mktemp -d)"
-          target/release/extrittio -o json migrate --database-backend turso --deployment-profile hobby --data-dir "$smoke_dir"
-          target/release/extrittio -o json database --database-backend turso --deployment-profile hobby --data-dir "$smoke_dir" info
-          target/hobby-install/bin/extrittio run --help
-          sha256sum target/release/extrittio > target/release/extrittio-${{ matrix.arch }}.sha256
+          "$edge_binary" -o json migrate --database-backend turso --deployment-profile edge --data-dir "$smoke_dir"
+          "$edge_binary" -o json database --database-backend turso --deployment-profile edge --data-dir "$smoke_dir" info
+          target/edge-install/bin/extrittio run --help
+          sha256sum "$edge_binary" > "target/$EDGE_CARGO_PROFILE/extrittio-${{ matrix.arch }}.sha256"
       - uses: actions/upload-artifact@v4
         with:
-          name: extrittio-hobby-linux-${{ matrix.arch }}
+          name: extrittio-edge-linux-${{ matrix.arch }}
           path: |
-            target/release/extrittio
-            target/release/extrittio-${{ matrix.arch }}.sha256
+            target/${{ env.EDGE_CARGO_PROFILE }}/extrittio
+            target/${{ env.EDGE_CARGO_PROFILE }}/extrittio-${{ matrix.arch }}.sha256
 
   clients-and-protocol:
     name: Clients & Protocol
@@ -187,22 +193,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build protobuf-compiler libssl-dev python3-pip
-      - name: Check constrained Rust SDK features
-        run: |
-          cargo check -p extrittio-common --no-default-features --features alloc
-          cargo check -p extrittio-sdk --no-default-features --features alloc
-      - name: Test shared Rust protocol and client runtime
-        run: cargo test -p extrittio-common -p extrittio-sdk -p extrittio-client-runtime
-      - name: Verify nanopb output matches the canonical protocol
-        run: |
-          python3 -m pip install --disable-pip-version-check nanopb==0.4.9.1
-          clients/c/sdk-c/scripts/generate-proto.sh
-          git diff --exit-code -- clients/c/sdk-c/generated
-      - name: Build and test the C SDK
-        run: |
-          cmake -S clients/c/sdk-c -B build/c-sdk -G Ninja
-          cmake --build build/c-sdk
-          ctest --test-dir build/c-sdk --output-on-failure
+      - name: Install pinned nanopb generator
+        run: python3 -m pip install --disable-pip-version-check nanopb==0.4.9.1
+      - name: Run shared protocol verification
+        run: cargo xtask verify protocol
 
   frontend:
     name: Frontend
@@ -227,10 +221,10 @@ jobs:
       - name: Unit tests
         run: npm test
       - name: Verify generated API contract
-        run: npm run generate-api
+        run: npm run generate-api-types
       - name: Check generated files are committed
         working-directory: ${{ github.workspace }}
-        run: git diff --exit-code -- api/openapi.json apps/frontend/src/types/openapi.ts
+        run: git diff --exit-code -- apps/frontend/src/types/openapi.ts
       - name: TypeScript check & build
         run: npm run build
 

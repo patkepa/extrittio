@@ -11,6 +11,27 @@
   gap: 0 16px;
 }
 
+.thread-radio-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.thread-radio-controls .bp6-form-group {
+  margin-bottom: 0;
+}
+
+.thread-runtime-detail {
+  margin: 12px 0 0;
+  color: hsl(var(--muted) / 0.82);
+  font-size: 12px;
+}
+
+.thread-runtime-detail code {
+  color: hsl(var(--foreground));
+}
+
 .thread-card-heading {
   display: flex;
   align-items: flex-start;
@@ -153,7 +174,8 @@
 }
 
 @media (max-width: 600px) {
-  .thread-form {
+  .thread-form,
+  .thread-radio-controls {
     grid-template-columns: 1fr;
   }
 

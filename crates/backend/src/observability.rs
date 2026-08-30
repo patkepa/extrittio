@@ -1,10 +1,15 @@
 use std::env;
 
 use anyhow::{Context, Result, bail};
+#[cfg(feature = "otlp")]
 use opentelemetry::global;
+#[cfg(feature = "otlp")]
 use opentelemetry::trace::TracerProvider as _;
+#[cfg(feature = "otlp")]
 use opentelemetry_sdk::Resource;
+#[cfg(feature = "otlp")]
 use opentelemetry_sdk::propagation::TraceContextPropagator;
+#[cfg(feature = "otlp")]
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt as _;
@@ -12,6 +17,7 @@ use tracing_subscriber::util::SubscriberInitExt as _;
 
 /// Owns exporters that need an explicit flush during graceful shutdown.
 pub struct ObservabilityGuard {
+    #[cfg(feature = "otlp")]
     tracer_provider: Option<SdkTracerProvider>,
 }
 
@@ -21,6 +27,7 @@ impl ObservabilityGuard {
     }
 
     fn shutdown_inner(&mut self) -> Result<()> {
+        #[cfg(feature = "otlp")]
         if let Some(provider) = self.tracer_provider.take() {
             provider
                 .shutdown()
@@ -44,15 +51,20 @@ impl Drop for ObservabilityGuard {
 /// Set `OTEL_EXPORTER_OTLP_ENDPOINT` (or the trace-specific variant) to enable
 /// OTLP/HTTP export. Set `EXTRITTIO_LOG_FORMAT=json` for machine-readable logs.
 pub fn init(service_name: &str, default_filter: &str) -> Result<ObservabilityGuard> {
+    #[cfg(feature = "otlp")]
     global::set_text_map_propagator(TraceContextPropagator::new());
 
     let filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_filter));
+    #[cfg(feature = "otlp")]
     let tracer_provider = build_tracer_provider(service_name)?;
+    #[cfg(not(feature = "otlp"))]
+    let _ = service_name;
     let log_format = env::var("EXTRITTIO_LOG_FORMAT")
         .unwrap_or_else(|_| "text".to_string())
         .to_ascii_lowercase();
 
+    #[cfg(feature = "otlp")]
     match log_format.as_str() {
         "json" => {
             let otel_layer = tracer_provider.as_ref().map(|provider| {
@@ -81,9 +93,28 @@ pub fn init(service_name: &str, default_filter: &str) -> Result<ObservabilityGua
         other => bail!("EXTRITTIO_LOG_FORMAT must be `text`, `pretty`, or `json`, got `{other}`"),
     }
 
-    Ok(ObservabilityGuard { tracer_provider })
+    #[cfg(not(feature = "otlp"))]
+    match log_format.as_str() {
+        "json" => tracing_subscriber::registry()
+            .with(filter)
+            .with(tracing_subscriber::fmt::layer().json())
+            .try_init()
+            .context("failed to initialize tracing subscriber")?,
+        "text" | "pretty" => tracing_subscriber::registry()
+            .with(filter)
+            .with(tracing_subscriber::fmt::layer())
+            .try_init()
+            .context("failed to initialize tracing subscriber")?,
+        other => bail!("EXTRITTIO_LOG_FORMAT must be `text`, `pretty`, or `json`, got `{other}`"),
+    }
+
+    Ok(ObservabilityGuard {
+        #[cfg(feature = "otlp")]
+        tracer_provider,
+    })
 }
 
+#[cfg(feature = "otlp")]
 fn build_tracer_provider(service_name: &str) -> Result<Option<SdkTracerProvider>> {
     if otel_disabled() || !otel_endpoint_configured() {
         return Ok(None);
@@ -104,6 +135,7 @@ fn build_tracer_provider(service_name: &str) -> Result<Option<SdkTracerProvider>
     Ok(Some(provider))
 }
 
+#[cfg(feature = "otlp")]
 fn otel_endpoint_configured() -> bool {
     [
         "OTEL_EXPORTER_OTLP_ENDPOINT",
@@ -113,6 +145,7 @@ fn otel_endpoint_configured() -> bool {
     .any(|key| env::var(key).is_ok_and(|value| !value.trim().is_empty()))
 }
 
+#[cfg(feature = "otlp")]
 fn otel_disabled() -> bool {
     env::var("OTEL_SDK_DISABLED")
         .is_ok_and(|value| matches!(value.trim().to_ascii_lowercase().as_str(), "true" | "1"))

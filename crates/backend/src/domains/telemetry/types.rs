@@ -2,7 +2,6 @@ use chrono::NaiveDateTime;
 use serde_json::Value;
 
 use crate::rule_engine::types::PendingAction;
-use crate::services::device_connections::ObservedNetworkHost;
 
 #[derive(Debug, Clone)]
 pub struct TelemetryRecord {
@@ -57,8 +56,6 @@ pub struct TelemetryWrite {
     pub speed: Option<f32>,
     pub altitude: Option<f32>,
     pub heading: Option<f32>,
-    pub declared_connections: Option<Value>,
-    pub observed_network_hosts: Option<Vec<ObservedNetworkHost>>,
     pub pending_actions: Vec<PendingAction>,
     pub observed_at: NaiveDateTime,
 }

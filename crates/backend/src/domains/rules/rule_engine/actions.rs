@@ -1,12 +1,15 @@
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
+#[cfg(feature = "otlp")]
 use opentelemetry::global;
+#[cfg(feature = "otlp")]
 use opentelemetry::propagation::Injector;
 use prost::Message;
 use sha2::{Digest, Sha256};
 use tokio::time::sleep;
 use tracing::{Instrument, info, warn};
+#[cfg(feature = "otlp")]
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use super::cache::RuleCache;
@@ -306,14 +309,17 @@ pub async fn execute_action(
             req = req
                 .header("Idempotency-Key", delivery_id)
                 .header("X-Extrittio-Event-ID", delivery_id);
-            let mut trace_headers = reqwest::header::HeaderMap::new();
-            global::get_text_map_propagator(|propagator| {
-                propagator.inject_context(
-                    &tracing::Span::current().context(),
-                    &mut HeaderInjector(&mut trace_headers),
-                );
-            });
-            req = req.headers(trace_headers);
+            #[cfg(feature = "otlp")]
+            {
+                let mut trace_headers = reqwest::header::HeaderMap::new();
+                global::get_text_map_propagator(|propagator| {
+                    propagator.inject_context(
+                        &tracing::Span::current().context(),
+                        &mut HeaderInjector(&mut trace_headers),
+                    );
+                });
+                req = req.headers(trace_headers);
+            }
             let resp = req
                 .timeout(Duration::from_secs(10))
                 .send()
@@ -432,8 +438,10 @@ pub async fn execute_action(
     }
 }
 
+#[cfg(feature = "otlp")]
 struct HeaderInjector<'a>(&'a mut reqwest::header::HeaderMap);
 
+#[cfg(feature = "otlp")]
 impl Injector for HeaderInjector<'_> {
     fn set(&mut self, key: &str, value: String) {
         let Ok(name) = reqwest::header::HeaderName::from_bytes(key.as_bytes()) else {

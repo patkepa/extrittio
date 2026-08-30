@@ -23,6 +23,8 @@ export interface GraphNode {
   deviceTypeIcon?: string;
   deviceTypeColor?: string;
   typeAbbrev?: string;
+  /** Centers the initial viewport on this node instead of fitting every node. */
+  initialViewportAnchor?: boolean;
   // Health data (computed from last_seen_at / uptime_seconds)
   lastSeenTimestamp?: number; // parsed epoch ms, cached for per-frame staleness
   uptimeSeconds?: number;

@@ -5,16 +5,29 @@ export const queryKeys = {
     fullList: (params?: unknown) => ['devices', 'all-pages', params] as const,
     detailAll: ['device'] as const,
     detail: (id: string) => ['device', id] as const,
+    contract: (id: string) => ['device', id, 'contract'] as const,
   },
   dashboard: {
     stats: ['dashboard-stats'] as const,
+  },
+  analytics: {
+    catalog: ['analytics', 'catalog'] as const,
+    query: (request: unknown) => ['analytics', 'query', request] as const,
   },
   telemetry: {
     list: (deviceId: string, params?: unknown) => ['telemetry', deviceId, params] as const,
     all: (deviceId: string) => ['telemetry-all', deviceId] as const,
   },
+  metrics: {
+    list: (deviceId: string, params?: unknown) => ['device-metrics', deviceId, params] as const,
+    all: (deviceId: string) => ['device-metrics', deviceId, 'all'] as const,
+  },
   logs: {
     list: (deviceId: string, params?: unknown) => ['device-logs', deviceId, params] as const,
+  },
+  activity: {
+    all: ['activity-events'] as const,
+    list: (params?: unknown) => ['activity-events', params] as const,
   },
   commands: {
     list: (deviceId: string, params?: unknown) => ['command-history', deviceId, params] as const,
@@ -30,6 +43,8 @@ export const queryKeys = {
     list: (params?: unknown) => ['firmware-updates', params] as const,
     nextVersionAll: ['firmware-next-version'] as const,
     nextVersion: (deviceTypeId: number) => ['firmware-next-version', deviceTypeId] as const,
+    nextBlueprintVersion: (revisionId: string) =>
+      ['firmware-next-blueprint-version', revisionId] as const,
     deployments: (deviceId: string) => ['ota-deployments', deviceId] as const,
     allDeployments: (params?: unknown) => ['ota-deployments', params] as const,
   },
@@ -38,6 +53,11 @@ export const queryKeys = {
   },
   deviceTypes: {
     all: ['device-types'] as const,
+  },
+  deviceBlueprints: {
+    all: ['device-blueprints'] as const,
+    draft: (id: string) => ['device-blueprints', id, 'draft'] as const,
+    latestRevision: (id: string) => ['device-blueprints', id, 'latest-revision'] as const,
   },
   users: {
     all: ['users'] as const,

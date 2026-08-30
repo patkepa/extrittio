@@ -63,7 +63,7 @@ static bool decode_metadata(pb_istream_t *stream, const pb_field_t *field, void 
 
 static void test_encode_and_decode(void) {
     extrittio_metadata_entry_t metadata[] = {
-        {.key = "kind", .value = "network_analyzer_scan"},
+        {.key = "sensor_profile", .value = "environmental"},
     };
     extrittio_telemetry_t t = {
         .device_id = "dev-001",
@@ -98,8 +98,8 @@ static void test_encode_and_decode(void) {
     assert(pb.latitude > 52.09 && pb.latitude < 52.11);
     assert(pb.longitude > 20.99 && pb.longitude < 21.01);
     assert(metadata_ctx.count == 1);
-    assert(strcmp(metadata_ctx.key, "kind") == 0);
-    assert(strcmp(metadata_ctx.value, "network_analyzer_scan") == 0);
+    assert(strcmp(metadata_ctx.key, "sensor_profile") == 0);
+    assert(strcmp(metadata_ctx.value, "environmental") == 0);
 }
 
 static void test_encode_buffer_too_small(void) {

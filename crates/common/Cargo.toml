@@ -14,8 +14,8 @@ std = ["dep:prost", "dep:serde_json", "dep:prost-build"]
 alloc = []
 
 [dependencies]
-prost = { version = "0.13", optional = true }
+prost = { version = "0.14", optional = true }
 serde_json = { version = "1", optional = true }
 
 [build-dependencies]
-prost-build = { version = "0.13", optional = true }
+prost-build = { version = "0.14", optional = true }

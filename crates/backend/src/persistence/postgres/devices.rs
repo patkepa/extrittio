@@ -1,25 +1,22 @@
-use std::collections::HashMap;
-
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use diesel::Connection;
 use diesel::PgTextExpressionMethods;
 use diesel::prelude::*;
-use diesel::sql_types::{Array, Jsonb, Text};
+use diesel::sql_types::{Jsonb, Nullable, Text, Timestamptz};
 use serde_json::Value;
 
 use crate::db::models::{
-    Device, DeviceCertificate, DeviceType, Fleet, NetworkObservedHost, NewDevice,
-    NewDeviceCertificate, NewDeviceLog, NewDeviceShadow, UpdateDevice,
+    Device, DeviceCertificate, DeviceType, Fleet, NewDevice, NewDeviceCertificate, NewDeviceLog,
+    NewDeviceShadow, UpdateDevice,
 };
 use crate::db::schema::{
     device_certificates, device_logs, device_shadows, device_types, devices, fleets,
-    network_observed_hosts,
 };
 use crate::domains::device_types::types::DeviceTypeRecord;
 use crate::domains::devices::repository::DeviceRepository;
 use crate::domains::devices::types::{
-    AutoRegisterOutcome, CreateDeviceRecord, DeviceDetails, DeviceFilter, DeviceIngressContext,
+    CreateDeviceRecord, DeviceContractRecord, DeviceDetails, DeviceFilter, DeviceIngressContext,
     DeviceList, DeviceListQuery, DeviceRecord, DeviceWriteOutcome, HeartbeatWrite,
     OfflineTransition, OfflineWriteOutcome, UpdateDeviceRecord,
 };
@@ -27,7 +24,6 @@ use crate::domains::fleets::types::FleetRecord;
 use crate::domains::identity::certificate_types::NewDeviceCertificateRecord;
 use crate::error::AppError;
 use crate::persistence::PersistenceError;
-use crate::services::device_connections;
 use crate::tenancy::{DeviceIdentity, TenantId};
 
 use super::PostgresAdapter;
@@ -46,11 +42,41 @@ type BoxedDeviceQuery<'a> = diesel::dsl::IntoBoxed<
 >;
 
 #[derive(QueryableByName)]
-struct LatestTelemetryCustomJson {
+struct DeviceContractRow {
+    #[diesel(sql_type = Text)]
+    id: String,
     #[diesel(sql_type = Text)]
     device_id: String,
+    #[diesel(sql_type = Text)]
+    blueprint_revision_id: String,
     #[diesel(sql_type = Jsonb)]
-    custom_json: Value,
+    document: Value,
+    #[diesel(sql_type = Text)]
+    contract_hash: String,
+    #[diesel(sql_type = Text)]
+    assignment_status: String,
+    #[diesel(sql_type = Nullable<Timestamptz>)]
+    acknowledged_at: Option<DateTime<Utc>>,
+    #[diesel(sql_type = Nullable<Text>)]
+    error: Option<String>,
+    #[diesel(sql_type = Timestamptz)]
+    created_at: DateTime<Utc>,
+}
+
+impl From<DeviceContractRow> for DeviceContractRecord {
+    fn from(row: DeviceContractRow) -> Self {
+        Self {
+            id: row.id,
+            device_id: row.device_id,
+            blueprint_revision_id: row.blueprint_revision_id,
+            document: row.document,
+            contract_hash: row.contract_hash,
+            assignment_status: row.assignment_status,
+            acknowledged_at: row.acknowledged_at,
+            error: row.error,
+            created_at: row.created_at,
+        }
+    }
 }
 
 fn filtered_query<'a>(tenant_id: &'a str, filter: &'a DeviceFilter) -> BoxedDeviceQuery<'a> {
@@ -95,112 +121,6 @@ fn joined_for_device(
         .optional()
 }
 
-fn is_network_analyzer(device: &Device, device_type: &DeviceType) -> bool {
-    device_type.name == "network-analyzer"
-        || device.id.contains("network-analyzer")
-        || device.name.contains("network-analyzer")
-        || device.firmware.contains("network-analyzer")
-        || device.firmware.contains("network_analyzer")
-}
-
-fn hydrate_connections(
-    connection: &mut PgConnection,
-    tenant_id: &str,
-    rows: &mut [JoinedDevice],
-) -> QueryResult<()> {
-    let candidate_ids: Vec<String> = rows
-        .iter()
-        .filter(|(device, _, _)| {
-            device
-                .declared_connections
-                .as_array()
-                .is_none_or(Vec::is_empty)
-        })
-        .map(|(device, _, _)| device.id.clone())
-        .collect();
-    if !candidate_ids.is_empty() {
-        let sources = diesel::sql_query(
-            r#"
-            SELECT DISTINCT ON (device_id) device_id, custom_json
-            FROM telemetry
-            WHERE tenant_id = $1
-              AND device_id = ANY($2)
-              AND custom_json->>'kind' = 'network_analyzer_scan'
-              AND custom_json ? 'snapshot_json'
-            ORDER BY device_id, received_at DESC, id DESC
-            "#,
-        )
-        .bind::<Text, _>(tenant_id)
-        .bind::<Array<Text>, _>(&candidate_ids)
-        .load::<LatestTelemetryCustomJson>(connection)?;
-        let connections: HashMap<String, Value> = sources
-            .into_iter()
-            .filter_map(|source| {
-                device_connections::declared_connections_from_custom_json(&source.custom_json)
-                    .map(|value| (source.device_id, value))
-            })
-            .collect();
-        for (device, _, _) in &mut *rows {
-            if device
-                .declared_connections
-                .as_array()
-                .is_none_or(Vec::is_empty)
-                && let Some(value) = connections.get(&device.id)
-            {
-                device.declared_connections = value.clone();
-            }
-        }
-    }
-
-    let analyzer_ids: Vec<String> = rows
-        .iter()
-        .filter(|(device, device_type, _)| is_network_analyzer(device, device_type))
-        .map(|(device, _, _)| device.id.clone())
-        .collect();
-    if analyzer_ids.is_empty() {
-        return Ok(());
-    }
-    let cutoff = Utc::now().naive_utc() - chrono::Duration::days(30);
-    let hosts = network_observed_hosts::table
-        .filter(network_observed_hosts::tenant_id.eq(tenant_id))
-        .filter(network_observed_hosts::analyzer_device_id.eq_any(&analyzer_ids))
-        .filter(network_observed_hosts::last_seen_at.ge(cutoff))
-        .order((
-            network_observed_hosts::analyzer_device_id.asc(),
-            network_observed_hosts::status.asc(),
-            network_observed_hosts::last_seen_at.desc(),
-        ))
-        .select(NetworkObservedHost::as_select())
-        .load::<NetworkObservedHost>(connection)?;
-    let mut by_analyzer: HashMap<String, Vec<Value>> = HashMap::new();
-    for host in hosts {
-        let observed = device_connections::ObservedNetworkHost {
-            host_key: host.host_key,
-            label: host.label,
-            address: host.address,
-            device_type: host.device_type,
-            source: host.source,
-        };
-        by_analyzer
-            .entry(host.analyzer_device_id)
-            .or_default()
-            .push(device_connections::network_host_connection(
-                &observed,
-                &host.status,
-                Some(host.first_seen_at),
-                Some(host.last_seen_at),
-            ));
-    }
-    for (device, device_type, _) in rows {
-        if is_network_analyzer(device, device_type)
-            && let Some(connections) = by_analyzer.remove(&device.id)
-        {
-            device.declared_connections = Value::Array(connections);
-        }
-    }
-    Ok(())
-}
-
 fn to_details((device, device_type, fleet): JoinedDevice) -> DeviceDetails {
     DeviceDetails {
         device: DeviceRecord {
@@ -229,7 +149,39 @@ fn to_details((device, device_type, fleet): JoinedDevice) -> DeviceDetails {
     }
 }
 
-fn to_ingress_context(device: Device) -> Result<DeviceIngressContext, PersistenceError> {
+#[derive(QueryableByName)]
+struct BlueprintIdRow {
+    #[diesel(sql_type = Text)]
+    blueprint_id: String,
+}
+
+fn blueprint_id_for_device(
+    connection: &mut PgConnection,
+    tenant_id: &str,
+    device_id: &str,
+) -> QueryResult<Option<String>> {
+    diesel::sql_query(
+        "SELECT revision.blueprint_id
+         FROM device_contract_assignments assignment
+         JOIN device_contracts contract
+           ON contract.tenant_id = assignment.tenant_id
+          AND contract.id = assignment.desired_contract_id
+         JOIN device_blueprint_revisions revision
+           ON revision.tenant_id = contract.tenant_id
+          AND revision.id = contract.blueprint_revision_id
+         WHERE assignment.tenant_id = $1 AND assignment.device_id = $2",
+    )
+    .bind::<Text, _>(tenant_id)
+    .bind::<Text, _>(device_id)
+    .get_result::<BlueprintIdRow>(connection)
+    .optional()
+    .map(|row| row.map(|row| row.blueprint_id))
+}
+
+fn to_ingress_context(
+    device: Device,
+    blueprint_id: Option<String>,
+) -> Result<DeviceIngressContext, PersistenceError> {
     let identity = DeviceIdentity::new(device.tenant_id, device.id).map_err(|error| {
         PersistenceError::CorruptData(format!("invalid persisted device identity: {error}"))
     })?;
@@ -237,6 +189,7 @@ fn to_ingress_context(device: Device) -> Result<DeviceIngressContext, Persistenc
         identity,
         device_type_id: device.device_type_id,
         fleet_id: device.fleet_id,
+        blueprint_id,
         status: device.status,
     })
 }
@@ -284,98 +237,20 @@ impl DeviceRepository for PostgresAdapter {
         let device_id = identity.device_id().to_owned();
         self.executor
             .run(move |connection| {
-                devices::table
+                let device = devices::table
                     .filter(devices::tenant_id.eq(tenant_id))
                     .filter(devices::id.eq(device_id))
                     .select(Device::as_select())
                     .first::<Device>(connection)
                     .optional()
-                    .map_err(map_diesel_error)?
-                    .map(to_ingress_context)
-                    .transpose()
-            })
-            .await
-    }
-
-    async fn auto_register(
-        &self,
-        tenant: &TenantId,
-        device_id: &str,
-        firmware: &str,
-        preferred_device_type: &str,
-    ) -> Result<AutoRegisterOutcome, PersistenceError> {
-        let tenant_id = tenant.as_str().to_owned();
-        let device_id = device_id.to_owned();
-        let firmware = firmware.to_owned();
-        let preferred_device_type = preferred_device_type.to_owned();
-        self.executor
-            .run(move |connection| {
-                connection
-                    .transaction::<_, diesel::result::Error, _>(|connection| {
-                        if let Some(existing) = devices::table
-                            .filter(devices::id.eq(&device_id))
-                            .select(Device::as_select())
-                            .first::<Device>(connection)
-                            .optional()?
-                        {
-                            return to_ingress_context(existing)
-                                .map(AutoRegisterOutcome::Existing)
-                                .map_err(|error| {
-                                    diesel::result::Error::DeserializationError(Box::new(error))
-                                });
-                        }
-
-                        let preferred = device_types::table
-                            .filter(device_types::tenant_id.eq(&tenant_id))
-                            .filter(device_types::name.eq(&preferred_device_type))
-                            .select(device_types::id)
-                            .first::<i32>(connection)
-                            .optional()?;
-                        let device_type_id = match preferred {
-                            Some(id) => Some(id),
-                            None => device_types::table
-                                .filter(device_types::tenant_id.eq(&tenant_id))
-                                .filter(device_types::name.eq("default"))
-                                .select(device_types::id)
-                                .first::<i32>(connection)
-                                .optional()?,
-                        };
-                        let Some(device_type_id) = device_type_id else {
-                            return Ok(AutoRegisterOutcome::NoDeviceType);
-                        };
-
-                        let device = diesel::insert_into(devices::table)
-                            .values(NewDevice {
-                                id: device_id.clone(),
-                                tenant_id: tenant_id.clone(),
-                                name: device_id.clone(),
-                                device_type_id,
-                                fleet_id: None,
-                                firmware,
-                            })
-                            .returning(Device::as_returning())
-                            .get_result::<Device>(connection)?;
-                        diesel::insert_into(device_shadows::table)
-                            .values(NewDeviceShadow {
-                                device_id: device_id.clone(),
-                                tenant_id: tenant_id.clone(),
-                            })
-                            .execute(connection)?;
-                        diesel::insert_into(device_logs::table)
-                            .values(NewDeviceLog {
-                                tenant_id,
-                                device_id,
-                                level: "INFO".to_string(),
-                                message: "Device registered and came online".to_string(),
-                            })
-                            .execute(connection)?;
-                        to_ingress_context(device)
-                            .map(AutoRegisterOutcome::Created)
-                            .map_err(|error| {
-                                diesel::result::Error::DeserializationError(Box::new(error))
-                            })
-                    })
-                    .map_err(map_diesel_error)
+                    .map_err(map_diesel_error)?;
+                let Some(device) = device else {
+                    return Ok(None);
+                };
+                let blueprint_id =
+                    blueprint_id_for_device(connection, &device.tenant_id, &device.id)
+                        .map_err(map_diesel_error)?;
+                to_ingress_context(device, blueprint_id).map(Some)
             })
             .await
     }
@@ -455,7 +330,12 @@ impl DeviceRepository for PostgresAdapter {
                     .load::<Device>(connection)
                     .map_err(map_diesel_error)?
                     .into_iter()
-                    .map(to_ingress_context)
+                    .map(|device| {
+                        let blueprint_id =
+                            blueprint_id_for_device(connection, &device.tenant_id, &device.id)
+                                .map_err(map_diesel_error)?;
+                        to_ingress_context(device, blueprint_id)
+                    })
                     .collect()
             })
             .await
@@ -536,7 +416,7 @@ impl DeviceRepository for PostgresAdapter {
                     .count()
                     .get_result::<i64>(connection)
                     .map_err(map_diesel_error)?;
-                let mut rows = filtered_query(&tenant_id, &filter)
+                let rows = filtered_query(&tenant_id, &filter)
                     .select((
                         Device::as_select(),
                         DeviceType::as_select(),
@@ -547,7 +427,6 @@ impl DeviceRepository for PostgresAdapter {
                     .offset(query.offset)
                     .load::<JoinedDevice>(connection)
                     .map_err(map_diesel_error)?;
-                hydrate_connections(connection, &tenant_id, &mut rows).map_err(map_diesel_error)?;
                 Ok(DeviceList {
                     records: rows.into_iter().map(to_details).collect(),
                     total,
@@ -570,9 +449,35 @@ impl DeviceRepository for PostgresAdapter {
                 else {
                     return Ok(None);
                 };
-                let mut rows = vec![row];
-                hydrate_connections(connection, &tenant_id, &mut rows).map_err(map_diesel_error)?;
-                Ok(rows.pop().map(to_details))
+                Ok(Some(to_details(row)))
+            })
+            .await
+    }
+
+    async fn assigned_contract(
+        &self,
+        tenant: &TenantId,
+        device_id: &str,
+    ) -> Result<Option<DeviceContractRecord>, PersistenceError> {
+        let tenant_id = tenant.as_str().to_owned();
+        let device_id = device_id.to_owned();
+        self.executor
+            .run(move |connection| {
+                diesel::sql_query(
+                    "SELECT c.id, c.device_id, c.blueprint_revision_id, c.document,
+                            c.contract_hash, a.status AS assignment_status,
+                            a.acknowledged_at, a.error, c.created_at
+                     FROM device_contract_assignments a
+                     JOIN device_contracts c
+                       ON c.tenant_id = a.tenant_id AND c.id = a.desired_contract_id
+                     WHERE a.tenant_id = $1 AND a.device_id = $2",
+                )
+                .bind::<Text, _>(tenant_id)
+                .bind::<Text, _>(device_id)
+                .get_result::<DeviceContractRow>(connection)
+                .optional()
+                .map(|record| record.map(Into::into))
+                .map_err(map_diesel_error)
             })
             .await
     }
@@ -587,6 +492,7 @@ impl DeviceRepository for PostgresAdapter {
         self.executor
             .run(move |connection| {
                 let device_id = record.id.clone();
+                let contract = record.contract;
                 let row = connection
                     .transaction(|connection| {
                         diesel::insert_into(devices::table)
@@ -617,6 +523,33 @@ impl DeviceRepository for PostgresAdapter {
                                 })
                                 .returning(DeviceCertificate::as_returning())
                                 .get_result::<DeviceCertificate>(connection)?;
+                        }
+                        if let Some(contract) = contract {
+                            diesel::sql_query(
+                                "INSERT INTO device_contracts
+                                    (id, tenant_id, device_id, blueprint_revision_id, document,
+                                     contract_hash, created_at)
+                                 VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                            )
+                            .bind::<Text, _>(&contract.id)
+                            .bind::<Text, _>(&tenant_id)
+                            .bind::<Text, _>(&device_id)
+                            .bind::<Text, _>(&contract.blueprint_revision_id)
+                            .bind::<Jsonb, _>(&contract.document)
+                            .bind::<Text, _>(&contract.contract_hash)
+                            .bind::<Timestamptz, _>(contract.created_at)
+                            .execute(connection)?;
+                            diesel::sql_query(
+                                "INSERT INTO device_contract_assignments
+                                    (tenant_id, device_id, desired_contract_id, status,
+                                     created_at, updated_at)
+                                 VALUES ($1, $2, $3, 'pending', $4, $4)",
+                            )
+                            .bind::<Text, _>(&tenant_id)
+                            .bind::<Text, _>(&device_id)
+                            .bind::<Text, _>(&contract.id)
+                            .bind::<Timestamptz, _>(contract.created_at)
+                            .execute(connection)?;
                         }
                         joined_for_device(connection, &tenant_id, &device_id)?
                             .ok_or(diesel::result::Error::NotFound)
@@ -741,22 +674,6 @@ impl DeviceRepository for PostgresAdapter {
                     devices::table
                         .filter(devices::tenant_id.eq(tenant_id))
                         .filter(devices::id.eq_any(device_ids)),
-                )
-                .execute(connection)
-                .map_err(map_diesel_error)
-            })
-            .await
-    }
-
-    async fn delete_observed_hosts_before(
-        &self,
-        cutoff: chrono::NaiveDateTime,
-    ) -> Result<usize, PersistenceError> {
-        self.executor
-            .run(move |connection| {
-                diesel::delete(
-                    network_observed_hosts::table
-                        .filter(network_observed_hosts::last_seen_at.lt(cutoff)),
                 )
                 .execute(connection)
                 .map_err(map_diesel_error)

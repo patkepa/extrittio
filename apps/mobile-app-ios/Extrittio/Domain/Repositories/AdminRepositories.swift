@@ -28,3 +28,7 @@ protocol CertificateRepository: Sendable {
     func regenerateDeviceCertificate(deviceId: String) async throws -> DeviceCertificateResponse
     func getDeviceCertificateStatus(deviceId: String) async throws -> DeviceCertificateStatusResponse?
 }
+
+protocol ThreadDatasetRepository: Sendable {
+    func getActiveDataset() async throws -> DeviceProvisioningThread
+}

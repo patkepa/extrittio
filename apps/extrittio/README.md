@@ -47,23 +47,23 @@ applies migrations, seeds built-in records, creates the initial admin user when
 needed, and writes service certificates.
 
 For the installed, single-node appliance experience, use the repository Make
-target. It builds the embedded UI, the hobby binary, and a pinned OpenThread
+target. It builds the embedded UI, the Extrittio Edge binary, and a pinned OpenThread
 Border Router agent in the location used automatically by `extrittio run`:
 
 ```bash
-make install-hobby-release
+cargo xtask install edge --release
 extrittio run
 ```
 
-Use `make install-hobby-debug` for a debug build. A direct Cargo hobby install
-is suitable for development, but does not package `otbr-agent`; pass
-`--thread-otbr-agent <path>` in that case.
+Omit `--release` for a debug build. For a repository development build, run
+`cargo xtask otbr build`; `target/debug/extrittio` and
+`target/release/extrittio` discover that pinned build automatically.
 
 `run` fixes the backend/profile to local Turso, embeds the web UI, creates the
 first-run owner as `admin` / `admin`, and starts the complete stack. Change the
 default password after signing in.
 
-The hobby binary includes OpenThread Border Router supervision. `extrittio run`
+The Extrittio Edge binary includes OpenThread Border Router supervision. `extrittio run`
 detects one connected RCP and starts its `otbr-agent` runtime, then listens on
 IPv6. It remains Wi-Fi-only when no RCP is connected. Make Thread mandatory
 with `--thread-required`:
@@ -72,32 +72,13 @@ with `--thread-required`:
 extrittio run --thread-required
 ```
 
-Pass `--thread-rcp /dev/cu.usbmodem…` when auto-discovery is ambiguous, and
-`--thread-infra-interface en0` when macOS does not use its usual primary
-interface. Provision a Thread device with an IPv6 Zenoh locator such as
+When auto-discovery is ambiguous, choose the radio in **OpenThread Settings**;
+the host-local choice is reused on later starts. The `--thread-rcp` and
+`--thread-infra-interface` options remain available as startup overrides.
+Provision a Thread device with an IPv6 Zenoh locator such as
 `tls/[fdxx:...]:7447`. The backend receives the same Extrittio Zenoh topics and
-payloads as it does from Wi-Fi devices. See [OpenThread hobby deployment](../../docs/OPENTHREAD_HOBBY.md)
+payloads as it does from Wi-Fi devices. See [OpenThread Edge deployment](../../docs/OPENTHREAD_EDGE.md)
 for RCP firmware, runtime packaging, macOS/Linux configuration, and verification.
-
-Publish a firmware binary and trigger OTA:
-
-```bash
-# Backend should expose an address devices can fetch, not localhost from the device's view.
-EXTRITTIO_PUBLIC_URL=http://192.0.2.20:8080 cargo run -p extrittio -- serve
-
-cargo run -p extrittio -- firmware upload \
-  --device-type-id 1 \
-  --version esp32-network-analyzer-c-0.2.0 \
-  --file clients/c/esp32-network-analyzer-idf-c/build/extrittio-esp32-network-analyzer-c.bin
-
-cargo run -p extrittio -- ota deploy \
-  --device esp32-network-analyzer-001 \
-  --firmware-id 42
-
-cargo run -p extrittio -- ota wait \
-  --device esp32-network-analyzer-001 \
-  --firmware-id 42
-```
 
 Provision a device and optionally download its mTLS certificate bundle:
 
@@ -118,27 +99,6 @@ The certificate bundle writes:
 
 The backend returns the private key only once. Use
 `certs regenerate <device-id> --out-dir <dir>` if the original key was lost.
-
-Provision an ESP32 network analyzer that already has the
-`clients/c/esp32-network-analyzer-idf-c` firmware flashed:
-
-```bash
-cargo run -p extrittio -- provision \
-  --name analyzer-001 \
-  --device-type esp32-network-analyzer \
-  --firmware v1.0.0-network-analyzer-c \
-  --zenoh-connect tcp/192.168.0.10:7447 \
-  --wifi-ssid "$WIFI_SSID" \
-  --wifi-password "$WIFI_PASSWORD" \
-  --flash-esp32-nvs
-```
-
-`--flash-esp32-nvs` writes the default ESP-IDF NVS partition at `0x9000`
-with the `extrittio` namespace keys consumed by the firmware:
-`device_id`, `wifi_ssid`, `wifi_pass`, `zenoh`, and `fw_version`.
-`--device-type` resolves an existing type by name or creates it. Pass `--port`
-if more than one USB serial device is connected. Run the command from an
-ESP-IDF shell, or pass `--idf-path` and `--idf-python` explicitly.
 
 ## Configuration
 
@@ -167,4 +127,4 @@ expanding the binary entrypoint:
 - `config.rs` owns local CLI state.
 - `esp32.rs` owns provisioning support for ESP-IDF targets.
 
-For the single-executable Turso hobby build, data layout and backup/restore commands, see [Turso Hobby Deployment](../../docs/TURSO_HOBBY.md).
+For the single-executable Turso Edge build, data layout and backup/restore commands, see [Turso Edge Deployment](../../docs/TURSO_EDGE.md).

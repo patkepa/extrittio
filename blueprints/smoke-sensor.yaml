@@ -1,0 +1,275 @@
+apiVersion: extrittio.io/v1alpha1
+kind: DeviceBlueprint
+
+metadata:
+  key: smoke-sensor
+  name: Smoke sensor
+  description: >-
+    Double Socket smoke detector built on the nRF5340 Matter firmware. Publishes
+    Extrittio v1 protobuf telemetry with ADPD188 optical diagnostics once per
+    second and a heartbeat once per minute.
+  icon: warning-sign
+  color: "#E76A6E"
+  labels:
+    deviceFamily: double-socket
+    firmwareProject: smoke-sensor-device
+    telemetrySchema: smoke.v1
+
+spec:
+  runtime:
+    minimumContractApi: 1
+    heartbeat:
+      interval: 60s
+      offlineAfter: 185s
+    limits:
+      maxMessageBytes: 1024
+      maxMessagesPerMinute: 120
+      maxMetricCardinality: 64
+
+  transports:
+    - key: primary
+      binding: primary_zenoh
+      protocol: zenoh
+      qos:
+        delivery: at_most_once
+        ordering: per_device_stream
+
+  routes:
+    - key: telemetry
+      transport: primary
+      direction: device_to_cloud
+      address: extrittio/devices/{device.id}/telemetry
+      messageSchema: extrittio.device-telemetry@1
+      encoding: protobuf
+
+  schemas: []
+
+  streams:
+    - key: environment
+      route: telemetry
+      # The firmware timestamp is uptime in milliseconds, not wall-clock time.
+      timestamp: server.received_at
+      fields:
+        - path: /temperature
+          type: float64
+          label: Compensation temperature
+          unit: Cel
+          semantic: temperature
+          index: true
+          aggregates: [min, max, avg]
+          presentation:
+            color: "#E76A6E"
+            chart: line
+            precision: 2
+        - path: /humidity
+          type: float64
+          label: Relative humidity
+          unit: "%RH"
+          semantic: relative_humidity
+          index: true
+          aggregates: [min, max, avg]
+          presentation:
+            color: "#36CFC9"
+            chart: line
+            precision: 2
+
+    - key: smoke
+      route: telemetry
+      timestamp: server.received_at
+      fields:
+        # DeviceTelemetry metadata is a map<string, string>, so metadata fields
+        # intentionally retain their on-wire string type in this blueprint.
+        - path: /metadata/device_type
+          type: string
+          label: Device type
+          index: false
+          aggregates: [last]
+        - path: /metadata/telemetry_schema
+          type: string
+          label: Telemetry schema
+          index: false
+          aggregates: [last]
+        - path: /metadata/diagnostics_valid
+          type: string
+          label: Diagnostics valid
+          index: true
+          aggregates: [last]
+        - path: /metadata/sequence
+          type: string
+          label: Diagnostic sequence
+          index: true
+          aggregates: [last]
+        - path: /metadata/sample_counter
+          type: string
+          label: Source sample counter
+          index: true
+          aggregates: [last]
+        - path: /metadata/sample_age_ms
+          type: string
+          label: Sample age
+          unit: ms
+          index: true
+          aggregates: [last]
+        - path: /metadata/blue_raw
+          type: string
+          label: Blue raw
+          index: true
+          aggregates: [last]
+        - path: /metadata/ir_raw
+          type: string
+          label: IR raw
+          index: true
+          aggregates: [last]
+        - path: /metadata/blue_conditioned
+          type: string
+          label: Blue conditioned
+          index: true
+          aggregates: [last]
+        - path: /metadata/ir_conditioned
+          type: string
+          label: IR conditioned
+          index: true
+          aggregates: [last]
+        - path: /metadata/blue_baseline
+          type: string
+          label: Blue baseline
+          index: true
+          aggregates: [last]
+        - path: /metadata/ir_baseline
+          type: string
+          label: IR baseline
+          index: true
+          aggregates: [last]
+        - path: /metadata/blue_threshold_milli
+          type: string
+          label: Blue threshold
+          unit: milli
+          index: true
+          aggregates: [last]
+        - path: /metadata/ir_threshold_milli
+          type: string
+          label: IR threshold
+          unit: milli
+          index: true
+          aggregates: [last]
+        - path: /metadata/evidence_tokens_milli
+          type: string
+          label: Evidence tokens
+          unit: milli
+          index: true
+          aggregates: [last]
+        - path: /metadata/ambient_delta_max
+          type: string
+          label: Maximum ambient delta
+          index: true
+          aggregates: [last]
+        - path: /metadata/smoke_alert
+          type: string
+          label: Smoke alert
+          semantic: smoke_alarm
+          index: true
+          aggregates: [last]
+        - path: /metadata/calibrated
+          type: string
+          label: Calibrated
+          index: true
+          aggregates: [last]
+        - path: /metadata/sample_rejected
+          type: string
+          label: Sample rejected
+          index: true
+          aggregates: [last]
+        - path: /metadata/background_status
+          type: string
+          label: Background status
+          index: true
+          aggregates: [last]
+        - path: /metadata/background_valid
+          type: string
+          label: Background valid
+          index: true
+          aggregates: [last]
+        - path: /metadata/ambient_overload
+          type: string
+          label: Ambient overload
+          index: true
+          aggregates: [last]
+        - path: /metadata/light_interference
+          type: string
+          label: Light interference
+          index: true
+          aggregates: [last]
+        - path: /metadata/alert_inhibited
+          type: string
+          label: Alert inhibited
+          index: true
+          aggregates: [last]
+        - path: /metadata/raw_alert_flags
+          type: string
+          label: Raw alert flags
+          index: true
+          aggregates: [last]
+        - path: /metadata/light_als
+          type: string
+          label: Ambient light
+          index: true
+          aggregates: [last]
+        - path: /metadata/light_white
+          type: string
+          label: White light
+          index: true
+          aggregates: [last]
+        - path: /metadata/temperature_status
+          type: string
+          label: Temperature and humidity status
+          index: true
+          aggregates: [last]
+        - path: /metadata/light_status
+          type: string
+          label: Light status
+          index: true
+          aggregates: [last]
+
+  commands: []
+
+  health:
+    signals:
+      - key: smoke_alert
+        source: metric
+        path: smoke./metadata/smoke_alert
+        operator: eq
+        value: "true"
+        severity: critical
+      - key: diagnostics_stale
+        source: metric
+        path: smoke./metadata/diagnostics_valid
+        operator: eq
+        value: "false"
+        severity: warning
+      - key: ambient_overload
+        source: metric
+        path: smoke./metadata/ambient_overload
+        operator: eq
+        value: "true"
+        severity: warning
+      - key: alert_inhibited
+        source: metric
+        path: smoke./metadata/alert_inhibited
+        operator: eq
+        value: "true"
+        severity: warning
+
+  firmware:
+    strategy: partition_swap
+    compatibility:
+      hardwareFamily: double-socket-nrf5340-radio-matter
+      firmwarePrefix: smoke-sensor/
+      telemetrySchema: smoke.v1
+
+  presentation:
+    summary:
+      - metric: environment./temperature
+      - metric: environment./humidity
+      - metric: smoke./metadata/smoke_alert
+      - metric: smoke./metadata/diagnostics_valid
+    tabs: [overview, telemetry, logs, firmware]

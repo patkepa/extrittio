@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { buildThreadMeshGraphData } from '../src/pages/openthread/thread-mesh-graph-data.ts';
+import { applyInitialGraphViewport } from '../src/components/fleet-graph/use-force-simulation.ts';
 import type { ThreadMeshDevice, ThreadNetworkDiagnostics, ThreadStatus } from '../src/types/api.ts';
 
 const status: ThreadStatus = {
@@ -10,6 +11,23 @@ const status: ThreadStatus = {
   error: null,
   rcp_device: '/dev/ttyACM0',
   available_rcp_devices: ['/dev/ttyACM0'],
+  available_rcp_candidates: [
+    {
+      path: '/dev/ttyACM0',
+      confidence: 'verified',
+      match_reason: 'USB metadata identifies an OpenThread RCP',
+      usb_vendor_id: 0x1915,
+      usb_product_id: 0x521f,
+      manufacturer: 'Nordic Semiconductor',
+      product: 'OpenThread RCP',
+      serial_number: '123456',
+    },
+  ],
+  runtime_phase: 'ready',
+  consecutive_failures: 0,
+  restart_count: 0,
+  next_retry_at: null,
+  last_exit: null,
   role: 'leader',
   network_name: 'Extrittio-Thread',
   channel: 15,
@@ -93,6 +111,7 @@ test('builds active mesh clients and nearby networks into one reusable graph', (
       tx_errors: null,
       rx_errors: null,
     },
+    sources: [],
     warnings: [],
   };
 
@@ -120,6 +139,8 @@ test('builds active mesh clients and nearby networks into one reusable graph', (
   const nearbyNetwork = graph.nodes.find((node) => node.name === 'Neighbor');
   const client = graph.nodes.find((node) => node.name === 'sensor-1');
   assert.ok(borderRouter?.layoutX != null);
+  assert.equal(borderRouter.initialViewportAnchor, true);
+  assert.equal(graph.nodes.filter((node) => node.initialViewportAnchor).length, 1);
   assert.ok(currentNetwork?.layoutX != null);
   assert.ok(nearbyNetwork?.layoutX != null);
   assert.ok(client?.layoutX != null);
@@ -135,6 +156,34 @@ test('builds the current mesh before the first scan completes', () => {
   assert.equal(graph.links.length, 1);
   assert.equal(graph.nodes[0]?.name, 'Extrittio-Thread');
   assert.equal(graph.nodes[1]?.name, 'Extrittio Border Router');
+});
+
+test('centers the initial viewport on the local border router', () => {
+  const graph = buildThreadMeshGraphData(
+    {
+      networks: Array.from({ length: 8 }, (_, index) => ({
+        network_name: `Foreign ${index}`,
+        pan_id: `a${index.toString().padStart(3, '0')}`,
+        extended_address: `network-${index}`,
+        channel: 20,
+        rssi: -60,
+        lqi: 2,
+      })),
+      devices: [],
+    },
+    status,
+  );
+  const calls: Array<{ name: string; args: number[] }> = [];
+
+  applyInitialGraphViewport(
+    {
+      centerAt: (...args) => calls.push({ name: 'centerAt', args: args as number[] }),
+      zoomToFit: (...args) => calls.push({ name: 'zoomToFit', args: args as number[] }),
+    },
+    graph.nodes,
+  );
+
+  assert.deepEqual(calls, [{ name: 'centerAt', args: [-80, 0, 400] }]);
 });
 
 test('keeps dense topology columns vertically compact', () => {

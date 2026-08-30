@@ -16,7 +16,6 @@ pub async fn handle_heartbeat(
     topic_device_id: &str,
     payload: &[u8],
     rule_cache: &std::sync::RwLock<RuleCache>,
-    allow_auto_register: bool,
 ) -> usize {
     let heartbeat = match DeviceHeartbeat::decode(payload) {
         Ok(message) => message,
@@ -31,31 +30,9 @@ pub async fn handle_heartbeat(
 
     let identity = match resolved_identity {
         Some(identity) => identity,
-        None if allow_auto_register => {
-            match device_ingress_service::auto_register(
-                persistence.devices.as_ref(),
-                &heartbeat.device_id,
-                &heartbeat.firmware,
-            )
-            .await
-            {
-                Ok(Some(context)) => context.identity,
-                Ok(None) => {
-                    warn!(
-                        "Unable to auto-register heartbeat device {}: no compatible device type",
-                        heartbeat.device_id
-                    );
-                    return 0;
-                }
-                Err(error) => {
-                    warn!("Failed to auto-register heartbeat device: {error}");
-                    return 0;
-                }
-            }
-        }
         None => {
             warn!(
-                "Dropping heartbeat from unregistered device: {}",
+                "Dropping heartbeat from unprovisioned device {}: create it from a published blueprint before connecting it",
                 heartbeat.device_id
             );
             return 0;

@@ -2,6 +2,8 @@ import SwiftUI
 
 struct MainTabView: View {
     @Environment(AuthViewModel.self) private var authViewModel
+    @Environment(AppNavigationRouter.self) private var navigationRouter
+    @Environment(ToastManager.self) private var toastManager
     let container: DependencyContainer
     @State private var selectedTab: TabItem = .dashboard
     @State private var dashboardVM: DashboardViewModel?
@@ -67,8 +69,19 @@ struct MainTabView: View {
             alertsVM = alertsVM ?? container.makeAlertsViewModel()
             rulesVM = rulesVM ?? container.makeRulesViewModel()
         }
-        .onAppear { ensureAccessibleSelection() }
-        .onChange(of: authViewModel.currentUser?.permissionVersion) { _, _ in ensureAccessibleSelection() }
+        .onAppear {
+            ensureAccessibleSelection()
+            handleNavigationRequest()
+        }
+        .onChange(of: authViewModel.currentUser?.permissionVersion) { _, _ in
+            ensureAccessibleSelection()
+            handleNavigationRequest()
+        }
+        .onChange(of: authViewModel.currentUser?.id) { _, _ in
+            ensureAccessibleSelection()
+            handleNavigationRequest()
+        }
+        .onChange(of: navigationRouter.request) { _, _ in handleNavigationRequest() }
     }
 
     private func canAccess(_ tab: TabItem) -> Bool {
@@ -95,6 +108,24 @@ struct MainTabView: View {
     private func ensureAccessibleSelection() {
         guard !canAccess(selectedTab) else { return }
         selectedTab = TabItem.allCases.first(where: canAccess) ?? .settings
+    }
+
+    private func handleNavigationRequest() {
+        guard authViewModel.currentUser != nil,
+              let request = navigationRouter.request
+        else {
+            return
+        }
+
+        switch request.destination {
+        case .pairNearbyDevice:
+            guard canAccess(.devices) else {
+                navigationRouter.consume(request)
+                toastManager.show(.error("Devices access is required to connect to nearby devices."))
+                return
+            }
+            selectedTab = .devices
+        }
     }
 }
 

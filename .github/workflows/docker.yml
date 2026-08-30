@@ -31,7 +31,6 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/extrittio
-  NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN || github.token }}
   DOCKER_PLATFORMS: ${{ inputs.platforms || 'linux/amd64,linux/arm64' }}
   CARGO_PROFILE: ${{ inputs.cargo-profile || 'release' }}
 
@@ -87,8 +86,6 @@ jobs:
             EXTRITTIO_COMMIT_SHA=${{ github.sha }}
             EXTRITTIO_BUILD_TIMESTAMP=${{ steps.build.outputs.timestamp }}
             CARGO_PROFILE=${{ env.CARGO_PROFILE }}
-          secrets: |
-            node_auth_token=${{ env.NODE_AUTH_TOKEN }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

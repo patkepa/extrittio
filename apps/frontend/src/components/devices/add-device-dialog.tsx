@@ -8,19 +8,24 @@ import {
   FormGroup,
   HTMLSelect,
   InputGroup,
+  TextArea,
 } from '@blueprintjs/core';
 import type { AxiosError } from 'axios';
 import { useCreateDevice } from '../../hooks/use-devices';
-import { useConfirmShortcut } from '@extrittio/interactions';
-import { useFormNavigation } from '@extrittio/interactions';
-import { useDeviceTypes } from '../../hooks/use-device-types';
+import { getDeviceContract } from '../../api/devices';
+import { useConfirmShortcut } from '@patkepa/kantzen-ui/interactions';
+import { useFormNavigation } from '@patkepa/kantzen-ui/interactions';
+import {
+  useDeviceBlueprints,
+  useLatestDeviceBlueprintRevision,
+} from '../../hooks/use-device-blueprints';
 import { useFleets } from '../../hooks/use-fleets';
 import { useUIStore } from '../../stores/ui-store';
 import { showSuccessToast, showErrorToast } from '../../utils/toaster';
 import { CertificateDownloadDialog } from '../certificates/certificate-download-dialog';
 import { getDeviceCertificate } from '../../api/certificates';
 import { useCaCertificate } from '../../hooks/use-certificates';
-import type { DeviceCertificateResponse } from '../../types/api';
+import type { DeviceCertificateResponse, DeviceContract } from '../../types/api';
 
 function getApiErrorMessage(error: unknown, fallback: string): string {
   const axiosError = error as AxiosError<{ error?: string }>;
@@ -30,27 +35,38 @@ function getApiErrorMessage(error: unknown, fallback: string): string {
 export function AddDeviceDialog() {
   const formRef = useRef<HTMLDivElement | null>(null);
   const { isAddDeviceDialogOpen, closeAddDeviceDialog } = useUIStore();
-  const { data: deviceTypes = [] } = useDeviceTypes();
+  const { data: blueprints = [] } = useDeviceBlueprints();
   const { data: fleets = [] } = useFleets();
   const createDeviceMutation = useCreateDevice();
 
-  const defaultTypeId =
-    deviceTypes.find((dt) => dt.name === 'default')?.id ?? deviceTypes[0]?.id ?? 0;
-
   const [newDevice, setNewDevice] = useState({
     name: '',
-    device_type_id: 0,
     fleet_id: undefined as number | undefined,
   });
+  const [blueprintId, setBlueprintId] = useState('');
+  const [configurationText, setConfigurationText] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
+  const publishedBlueprints = blueprints.filter((blueprint) => blueprint.latest_revision != null);
+  const defaultBlueprintId = publishedBlueprints[0]?.id;
+  const selectedBlueprintId = blueprintId || defaultBlueprintId || '';
+  const revisionQuery = useLatestDeviceBlueprintRevision(selectedBlueprintId);
+  const blueprintDocument = revisionQuery.data?.document as unknown as {
+    spec?: {
+      configuration?: unknown;
+    };
+  };
 
   const [certBundle, setCertBundle] = useState<DeviceCertificateResponse | null>(null);
+  const [provisionedContract, setProvisionedContract] = useState<DeviceContract | null>(null);
   const [createdDeviceName, setCreatedDeviceName] = useState('');
   const caQuery = useCaCertificate();
   const canAddDevice =
     !!newDevice.name.trim() &&
-    deviceTypes.length > 0 &&
+    selectedBlueprintId.length > 0 &&
+    revisionQuery.data != null &&
     !createDeviceMutation.isPending &&
-    certBundle === null;
+    certBundle === null &&
+    provisionedContract === null;
 
   // Reset stale mutation error when dialog opens/closes
   const resetCreateMutation = createDeviceMutation.reset;
@@ -61,28 +77,40 @@ export function AddDeviceDialog() {
   }, [isAddDeviceDialogOpen, resetCreateMutation]);
 
   const handleAddDevice = () => {
+    if (!revisionQuery.data) return;
+    let configuration: unknown;
+    try {
+      configuration = configurationText.trim() ? JSON.parse(configurationText) : undefined;
+      setFormError(null);
+    } catch {
+      setFormError('Configuration override must be valid JSON.');
+      return;
+    }
     createDeviceMutation.mutate(
       {
         name: newDevice.name,
-        device_type_id: newDevice.device_type_id || defaultTypeId,
         fleet_id: newDevice.fleet_id,
+        blueprint_revision_id: revisionQuery.data.id,
+        configuration,
       },
       {
         onSuccess: async (device) => {
           void showSuccessToast('Device added');
-          // If CA exists, fetch certificate bundle (one-shot, imperative)
-          if (caQuery.data) {
-            try {
-              const bundle = await getDeviceCertificate(device.id);
-              setCreatedDeviceName(device.name);
-              setCertBundle(bundle);
-              return; // Don't close dialog — show certificate step
-            } catch {
-              // Certificate fetch failed — close normally
-            }
+          try {
+            const [contract, bundle] = await Promise.all([
+              getDeviceContract(device.id),
+              caQuery.data ? getDeviceCertificate(device.id) : Promise.resolve(null),
+            ]);
+            setCreatedDeviceName(device.name);
+            setProvisionedContract(contract);
+            setCertBundle(bundle);
+            return;
+          } catch {
+            // Provisioning retrieval failed — the device remains available in inventory.
           }
           closeAddDeviceDialog();
-          setNewDevice({ name: '', device_type_id: 0, fleet_id: undefined });
+          setNewDevice({ name: '', fleet_id: undefined });
+          setConfigurationText('');
         },
         onError: (error) => {
           void showErrorToast(getApiErrorMessage(error, 'Failed to add device'));
@@ -115,21 +143,37 @@ export function AddDeviceDialog() {
                 onChange={(e) => setNewDevice({ ...newDevice, name: e.target.value })}
               />
             </FormGroup>
-            <FormGroup label="Device Type" labelInfo="(required)">
+            <FormGroup label="Device Blueprint" labelInfo="(required)">
               <HTMLSelect
                 fill
-                value={newDevice.device_type_id || defaultTypeId}
-                onChange={(e) =>
-                  setNewDevice({ ...newDevice, device_type_id: Number(e.target.value) })
-                }
+                value={selectedBlueprintId}
+                onChange={(event) => {
+                  setBlueprintId(event.target.value);
+                  setConfigurationText('');
+                  setFormError(null);
+                }}
               >
-                {deviceTypes.map((dt) => (
-                  <option key={dt.id} value={dt.id}>
-                    {dt.name}
+                {publishedBlueprints.length === 0 && (
+                  <option value="">Publish a blueprint before creating a device</option>
+                )}
+                {publishedBlueprints.map((blueprint) => (
+                  <option key={blueprint.id} value={blueprint.id}>
+                    {blueprint.name} · revision {blueprint.latest_revision}
                   </option>
                 ))}
               </HTMLSelect>
             </FormGroup>
+            {blueprintDocument?.spec?.configuration != null && (
+              <FormGroup label="Configuration override" labelInfo="(optional JSON)">
+                <TextArea
+                  fill
+                  rows={4}
+                  placeholder='{"sampleSeconds": 30}'
+                  value={configurationText}
+                  onChange={(event) => setConfigurationText(event.target.value)}
+                />
+              </FormGroup>
+            )}
             <FormGroup label="Fleet">
               <HTMLSelect
                 fill
@@ -157,6 +201,11 @@ export function AddDeviceDialog() {
                 )}
               </Callout>
             )}
+            {formError && (
+              <Callout intent="danger" icon="error">
+                {formError}
+              </Callout>
+            )}
           </div>
         </DialogBody>
         <DialogFooter
@@ -177,14 +226,17 @@ export function AddDeviceDialog() {
         />
       </Dialog>
       <CertificateDownloadDialog
-        isOpen={certBundle !== null}
+        isOpen={certBundle !== null || provisionedContract !== null}
         onClose={() => {
           setCertBundle(null);
+          setProvisionedContract(null);
           setCreatedDeviceName('');
           closeAddDeviceDialog();
-          setNewDevice({ name: '', device_type_id: 0, fleet_id: undefined });
+          setNewDevice({ name: '', fleet_id: undefined });
+          setConfigurationText('');
         }}
         certBundle={certBundle}
+        contract={provisionedContract}
         deviceName={createdDeviceName}
       />
     </>

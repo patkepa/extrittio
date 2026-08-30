@@ -12,6 +12,149 @@
     "version": "1.0.0"
   },
   "paths": {
+    "/api/v1/activity-events": {
+      "get": {
+        "tags": [
+          "logs"
+        ],
+        "operationId": "list_activity_events",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "description": "Event origin: device, audit, alert, command, or deployment.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "severity",
+            "in": "query",
+            "description": "Normalized severity: debug, info, warning, or error.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "description": "Domain category, such as device, users, rules, or firmware-updates.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "device_id",
+            "in": "query",
+            "description": "Restrict events to one device when a device identity is available.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Case-insensitive search across messages, event types, actors, resources, and request IDs.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "description": "Only return events at or after this timestamp.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "description": "Only return events at or before this timestamp.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum rows to return (default 100, max 200).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Pagination offset.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant-wide operational and audit event stream",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityEventListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid event filter"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
     "/api/v1/alerts": {
       "get": {
         "tags": [
@@ -408,6 +551,80 @@
         ]
       }
     },
+    "/api/v1/analytics/catalog": {
+      "get": {
+        "tags": [
+          "analytics"
+        ],
+        "summary": "Get numeric metrics declared by the tenant's latest published device blueprints.",
+        "operationId": "get_catalog",
+        "responses": {
+          "200": {
+            "description": "Analytics metric catalog",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyticsCatalogResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/analytics/query": {
+      "post": {
+        "tags": [
+          "analytics"
+        ],
+        "summary": "Run a bounded tenant-scoped telemetry analytics query.",
+        "operationId": "run_query",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalyticsQueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Chart-ready analytics result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyticsQueryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query"
+          },
+          "422": {
+            "description": "Query exceeds a cost or compatibility limit"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
     "/api/v1/api-keys": {
       "get": {
         "tags": [
@@ -689,6 +906,416 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/device-blueprint-revisions/{id}": {
+      "get": {
+        "tags": [
+          "device-blueprints"
+        ],
+        "operationId": "get_blueprint_revision",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Blueprint revision ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Published blueprint revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlueprintRevisionResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Revision not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/device-blueprints": {
+      "get": {
+        "tags": [
+          "device-blueprints"
+        ],
+        "operationId": "list_blueprints",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated device blueprints",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_BlueprintResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "device-blueprints"
+        ],
+        "operationId": "create_blueprint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlueprintDocumentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Blueprint and initial draft created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlueprintResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed blueprint document"
+          },
+          "409": {
+            "description": "Blueprint key already exists"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/device-blueprints/{id}": {
+      "get": {
+        "tags": [
+          "device-blueprints"
+        ],
+        "operationId": "get_blueprint",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Blueprint ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Device blueprint",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlueprintResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Blueprint not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/device-blueprints/{id}/draft": {
+      "get": {
+        "tags": [
+          "device-blueprints"
+        ],
+        "operationId": "get_blueprint_draft",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Blueprint ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Mutable blueprint draft",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlueprintDraftResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Blueprint not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "device-blueprints"
+        ],
+        "operationId": "replace_blueprint_draft",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Blueprint ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlueprintDocumentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Replaced blueprint draft",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlueprintDraftResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed blueprint document"
+          },
+          "404": {
+            "description": "Blueprint not found"
+          },
+          "409": {
+            "description": "Blueprint key already exists"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/device-blueprints/{id}/draft/publish": {
+      "post": {
+        "tags": [
+          "device-blueprints"
+        ],
+        "operationId": "publish_blueprint_draft",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Blueprint ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Immutable blueprint revision published",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlueprintRevisionResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Blueprint not found"
+          },
+          "409": {
+            "description": "Draft changed during publication"
+          },
+          "422": {
+            "description": "Blueprint validation failed"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/device-blueprints/{id}/draft/validate": {
+      "post": {
+        "tags": [
+          "device-blueprints"
+        ],
+        "operationId": "validate_blueprint_draft",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Blueprint ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Blueprint validation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlueprintValidationResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Blueprint not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/device-blueprints/{id}/revisions/latest": {
+      "get": {
+        "tags": [
+          "device-blueprints"
+        ],
+        "operationId": "get_latest_blueprint_revision",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Blueprint ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Latest published blueprint revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlueprintRevisionResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No published revision"
           }
         },
         "security": [
@@ -1675,6 +2302,49 @@
         ]
       }
     },
+    "/api/v1/devices/{id}/contract": {
+      "get": {
+        "tags": [
+          "devices"
+        ],
+        "summary": "Get the immutable contract currently assigned to a device.",
+        "operationId": "get_device_contract",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Assigned device contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceContractResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Device or contract not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
     "/api/v1/devices/{id}/location/latest": {
       "get": {
         "tags": [
@@ -1786,6 +2456,113 @@
                   "type": "array",
                   "items": {
                     "$ref": "#/components/schemas/LogResponse"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Device not found"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices/{id}/metrics": {
+      "get": {
+        "tags": [
+          "telemetry"
+        ],
+        "summary": "Get typed metric samples extracted according to the device's assigned contract.",
+        "operationId": "get_device_metrics",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "stream_key",
+            "in": "query",
+            "description": "Filter by the stream key declared in the assigned device contract.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "field_path",
+            "in": "query",
+            "description": "Filter by the JSON pointer field path declared in the stream.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "description": "Only return samples at or after this timestamp.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "description": "Only return samples before this timestamp.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of samples to return (default 1000, max 10000).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Contract-defined metric samples",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DeviceMetricResponse"
                   }
                 }
               }
@@ -2368,6 +3145,18 @@
             }
           },
           {
+            "name": "blueprint_revision_id",
+            "in": "query",
+            "description": "Filter by an immutable device blueprint revision.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -2496,6 +3285,46 @@
         }
       }
     },
+    "/api/v1/firmware-updates/next-version/blueprint/{revision_id}": {
+      "get": {
+        "tags": [
+          "firmware"
+        ],
+        "summary": "Get the next auto-generated version for a published blueprint revision.",
+        "operationId": "get_next_blueprint_version",
+        "parameters": [
+          {
+            "name": "revision_id",
+            "in": "path",
+            "description": "Published device blueprint revision ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Next version string",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NextVersionResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
     "/api/v1/firmware-updates/next-version/{device_type_id}": {
       "get": {
         "tags": [
@@ -2545,7 +3374,7 @@
         "summary": "Upload firmware binary as multipart form data.",
         "operationId": "upload_firmware_update",
         "requestBody": {
-          "description": "Multipart form: device_type_id (required), version (optional), description (optional), file (required)",
+          "description": "Multipart form: blueprint_revision_id (required), version (optional), description (optional), file (required)",
           "content": {
             "multipart/form-data": {}
           }
@@ -3628,6 +4457,53 @@
         ]
       }
     },
+    "/api/v1/system/thread/configuration": {
+      "put": {
+        "tags": [
+          "system"
+        ],
+        "operationId": "configure_thread_runtime",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigureThreadRuntimeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated host-local OpenThread runtime configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The selected RCP is not currently detected"
+          },
+          "403": {
+            "description": "Owner access required"
+          },
+          "409": {
+            "description": "Thread is unavailable on this deployment"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
     "/api/v1/system/thread/dataset": {
       "get": {
         "tags": [
@@ -3742,6 +4618,37 @@
           },
           "409": {
             "description": "Thread is unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/system/thread/refresh": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "operationId": "refresh_thread_runtime",
+        "responses": {
+          "200": {
+            "description": "Refreshed local Thread border-router status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadStatusResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Owner access required"
           }
         },
         "security": [
@@ -4368,6 +5275,104 @@
           }
         }
       },
+      "ActivityEventListResponse": {
+        "type": "object",
+        "required": [
+          "data",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActivityEventResponse"
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ActivityEventResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "source",
+          "severity",
+          "event_type",
+          "category",
+          "message",
+          "actor_type",
+          "resource_type",
+          "metadata",
+          "occurred_at"
+        ],
+        "properties": {
+          "actor_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "actor_type": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "description": "Product domain associated with the event."
+          },
+          "event_type": {
+            "type": "string",
+            "description": "Machine-readable event name."
+          },
+          "id": {
+            "type": "string",
+            "description": "Stable source-qualified event identifier."
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable event summary."
+          },
+          "metadata": {},
+          "occurred_at": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resource_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resource_type": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "description": "Normalized severity: debug, info, warning, or error."
+          },
+          "source": {
+            "type": "string",
+            "description": "Originating stream: device, audit, alert, command, or deployment."
+          }
+        }
+      },
       "AlertResponse": {
         "type": "object",
         "required": [
@@ -4464,6 +5469,506 @@
             "format": "int64"
           }
         }
+      },
+      "AnalyticsCatalogResponse": {
+        "type": "object",
+        "required": [
+          "metrics",
+          "bucket_seconds",
+          "max_devices_per_query",
+          "max_points_per_series"
+        ],
+        "properties": {
+          "bucket_seconds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          "max_devices_per_query": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_points_per_series": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AnalyticsMetricCatalogEntry"
+            }
+          }
+        }
+      },
+      "AnalyticsCoverageResponse": {
+        "type": "object",
+        "required": [
+          "timestamp_ms",
+          "reporting_devices",
+          "selected_devices"
+        ],
+        "properties": {
+          "reporting_devices": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "selected_devices": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "timestamp_ms": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "AnalyticsDeviceStatsResponse": {
+        "type": "object",
+        "required": [
+          "device_id",
+          "device_name",
+          "coverage_percent"
+        ],
+        "properties": {
+          "coverage_percent": {
+            "type": "number",
+            "format": "double"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "device_name": {
+            "type": "string"
+          },
+          "stats": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AnalyticsStatsResponse"
+              }
+            ]
+          }
+        }
+      },
+      "AnalyticsEffectiveResponse": {
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "bucket_seconds",
+          "source",
+          "weighting",
+          "fill"
+        ],
+        "properties": {
+          "bucket_seconds": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "fill": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "weighting": {
+            "type": "string"
+          }
+        }
+      },
+      "AnalyticsMetricCatalogEntry": {
+        "type": "object",
+        "required": [
+          "key",
+          "blueprint_id",
+          "blueprint_key",
+          "blueprint_name",
+          "stream_key",
+          "field_path",
+          "label",
+          "value_type",
+          "aggregates",
+          "series_modes"
+        ],
+        "properties": {
+          "aggregates": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "blueprint_id": {
+            "type": "string"
+          },
+          "blueprint_key": {
+            "type": "string"
+          },
+          "blueprint_name": {
+            "type": "string"
+          },
+          "field_path": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "precision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "series_modes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "stream_key": {
+            "type": "string"
+          },
+          "unit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "value_type": {
+            "type": "string"
+          }
+        }
+      },
+      "AnalyticsMetricRequest": {
+        "type": "object",
+        "required": [
+          "blueprint_id",
+          "stream_key",
+          "field_path"
+        ],
+        "properties": {
+          "blueprint_id": {
+            "type": "string"
+          },
+          "field_path": {
+            "type": "string"
+          },
+          "stream_key": {
+            "type": "string"
+          }
+        }
+      },
+      "AnalyticsMetricResponse": {
+        "type": "object",
+        "required": [
+          "key",
+          "blueprint_id",
+          "blueprint_key",
+          "blueprint_name",
+          "stream_key",
+          "field_path",
+          "label",
+          "value_type"
+        ],
+        "properties": {
+          "blueprint_id": {
+            "type": "string"
+          },
+          "blueprint_key": {
+            "type": "string"
+          },
+          "blueprint_name": {
+            "type": "string"
+          },
+          "field_path": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "precision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "stream_key": {
+            "type": "string"
+          },
+          "unit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "value_type": {
+            "type": "string"
+          }
+        }
+      },
+      "AnalyticsPointResponse": {
+        "type": "object",
+        "required": [
+          "timestamp_ms",
+          "value"
+        ],
+        "properties": {
+          "timestamp_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "value": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "AnalyticsQueryRequest": {
+        "type": "object",
+        "required": [
+          "metric",
+          "from",
+          "to"
+        ],
+        "properties": {
+          "bucket_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Null selects an automatic bounded bucket."
+          },
+          "from": {
+            "type": "string",
+            "description": "Inclusive RFC 3339 range start."
+          },
+          "max_points_per_series": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "metric": {
+            "$ref": "#/components/schemas/AnalyticsMetricRequest"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/AnalyticsSeriesModeName"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/AnalyticsScopeRequest"
+          },
+          "to": {
+            "type": "string",
+            "description": "Exclusive RFC 3339 range end."
+          },
+          "weighting": {
+            "$ref": "#/components/schemas/AnalyticsWeightingName"
+          }
+        }
+      },
+      "AnalyticsQueryResponse": {
+        "type": "object",
+        "required": [
+          "metric",
+          "effective",
+          "scope",
+          "series",
+          "devices",
+          "coverage",
+          "warnings"
+        ],
+        "properties": {
+          "coverage": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AnalyticsCoverageResponse"
+            }
+          },
+          "devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AnalyticsDeviceStatsResponse"
+            }
+          },
+          "effective": {
+            "$ref": "#/components/schemas/AnalyticsEffectiveResponse"
+          },
+          "metric": {
+            "$ref": "#/components/schemas/AnalyticsMetricResponse"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/AnalyticsScopeResponse"
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AnalyticsSeriesResponse"
+            }
+          },
+          "stats": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AnalyticsStatsResponse"
+              }
+            ]
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "AnalyticsScopeRequest": {
+        "type": "object",
+        "properties": {
+          "device_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "device_type_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "fleet_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        }
+      },
+      "AnalyticsScopeResponse": {
+        "type": "object",
+        "required": [
+          "selected_devices",
+          "compatible_devices"
+        ],
+        "properties": {
+          "compatible_devices": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "selected_devices": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "AnalyticsSeriesModeName": {
+        "type": "string",
+        "enum": [
+          "per_device",
+          "fleet_mean",
+          "mean_and_range",
+          "latest_ranking"
+        ]
+      },
+      "AnalyticsSeriesResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "kind",
+          "points",
+          "stats"
+        ],
+        "properties": {
+          "device_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AnalyticsPointResponse"
+            }
+          },
+          "stats": {
+            "$ref": "#/components/schemas/AnalyticsStatsResponse"
+          }
+        }
+      },
+      "AnalyticsStatsResponse": {
+        "type": "object",
+        "required": [
+          "minimum",
+          "maximum",
+          "average",
+          "latest",
+          "sample_count"
+        ],
+        "properties": {
+          "average": {
+            "type": "number",
+            "format": "double"
+          },
+          "latest": {
+            "type": "number",
+            "format": "double"
+          },
+          "maximum": {
+            "type": "number",
+            "format": "double"
+          },
+          "minimum": {
+            "type": "number",
+            "format": "double"
+          },
+          "sample_count": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "AnalyticsWeightingName": {
+        "type": "string",
+        "enum": [
+          "equal_device",
+          "sample"
+        ]
       },
       "ApiKeyResponse": {
         "type": "object",
@@ -4619,6 +6124,153 @@
           },
           "resource_type": {
             "type": "string"
+          }
+        }
+      },
+      "BlueprintDocumentRequest": {
+        "type": "object",
+        "required": [
+          "document"
+        ],
+        "properties": {
+          "document": {
+            "type": "object"
+          }
+        }
+      },
+      "BlueprintDraftResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "blueprint_id",
+          "document",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "blueprint_id": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "document": {
+            "type": "object"
+          },
+          "id": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        }
+      },
+      "BlueprintResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "key",
+          "name",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "latest_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        }
+      },
+      "BlueprintRevisionResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "blueprint_id",
+          "revision",
+          "document",
+          "document_hash",
+          "compatibility",
+          "created_at"
+        ],
+        "properties": {
+          "blueprint_id": {
+            "type": "string"
+          },
+          "compatibility": {
+            "type": "object"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "document": {
+            "type": "object"
+          },
+          "document_hash": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "BlueprintValidationIssueResponse": {
+        "type": "object",
+        "required": [
+          "path",
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        }
+      },
+      "BlueprintValidationResponse": {
+        "type": "object",
+        "required": [
+          "valid",
+          "issues"
+        ],
+        "properties": {
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BlueprintValidationIssueResponse"
+            }
+          },
+          "valid": {
+            "type": "boolean"
           }
         }
       },
@@ -4954,21 +6606,13 @@
             "type": "string"
           },
           "params": {
-            "type": "object",
-            "additionalProperties": {},
-            "propertyNames": {
-              "type": "string"
-            }
+            "type": "object"
           },
           "response_payload": {
             "type": [
               "object",
               "null"
-            ],
-            "additionalProperties": {},
-            "propertyNames": {
-              "type": "string"
-            }
+            ]
           },
           "status": {
             "type": "string"
@@ -5040,6 +6684,18 @@
           },
           "updated_at": {
             "type": "string"
+          }
+        }
+      },
+      "ConfigureThreadRuntimeRequest": {
+        "type": "object",
+        "properties": {
+          "rcp_device": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Detected serial device to persist, or null to restore automatic discovery."
           }
         }
       },
@@ -5493,6 +7149,86 @@
           }
         }
       },
+      "DeviceContractResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "device_id",
+          "blueprint_revision_id",
+          "contract_hash",
+          "assignment_status",
+          "created_at",
+          "document"
+        ],
+        "properties": {
+          "acknowledged_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "assignment_status": {
+            "type": "string"
+          },
+          "blueprint_revision_id": {
+            "type": "string"
+          },
+          "contract_hash": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "document": {},
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          }
+        }
+      },
+      "DeviceMetricResponse": {
+        "type": "object",
+        "required": [
+          "event_id",
+          "device_id",
+          "stream_key",
+          "field_path",
+          "value_type",
+          "value",
+          "occurred_at"
+        ],
+        "properties": {
+          "device_id": {
+            "type": "string"
+          },
+          "event_id": {
+            "type": "string"
+          },
+          "field_path": {
+            "type": "string"
+          },
+          "occurred_at": {
+            "type": "string"
+          },
+          "stream_key": {
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/MetricValueResponse"
+          },
+          "value_type": {
+            "type": "string"
+          }
+        }
+      },
       "DeviceResponse": {
         "type": "object",
         "required": [
@@ -5660,9 +7396,16 @@
           "url",
           "created_at",
           "has_blob",
-          "source"
+          "source",
+          "compatibility"
         ],
         "properties": {
+          "blueprint_revision_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "branch": {
             "type": [
               "string",
@@ -5693,6 +7436,7 @@
               "null"
             ]
           },
+          "compatibility": {},
           "created_at": {
             "type": "string"
           },
@@ -5737,6 +7481,12 @@
           },
           "source": {
             "type": "string"
+          },
+          "update_strategy": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "url": {
             "type": "string"
@@ -6065,6 +7815,27 @@
           }
         }
       },
+      "MetricValueResponse": {
+        "oneOf": [
+          {
+            "type": "number",
+            "format": "double"
+          },
+          {
+            "type": "integer",
+            "format": "int64"
+          },
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "object"
+          }
+        ]
+      },
       "MetricsHistoryResponse": {
         "type": "object",
         "required": [
@@ -6090,12 +7861,23 @@
         "type": "object",
         "required": [
           "name",
-          "device_type_id"
+          "blueprint_revision_id"
         ],
         "properties": {
+          "blueprint_revision_id": {
+            "type": "string",
+            "description": "Published immutable blueprint revision used to compile this device's contract."
+          },
+          "configuration": {
+            "description": "Device-specific configuration overlay, validated against the blueprint schema."
+          },
           "device_type_id": {
-            "type": "integer",
-            "format": "int32"
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Deprecated compatibility selector. Omit for blueprint-based devices."
           },
           "firmware": {
             "type": [
@@ -6141,19 +7923,18 @@
       "NewFirmwareUpdateRequest": {
         "type": "object",
         "required": [
-          "device_type_id",
+          "blueprint_revision_id",
           "url"
         ],
         "properties": {
+          "blueprint_revision_id": {
+            "type": "string"
+          },
           "description": {
             "type": [
               "string",
               "null"
             ]
-          },
-          "device_type_id": {
-            "type": "integer",
-            "format": "int32"
           },
           "sha256": {
             "type": [
@@ -6302,6 +8083,72 @@
                     "string",
                     "null"
                   ]
+                }
+              }
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "PaginatedResponse_BlueprintResponse": {
+        "type": "object",
+        "required": [
+          "data",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "key",
+                "name",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "created_at": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "id": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string"
+                },
+                "latest_revision": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int32"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "updated_at": {
+                  "type": "string"
                 }
               }
             }
@@ -6510,9 +8357,16 @@
                 "url",
                 "created_at",
                 "has_blob",
-                "source"
+                "source",
+                "compatibility"
               ],
               "properties": {
+                "blueprint_revision_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "branch": {
                   "type": [
                     "string",
@@ -6543,6 +8397,7 @@
                     "null"
                   ]
                 },
+                "compatibility": {},
                 "created_at": {
                   "type": "string"
                 },
@@ -6587,6 +8442,12 @@
                 },
                 "source": {
                   "type": "string"
+                },
+                "update_strategy": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "url": {
                   "type": "string"
@@ -7173,16 +9034,7 @@
             "type": "string"
           },
           "params": {
-            "type": [
-              "object",
-              "null"
-            ],
-            "additionalProperties": {
-              "type": "string"
-            },
-            "propertyNames": {
-              "type": "string"
-            }
+            "description": "JSON input validated against the selected command's blueprint schema."
           }
         }
       },
@@ -7652,6 +9504,7 @@
           "networks",
           "devices",
           "statistics",
+          "sources",
           "warnings"
         ],
         "properties": {
@@ -7688,6 +9541,12 @@
           "scanning": {
             "type": "boolean"
           },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ThreadScanSourceResponse"
+            }
+          },
           "statistics": {
             "$ref": "#/components/schemas/ThreadRadioStatisticsResponse"
           },
@@ -7717,6 +9576,12 @@
           },
           "extended_address": {
             "type": "string"
+          },
+          "extended_pan_id": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "lqi": {
             "type": "integer",
@@ -7805,12 +9670,96 @@
           }
         }
       },
+      "ThreadRcpCandidateResponse": {
+        "type": "object",
+        "required": [
+          "path",
+          "confidence",
+          "match_reason"
+        ],
+        "properties": {
+          "confidence": {
+            "type": "string"
+          },
+          "manufacturer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "match_reason": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "product": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "serial_number": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "usb_product_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "usb_vendor_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "ThreadScanSourceResponse": {
+        "type": "object",
+        "required": [
+          "source",
+          "state"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "observed_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        }
+      },
       "ThreadStatusResponse": {
         "type": "object",
         "required": [
           "available",
           "connected",
           "available_rcp_devices",
+          "available_rcp_candidates",
+          "runtime_phase",
+          "consecutive_failures",
+          "restart_count",
           "addresses"
         ],
         "properties": {
@@ -7822,7 +9771,13 @@
           },
           "available": {
             "type": "boolean",
-            "description": "Whether this process is the hobby appliance with a controllable OTBR."
+            "description": "Whether this process is Extrittio Edge with a controllable OTBR."
+          },
+          "available_rcp_candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ThreadRcpCandidateResponse"
+            }
           },
           "available_rcp_devices": {
             "type": "array",
@@ -7839,8 +9794,20 @@
             "format": "int32",
             "minimum": 0
           },
+          "configured_rcp_device": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Persisted host-local RCP selection. Omitted when automatic discovery is enabled."
+          },
           "connected": {
             "type": "boolean"
+          },
+          "consecutive_failures": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
           },
           "error": {
             "type": [
@@ -7849,6 +9816,12 @@
             ]
           },
           "extended_pan_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_exit": {
             "type": [
               "string",
               "null"
@@ -7866,6 +9839,12 @@
               "null"
             ]
           },
+          "next_retry_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "pan_id": {
             "type": [
               "string",
@@ -7878,11 +9857,19 @@
               "null"
             ]
           },
+          "restart_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
           "role": {
             "type": [
               "string",
               "null"
             ]
+          },
+          "runtime_phase": {
+            "type": "string"
           }
         }
       },
@@ -8201,6 +10188,10 @@
       "description": "Dashboard statistics"
     },
     {
+      "name": "analytics",
+      "description": "Fleet and device telemetry analytics"
+    },
+    {
       "name": "audit",
       "description": "Security and administrative audit trail"
     },
@@ -8219,6 +10210,10 @@
     {
       "name": "device-types",
       "description": "Device type management"
+    },
+    {
+      "name": "device-blueprints",
+      "description": "Versioned device contract blueprints"
     },
     {
       "name": "fleets",

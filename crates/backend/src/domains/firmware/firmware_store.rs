@@ -2,6 +2,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use anyhow::{Context, bail};
+#[cfg(feature = "s3")]
 use object_store::aws::AmazonS3Builder;
 use object_store::local::LocalFileSystem;
 use object_store::path::Path as ObjectPath;
@@ -53,6 +54,7 @@ impl FirmwareObjectStore {
                     .context("failed to initialize local firmware object store")?;
                 Ok(Self::new(Arc::new(store), "local"))
             }
+            #[cfg(feature = "s3")]
             FirmwareStorageConfig::S3 {
                 bucket,
                 region,

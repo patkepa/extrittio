@@ -1,2 +1,2 @@
-export { MainToolbar } from '@extrittio/ui';
-export type { MainToolbarProps } from '@extrittio/ui';
+export { WorkspaceToolbar as MainToolbar } from '@patkepa/kantzen-ui';
+export type { WorkspaceToolbarProps as MainToolbarProps } from '@patkepa/kantzen-ui';

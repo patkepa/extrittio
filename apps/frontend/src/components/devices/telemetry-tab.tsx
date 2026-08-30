@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
-import { Callout, SegmentedControl, Spinner } from '@blueprintjs/core';
-import { UPlotChart } from '../charts/UPlot';
+import axios from 'axios';
+import { Button, Callout, HTMLSelect, SegmentedControl, Spinner } from '@blueprintjs/core';
+import { UPlotChart, type UPlotXRange } from '../charts/UPlot';
 import { toAlignedData, tooltipPlugin } from '../charts/uplot-helpers';
 import { useDeviceTelemetry, useAllDeviceTelemetry } from '../../hooks/use-telemetry';
 import type { TelemetryRecord } from '../../types/api';
@@ -8,10 +9,35 @@ import type uPlot from 'uplot';
 import { getProfile, RANGES, RANGE_OPTIONS, computeSince } from './telemetry-profiles';
 import type { RangeKey, MetricDef } from './telemetry-profiles';
 import { hexToRgba } from '../../utils/color';
+import { useDeviceContract } from '../../hooks/use-devices';
+import { ContractTelemetryTab } from './contract-telemetry-tab';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+const DEFAULT_REFRESH_INTERVAL_MS = 10_000;
+const REFRESH_INTERVAL_STORAGE_KEY = 'extrittio.telemetry-refresh-interval.v1';
+const REFRESH_INTERVAL_OPTIONS = [
+  { label: 'Off', value: 'off' },
+  { label: 'Every 1 sec', value: '1000' },
+  { label: 'Every 5 sec', value: '5000' },
+  { label: 'Every 10 sec', value: '10000' },
+  { label: 'Every 30 sec', value: '30000' },
+  { label: 'Every 1 min', value: '60000' },
+  { label: 'Every 5 min', value: '300000' },
+];
+const REFRESH_INTERVAL_VALUES = new Set(REFRESH_INTERVAL_OPTIONS.map(({ value }) => value));
+
+function loadRefreshInterval(): number | false {
+  try {
+    const stored = window.localStorage.getItem(REFRESH_INTERVAL_STORAGE_KEY);
+    if (!stored || !REFRESH_INTERVAL_VALUES.has(stored)) return DEFAULT_REFRESH_INTERVAL_MS;
+    return stored === 'off' ? false : Number(stored);
+  } catch {
+    return DEFAULT_REFRESH_INTERVAL_MS;
+  }
+}
 
 function formatTimestamp(iso: string): string {
   const d = new Date(iso);
@@ -83,52 +109,6 @@ function formatTooltipTime(unixSec: number): string {
   return formatTimestamp(new Date(unixSec * 1000).toISOString());
 }
 
-interface NetworkAnalyzerHost {
-  ip?: string;
-  mac?: string;
-  hostname?: string | null;
-  vendor?: string;
-  device_type?: string;
-  classification?: string;
-  reachable?: boolean;
-  rtt_ms?: number;
-  source?: string;
-}
-
-interface NetworkAnalyzerSnapshot {
-  scan_id?: number;
-  network?: {
-    ssid?: string;
-    bssid?: string;
-    channel?: number;
-    rssi?: number;
-    ip?: string;
-    gateway?: string;
-  };
-  hosts?: NetworkAnalyzerHost[];
-  host_count?: number;
-  targets_scanned?: number;
-}
-
-function parseNetworkAnalyzerSnapshot(
-  custom: Record<string, unknown>,
-): NetworkAnalyzerSnapshot | null {
-  const raw = custom.snapshot_json;
-  if (!raw) return null;
-  if (typeof raw === 'object' && !Array.isArray(raw)) return raw as NetworkAnalyzerSnapshot;
-  if (typeof raw !== 'string') return null;
-
-  try {
-    const parsed = JSON.parse(raw);
-    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
-      return parsed as NetworkAnalyzerSnapshot;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -139,16 +119,42 @@ interface TelemetryTabProps {
 }
 
 export const TelemetryTab = ({ deviceId, deviceTypeName }: TelemetryTabProps) => {
+  const contractQuery = useDeviceContract(deviceId, { retry: false });
+  if (contractQuery.isLoading) return <Spinner />;
+  if (contractQuery.data) {
+    return <ContractTelemetryTab deviceId={deviceId} contract={contractQuery.data} />;
+  }
+  const isLegacyDevice =
+    axios.isAxiosError(contractQuery.error) && contractQuery.error.response?.status === 404;
+  if (contractQuery.isError && !isLegacyDevice) {
+    return (
+      <Callout intent="danger" icon="error">
+        Failed to load the assigned device contract. Try refreshing the page.
+      </Callout>
+    );
+  }
+  return <LegacyTelemetryTab deviceId={deviceId} deviceTypeName={deviceTypeName} />;
+};
+
+const LegacyTelemetryTab = ({ deviceId, deviceTypeName }: TelemetryTabProps) => {
   const [selectedRange, setSelectedRange] = useState<RangeKey>('24h');
+  const [refreshInterval, setRefreshInterval] = useState<number | false>(loadRefreshInterval);
+  const [zoomRange, setZoomRange] = useState<UPlotXRange | null>(null);
   const rangeConfig = RANGES[selectedRange];
   const isAll = selectedRange === 'all';
 
   // Stabilize `since` so the React Query key doesn't change on every render
   const since = useMemo(() => computeSince(rangeConfig), [rangeConfig]);
-  const boundedQuery = useDeviceTelemetry(isAll ? null : deviceId, {
-    limit: rangeConfig.limit,
-    since,
-  });
+  const boundedQuery = useDeviceTelemetry(
+    isAll ? null : deviceId,
+    {
+      limit: rangeConfig.limit,
+      since,
+    },
+    {
+      refetchInterval: refreshInterval,
+    },
+  );
 
   // Paginated query (for "All" only)
   const allQuery = useAllDeviceTelemetry(isAll ? deviceId : null);
@@ -164,8 +170,7 @@ export const TelemetryTab = ({ deviceId, deviceTypeName }: TelemetryTabProps) =>
   const latest = isAll ? telemetryRecords[telemetryRecords.length - 1] : telemetryRecords[0];
   const latestFlat = latest ? flattenRecord(latest) : null;
   const latestCustom = parseCustomJson(latest?.custom_json);
-  const profile = getProfile(deviceTypeName, latestCustom.kind);
-  const networkAnalyzerSnapshot = parseNetworkAnalyzerSnapshot(latestCustom);
+  const profile = getProfile(deviceTypeName);
 
   // "All" data is pre-sorted ascending from the hook; others need reversing
   const chartData = useMemo(() => {
@@ -222,20 +227,48 @@ export const TelemetryTab = ({ deviceId, deviceTypeName }: TelemetryTabProps) =>
         )}
       </div>
 
-      {networkAnalyzerSnapshot && (
-        <NetworkAnalyzerScan snapshot={networkAnalyzerSnapshot} receivedAt={latest?.received_at} />
-      )}
-
       {/* Charts section with range selector */}
       <div className="telemetry-section">
         <div className="telemetry-range-bar">
           <span className="section-label">Charts</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div className="telemetry-range-controls">
+            <span className="telemetry-zoom-status" role="status">
+              {zoomRange ? 'Zoomed time range' : 'Drag a chart to zoom'}
+            </span>
+            {zoomRange && (
+              <Button icon="zoom-out" small minimal onClick={() => setZoomRange(null)}>
+                Reset zoom
+              </Button>
+            )}
             {isFetching && !isLoading && <Spinner size={16} />}
+            <label className="telemetry-refresh-control">
+              <span>Auto-refresh</span>
+              <HTMLSelect
+                aria-label="Auto-refresh interval"
+                disabled={isAll}
+                title={isAll ? 'Auto-refresh is disabled for the All range' : undefined}
+                value={refreshInterval === false ? 'off' : String(refreshInterval)}
+                options={REFRESH_INTERVAL_OPTIONS}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  const nextInterval = value === 'off' ? false : Number(value);
+                  setRefreshInterval(nextInterval);
+                  try {
+                    window.localStorage.setItem(REFRESH_INTERVAL_STORAGE_KEY, value);
+                  } catch {
+                    // Keep the in-memory preference when storage is unavailable.
+                  }
+                }}
+                minimal
+              />
+            </label>
             <SegmentedControl
               options={RANGE_OPTIONS}
               value={selectedRange}
-              onValueChange={(val) => setSelectedRange(val as RangeKey)}
+              onValueChange={(val) => {
+                setSelectedRange(val as RangeKey);
+                setZoomRange(null);
+              }}
               small
             />
           </div>
@@ -251,9 +284,17 @@ export const TelemetryTab = ({ deviceId, deviceTypeName }: TelemetryTabProps) =>
             No telemetry data in this time range.
           </Callout>
         ) : (
-          profile.charts.map((metric) => (
-            <TelemetryChart key={metric.key} metric={metric} chartData={chartData} />
-          ))
+          <>
+            {profile.charts.map((metric) => (
+              <TelemetryChart
+                key={metric.key}
+                metric={metric}
+                chartData={chartData}
+                zoomRange={zoomRange}
+                onZoomRangeChange={setZoomRange}
+              />
+            ))}
+          </>
         )}
       </div>
 
@@ -292,84 +333,6 @@ export const TelemetryTab = ({ deviceId, deviceTypeName }: TelemetryTabProps) =>
   );
 };
 
-function NetworkAnalyzerScan({
-  snapshot,
-  receivedAt,
-}: {
-  snapshot: NetworkAnalyzerSnapshot;
-  receivedAt?: string;
-}) {
-  const hosts = snapshot.hosts ?? [];
-  const network = snapshot.network;
-
-  return (
-    <div className="telemetry-section">
-      <span className="section-label">Scanned Devices</span>
-      <div className="telemetry-current-table">
-        <div className="telemetry-current-row">
-          <span className="telemetry-current-key">Network</span>
-          <span className="telemetry-current-val mono-data">
-            {[network?.ssid, network?.ip].filter(Boolean).join(' / ') || '—'}
-          </span>
-        </div>
-        <div className="telemetry-current-row">
-          <span className="telemetry-current-key">Gateway</span>
-          <span className="telemetry-current-val mono-data">{network?.gateway ?? '—'}</span>
-        </div>
-        <div className="telemetry-current-row">
-          <span className="telemetry-current-key">Scan</span>
-          <span className="telemetry-current-val mono-data">
-            {snapshot.host_count ?? hosts.length} hosts / {snapshot.targets_scanned ?? '—'} targets
-          </span>
-        </div>
-      </div>
-
-      <div className="telemetry-table-wrap">
-        <table className="telemetry-table">
-          <thead>
-            <tr>
-              <th>IP</th>
-              <th>MAC</th>
-              <th>Vendor</th>
-              <th>Type</th>
-              <th>Hostname</th>
-              <th>RTT</th>
-              <th>Source</th>
-            </tr>
-          </thead>
-          <tbody>
-            {hosts.length === 0 ? (
-              <tr>
-                <td colSpan={7}>No reachable hosts in the latest scan.</td>
-              </tr>
-            ) : (
-              hosts.map((host) => (
-                <tr key={`${host.ip ?? 'unknown'}-${host.mac ?? 'unknown'}`}>
-                  <td className="mono-data">{host.ip ?? '—'}</td>
-                  <td className="mono-data">{host.mac ?? '—'}</td>
-                  <td>{host.vendor ?? '—'}</td>
-                  <td>{host.device_type ?? host.classification ?? '—'}</td>
-                  <td className="mono-data">{host.hostname ?? '—'}</td>
-                  <td className="mono-data">
-                    {host.rtt_ms == null ? '—' : `${formatValue(host.rtt_ms)} ms`}
-                  </td>
-                  <td className="mono-data">{host.source ?? '—'}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {receivedAt && (
-        <div className="telemetry-current-timestamp">
-          Scan received {formatTimestamp(receivedAt)}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Individual chart for a single metric (memoized options)
 // ---------------------------------------------------------------------------
@@ -377,9 +340,13 @@ function NetworkAnalyzerScan({
 function TelemetryChart({
   metric,
   chartData,
+  zoomRange,
+  onZoomRangeChange,
 }: {
   metric: MetricDef;
   chartData: Record<string, number | string | null>[];
+  zoomRange: UPlotXRange | null;
+  onZoomRangeChange: (range: UPlotXRange | null) => void;
 }) {
   const latestValue = chartData[chartData.length - 1]?.[metric.key];
 
@@ -445,7 +412,14 @@ function TelemetryChart({
           {latestValue != null ? `${formatValue(latestValue)}${metric.unit}` : '—'}
         </span>
       </div>
-      <UPlotChart options={opts} data={plotData} height={160} />
+      <UPlotChart
+        options={opts}
+        data={plotData}
+        height={160}
+        zoomable
+        xRange={zoomRange}
+        onXRangeChange={onZoomRangeChange}
+      />
     </div>
   );
 }

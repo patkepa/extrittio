@@ -1,16 +1,22 @@
-import { createApiClient } from '@extrittio/data-client';
+import axios from 'axios';
+import type { AxiosError } from 'axios';
 import { useAuthStore } from '../stores/auth-store';
 
 export const EXTRITTIO_API_BASE_URL = '/api/v1';
 
-const client = createApiClient({
-  baseUrl: EXTRITTIO_API_BASE_URL,
-  // The browser authenticates with the HttpOnly SameSite session cookie.
-  getToken: () => null,
-  shouldHandleUnauthorized: () => window.location.pathname !== '/login',
-  onUnauthorized: () => {
-    useAuthStore.getState().logout();
-  },
+// The browser authenticates with the HttpOnly SameSite session cookie.
+const client = axios.create({
+  baseURL: EXTRITTIO_API_BASE_URL,
 });
+
+client.interceptors.response.use(
+  (response) => response,
+  (error: AxiosError) => {
+    if (error.response?.status === 401 && window.location.pathname !== '/login') {
+      useAuthStore.getState().logout();
+    }
+    return Promise.reject(error);
+  },
+);
 
 export default client;

@@ -15,12 +15,19 @@ pub async fn list_with_repository(
     ctx: &RequestContext,
     repository: &dyn FirmwareRepository,
     device_type_id: Option<i32>,
+    blueprint_revision_id: Option<String>,
     limit: i64,
     offset: i64,
 ) -> Result<FirmwarePage, AppError> {
     policy::require(ctx, Permission::ReadFirmware)?;
     Ok(repository
-        .list(ctx.tenant_id(), device_type_id, limit, offset)
+        .list(
+            ctx.tenant_id(),
+            device_type_id,
+            blueprint_revision_id,
+            limit,
+            offset,
+        )
         .await?)
 }
 
@@ -64,6 +71,17 @@ pub async fn next_version_with_repository(
     policy::require(ctx, Permission::ReadFirmware)?;
     Ok(repository
         .next_version(ctx.tenant_id(), device_type_id)
+        .await?)
+}
+
+pub async fn next_blueprint_version_with_repository(
+    ctx: &RequestContext,
+    repository: &dyn FirmwareRepository,
+    blueprint_revision_id: &str,
+) -> Result<String, AppError> {
+    policy::require(ctx, Permission::ReadFirmware)?;
+    Ok(repository
+        .next_blueprint_version(ctx.tenant_id(), blueprint_revision_id)
         .await?)
 }
 

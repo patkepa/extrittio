@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Button,
   Callout,
@@ -13,13 +13,24 @@ import {
   Icon,
 } from '@blueprintjs/core';
 import { useRule, useCreateRule, useUpdateRule } from '../queries/use-rules';
-import { useConfirmShortcut } from '@extrittio/interactions';
+import { useConfirmShortcut } from '@patkepa/kantzen-ui/interactions';
 import { useDeviceTypes } from '../../../hooks/use-device-types';
 import { useFleets } from '../../../hooks/use-fleets';
 import { useAllDevices } from '../../../hooks/use-devices';
+import { useDeviceContract } from '../../../hooks/use-devices';
+import {
+  useDeviceBlueprints,
+  useLatestDeviceBlueprintRevision,
+} from '../../../hooks/use-device-blueprints';
 import { useZones } from '../../../hooks/use-zones';
 import { useUIStore } from '../../../stores/ui-store';
 import { showSuccessToast, showErrorToast } from '../../../utils/toaster';
+import {
+  blueprintRuleCommands,
+  blueprintRuleMetricFields,
+  contractRuleCommands,
+  contractRuleMetricFields,
+} from '../model/rule-metric-fields';
 
 interface ConditionRow {
   field: string;
@@ -33,16 +44,6 @@ interface ActionRow {
   config: Record<string, unknown>;
 }
 
-const TELEMETRY_FIELDS = [
-  { value: 'temperature', label: 'Temperature' },
-  { value: 'humidity', label: 'Humidity' },
-  { value: 'battery_level', label: 'Battery Level' },
-  { value: 'latitude', label: 'Latitude' },
-  { value: 'longitude', label: 'Longitude' },
-  { value: 'speed', label: 'Speed' },
-  { value: 'altitude', label: 'Altitude' },
-  { value: 'heading', label: 'Heading' },
-];
 const STATUS_FIELDS = [{ value: 'status', label: 'Status' }];
 
 const GEOFENCE_FIELDS = [
@@ -78,11 +79,7 @@ const SEVERITY_OPTIONS = ['info', 'warning', 'critical'];
 
 const emptyCondition = (triggerType: string): ConditionRow => ({
   field:
-    triggerType === 'device_status'
-      ? 'status'
-      : triggerType === 'geofence'
-        ? 'zone_state'
-        : 'temperature',
+    triggerType === 'device_status' ? 'status' : triggerType === 'geofence' ? 'zone_state' : '',
   operator: triggerType === 'device_status' || triggerType === 'geofence' ? 'eq' : 'gt',
   value: '',
   zone_id: undefined,
@@ -104,6 +101,7 @@ export function RuleDialog() {
   const { data: devicesData } = useAllDevices();
   const devices = devicesData?.data ?? [];
   const { data: zones = [] } = useZones();
+  const { data: blueprints = [] } = useDeviceBlueprints();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -113,6 +111,30 @@ export function RuleDialog() {
   const [cooldownSeconds, setCooldownSeconds] = useState(300);
   const [conditions, setConditions] = useState<ConditionRow[]>([emptyCondition('telemetry')]);
   const [actions, setActions] = useState<ActionRow[]>([emptyAction()]);
+  const blueprintRevisionQuery = useLatestDeviceBlueprintRevision(
+    targetType === 'blueprint' ? targetId : '',
+  );
+  const deviceContractQuery = useDeviceContract(targetType === 'device' ? targetId : '', {
+    retry: false,
+  });
+  const telemetryFields = useMemo(() => {
+    if (targetType === 'blueprint') {
+      return blueprintRuleMetricFields(blueprintRevisionQuery.data);
+    }
+    if (targetType === 'device') {
+      return contractRuleMetricFields(deviceContractQuery.data);
+    }
+    return [];
+  }, [blueprintRevisionQuery.data, deviceContractQuery.data, targetType]);
+  const commandOptions = useMemo(() => {
+    if (targetType === 'blueprint') {
+      return blueprintRuleCommands(blueprintRevisionQuery.data);
+    }
+    if (targetType === 'device') {
+      return contractRuleCommands(deviceContractQuery.data);
+    }
+    return [];
+  }, [blueprintRevisionQuery.data, deviceContractQuery.data, targetType]);
 
   const resetForm = useCallback(() => {
     setName('');
@@ -171,7 +193,7 @@ export function RuleDialog() {
 
   const hasEmptyConditions = conditions.some((c) => {
     if (triggerType === 'geofence' && !c.zone_id) return true;
-    return c.value.trim() === '';
+    return c.field.trim() === '' || c.value.trim() === '';
   });
   const hasInvalidActions = actions.some((a) => {
     if (a.action_type === 'webhook') {
@@ -183,8 +205,13 @@ export function RuleDialog() {
     }
     return false;
   });
+  const hasMissingTarget = targetType !== 'global' && targetId.trim() === '';
 
   const handleSubmit = () => {
+    if (hasMissingTarget) {
+      void showErrorToast('Select a rule target');
+      return;
+    }
     if (hasEmptyConditions) {
       void showErrorToast('All conditions must have a value');
       return;
@@ -270,7 +297,8 @@ export function RuleDialog() {
 
   const isPending = createMutation.isPending || updateMutation.isPending;
   const isError = createMutation.isError || updateMutation.isError;
-  const canSubmit = !!name.trim() && !hasEmptyConditions && !hasInvalidActions && !isPending;
+  const canSubmit =
+    !!name.trim() && !hasMissingTarget && !hasEmptyConditions && !hasInvalidActions && !isPending;
 
   useConfirmShortcut({
     isOpen: isRuleDialogOpen,
@@ -332,12 +360,26 @@ export function RuleDialog() {
               }}
             >
               <option value="global">Global</option>
-              <option value="device_type">Device Type</option>
+              <option value="blueprint">Device Blueprint</option>
               <option value="fleet">Fleet</option>
               <option value="device">Device</option>
+              <option value="device_type">Legacy Device Type</option>
             </HTMLSelect>
           </FormGroup>
         </div>
+
+        {targetType === 'blueprint' && (
+          <FormGroup label="Device Blueprint">
+            <HTMLSelect fill value={targetId} onChange={(e) => setTargetId(e.target.value)}>
+              <option value="">Select blueprint...</option>
+              {blueprints.map((blueprint) => (
+                <option key={blueprint.id} value={blueprint.id}>
+                  {blueprint.name}
+                </option>
+              ))}
+            </HTMLSelect>
+          </FormGroup>
+        )}
 
         {targetType === 'device_type' && (
           <FormGroup label="Device Type">
@@ -510,7 +552,7 @@ export function RuleDialog() {
             }
 
             // Telemetry / device_status conditions (original layout)
-            const fields = triggerType === 'device_status' ? STATUS_FIELDS : TELEMETRY_FIELDS;
+            const fields = triggerType === 'device_status' ? STATUS_FIELDS : telemetryFields;
             const operators =
               triggerType === 'device_status' ? STATUS_OPERATORS : NUMERIC_OPERATORS;
             const isStatusField = cond.field === 'status';
@@ -520,17 +562,30 @@ export function RuleDialog() {
                 key={i}
                 style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}
               >
-                <HTMLSelect
-                  value={cond.field}
-                  onChange={(e) => updateCondition(i, 'field', e.target.value)}
-                  style={{ flex: 1 }}
-                >
-                  {fields.map((f) => (
-                    <option key={f.value} value={f.value}>
-                      {f.label}
-                    </option>
-                  ))}
-                </HTMLSelect>
+                {triggerType === 'device_status' || fields.length > 0 ? (
+                  <HTMLSelect
+                    value={cond.field}
+                    onChange={(e) => updateCondition(i, 'field', e.target.value)}
+                    style={{ flex: 1 }}
+                  >
+                    {triggerType !== 'device_status' && <option value="">Select metric...</option>}
+                    {cond.field && !fields.some((field) => field.value === cond.field) && (
+                      <option value={cond.field}>{cond.field} (existing)</option>
+                    )}
+                    {fields.map((f) => (
+                      <option key={f.value} value={f.value}>
+                        {f.label}
+                      </option>
+                    ))}
+                  </HTMLSelect>
+                ) : (
+                  <InputGroup
+                    value={cond.field}
+                    onChange={(e) => updateCondition(i, 'field', e.target.value)}
+                    placeholder="Metric key, e.g. environment.temperature"
+                    style={{ flex: 1 }}
+                  />
+                )}
                 <HTMLSelect
                   value={cond.operator}
                   onChange={(e) => updateCondition(i, 'operator', e.target.value)}
@@ -654,14 +709,40 @@ export function RuleDialog() {
               )}
               {action.action_type === 'command' && (
                 <FormGroup label="Command" style={{ marginBottom: 0 }}>
-                  <InputGroup
-                    placeholder="Command name..."
-                    value={(action.config.command as string) ?? ''}
-                    onChange={(e) =>
-                      updateAction(i, { config: { ...action.config, command: e.target.value } })
-                    }
-                    leftIcon={<Icon icon="console" />}
-                  />
+                  {commandOptions.length > 0 ? (
+                    <HTMLSelect
+                      fill
+                      value={(action.config.command as string) ?? ''}
+                      onChange={(e) =>
+                        updateAction(i, { config: { ...action.config, command: e.target.value } })
+                      }
+                    >
+                      <option value="">Select command...</option>
+                      {typeof action.config.command === 'string' &&
+                        action.config.command.length > 0 &&
+                        !commandOptions.some(
+                          (command) => command.value === action.config.command,
+                        ) && (
+                          <option value={String(action.config.command)}>
+                            {String(action.config.command)} (existing)
+                          </option>
+                        )}
+                      {commandOptions.map((command) => (
+                        <option key={command.value} value={command.value}>
+                          {command.label}
+                        </option>
+                      ))}
+                    </HTMLSelect>
+                  ) : (
+                    <InputGroup
+                      placeholder="Contract command key..."
+                      value={(action.config.command as string) ?? ''}
+                      onChange={(e) =>
+                        updateAction(i, { config: { ...action.config, command: e.target.value } })
+                      }
+                      leftIcon={<Icon icon="console" />}
+                    />
+                  )}
                 </FormGroup>
               )}
             </div>

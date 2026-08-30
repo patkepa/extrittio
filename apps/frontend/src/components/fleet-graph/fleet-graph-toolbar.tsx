@@ -1,7 +1,7 @@
 import { Alert, Button, Icon, Menu, MenuDivider, MenuItem, Popover } from '@blueprintjs/core';
 import { useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MainToolbar, StatusLed } from '@extrittio/ui';
+import { StatusLed, WorkspaceToolbar } from '@patkepa/kantzen-ui';
 import { useFleets } from '../../hooks/use-fleets';
 import {
   useBulkChangeFleet,
@@ -229,7 +229,7 @@ export const FleetGraphToolbar = ({
   onToggleHealthPanel,
 }: FleetGraphToolbarProps) => {
   return (
-    <MainToolbar className="fleet-graph-toolbar-shell" ariaLabel="Fleet graph toolbar">
+    <WorkspaceToolbar className="fleet-graph-toolbar-shell" ariaLabel="Fleet graph toolbar">
       <div className="fleet-graph-toolbar">
         {selectedDevice ? (
           <>
@@ -341,6 +341,6 @@ export const FleetGraphToolbar = ({
           </>
         )}
       </div>
-    </MainToolbar>
+    </WorkspaceToolbar>
   );
 };

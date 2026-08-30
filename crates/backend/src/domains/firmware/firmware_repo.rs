@@ -24,6 +24,7 @@ pub fn list_firmware_updates(
     conn: &mut PgConnection,
     tenant_id: &str,
     device_type_id: Option<i32>,
+    blueprint_revision_id: Option<&str>,
     limit: i64,
     offset: i64,
 ) -> Result<(Vec<FirmwareUpdateRow>, i64), diesel::result::Error> {
@@ -32,6 +33,9 @@ pub fn list_firmware_updates(
     count_query = count_query.filter(firmware_updates::tenant_id.eq(tenant_id));
     if let Some(dt_id) = device_type_id {
         count_query = count_query.filter(firmware_updates::device_type_id.eq(dt_id));
+    }
+    if let Some(revision_id) = blueprint_revision_id {
+        count_query = count_query.filter(firmware_updates::blueprint_revision_id.eq(revision_id));
     }
     let total: i64 = count_query.count().get_result(conn)?;
 
@@ -50,6 +54,9 @@ pub fn list_firmware_updates(
 
     if let Some(dt_id) = device_type_id {
         query = query.filter(firmware_updates::device_type_id.eq(dt_id));
+    }
+    if let Some(revision_id) = blueprint_revision_id {
+        query = query.filter(firmware_updates::blueprint_revision_id.eq(revision_id));
     }
 
     let results = query
@@ -191,6 +198,20 @@ pub fn find_next_version(
     firmware_updates::table
         .filter(firmware_updates::tenant_id.eq(tenant_id))
         .filter(firmware_updates::device_type_id.eq(device_type_id))
+        .select(firmware_updates::version)
+        .order(firmware_updates::created_at.desc())
+        .first(conn)
+        .optional()
+}
+
+pub fn find_next_blueprint_version(
+    conn: &mut PgConnection,
+    tenant_id: &str,
+    blueprint_revision_id: &str,
+) -> Result<Option<String>, diesel::result::Error> {
+    firmware_updates::table
+        .filter(firmware_updates::tenant_id.eq(tenant_id))
+        .filter(firmware_updates::blueprint_revision_id.eq(blueprint_revision_id))
         .select(firmware_updates::version)
         .order(firmware_updates::created_at.desc())
         .first(conn)

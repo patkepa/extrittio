@@ -4,6 +4,7 @@ import SwiftUI
 struct ExtrittioApp: App {
     @State private var container = DependencyContainer()
     @State private var authViewModel: AuthViewModel?
+    @State private var navigationRouter = AppNavigationRouter()
     @State private var toastManager = ToastManager()
 
     var body: some Scene {
@@ -37,7 +38,11 @@ struct ExtrittioApp: App {
                 }
                 await container.cacheManager.evictExpired()
             }
+            .onOpenURL { url in
+                navigationRouter.handle(url: url)
+            }
             .environment(authViewModel)
+            .environment(navigationRouter)
             .environment(toastManager)
             .environment(container.connectionMonitor)
         }

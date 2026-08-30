@@ -1,12 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  configureThreadRuntime,
   createThreadNetwork,
   getThreadDataset,
   getThreadScan,
   getThreadStatus,
   importThreadDataset,
 } from '../api/thread';
-import type { CreateThreadNetworkRequest, ImportThreadDatasetRequest } from '../types/api';
+import type {
+  ConfigureThreadRuntimeRequest,
+  CreateThreadNetworkRequest,
+  ImportThreadDatasetRequest,
+} from '../types/api';
 import { queryKeys } from './query-keys';
 
 export function useThreadStatus() {
@@ -29,6 +34,17 @@ export function useThreadScan() {
 
 export function useRevealThreadDataset() {
   return useMutation({ mutationFn: getThreadDataset });
+}
+
+export function useConfigureThreadRuntime() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ConfigureThreadRuntimeRequest) => configureThreadRuntime(body),
+    onSuccess: (status) => {
+      queryClient.setQueryData(queryKeys.thread.status, status);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.thread.scan });
+    },
+  });
 }
 
 export function useCreateThreadNetwork() {

@@ -138,6 +138,8 @@ impl Default for MetricsAccumulator {
 pub struct AppState {
     pub persistence: crate::persistence::Persistence,
     pub zenoh_session: Arc<zenoh::Session>,
+    pub zenoh_tls_enabled: bool,
+    pub zenoh_port: u16,
     pub jwt_secret: String,
     pub public_url: String,
     pub cookie_secure: bool,
@@ -153,7 +155,7 @@ pub struct AppState {
     pub firmware_store: crate::domains::firmware_store::FirmwareObjectStore,
     pub readiness: Arc<ReadinessRegistry>,
     /// Host-local Thread runtime. It can rediscover an RCP connected after
-    /// the hobby appliance has started.
+    /// Extrittio Edge has started.
     pub thread_runtime: Option<Arc<extrittio_openthread_runtime::ThreadRuntime>>,
 }
 

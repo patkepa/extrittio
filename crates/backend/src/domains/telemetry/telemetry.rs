@@ -8,6 +8,10 @@ use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::auth::context::RequestContext;
+use crate::domains::events::service as event_service;
+use crate::domains::events::types::{
+    DeviceMetricQuery as PortDeviceMetricQuery, DeviceMetricRecord, MetricValue,
+};
 use crate::domains::telemetry::types::{
     TelemetryQuery as PortTelemetryQuery, TelemetryRecord, TelemetryRollup,
 };
@@ -63,6 +67,42 @@ pub struct TelemetryQuery {
     pub before: Option<String>,
 }
 
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct DeviceMetricQuery {
+    /// Filter by the stream key declared in the assigned device contract.
+    pub stream_key: Option<String>,
+    /// Filter by the JSON pointer field path declared in the stream.
+    pub field_path: Option<String>,
+    /// Only return samples at or after this timestamp.
+    pub since: Option<String>,
+    /// Only return samples before this timestamp.
+    pub before: Option<String>,
+    /// Maximum number of samples to return (default 1000, max 10000).
+    pub limit: Option<i64>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(untagged)]
+pub enum MetricValueResponse {
+    Float64(f64),
+    Int64(i64),
+    String(String),
+    Boolean(bool),
+    #[schema(value_type = Object)]
+    Json(serde_json::Value),
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DeviceMetricResponse {
+    pub event_id: String,
+    pub device_id: String,
+    pub stream_key: String,
+    pub field_path: String,
+    pub value_type: String,
+    pub value: MetricValueResponse,
+    pub occurred_at: String,
+}
+
 // ---------------------------------------------------------------------------
 // Conversions
 // ---------------------------------------------------------------------------
@@ -105,6 +145,28 @@ impl From<TelemetryRollup> for HourlyTelemetryResponse {
     }
 }
 
+impl From<DeviceMetricRecord> for DeviceMetricResponse {
+    fn from(record: DeviceMetricRecord) -> Self {
+        let value_type = record.value.value_type().to_owned();
+        let value = match record.value {
+            MetricValue::Float64(value) => MetricValueResponse::Float64(value),
+            MetricValue::Int64(value) => MetricValueResponse::Int64(value),
+            MetricValue::String(value) => MetricValueResponse::String(value),
+            MetricValue::Boolean(value) => MetricValueResponse::Boolean(value),
+            MetricValue::Json(value) => MetricValueResponse::Json(value),
+        };
+        Self {
+            event_id: record.event_id,
+            device_id: record.device_id,
+            stream_key: record.stream_key,
+            field_path: record.field_path,
+            value_type,
+            value,
+            occurred_at: record.occurred_at.to_rfc3339(),
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
@@ -112,6 +174,7 @@ impl From<TelemetryRollup> for HourlyTelemetryResponse {
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/api/v1/devices/{id}/telemetry", get(get_device_telemetry))
+        .route("/api/v1/devices/{id}/metrics", get(get_device_metrics))
         .route(
             "/api/v1/devices/{id}/telemetry/latest",
             get(get_latest_device_telemetry),
@@ -120,6 +183,50 @@ pub fn router() -> Router<Arc<AppState>> {
             "/api/v1/devices/{id}/telemetry/hourly",
             get(get_hourly_device_telemetry),
         )
+}
+
+/// Get typed metric samples extracted according to the device's assigned contract.
+#[utoipa::path(
+    get,
+    path = "/api/v1/devices/{id}/metrics",
+    tag = "telemetry",
+    security(("bearer_auth" = [])),
+    params(
+        ("id" = String, Path, description = "Device ID"),
+        DeviceMetricQuery,
+    ),
+    responses(
+        (status = 200, description = "Contract-defined metric samples", body = Vec<DeviceMetricResponse>),
+        (status = 404, description = "Device not found"),
+    ),
+)]
+pub(crate) async fn get_device_metrics(
+    State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
+    Path(id): Path<String>,
+    Query(params): Query<DeviceMetricQuery>,
+) -> Result<Json<Vec<DeviceMetricResponse>>, AppError> {
+    let since = util::parse_timestamp(params.since.as_deref())?;
+    let before = util::parse_timestamp(params.before.as_deref())?;
+    let records = event_service::list_metrics(
+        &ctx,
+        state.persistence.events.as_ref(),
+        &id,
+        PortDeviceMetricQuery {
+            stream_key: params.stream_key,
+            field_path: params.field_path,
+            since,
+            before,
+            limit: params.limit.unwrap_or(1000).clamp(1, 10_000),
+        },
+    )
+    .await?;
+    Ok(Json(
+        records
+            .into_iter()
+            .map(DeviceMetricResponse::from)
+            .collect(),
+    ))
 }
 
 /// Get the most recently received telemetry sample for a device.

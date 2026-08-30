@@ -21,6 +21,7 @@ pub trait FirmwareRepository: Send + Sync {
         &self,
         tenant: &TenantId,
         device_type_id: Option<i32>,
+        blueprint_revision_id: Option<String>,
         limit: i64,
         offset: i64,
     ) -> Result<FirmwarePage, PersistenceError>;
@@ -44,6 +45,12 @@ pub trait FirmwareRepository: Send + Sync {
         &self,
         tenant: &TenantId,
         device_type_id: i32,
+    ) -> Result<String, PersistenceError>;
+
+    async fn next_blueprint_version(
+        &self,
+        tenant: &TenantId,
+        blueprint_revision_id: &str,
     ) -> Result<String, PersistenceError>;
 
     async fn get_blob(

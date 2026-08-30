@@ -1,2 +1,2 @@
-export { useRovingFocus } from '@extrittio/interactions';
-export type { UseRovingFocusOptions } from '@extrittio/interactions';
+export { useRovingFocus } from '@patkepa/kantzen-ui/interactions';
+export type { UseRovingFocusOptions } from '@patkepa/kantzen-ui/interactions';

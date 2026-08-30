@@ -28,7 +28,7 @@ export async function createFirmwareUpdate(
 }
 
 export interface UploadFirmwareRequest {
-  device_type_id: number;
+  blueprint_revision_id: string;
   version?: string;
   description?: string;
   file: File;
@@ -36,7 +36,7 @@ export interface UploadFirmwareRequest {
 
 export async function uploadFirmwareUpdate(req: UploadFirmwareRequest): Promise<FirmwareUpdate> {
   const formData = new FormData();
-  formData.append('device_type_id', String(req.device_type_id));
+  formData.append('blueprint_revision_id', req.blueprint_revision_id);
   if (req.version) formData.append('version', req.version);
   if (req.description) formData.append('description', req.description);
   formData.append('file', req.file);
@@ -54,6 +54,13 @@ export async function deleteFirmwareUpdate(id: number): Promise<void> {
 export async function getNextVersion(deviceTypeId: number): Promise<NextVersionResponse> {
   const { data } = await client.get<NextVersionResponse>(
     `/firmware-updates/next-version/${deviceTypeId}`,
+  );
+  return data;
+}
+
+export async function getNextBlueprintVersion(revisionId: string): Promise<NextVersionResponse> {
+  const { data } = await client.get<NextVersionResponse>(
+    `/firmware-updates/next-version/blueprint/${revisionId}`,
   );
   return data;
 }

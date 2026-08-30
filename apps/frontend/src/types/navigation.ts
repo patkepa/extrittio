@@ -1,1 +1,1 @@
-export type { NavBadge, NavGroup, NavItem, Project, User } from '@extrittio/navigation';
+export type { NavBadge, NavGroup, NavItem, Project, User } from '@patkepa/kantzen-ui/navigation';

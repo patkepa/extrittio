@@ -4,7 +4,7 @@ import {
   clearKeyboardFocusRegions,
   getDirectionalKey,
   isEditableTarget,
-} from '@extrittio/interactions';
+} from '@patkepa/kantzen-ui/interactions';
 import './right-sidebar.css';
 
 interface RightSidebarProps {

@@ -1,22 +1,24 @@
 use axum::{
     Extension, Json, Router,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode, header::HOST, uri::Authority},
     routing::{get, post},
 };
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::auth::context::RequestContext;
+use crate::domains::device_blueprints::blueprint_service;
 use crate::domains::devices::types::{
     CreateDeviceRecord, DeviceDetails, DeviceListQuery, UpdateDeviceRecord,
 };
 use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse, PaginationParams};
-use crate::services::{command_service, device_catalog_service, device_service, firmware_service};
+use crate::services::{
+    command_service, device_catalog_service, device_service, device_type_service, firmware_service,
+};
 use crate::state::AppState;
 
 // ---------------------------------------------------------------------------
@@ -62,9 +64,27 @@ pub struct DeviceResponse {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct NewDeviceRequest {
     pub name: String,
-    pub device_type_id: i32,
+    /// Deprecated compatibility selector. Omit for blueprint-based devices.
+    pub device_type_id: Option<i32>,
     pub fleet_id: Option<i32>,
     pub firmware: Option<String>,
+    /// Published immutable blueprint revision used to compile this device's contract.
+    pub blueprint_revision_id: String,
+    /// Device-specific configuration overlay, validated against the blueprint schema.
+    pub configuration: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DeviceContractResponse {
+    pub id: String,
+    pub device_id: String,
+    pub blueprint_revision_id: String,
+    pub contract_hash: String,
+    pub assignment_status: String,
+    pub acknowledged_at: Option<String>,
+    pub error: Option<String>,
+    pub created_at: String,
+    pub document: serde_json::Value,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -213,6 +233,7 @@ pub fn router() -> Router<Arc<AppState>> {
             "/api/v1/devices/{id}",
             get(get_device).put(update_device).delete(delete_device),
         )
+        .route("/api/v1/devices/{id}/contract", get(get_device_contract))
         .route("/api/v1/devices/{id}/restart", post(restart_device))
         .route("/api/v1/devices/{id}/ota", post(trigger_ota))
         .route(
@@ -293,6 +314,42 @@ pub(crate) async fn get_device(
     Ok(Json(response))
 }
 
+/// Get the immutable contract currently assigned to a device.
+#[utoipa::path(
+    get,
+    path = "/api/v1/devices/{id}/contract",
+    tag = "devices",
+    security(("bearer_auth" = [])),
+    params(("id" = String, Path, description = "Device ID")),
+    responses(
+        (status = 200, description = "Assigned device contract", body = DeviceContractResponse),
+        (status = 404, description = "Device or contract not found"),
+    ),
+)]
+pub(crate) async fn get_device_contract(
+    State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
+    Path(id): Path<String>,
+) -> Result<Json<DeviceContractResponse>, AppError> {
+    // Ensure the device itself exists in this tenant so legacy devices and
+    // unknown IDs have stable, tenant-safe not-found behavior.
+    device_catalog_service::get(&ctx, state.persistence.devices.as_ref(), &id).await?;
+    let contract =
+        device_catalog_service::assigned_contract(&ctx, state.persistence.devices.as_ref(), &id)
+            .await?;
+    Ok(Json(DeviceContractResponse {
+        id: contract.id,
+        device_id: contract.device_id,
+        blueprint_revision_id: contract.blueprint_revision_id,
+        contract_hash: contract.contract_hash,
+        assignment_status: contract.assignment_status,
+        acknowledged_at: contract.acknowledged_at.map(|value| value.to_rfc3339()),
+        error: contract.error,
+        created_at: contract.created_at.to_rfc3339(),
+        document: contract.document,
+    }))
+}
+
 /// Create a new device.
 #[utoipa::path(
     post,
@@ -309,6 +366,7 @@ pub(crate) async fn get_device(
 pub(crate) async fn create_device(
     State(state): State<Arc<AppState>>,
     Extension(ctx): Extension<RequestContext>,
+    headers: HeaderMap,
     Json(body): Json<NewDeviceRequest>,
 ) -> Result<(StatusCode, Json<DeviceResponse>), AppError> {
     if body.name.trim().is_empty() {
@@ -316,6 +374,24 @@ pub(crate) async fn create_device(
     }
 
     let new_id = uuid::Uuid::new_v4().to_string();
+    let automatic_zenoh_endpoint =
+        automatic_zenoh_endpoint(&headers, state.zenoh_tls_enabled, state.zenoh_port);
+    let contract = blueprint_service::compile_device_contract(
+        &ctx,
+        state.persistence.device_blueprints.as_ref(),
+        &body.blueprint_revision_id,
+        uuid::Uuid::new_v4().to_string(),
+        new_id.clone(),
+        automatic_zenoh_endpoint,
+        body.configuration,
+    )
+    .await?;
+    let compatibility_type = device_type_service::resolve_for_device_creation(
+        &ctx,
+        state.persistence.device_types.as_ref(),
+        body.device_type_id,
+    )
+    .await?;
     let created = device_catalog_service::create(
         &ctx,
         state.persistence.devices.as_ref(),
@@ -323,15 +399,60 @@ pub(crate) async fn create_device(
         CreateDeviceRecord {
             id: new_id,
             name: body.name,
-            device_type_id: body.device_type_id,
+            device_type_id: compatibility_type.id,
             fleet_id: body.fleet_id,
             firmware: body.firmware.unwrap_or_else(|| "unknown".to_string()),
+            contract: Some(contract),
         },
     )
     .await?;
     let response = to_device_response(created);
 
     Ok((StatusCode::CREATED, Json(response)))
+}
+
+fn automatic_zenoh_endpoint(headers: &HeaderMap, tls_enabled: bool, port: u16) -> String {
+    let host = headers
+        .get(HOST)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<Authority>().ok())
+        .map(|authority| authority.host().to_string())
+        .filter(|host| !host.is_empty())
+        .unwrap_or_else(|| "127.0.0.1".to_string());
+    let host = if host.contains(':') && !host.starts_with('[') {
+        format!("[{host}]")
+    } else {
+        host
+    };
+    let scheme = if tls_enabled { "tls" } else { "tcp" };
+    format!("{scheme}/{host}:{port}")
+}
+
+#[cfg(test)]
+mod automatic_endpoint_tests {
+    use super::*;
+
+    #[test]
+    fn derives_tcp_endpoint_from_http_host_without_reusing_the_http_port() {
+        let mut headers = HeaderMap::new();
+        headers.insert(HOST, "hub.example.test:8080".parse().unwrap());
+
+        assert_eq!(
+            automatic_zenoh_endpoint(&headers, false, 7447),
+            "tcp/hub.example.test:7447"
+        );
+    }
+
+    #[test]
+    fn derives_bracketed_ipv6_tls_endpoint() {
+        let mut headers = HeaderMap::new();
+        headers.insert(HOST, "[fd12:3456::20]:8080".parse().unwrap());
+
+        assert_eq!(
+            automatic_zenoh_endpoint(&headers, true, 7448),
+            "tls/[fd12:3456::20]:7448"
+        );
+    }
 }
 
 /// Update a device.
@@ -421,10 +542,11 @@ pub(crate) async fn restart_device(
     command_service::send_command_as_user_with_repository(
         &ctx,
         state.persistence.commands.as_ref(),
+        state.persistence.devices.as_ref(),
         &state.zenoh_session,
         &id,
         "restart",
-        HashMap::default(),
+        serde_json::json!({}),
         &state.zenoh_metrics,
     )
     .await?;
@@ -570,10 +692,11 @@ pub(crate) async fn bulk_restart_devices(
         match command_service::send_command_as_user_with_repository(
             &ctx,
             state.persistence.commands.as_ref(),
+            state.persistence.devices.as_ref(),
             &state.zenoh_session,
             device_id,
             "restart",
-            HashMap::default(),
+            serde_json::json!({}),
             &state.zenoh_metrics,
         )
         .await

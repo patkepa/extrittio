@@ -128,6 +128,27 @@ impl DeviceTypeRepository for PostgresAdapter {
             .await
     }
 
+    async fn get_by_name(
+        &self,
+        tenant: &TenantId,
+        name: &str,
+    ) -> Result<Option<DeviceTypeRecord>, PersistenceError> {
+        let tenant_id = tenant.as_str().to_owned();
+        let name = name.to_owned();
+        self.executor
+            .run(move |connection| {
+                device_types::table
+                    .filter(device_types::tenant_id.eq(tenant_id))
+                    .filter(device_types::name.eq(name))
+                    .select(DeviceType::as_select())
+                    .first::<DeviceType>(connection)
+                    .optional()
+                    .map(|row| row.map(to_record))
+                    .map_err(map_diesel_error)
+            })
+            .await
+    }
+
     async fn delete_if_unused(
         &self,
         tenant: &TenantId,

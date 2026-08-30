@@ -13,6 +13,25 @@ use turso::{Builder, Connection, Database};
 use crate::persistence::{DatabaseHealth, PersistenceError};
 
 const BASELINE: &str = include_str!("../../../migrations/turso/0001_baseline.sql");
+const DEVICE_BLUEPRINTS: &str =
+    include_str!("../../../migrations/turso/0002_device_blueprints.sql");
+const DEVICE_CONTRACTS: &str = include_str!("../../../migrations/turso/0003_device_contracts.sql");
+const DEVICE_EVENTS: &str = include_str!("../../../migrations/turso/0004_device_events.sql");
+const RULE_BLUEPRINT_TARGETS: &str =
+    include_str!("../../../migrations/turso/0005_rule_blueprint_targets.sql");
+const FIRMWARE_BLUEPRINT_TARGETS: &str =
+    include_str!("../../../migrations/turso/0006_firmware_blueprint_targets.sql");
+const REMOVE_RETIRED_DEVICE_FEATURE: &str =
+    include_str!("../../../migrations/turso/0007_remove_retired_device_feature.sql");
+const MIGRATIONS: &[(i64, &str)] = &[
+    (1, BASELINE),
+    (2, DEVICE_BLUEPRINTS),
+    (3, DEVICE_CONTRACTS),
+    (4, DEVICE_EVENTS),
+    (5, RULE_BLUEPRINT_TARGETS),
+    (6, FIRMWARE_BLUEPRINT_TARGETS),
+    (7, REMOVE_RETIRED_DEVICE_FEATURE),
+];
 
 /// Local Turso lifecycle owner. Keeping the lock file alive enforces the
 /// supported single-process deployment model; writes share one connection.
@@ -43,6 +62,13 @@ const LOGICAL_TABLES: &[&str] = &[
     "organizations",
     "server_config",
     "device_types",
+    "device_blueprints",
+    "device_blueprint_drafts",
+    "device_blueprint_revisions",
+    "device_contracts",
+    "device_contract_assignments",
+    "device_events",
+    "device_metric_samples",
     "fleets",
     "devices",
     "users",
@@ -69,7 +95,6 @@ const LOGICAL_TABLES: &[&str] = &[
     "alerts",
     "rule_action_outbox",
     "audit_events",
-    "network_observed_hosts",
     "server_metrics",
     "app_metrics",
 ];
@@ -153,38 +178,40 @@ impl TursoDatabase {
             )
             .await
             .map_err(map_migration)?;
-        let checksum = format!("{:x}", Sha256::digest(BASELINE.as_bytes()));
-        let mut rows = writer
-            .query(
-                "SELECT checksum FROM _extrittio_migrations WHERE version = 1",
-                (),
-            )
-            .await
-            .map_err(map_migration)?;
-        let applied_checksum = rows
-            .next()
-            .await
-            .map_err(map_migration)?
-            .map(|row| row.get::<String>(0))
-            .transpose()
-            .map_err(map_migration)?;
-        drop(rows);
-        if let Some(applied_checksum) = applied_checksum {
-            if applied_checksum != checksum {
-                return Err(PersistenceError::Migration(format!(
-                    "Turso migration 1 checksum mismatch: expected {checksum}, found {applied_checksum}"
-                )));
+        for &(version, migration) in MIGRATIONS {
+            let checksum = format!("{:x}", Sha256::digest(migration.as_bytes()));
+            let mut rows = writer
+                .query(
+                    "SELECT checksum FROM _extrittio_migrations WHERE version = ?1",
+                    turso::params![version],
+                )
+                .await
+                .map_err(map_migration)?;
+            let applied_checksum = rows
+                .next()
+                .await
+                .map_err(map_migration)?
+                .map(|row| row.get::<String>(0))
+                .transpose()
+                .map_err(map_migration)?;
+            drop(rows);
+            if let Some(applied_checksum) = applied_checksum {
+                if applied_checksum != checksum {
+                    return Err(PersistenceError::Migration(format!(
+                        "Turso migration {version} checksum mismatch: expected {checksum}, found {applied_checksum}"
+                    )));
+                }
+                continue;
             }
-        } else {
             let transaction = writer.transaction().await.map_err(map_migration)?;
             transaction
-                .execute_batch(BASELINE)
+                .execute_batch(migration)
                 .await
                 .map_err(map_migration)?;
             transaction
                 .execute(
-                    "INSERT INTO _extrittio_migrations (version, checksum, applied_at_us) VALUES (1, ?1, unixepoch('subsec') * 1000000)",
-                    turso::params![checksum],
+                    "INSERT INTO _extrittio_migrations (version, checksum, applied_at_us) VALUES (?1, ?2, unixepoch('subsec') * 1000000)",
+                    turso::params![version, checksum],
                 )
                 .await
                 .map_err(map_migration)?;
@@ -704,7 +731,7 @@ mod tests {
         database.migrate().await.unwrap();
 
         let backup = database.backup(&backup_path).await.unwrap();
-        assert_eq!(backup.schema_version, 1);
+        assert_eq!(backup.schema_version, MIGRATIONS.last().unwrap().0);
         assert_eq!(backup.sha256.len(), 64);
         assert!(manifest_path(&backup_path).exists());
         let verified = TursoDatabase::verify_backup(&backup_path).await.unwrap();
@@ -719,7 +746,10 @@ mod tests {
             .await
             .unwrap();
         reopened.integrity_check().await.unwrap();
-        assert_eq!(reopened.info().await.unwrap().schema_version, 1);
+        assert_eq!(
+            reopened.info().await.unwrap().schema_version,
+            MIGRATIONS.last().unwrap().0
+        );
     }
 
     #[tokio::test]

@@ -136,7 +136,7 @@ pub async fn run_alert_retention(persistence: Persistence, retention_days: u64) 
         };
         tokio::time::sleep(sleep_dur).await;
 
-        let result: Result<(usize, usize, usize), String> = async {
+        let result: Result<(usize, usize), String> = async {
             #[allow(clippy::cast_possible_wrap)]
             let cutoff =
                 chrono::Utc::now().naive_utc() - chrono::Duration::days(retention_days as i64);
@@ -155,19 +155,12 @@ pub async fn run_alert_retention(persistence: Persistence, retention_days: u64) 
                 .await
                 .map_err(|error| error.to_string())?;
 
-            let observed_host_cutoff = chrono::Utc::now().naive_utc() - chrono::Duration::days(30);
-            let observed_host_count = persistence
-                .devices
-                .delete_observed_hosts_before(observed_host_cutoff)
-                .await
-                .map_err(|error| error.to_string())?;
-
-            Ok((alert_count, cooldown_count, observed_host_count))
+            Ok((alert_count, cooldown_count))
         }
         .await;
 
         match result {
-            Ok((alert_count, cooldown_count, observed_host_count)) => {
+            Ok((alert_count, cooldown_count)) => {
                 consecutive_failures = 0;
                 if alert_count > 0 {
                     info!("Alert retention: deleted {} resolved alerts", alert_count);
@@ -176,12 +169,6 @@ pub async fn run_alert_retention(persistence: Persistence, retention_days: u64) 
                     info!(
                         "Cooldown pruning: deleted {} stale cooldowns",
                         cooldown_count
-                    );
-                }
-                if observed_host_count > 0 {
-                    info!(
-                        "Network observed host retention: deleted {} stale hosts",
-                        observed_host_count
                     );
                 }
             }

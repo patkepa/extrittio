@@ -6,31 +6,14 @@ use crate::error::AppError;
 use crate::rule_engine::cache::RuleCache;
 use crate::rule_engine::evaluate::evaluate_status_change_for_tenant;
 use crate::rule_engine::types::StatusChange;
-use crate::tenancy::{DEFAULT_TENANT_ID, DeviceIdentity, TenantId};
+use crate::tenancy::DeviceIdentity;
 
 use crate::domains::devices::repository::DeviceRepository;
 use crate::domains::devices::types::{
-    AutoRegisterOutcome, DeviceIngressContext, HeartbeatWrite, OfflineTransition,
-    OfflineWriteOutcome,
+    DeviceIngressContext, HeartbeatWrite, OfflineTransition, OfflineWriteOutcome,
 };
 
 const MAX_OPTIMISTIC_RETRIES: usize = 3;
-
-fn infer_device_type(firmware: &str) -> &'static str {
-    let firmware = firmware.to_ascii_lowercase();
-    if firmware.contains("network-analyzer") || firmware.contains("network_analyzer") {
-        "network-analyzer"
-    } else if firmware.contains("organbath")
-        || firmware.contains("organ-bath")
-        || firmware.contains("organ_bath")
-    {
-        "OrganBath"
-    } else if firmware.contains("macos") {
-        "mac-device"
-    } else {
-        "default"
-    }
-}
 
 fn evaluated_actions(
     context: &DeviceIngressContext,
@@ -52,30 +35,10 @@ fn evaluated_actions(
         context.identity.device_id(),
         context.device_type_id,
         context.fleet_id,
+        context.blueprint_id.as_deref(),
         &change,
         &cache,
     ))
-}
-
-pub async fn auto_register(
-    repository: &dyn DeviceRepository,
-    device_id: &str,
-    firmware: &str,
-) -> Result<Option<DeviceIngressContext>, AppError> {
-    if !extrittio_common::topics::is_valid_device_id(device_id) {
-        return Ok(None);
-    }
-    let tenant = TenantId::new(DEFAULT_TENANT_ID)
-        .map_err(|error| AppError::Internal(format!("invalid default tenant: {error}")))?;
-    match repository
-        .auto_register(&tenant, device_id, firmware, infer_device_type(firmware))
-        .await?
-    {
-        AutoRegisterOutcome::Existing(context) | AutoRegisterOutcome::Created(context) => {
-            Ok(Some(context))
-        }
-        AutoRegisterOutcome::NoDeviceType => Ok(None),
-    }
 }
 
 pub async fn apply_heartbeat(

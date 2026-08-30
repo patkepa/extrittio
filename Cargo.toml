@@ -4,13 +4,16 @@ members = [
     "apps/extrittio",
     "crates/backend",
     "crates/common",
+    "crates/device-contract",
     "crates/openthread-runtime",
+    "crates/rule-engine",
     "clients/rust/linux",
     "clients/rust/macos",
     "clients/rust/rpi",
     "clients/rust/runtime",
     "clients/rust/sdk",
     "clients/rust/simulator",
+    "tools/xtask",
 ]
 
 [workspace.package]
@@ -21,6 +24,12 @@ authors = ["Extrittio contributors"]
 repository = "https://github.com/extrittio/extrittio"
 homepage = "https://github.com/extrittio/extrittio"
 publish = false
+
+[profile.dev]
+debug = 1
+
+[profile.test]
+debug = 1
 
 # Optimized release profile for production builds
 [profile.release]

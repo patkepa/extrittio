@@ -21,12 +21,29 @@ targets:
     platform: iOS
     sources:
       - path: Extrittio
+      - path: Shared
+    dependencies:
+      - target: ExtrittioPairingWidget
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_IDENTIFIER)
       GENERATE_INFOPLIST_FILE: NO
       INFOPLIST_FILE: Extrittio/Resources/Info.plist
       TARGETED_DEVICE_FAMILY: "1,2"
       SWIFT_STRICT_CONCURRENCY: complete
+  ExtrittioPairingWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: ExtrittioPairingWidget
+      - path: Shared
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_IDENTIFIER).pairing-widget
+      GENERATE_INFOPLIST_FILE: NO
+      INFOPLIST_FILE: ExtrittioPairingWidget/Info.plist
+      TARGETED_DEVICE_FAMILY: "1,2"
+      SWIFT_STRICT_CONCURRENCY: complete
+      APPLICATION_EXTENSION_API_ONLY: YES
+      SKIP_INSTALL: YES
   ExtrittioTests:
     type: bundle.unit-test
     platform: iOS

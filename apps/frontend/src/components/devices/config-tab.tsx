@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { Button, Callout, Divider, InputGroup, Spinner } from '@blueprintjs/core';
 import { useDeviceConfig, useUpdateDeviceConfig } from '../../hooks/use-config';
-import { useFormNavigation } from '@extrittio/interactions';
+import { useFormNavigation } from '@patkepa/kantzen-ui/interactions';
 import { showSuccessToast, showErrorToast } from '../../utils/toaster';
 import { hasPermission } from '../../auth/permissions';
 import { useAuthStore } from '../../stores/auth-store';

@@ -10,11 +10,16 @@ publish.workspace = true
 
 [dependencies]
 extrittio-common = { version = "0.1.0", path = "../../../crates/common" }
+extrittio-device-contract = { version = "0.1.0", path = "../../../crates/device-contract" }
 extrittio-sdk = { version = "0.1.0", path = "../sdk" }
 zenoh = { version = "1", default-features = false, features = ["transport_tcp", "transport_tls"] }
-prost = "0.13"
-tokio = { version = "1", features = ["full"] }
-reqwest = { version = "0.12", features = ["stream"] }
+prost = "0.14"
+tokio = { version = "1", features = ["fs", "rt-multi-thread", "sync", "time"] }
+reqwest = { version = "0.13", default-features = false, features = ["charset", "http2", "rustls-no-provider", "stream", "system-proxy"] }
 sha2 = "0.10"
 tracing = "0.1"
 serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4"] }
+thiserror = "2"

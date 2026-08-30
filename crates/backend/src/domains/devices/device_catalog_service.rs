@@ -2,7 +2,8 @@ use crate::auth::context::RequestContext;
 use crate::auth::policy::{self, Permission};
 use crate::domains::devices::repository::DeviceRepository;
 use crate::domains::devices::types::{
-    CreateDeviceRecord, DeviceDetails, DeviceFilter, DeviceListQuery, UpdateDeviceRecord,
+    CreateDeviceRecord, DeviceContractRecord, DeviceDetails, DeviceFilter, DeviceListQuery,
+    UpdateDeviceRecord,
 };
 use crate::domains::identity::certificate_repository::CertificateRepository;
 use crate::error::AppError;
@@ -59,6 +60,18 @@ pub async fn get(
         .ok_or_else(|| AppError::NotFound(format!("Device '{device_id}' not found")))
 }
 
+pub async fn assigned_contract(
+    ctx: &RequestContext,
+    repository: &dyn DeviceRepository,
+    device_id: &str,
+) -> Result<DeviceContractRecord, AppError> {
+    policy::require(ctx, Permission::ReadDevices)?;
+    repository
+        .assigned_contract(ctx.tenant_id(), device_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Device '{device_id}' has no assigned contract")))
+}
+
 pub async fn create(
     ctx: &RequestContext,
     repository: &dyn DeviceRepository,
@@ -67,6 +80,12 @@ pub async fn create(
 ) -> Result<DeviceDetails, AppError> {
     policy::require(ctx, Permission::ManageDevices)?;
     validate_device_id(&record.id)?;
+    if record.contract.is_none() {
+        return Err(AppError::BadRequest(
+            "A compiled device contract is required; create the device from a published blueprint"
+                .into(),
+        ));
+    }
     let certificate = if let Some(ca) = certificates.get_ca().await? {
         let tenant_id = ctx.tenant_id_str().to_string();
         let device_id = record.id.clone();
@@ -189,8 +208,8 @@ mod tests {
     use super::*;
     use crate::auth::Claims;
     use crate::domains::devices::types::{
-        AutoRegisterOutcome, DeviceIngressContext, DeviceList, DeviceWriteOutcome, HeartbeatWrite,
-        OfflineTransition, OfflineWriteOutcome,
+        DeviceIngressContext, DeviceList, DeviceWriteOutcome, HeartbeatWrite, OfflineTransition,
+        OfflineWriteOutcome,
     };
     use crate::domains::identity::certificate_types::NewDeviceCertificateRecord;
     use crate::tenancy::TenantId;
@@ -223,16 +242,6 @@ mod tests {
             _identity: &crate::tenancy::DeviceIdentity,
         ) -> Result<Option<DeviceIngressContext>, PersistenceError> {
             Ok(None)
-        }
-
-        async fn auto_register(
-            &self,
-            _tenant: &TenantId,
-            _device_id: &str,
-            _firmware: &str,
-            _preferred_device_type: &str,
-        ) -> Result<AutoRegisterOutcome, PersistenceError> {
-            Ok(AutoRegisterOutcome::NoDeviceType)
         }
 
         async fn apply_heartbeat(
@@ -282,6 +291,16 @@ mod tests {
             _device_id: &str,
         ) -> Result<Option<DeviceDetails>, PersistenceError> {
             self.record("get", tenant);
+            Ok(None)
+        }
+
+        async fn assigned_contract(
+            &self,
+            tenant: &TenantId,
+            _device_id: &str,
+        ) -> Result<Option<crate::domains::devices::types::DeviceContractRecord>, PersistenceError>
+        {
+            self.record("assigned_contract", tenant);
             Ok(None)
         }
 
@@ -341,13 +360,6 @@ mod tests {
         ) -> Result<usize, PersistenceError> {
             self.record("bulk_delete", tenant);
             Ok(device_ids.len())
-        }
-
-        async fn delete_observed_hosts_before(
-            &self,
-            _cutoff: chrono::NaiveDateTime,
-        ) -> Result<usize, PersistenceError> {
-            Ok(0)
         }
     }
 

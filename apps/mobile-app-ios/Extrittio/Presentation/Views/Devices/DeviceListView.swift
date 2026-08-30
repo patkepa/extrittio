@@ -5,18 +5,25 @@ struct DeviceListView: View {
     @Environment(ToastManager.self) private var toastManager
     @Environment(AuthViewModel.self) private var authViewModel
     @Environment(ConnectionMonitor.self) private var connectionMonitor
+    @Environment(AppNavigationRouter.self) private var navigationRouter
     let viewModel: DeviceListViewModel
     let container: DependencyContainer
-    @State private var showingCreateSheet = false
     @State private var restartingDeviceId: String?
     @State private var deletingDeviceId: String?
     @State private var isSelectingDevices = false
     @State private var selectedDeviceIds = Set<String>()
     @State private var pendingBulkAction: DeviceBulkAction?
     @State private var bulkActionInProgress: DeviceBulkAction?
+    @State private var presentedPanel: DeviceListPanel?
 
     private var canManageDevices: Bool {
         authViewModel.currentUser?.hasPermission(.devicesManage) == true
+    }
+
+    private var canProvisionDevices: Bool {
+        authViewModel.currentUser?.hasRequiredPermissions([
+            .devicesManage, .deviceBlueprintsRead, .fleetsRead
+        ]) == true
     }
 
     private var selectedFleetName: String? {
@@ -29,11 +36,35 @@ struct DeviceListView: View {
     }
 
     var body: some View {
-        if sizeClass == .regular {
-            DeviceSplitView(viewModel: viewModel, container: container)
-        } else {
-            compactLayout
+        Group {
+            if sizeClass == .regular {
+                DeviceSplitView(
+                    viewModel: viewModel,
+                    container: container,
+                    showNearbyDevicePanel: presentNearbyDevicePanel,
+                    showProvisionDevicePanel: presentProvisionDevicePanel
+                )
+            } else {
+                compactLayout
+            }
         }
+        .sheet(item: $presentedPanel) { panel in
+            switch panel {
+            case .nearbyDevice:
+                NearbyDevicePanel(scanner: container.makeNearbyDeviceScanner())
+                    .id(panel.id)
+            case .provisionDevice:
+                ProvisionDeviceSheet(
+                    model: container.makeProvisionDeviceViewModel(),
+                    scanner: container.makeProvisioningDeviceScanner()
+                ) { device in
+                    viewModel.insertDevice(device)
+                }
+                .id(panel.id)
+            }
+        }
+        .onAppear { handleNavigationRequest() }
+        .onChange(of: navigationRouter.request) { _, _ in handleNavigationRequest() }
     }
 
     private var compactLayout: some View {
@@ -73,17 +104,24 @@ struct DeviceListView: View {
                         .disabled(deviceActionInProgress)
                     }
                 }
-                if canManageDevices, !isSelectingDevices {
+                if canProvisionDevices, !isSelectingDevices {
                     ToolbarItem(placement: .primaryAction) {
                         Button {
-                            showingCreateSheet = true
+                            presentProvisionDevicePanel()
                         } label: {
-                            Label("Add Device", systemImage: "plus")
+                            Label("Provision Device", systemImage: "sensor.tag.radiowaves.forward")
                         }
                         .disabled(!connectionMonitor.isOnline)
                     }
                 }
                 if !isSelectingDevices {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            presentNearbyDevicePanel()
+                        } label: {
+                            Label("Tap into a device", systemImage: "dot.radiowaves.left.and.right")
+                        }
+                    }
                     ToolbarItem(placement: .primaryAction) {
                         Menu {
                             Button("All") {
@@ -125,15 +163,6 @@ struct DeviceListView: View {
                             }
                         }
                     }
-                }
-            }
-            .sheet(isPresented: $showingCreateSheet) {
-                CreateDeviceSheet(
-                    createDeviceUseCase: container.makeCreateDeviceUseCase(),
-                    getDeviceTypesUseCase: container.makeGetDeviceTypesUseCase(),
-                    getFleetsUseCase: container.makeGetFleetsUseCase()
-                ) { newDevice in
-                    viewModel.insertDevice(newDevice)
                 }
             }
             .refreshable { await viewModel.load() }
@@ -247,14 +276,14 @@ struct DeviceListView: View {
             icon: "sensor.tag.radiowaves.forward",
             title: "No Devices",
             message: hasActiveFilters ? "No devices match the selected filters." : "No devices have been added yet.",
-            actionTitle: hasActiveFilters ? "Clear Filters" : (canManageDevices ? "Add Device" : nil),
+            actionTitle: hasActiveFilters ? "Clear Filters" : (canProvisionDevices ? "Provision Device" : nil),
             actionSystemImage: hasActiveFilters ? "xmark.circle" : "plus",
             isActionDisabled: !hasActiveFilters && !connectionMonitor.isOnline
         ) {
             if hasActiveFilters {
                 clearFilters()
             } else {
-                showingCreateSheet = true
+                presentProvisionDevicePanel()
             }
         }
     }
@@ -455,5 +484,34 @@ struct DeviceListView: View {
         viewModel.searchText = ""
         HapticEngine.shared.selection()
         Task { await viewModel.load() }
+    }
+
+    private func handleNavigationRequest() {
+        guard let request = navigationRouter.request else { return }
+
+        switch request.destination {
+        case .pairNearbyDevice:
+            presentNearbyDevicePanel()
+            navigationRouter.consume(request)
+        }
+    }
+
+    private func presentNearbyDevicePanel() {
+        presentedPanel = .nearbyDevice(id: UUID())
+    }
+
+    private func presentProvisionDevicePanel() {
+        presentedPanel = .provisionDevice(id: UUID())
+    }
+}
+
+private enum DeviceListPanel: Identifiable {
+    case nearbyDevice(id: UUID)
+    case provisionDevice(id: UUID)
+
+    var id: UUID {
+        switch self {
+        case .nearbyDevice(let id), .provisionDevice(let id): id
+        }
     }
 }

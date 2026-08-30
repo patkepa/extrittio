@@ -5,7 +5,7 @@ use turso::{Connection, Row, params};
 use crate::domains::device_types::types::DeviceTypeRecord;
 use crate::domains::devices::repository::DeviceRepository;
 use crate::domains::devices::types::{
-    AutoRegisterOutcome, CreateDeviceRecord, DeviceDetails, DeviceFilter, DeviceIngressContext,
+    CreateDeviceRecord, DeviceContractRecord, DeviceDetails, DeviceFilter, DeviceIngressContext,
     DeviceList, DeviceListQuery, DeviceRecord, DeviceWriteOutcome, HeartbeatWrite,
     OfflineTransition, OfflineWriteOutcome, UpdateDeviceRecord,
 };
@@ -24,6 +24,19 @@ const DETAILS_SQL: &str = "SELECT d.id, d.name, d.device_type_id, d.fleet_id, d.
      FROM devices d JOIN device_types t
        ON t.tenant_id = d.tenant_id AND t.id = d.device_type_id
      LEFT JOIN fleets f ON f.tenant_id = d.tenant_id AND f.id = d.fleet_id";
+
+const INGRESS_SELECT: &str = "SELECT d.tenant_id, d.id, d.device_type_id, d.fleet_id, d.status,
+       (SELECT revision.blueprint_id
+          FROM device_contract_assignments assignment
+          JOIN device_contracts contract
+            ON contract.tenant_id = assignment.tenant_id
+           AND contract.id = assignment.desired_contract_id
+          JOIN device_blueprint_revisions revision
+            ON revision.tenant_id = contract.tenant_id
+           AND revision.id = contract.blueprint_revision_id
+         WHERE assignment.tenant_id = d.tenant_id AND assignment.device_id = d.id)
+       AS blueprint_id
+  FROM devices d";
 
 fn decode_details(record: &Row) -> Result<DeviceDetails, PersistenceError> {
     let connections: String = record.get(10).map_err(row::error)?;
@@ -99,6 +112,7 @@ fn ingress(record: &Row) -> Result<DeviceIngressContext, PersistenceError> {
             .map_err(row::error)?
             .map(|id| row::i32(id, "devices.fleet_id"))
             .transpose()?,
+        blueprint_id: record.get(5).map_err(row::error)?,
         status: record.get(4).map_err(row::error)?,
     })
 }
@@ -170,81 +184,18 @@ impl DeviceRepository for TursoAdapter {
         identity: &DeviceIdentity,
     ) -> Result<Option<DeviceIngressContext>, PersistenceError> {
         let connection = self.database.connect()?;
-        let mut rows = connection.query(
-            "SELECT tenant_id, id, device_type_id, fleet_id, status FROM devices WHERE tenant_id = ?1 AND id = ?2",
-            params![identity.tenant_id_str(), identity.device_id()],
-        ).await.map_err(row::error)?;
+        let mut rows = connection
+            .query(
+                &format!("{INGRESS_SELECT} WHERE d.tenant_id = ?1 AND d.id = ?2"),
+                params![identity.tenant_id_str(), identity.device_id()],
+            )
+            .await
+            .map_err(row::error)?;
         rows.next()
             .await
             .map_err(row::error)?
             .map(|record| ingress(&record))
             .transpose()
-    }
-
-    async fn auto_register(
-        &self,
-        tenant: &TenantId,
-        device_id: &str,
-        firmware: &str,
-        preferred_device_type: &str,
-    ) -> Result<AutoRegisterOutcome, PersistenceError> {
-        let mut writer = self.database.writer().await;
-        let transaction = writer.transaction().await.map_err(row::error)?;
-        let mut existing = transaction
-            .query(
-                "SELECT tenant_id, id, device_type_id, fleet_id, status FROM devices WHERE id = ?1",
-                params![device_id],
-            )
-            .await
-            .map_err(row::error)?;
-        if let Some(record) = existing.next().await.map_err(row::error)? {
-            let context = ingress(&record)?;
-            drop(existing);
-            transaction.commit().await.map_err(row::error)?;
-            return Ok(AutoRegisterOutcome::Existing(context));
-        }
-        drop(existing);
-        let mut type_rows = transaction
-            .query(
-                "SELECT id FROM device_types WHERE tenant_id = ?1 AND name IN (?2, 'default')
-             ORDER BY CASE WHEN name = ?2 THEN 0 ELSE 1 END LIMIT 1",
-                params![tenant.as_str(), preferred_device_type],
-            )
-            .await
-            .map_err(row::error)?;
-        let Some(type_record) = type_rows.next().await.map_err(row::error)? else {
-            transaction.rollback().await.map_err(row::error)?;
-            return Ok(AutoRegisterOutcome::NoDeviceType);
-        };
-        let device_type_id: i64 = type_record.get(0).map_err(row::error)?;
-        drop(type_rows);
-        let now = Utc::now().timestamp_micros();
-        transaction.execute(
-            "INSERT INTO devices (id, tenant_id, name, device_type_id, status, firmware, uptime_seconds, declared_connections, created_at, updated_at)
-             VALUES (?1, ?2, ?1, ?3, 'offline', ?4, 0, '[]', ?5, ?5)",
-            params![device_id, tenant.as_str(), device_type_id, firmware, now],
-        ).await.map_err(row::error)?;
-        transaction.execute(
-            "INSERT INTO device_shadows (tenant_id, device_id, desired, reported, delta, version, updated_at)
-             VALUES (?1, ?2, '{}', '{}', '{}', 1, ?3)", params![tenant.as_str(), device_id, now]
-        ).await.map_err(row::error)?;
-        transaction
-            .execute(
-                "INSERT INTO device_logs (tenant_id, device_id, level, message, created_at)
-             VALUES (?1, ?2, 'INFO', 'Device registered and came online', ?3)",
-                params![tenant.as_str(), device_id, now],
-            )
-            .await
-            .map_err(row::error)?;
-        let identity = DeviceIdentity::new(tenant.as_str(), device_id)
-            .map_err(|error| PersistenceError::CorruptData(error.to_string()))?;
-        transaction.commit().await.map_err(row::error)?;
-        Ok(AutoRegisterOutcome::Created(DeviceIngressContext {
-            identity,
-            device_type_id: row::i32(device_type_id, "devices.device_type_id")?,
-            fleet_id: None,
-            status: "offline".into(),
-        }))
     }
 
     async fn apply_heartbeat(
@@ -287,8 +238,10 @@ impl DeviceRepository for TursoAdapter {
         let connection = self.database.connect()?;
         let mut rows = connection
             .query(
-                "SELECT tenant_id, id, device_type_id, fleet_id, status FROM devices
-             WHERE status <> 'offline' AND last_seen < ?1 ORDER BY tenant_id, id",
+                &format!(
+                    "{INGRESS_SELECT} WHERE d.status <> 'offline' AND d.last_seen < ?1
+                     ORDER BY d.tenant_id, d.id"
+                ),
                 params![cutoff.and_utc().timestamp_micros()],
             )
             .await
@@ -391,6 +344,46 @@ impl DeviceRepository for TursoAdapter {
         details_from(&self.database.connect()?, tenant, device_id).await
     }
 
+    async fn assigned_contract(
+        &self,
+        tenant: &TenantId,
+        device_id: &str,
+    ) -> Result<Option<DeviceContractRecord>, PersistenceError> {
+        let connection = self.database.connect()?;
+        let mut rows = connection
+            .query(
+                "SELECT c.id, c.device_id, c.blueprint_revision_id, c.document,
+                        c.contract_hash, a.status, a.acknowledged_at, a.error, c.created_at
+                 FROM device_contract_assignments a
+                 JOIN device_contracts c
+                   ON c.tenant_id = a.tenant_id AND c.id = a.desired_contract_id
+                 WHERE a.tenant_id = ?1 AND a.device_id = ?2",
+                params![tenant.as_str(), device_id],
+            )
+            .await
+            .map_err(row::error)?;
+        let Some(record) = rows.next().await.map_err(row::error)? else {
+            return Ok(None);
+        };
+        let document: String = record.get(3).map_err(row::error)?;
+        Ok(Some(DeviceContractRecord {
+            id: record.get(0).map_err(row::error)?,
+            device_id: record.get(1).map_err(row::error)?,
+            blueprint_revision_id: record.get(2).map_err(row::error)?,
+            document: serde_json::from_str(&document)
+                .map_err(|error| PersistenceError::CorruptData(error.to_string()))?,
+            contract_hash: record.get(4).map_err(row::error)?,
+            assignment_status: record.get(5).map_err(row::error)?,
+            acknowledged_at: record
+                .get::<Option<i64>>(6)
+                .map_err(row::error)?
+                .map(row::datetime)
+                .transpose()?,
+            error: record.get(7).map_err(row::error)?,
+            created_at: row::datetime(record.get(8).map_err(row::error)?)?,
+        }))
+    }
+
     async fn create(
         &self,
         tenant: &TenantId,
@@ -400,6 +393,7 @@ impl DeviceRepository for TursoAdapter {
         let mut writer = self.database.writer().await;
         let transaction = writer.transaction().await.map_err(row::error)?;
         let now = Utc::now().timestamp_micros();
+        let contract = record.contract;
         transaction.execute(
             "INSERT INTO devices (id, tenant_id, name, device_type_id, fleet_id, status, firmware, uptime_seconds, declared_connections, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, 'offline', ?6, 0, '[]', ?7, ?7)",
@@ -411,6 +405,26 @@ impl DeviceRepository for TursoAdapter {
                 "INSERT INTO device_certificates (tenant_id, device_id, private_key_pem, certificate_pem, fingerprint, expires_at, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                 params![tenant.as_str(), record.id.clone(), certificate.private_key_pem, certificate.certificate_pem, certificate.fingerprint, certificate.expires_at.timestamp_micros(), now],
             ).await.map_err(row::error)?;
+        }
+        if let Some(contract) = contract {
+            let document = serde_json::to_string(&contract.document)
+                .map_err(|error| PersistenceError::Internal(error.to_string()))?;
+            let created_at = contract.created_at.timestamp_micros();
+            transaction.execute(
+                "INSERT INTO device_contracts
+                    (id, tenant_id, device_id, blueprint_revision_id, document, contract_hash, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![contract.id.clone(), tenant.as_str(), record.id.clone(), contract.blueprint_revision_id, document, contract.contract_hash, created_at],
+            ).await.map_err(row::error)?;
+            transaction
+                .execute(
+                    "INSERT INTO device_contract_assignments
+                    (tenant_id, device_id, desired_contract_id, status, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, 'pending', ?4, ?4)",
+                    params![tenant.as_str(), record.id.clone(), contract.id, created_at],
+                )
+                .await
+                .map_err(row::error)?;
         }
         let result = details_from(&transaction, tenant, &record.id)
             .await?
@@ -542,20 +556,5 @@ impl DeviceRepository for TursoAdapter {
         }
         transaction.commit().await.map_err(row::error)?;
         Ok(count)
-    }
-
-    async fn delete_observed_hosts_before(
-        &self,
-        cutoff: chrono::NaiveDateTime,
-    ) -> Result<usize, PersistenceError> {
-        let writer = self.database.writer().await;
-        writer
-            .execute(
-                "DELETE FROM network_observed_hosts WHERE last_seen_at < ?1",
-                params![cutoff.and_utc().timestamp_micros()],
-            )
-            .await
-            .map(|count| count as usize)
-            .map_err(row::error)
     }
 }

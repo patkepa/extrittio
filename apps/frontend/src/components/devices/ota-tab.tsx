@@ -16,9 +16,10 @@ import {
   useOtaDeployments,
   useTriggerOta,
 } from '../../hooks/use-firmware-updates';
-import { useFormNavigation } from '@extrittio/interactions';
+import { useFormNavigation } from '@patkepa/kantzen-ui/interactions';
 import { showSuccessToast, showErrorToast } from '../../utils/toaster';
 import { useDeviceShadow } from '../../hooks/use-shadow';
+import { useDeviceContract } from '../../hooks/use-devices';
 import { hasPermission } from '../../auth/permissions';
 import { useAuthStore } from '../../stores/auth-store';
 import type { Device } from '../../types/api';
@@ -31,12 +32,15 @@ export const OtaTab = ({ device }: OtaTabProps) => {
   const formRef = useRef<HTMLDivElement | null>(null);
   const permissions = useAuthStore((s) => s.user?.permissions);
   const canDeployFirmware = hasPermission(permissions, 'firmware.deploy');
+  const contractQuery = useDeviceContract(device.id, { retry: false });
   const {
     data: firmwareUpdates = [],
     isLoading,
     isError,
   } = useFirmwareUpdates({
-    device_type_id: device.device_type_id,
+    ...(contractQuery.data?.blueprint_revision_id
+      ? { blueprint_revision_id: contractQuery.data.blueprint_revision_id }
+      : { device_type_id: device.device_type_id }),
   });
   const { data: shadow } = useDeviceShadow(device.id);
   const { data: deployments = [] } = useOtaDeployments(device.id);
@@ -55,7 +59,7 @@ export const OtaTab = ({ device }: OtaTabProps) => {
   const hasPendingOta = !!pendingOta?.firmware_version;
   const otaInDelta = shadow?.delta?.ota !== undefined;
 
-  if (isLoading) return <Spinner />;
+  if (isLoading || contractQuery.isLoading) return <Spinner />;
 
   if (isError) {
     return (

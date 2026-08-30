@@ -11,6 +11,7 @@ import {
   getDevices,
   getAllDevices,
   getDevice,
+  getDeviceContract,
   createDevice,
   updateDevice,
   deleteDevice,
@@ -64,6 +65,16 @@ export function useDevice(id: string | null) {
     queryFn: () => getDevice(id!),
     enabled: !!id,
     staleTime: 30_000,
+  });
+}
+
+export function useDeviceContract(id: string, options?: { retry?: boolean }) {
+  return useQuery({
+    queryKey: queryKeys.devices.contract(id),
+    queryFn: () => getDeviceContract(id),
+    enabled: id.length > 0,
+    staleTime: 60_000,
+    retry: options?.retry,
   });
 }
 

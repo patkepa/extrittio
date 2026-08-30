@@ -1,7 +1,3 @@
 pub mod actions;
-pub mod cache;
-pub mod compiler;
-pub mod evaluate;
-pub mod geo;
-pub mod model;
-pub mod types;
+
+pub use extrittio_rule_engine::{cache, compiler, evaluate, geo, model, types};

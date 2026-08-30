@@ -139,6 +139,26 @@ impl DeviceTypeRepository for TursoAdapter {
             .transpose()
     }
 
+    async fn get_by_name(
+        &self,
+        tenant: &TenantId,
+        name: &str,
+    ) -> Result<Option<DeviceTypeRecord>, PersistenceError> {
+        let connection = self.database.connect()?;
+        let mut rows = connection
+            .query(
+                "SELECT id, name, icon, color_hex FROM device_types WHERE tenant_id = ?1 AND name = ?2",
+                params![tenant.as_str(), name],
+            )
+            .await
+            .map_err(row::error)?;
+        rows.next()
+            .await
+            .map_err(row::error)?
+            .map(|record| decode(&record))
+            .transpose()
+    }
+
     async fn delete_if_unused(
         &self,
         tenant: &TenantId,

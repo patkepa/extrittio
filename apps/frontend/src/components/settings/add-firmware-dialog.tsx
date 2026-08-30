@@ -12,13 +12,16 @@ import {
   SegmentedControl,
   TextArea,
 } from '@blueprintjs/core';
-import { useDeviceTypes } from '../../hooks/use-device-types';
 import {
   useCreateFirmwareUpdate,
-  useNextVersion,
+  useNextBlueprintVersion,
   useUploadFirmwareUpdate,
 } from '../../hooks/use-firmware-updates';
-import { useConfirmShortcut } from '@extrittio/interactions';
+import {
+  useDeviceBlueprints,
+  useLatestDeviceBlueprintRevision,
+} from '../../hooks/use-device-blueprints';
+import { useConfirmShortcut } from '@patkepa/kantzen-ui/interactions';
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -32,7 +35,7 @@ interface AddFirmwareDialogProps {
 }
 
 export const AddFirmwareDialog = ({ isOpen, onClose }: AddFirmwareDialogProps) => {
-  const [selectedDeviceTypeId, setSelectedDeviceTypeId] = useState<number | null>(null);
+  const [selectedBlueprintId, setSelectedBlueprintId] = useState('');
   const [version, setVersion] = useState('');
   const [url, setUrl] = useState('');
   const [sha256, setSha256] = useState('');
@@ -41,29 +44,40 @@ export const AddFirmwareDialog = ({ isOpen, onClose }: AddFirmwareDialogProps) =
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { data: deviceTypes = [] } = useDeviceTypes();
+  const { data: blueprints = [] } = useDeviceBlueprints();
+  const publishedBlueprints = blueprints.filter((blueprint) => blueprint.latest_revision != null);
+  const effectiveBlueprintId = selectedBlueprintId || publishedBlueprints[0]?.id || '';
+  const revisionQuery = useLatestDeviceBlueprintRevision(effectiveBlueprintId);
+  const firmwareDefinition = (
+    revisionQuery.data?.document as
+      | {
+          spec?: { firmware?: { strategy?: string } };
+        }
+      | undefined
+  )?.spec?.firmware;
   const createMutation = useCreateFirmwareUpdate();
   const uploadMutation = useUploadFirmwareUpdate();
-  const { data: nextVersion } = useNextVersion(selectedDeviceTypeId);
+  const { data: nextVersion } = useNextBlueprintVersion(revisionQuery.data?.id ?? null);
 
   const isSubmitting = createMutation.isPending || uploadMutation.isPending;
   const isError = createMutation.isError || uploadMutation.isError;
 
   const canSubmit =
-    !!selectedDeviceTypeId &&
+    !!revisionQuery.data &&
+    !!firmwareDefinition &&
     (uploadMode === 'file'
       ? !!selectedFile
       : url.trim().startsWith('https://') && /^[a-fA-F0-9]{64}$/.test(sha256.trim())) &&
     !isSubmitting;
 
   const handleAdd = () => {
-    if (!selectedDeviceTypeId) return;
+    if (!revisionQuery.data || !firmwareDefinition) return;
 
     if (uploadMode === 'file') {
       if (!selectedFile) return;
       uploadMutation.mutate(
         {
-          device_type_id: selectedDeviceTypeId,
+          blueprint_revision_id: revisionQuery.data.id,
           version: version.trim() || undefined,
           description: description.trim() || undefined,
           file: selectedFile,
@@ -80,7 +94,7 @@ export const AddFirmwareDialog = ({ isOpen, onClose }: AddFirmwareDialogProps) =
       if (!url.trim() || !sha256.trim()) return;
       createMutation.mutate(
         {
-          device_type_id: selectedDeviceTypeId,
+          blueprint_revision_id: revisionQuery.data.id,
           version: version.trim() || undefined,
           url: url.trim(),
           sha256: sha256.trim() || undefined,
@@ -98,7 +112,7 @@ export const AddFirmwareDialog = ({ isOpen, onClose }: AddFirmwareDialogProps) =
   };
 
   const handleClose = () => {
-    setSelectedDeviceTypeId(null);
+    setSelectedBlueprintId('');
     setVersion('');
     setUrl('');
     setSha256('');
@@ -119,20 +133,31 @@ export const AddFirmwareDialog = ({ isOpen, onClose }: AddFirmwareDialogProps) =
   return (
     <Dialog icon="upload" title="Register Firmware Update" isOpen={isOpen} onClose={handleClose}>
       <DialogBody>
-        <FormGroup label="Device Type" labelInfo="(required)">
+        <FormGroup
+          label="Device Blueprint"
+          labelInfo="(required)"
+          helperText={
+            revisionQuery.data && !firmwareDefinition
+              ? 'This blueprint does not declare firmware update behavior.'
+              : firmwareDefinition?.strategy
+                ? `Update strategy: ${firmwareDefinition.strategy}`
+                : undefined
+          }
+        >
           <HTMLSelect
-            value={selectedDeviceTypeId ?? ''}
+            value={effectiveBlueprintId}
             onChange={(e) => {
-              const val = e.target.value;
-              setSelectedDeviceTypeId(val ? Number(val) : null);
+              setSelectedBlueprintId(e.target.value);
               setVersion('');
             }}
             fill
           >
-            <option value="">Select a device type...</option>
-            {deviceTypes.map((dt) => (
-              <option key={dt.id} value={dt.id}>
-                {dt.name}
+            {publishedBlueprints.length === 0 && (
+              <option value="">Publish a blueprint before adding firmware</option>
+            )}
+            {publishedBlueprints.map((blueprint) => (
+              <option key={blueprint.id} value={blueprint.id}>
+                {blueprint.name} · revision {blueprint.latest_revision}
               </option>
             ))}
           </HTMLSelect>

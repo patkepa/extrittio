@@ -39,10 +39,16 @@ fn firmware(r: &Row) -> Result<FirmwareRecord, PersistenceError> {
             .map(|v| v.naive_utc()),
         changelog: r.get(14).map_err(row::error)?,
         source: r.get(15).map_err(row::error)?,
+        blueprint_revision_id: r.get(16).map_err(row::error)?,
+        compatibility: serde_json::from_str::<serde_json::Value>(
+            &r.get::<String>(17).map_err(row::error)?,
+        )
+        .map_err(|error| PersistenceError::CorruptData(error.to_string()))?,
+        update_strategy: r.get(18).map_err(row::error)?,
     })
 }
 
-const FIRMWARE_SELECT: &str = "SELECT f.id,f.device_type_id,dt.name,f.version,f.url,f.sha256,f.description,f.created_at,b.size,b.filename,f.commit_sha,f.branch,f.ci_run_url,f.build_timestamp,f.changelog,f.source FROM firmware_updates f JOIN device_types dt ON dt.tenant_id=f.tenant_id AND dt.id=f.device_type_id LEFT JOIN firmware_blobs b ON b.tenant_id=f.tenant_id AND b.firmware_update_id=f.id";
+const FIRMWARE_SELECT: &str = "SELECT f.id,f.device_type_id,dt.name,f.version,f.url,f.sha256,f.description,f.created_at,b.size,b.filename,f.commit_sha,f.branch,f.ci_run_url,f.build_timestamp,f.changelog,f.source,f.blueprint_revision_id,f.compatibility,f.update_strategy FROM firmware_updates f JOIN device_types dt ON dt.tenant_id=f.tenant_id AND dt.id=f.device_type_id LEFT JOIN firmware_blobs b ON b.tenant_id=f.tenant_id AND b.firmware_update_id=f.id";
 
 async fn scalar(
     c: &Connection,
@@ -81,7 +87,9 @@ async fn insert_firmware(
     tenant: &str,
     r: NewFirmwareRecord,
 ) -> Result<i32, PersistenceError> {
-    c.execute("INSERT INTO firmware_updates(tenant_id,device_type_id,version,url,description,sha256,commit_sha,branch,ci_run_url,build_timestamp,changelog,source,created_at)VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",params![tenant,r.device_type_id,r.version,r.url,r.description,r.sha256,r.commit_sha,r.branch,r.ci_run_url,r.build_timestamp.map(|v|v.and_utc().timestamp_micros()),r.changelog,r.source.unwrap_or_else(||"manual".into()),chrono::Utc::now().timestamp_micros()]).await.map_err(row::error)?;
+    let compatibility = serde_json::to_string(&r.compatibility)
+        .map_err(|error| PersistenceError::Internal(error.to_string()))?;
+    c.execute("INSERT INTO firmware_updates(tenant_id,device_type_id,version,url,description,sha256,commit_sha,branch,ci_run_url,build_timestamp,changelog,source,created_at,blueprint_revision_id,compatibility,update_strategy)VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)",params![tenant,r.device_type_id,r.version,r.url,r.description,r.sha256,r.commit_sha,r.branch,r.ci_run_url,r.build_timestamp.map(|v|v.and_utc().timestamp_micros()),r.changelog,r.source.unwrap_or_else(||"manual".into()),chrono::Utc::now().timestamp_micros(),r.blueprint_revision_id,compatibility,r.update_strategy]).await.map_err(row::error)?;
     row::i32(
         scalar(c, "SELECT last_insert_rowid()", ()).await?,
         "firmware.id",
@@ -174,6 +182,9 @@ impl FirmwareRepository for TursoAdapter {
                 build_timestamp: p.build_timestamp,
                 changelog: p.changelog,
                 source: Some("ci".into()),
+                blueprint_revision_id: None,
+                compatibility: serde_json::json!({}),
+                update_strategy: None,
             },
         )
         .await?;
@@ -188,12 +199,13 @@ impl FirmwareRepository for TursoAdapter {
         &self,
         t: &TenantId,
         dt: Option<i32>,
+        blueprint_revision_id: Option<String>,
         limit: i64,
         offset: i64,
     ) -> Result<FirmwarePage, PersistenceError> {
         let c = self.database.connect()?;
-        let total=scalar(&c,"SELECT count(*) FROM firmware_updates WHERE tenant_id=?1 AND (?2 IS NULL OR device_type_id=?2)",params![t.as_str(),dt]).await?;
-        let mut rs=c.query(&format!("{FIRMWARE_SELECT} WHERE f.tenant_id=?1 AND (?2 IS NULL OR f.device_type_id=?2) ORDER BY f.created_at DESC,f.id DESC LIMIT ?3 OFFSET ?4"),params![t.as_str(),dt,limit,offset]).await.map_err(row::error)?;
+        let total=scalar(&c,"SELECT count(*) FROM firmware_updates WHERE tenant_id=?1 AND (?2 IS NULL OR device_type_id=?2) AND (?3 IS NULL OR blueprint_revision_id=?3)",params![t.as_str(),dt,blueprint_revision_id.clone()]).await?;
+        let mut rs=c.query(&format!("{FIRMWARE_SELECT} WHERE f.tenant_id=?1 AND (?2 IS NULL OR f.device_type_id=?2) AND (?3 IS NULL OR f.blueprint_revision_id=?3) ORDER BY f.created_at DESC,f.id DESC LIMIT ?4 OFFSET ?5"),params![t.as_str(),dt,blueprint_revision_id,limit,offset]).await.map_err(row::error)?;
         let mut records = Vec::new();
         while let Some(r) = rs.next().await.map_err(row::error)? {
             records.push(firmware(&r)?)
@@ -312,6 +324,21 @@ impl FirmwareRepository for TursoAdapter {
     async fn next_version(&self, t: &TenantId, dt: i32) -> Result<String, PersistenceError> {
         let c = self.database.connect()?;
         let mut rs=c.query("SELECT version FROM firmware_updates WHERE tenant_id=?1 AND device_type_id=?2 ORDER BY created_at DESC,id DESC LIMIT 1",params![t.as_str(),dt]).await.map_err(row::error)?;
+        Ok(rs
+            .next()
+            .await
+            .map_err(row::error)?
+            .map(|r| r.get::<String>(0).map_err(row::error))
+            .transpose()?
+            .map_or_else(|| "1.0.0".into(), |v| increment(&v)))
+    }
+    async fn next_blueprint_version(
+        &self,
+        t: &TenantId,
+        blueprint_revision_id: &str,
+    ) -> Result<String, PersistenceError> {
+        let c = self.database.connect()?;
+        let mut rs=c.query("SELECT version FROM firmware_updates WHERE tenant_id=?1 AND blueprint_revision_id=?2 ORDER BY created_at DESC,id DESC LIMIT 1",params![t.as_str(),blueprint_revision_id]).await.map_err(row::error)?;
         Ok(rs
             .next()
             .await
@@ -439,7 +466,7 @@ impl FirmwareRepository for TursoAdapter {
         };
         let dt: i64 = d.get(0).map_err(row::error)?;
         drop(rs);
-        let mut rs=tx.query("SELECT device_type_id,version,url,sha256 FROM firmware_updates WHERE tenant_id=?1 AND id=?2",params![t.as_str(),id]).await.map_err(row::error)?;
+        let mut rs=tx.query("SELECT device_type_id,version,url,sha256,blueprint_revision_id FROM firmware_updates WHERE tenant_id=?1 AND id=?2",params![t.as_str(),id]).await.map_err(row::error)?;
         let Some(f) = rs.next().await.map_err(row::error)? else {
             tx.rollback().await.map_err(row::error)?;
             return Ok(TriggerOtaOutcome::FirmwareNotFound);
@@ -448,8 +475,31 @@ impl FirmwareRepository for TursoAdapter {
         let version: String = f.get(1).map_err(row::error)?;
         let raw_url: String = f.get(2).map_err(row::error)?;
         let hash: Option<String> = f.get(3).map_err(row::error)?;
+        let target_revision: Option<String> = f.get(4).map_err(row::error)?;
         drop(rs);
-        if dt != fdt {
+        let compatible = if let Some(target_revision) = target_revision {
+            let mut rows = tx
+                .query(
+                    "SELECT contract.blueprint_revision_id
+                     FROM device_contract_assignments assignment
+                     JOIN device_contracts contract
+                       ON contract.tenant_id=assignment.tenant_id
+                      AND contract.id=assignment.desired_contract_id
+                     WHERE assignment.tenant_id=?1 AND assignment.device_id=?2",
+                    params![t.as_str(), device],
+                )
+                .await
+                .map_err(row::error)?;
+            rows.next()
+                .await
+                .map_err(row::error)?
+                .map(|row| row.get::<String>(0).map_err(row::error))
+                .transpose()?
+                .is_some_and(|revision| revision == target_revision)
+        } else {
+            dt == fdt
+        };
+        if !compatible {
             tx.rollback().await.map_err(row::error)?;
             return Ok(TriggerOtaOutcome::Incompatible);
         }

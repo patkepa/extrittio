@@ -8,6 +8,7 @@ use crate::error::AppError;
 
 const DEFAULT_ICON: &str = "cube";
 const DEFAULT_COLOR_HEX: &str = "#8ABBFF";
+const LEGACY_DEFAULT_TYPE: &str = "default";
 
 pub async fn list(
     ctx: &RequestContext,
@@ -18,6 +19,31 @@ pub async fn list(
     policy::require(ctx, Permission::ReadDeviceTypes)?;
     let result = repository.list(ctx.tenant_id(), limit, offset).await?;
     Ok((result.records, result.total))
+}
+
+/// Resolve the compatibility-only storage type used while firmware and older
+/// APIs are migrated to blueprint selectors. New callers should not expose
+/// this implementation detail to device creators.
+pub async fn resolve_for_device_creation(
+    ctx: &RequestContext,
+    repository: &dyn DeviceTypeRepository,
+    requested_id: Option<i32>,
+) -> Result<DeviceTypeRecord, AppError> {
+    policy::require(ctx, Permission::ManageDevices)?;
+    let record = match requested_id {
+        Some(id) => repository.get_by_id(ctx.tenant_id(), id).await?,
+        None => {
+            repository
+                .get_by_name(ctx.tenant_id(), LEGACY_DEFAULT_TYPE)
+                .await?
+        }
+    };
+    record.ok_or_else(|| {
+        AppError::UnprocessableEntity(match requested_id {
+            Some(id) => format!("Device type {id} not found"),
+            None => "Tenant has no default compatibility device type".into(),
+        })
+    })
 }
 
 fn validate_name(name: &str) -> Result<String, AppError> {
@@ -215,6 +241,20 @@ mod tests {
             Ok(Some(DeviceTypeRecord {
                 id,
                 name: "Type".to_string(),
+                icon: DEFAULT_ICON.to_string(),
+                color_hex: DEFAULT_COLOR_HEX.to_string(),
+            }))
+        }
+
+        async fn get_by_name(
+            &self,
+            tenant: &TenantId,
+            name: &str,
+        ) -> Result<Option<DeviceTypeRecord>, PersistenceError> {
+            self.record("get_by_name", tenant);
+            Ok(Some(DeviceTypeRecord {
+                id: 1,
+                name: name.to_string(),
                 icon: DEFAULT_ICON.to_string(),
                 color_hex: DEFAULT_COLOR_HEX.to_string(),
             }))

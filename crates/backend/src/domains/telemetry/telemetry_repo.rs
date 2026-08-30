@@ -5,9 +5,8 @@ use diesel::OptionalExtension;
 use diesel::PgConnection;
 use diesel::prelude::*;
 use diesel::sql_types::{
-    Array, BigInt, Bytea, Float4, Float8, Integer, Jsonb, Nullable, Text, Timestamptz,
+    BigInt, Bytea, Float4, Float8, Integer, Jsonb, Nullable, Text, Timestamptz,
 };
-use serde_json::Value as JsonValue;
 
 use crate::db::models::{NewTelemetryRecord, TelemetryRecord, TelemetryRollupHourly};
 use crate::db::schema::{telemetry, telemetry_rollups_hourly};
@@ -18,14 +17,6 @@ pub struct PartitionMaintenanceResult {
     pub created_count: i32,
     #[diesel(sql_type = Integer)]
     pub dropped_count: i32,
-}
-
-#[derive(QueryableByName)]
-pub struct LatestTelemetryCustomJson {
-    #[diesel(sql_type = Text)]
-    pub device_id: String,
-    #[diesel(sql_type = Jsonb)]
-    pub custom_json: JsonValue,
 }
 
 pub fn list_telemetry(
@@ -256,26 +247,4 @@ pub fn maintain_partitions(
     .bind::<Integer, _>(months_ahead)
     .bind::<Timestamptz, _>(cutoff)
     .get_result(conn)
-}
-
-pub fn latest_connection_sources_for_devices(
-    conn: &mut PgConnection,
-    device_ids: &[String],
-) -> Result<Vec<LatestTelemetryCustomJson>, diesel::result::Error> {
-    if device_ids.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    diesel::sql_query(
-        r#"
-        SELECT DISTINCT ON (device_id) device_id, custom_json
-        FROM telemetry
-        WHERE device_id = ANY($1)
-          AND custom_json->>'kind' = 'network_analyzer_scan'
-          AND custom_json ? 'snapshot_json'
-        ORDER BY device_id, received_at DESC
-        "#,
-    )
-    .bind::<Array<Text>, _>(device_ids)
-    .load(conn)
 }

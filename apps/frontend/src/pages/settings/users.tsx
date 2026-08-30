@@ -18,7 +18,7 @@ import {
   Checkbox,
   Tag,
 } from '@blueprintjs/core';
-import { useConfirmShortcut } from '@extrittio/interactions';
+import { useConfirmShortcut } from '@patkepa/kantzen-ui/interactions';
 import { useRoles } from '../../hooks/use-roles';
 import { useUsers, useCreateUser, useDeleteUser, useSetUserRoles } from '../../hooks/use-users';
 import { hasPermission } from '../../auth/permissions';

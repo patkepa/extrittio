@@ -43,6 +43,15 @@ function scanTimestamp(value: string | null | undefined, scanning: boolean): str
   return `Last scan ${scannedAt.toLocaleTimeString()}`;
 }
 
+function latestRadioObservation(diagnostics: ThreadNetworkDiagnostics | undefined): string | null {
+  const observations =
+    diagnostics?.sources
+      .filter((source) => source.source !== 'mesh_devices' && source.observed_at)
+      .map((source) => source.observed_at as string)
+      .sort() ?? [];
+  return observations.at(-1) ?? diagnostics?.scanned_at ?? null;
+}
+
 function formatPercent(value: number | null | undefined, digits = 1): string {
   return value == null ? '—' : `${value.toFixed(digits)}%`;
 }
@@ -71,6 +80,7 @@ export function NetworkScanner() {
   const status = statusQuery.data;
   const diagnostics = scanQuery.data;
   const scanning = Boolean(diagnostics?.scanning);
+  const radioObservedAt = latestRadioObservation(diagnostics);
   const activeChannel = useMemo(
     () => diagnostics?.channels.find((channel) => channel.channel === status?.channel) ?? null,
     [diagnostics?.channels, status?.channel],
@@ -85,7 +95,11 @@ export function NetworkScanner() {
   );
   const signal = signalCondition(diagnostics?.statistics.latest_rssi_dbm);
   const scanError = scanQuery.error;
-  const scanStatusError = diagnostics?.error ?? (scanError ? apiErrorMessage(scanError) : null);
+  const radioSourceError = diagnostics?.sources.find(
+    (source) => source.source !== 'mesh_devices' && source.error,
+  )?.error;
+  const scanStatusError =
+    diagnostics?.error ?? radioSourceError ?? (scanError ? apiErrorMessage(scanError) : null);
 
   return (
     <div className="network-scanner-view">
@@ -94,7 +108,7 @@ export function NetworkScanner() {
           <Icon icon="satellite" size={18} />
           <div>
             <strong>Network Scanner</strong>
-            <span>{scanTimestamp(diagnostics?.scanned_at, scanning)}</span>
+            <span>{scanTimestamp(radioObservedAt, scanning)}</span>
           </div>
         </div>
         <div className="network-scanner-toolbar-context">
@@ -108,7 +122,7 @@ export function NetworkScanner() {
         <ThreadScanStatus
           connected={Boolean(status?.connected)}
           scanning={scanning}
-          scannedAt={diagnostics?.scanned_at}
+          scannedAt={radioObservedAt}
           error={scanStatusError}
         />
       </header>
@@ -120,13 +134,15 @@ export function NetworkScanner() {
           <ScannerCallout intent="danger" title="OpenThread status is unavailable">
             The border-router status could not be loaded.
           </ScannerCallout>
-        ) : !status?.connected ? (
-          <ScannerCallout
-            intent="warning"
-            title={status?.available ? 'Border router is unavailable' : 'Thread radio not detected'}
-          >
+        ) : !status?.available ? (
+          <ScannerCallout intent="warning" title="Thread radio not detected">
             {status?.error ?? 'Connect a compatible Thread RCP dongle.'} Detection, connection, and
             scanning retry automatically.
+          </ScannerCallout>
+        ) : !status.connected ? (
+          <ScannerCallout intent="warning" title="Thread network is not configured">
+            {status.error ??
+              'The Thread radio is ready. Create a new network or import an existing dataset to begin scanning.'}
           </ScannerCallout>
         ) : scanQuery.isLoading && !diagnostics ? (
           <ScannerEmptyState loading title="Loading the OpenThread scan" />

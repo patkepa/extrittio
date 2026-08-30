@@ -78,3 +78,4 @@ clients/c/*/managed_components/
 clients/c/*/sdkconfig
 clients/c/*/sdkconfig.old
 clients/rust/esp32/.embuild/
+build/

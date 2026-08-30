@@ -20,6 +20,11 @@ final class DeviceRepositoryImpl: DeviceRepository, Sendable {
         return try await apiClient.get(Endpoints.device(server, id: id))
     }
 
+    func getDeviceContract(id: String) async throws -> DeviceContract {
+        let server = await apiClient.serverAddress
+        return try await apiClient.get(Endpoints.deviceContract(server, id: id))
+    }
+
     func createDevice(_ request: CreateDeviceRequest) async throws -> Device {
         let server = await apiClient.serverAddress
         return try await apiClient.post(Endpoints.devices(server), body: request)

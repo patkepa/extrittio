@@ -1,0 +1,21 @@
+diff --git a/src/dbus/server/introspect.xml b/src/dbus/server/introspect.xml
+--- a/src/dbus/server/introspect.xml
++++ b/src/dbus/server/introspect.xml
+@@ -438,7 +438,7 @@
+       <annotation name="org.freedesktop.DBus.Property.EmitsChangedSignal" value="false"/>
+     </property>
+ 
+-    <!-- ChannelMonitorChannelQualityMap: The channel monitor statistics data.
++    <!-- ChannelMonitorAllChannelQualities: The channel monitor statistics data.
+       The structure definition:
+       <literallayout>
+         struct {
+@@ -447,7 +447,7 @@
+         }
+       </literallayout>
+     -->
+-    <property name="ChannelMonitorChannelQualityMap" type="a(yq)" access="read">
++    <property name="ChannelMonitorAllChannelQualities" type="a(yq)" access="read">
+       <annotation name="org.freedesktop.DBus.Property.EmitsChangedSignal" value="false"/>
+     </property>
+ 

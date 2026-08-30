@@ -15,7 +15,7 @@ use crate::security;
 const TELEMETRY_FIELDS: &[&str] = &["temperature", "humidity", "battery_level"];
 const TELEMETRY_OPERATORS: &[&str] = &["gt", "gte", "lt", "lte", "eq", "neq"];
 const STATUS_VALUES: &[&str] = &["online", "offline", "warning"];
-const TARGET_TYPES: &[&str] = &["global", "device_type", "fleet", "device"];
+const TARGET_TYPES: &[&str] = &["global", "blueprint", "device_type", "fleet", "device"];
 const TRIGGER_TYPES: &[&str] = &["telemetry", "device_status"];
 
 fn condition_records(conditions: Vec<(String, String, String)>) -> Vec<RuleConditionRecord> {

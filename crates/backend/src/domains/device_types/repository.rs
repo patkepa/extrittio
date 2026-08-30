@@ -36,6 +36,12 @@ pub trait DeviceTypeRepository: Send + Sync {
         id: i32,
     ) -> Result<Option<DeviceTypeRecord>, PersistenceError>;
 
+    async fn get_by_name(
+        &self,
+        tenant: &TenantId,
+        name: &str,
+    ) -> Result<Option<DeviceTypeRecord>, PersistenceError>;
+
     /// Atomically verifies that no devices reference the type and deletes it.
     async fn delete_if_unused(
         &self,

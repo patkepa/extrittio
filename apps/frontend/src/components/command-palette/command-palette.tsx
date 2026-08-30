@@ -4,8 +4,8 @@ import { Icon } from '@blueprintjs/core';
 import { getCommandPaletteRoutes } from '../../app/routes';
 import { hasPermission } from '../../auth/permissions';
 import { useDevices } from '../../hooks/use-devices';
-import { CommandPaletteShell } from '@extrittio/command-palette';
-import { StatusLed } from '@extrittio/ui';
+import { CommandPaletteShell } from '@patkepa/kantzen-ui/command-palette';
+import { StatusLed } from '@patkepa/kantzen-ui';
 import { useAuthStore } from '../../stores/auth-store';
 import { useUIStore } from '../../stores/ui-store';
 

@@ -37,7 +37,7 @@ pub(crate) struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum Command {
-    /// Run the complete single-node Extrittio stack with embedded Turso.
+    /// Run the complete single-node Extrittio Edge stack with embedded Turso.
     Run(RunArgs),
     /// Run the Extrittio backend service.
     #[command(alias = "server")]
@@ -116,6 +116,16 @@ pub(crate) struct RunArgs {
     #[arg(long, env = "EXTRITTIO_THREAD_RCP_BAUD", default_value_t = 460_800)]
     pub(crate) thread_rcp_baud: u32,
 
+    /// Seed the built-in development Thread dataset when a ready RCP has no active dataset.
+    /// Existing Thread datasets are never replaced.
+    #[arg(
+        long,
+        env = "EXTRITTIO_THREAD_SEED_DEFAULT_DATASET",
+        default_value_t = true,
+        action = clap::ArgAction::Set
+    )]
+    pub(crate) thread_seed_default_dataset: bool,
+
     /// Initial owner username, used only when the database has no users.
     #[arg(
         long,
@@ -164,11 +174,11 @@ pub(crate) struct InitArgs {
 
 #[derive(Debug, Args, Clone, Default)]
 pub(crate) struct DatabaseArgs {
-    /// Database backend: postgres or turso (single-node hobby support).
+    /// Database backend: postgres or turso (single-node Extrittio Edge support).
     #[arg(long, env = "EXTRITTIO_DATABASE_BACKEND")]
     pub(crate) database_backend: Option<String>,
 
-    /// Deployment profile: production, development, or hobby.
+    /// Deployment profile: production, development, or edge.
     #[arg(long, env = "EXTRITTIO_DEPLOYMENT_PROFILE")]
     pub(crate) deployment_profile: Option<String>,
 

@@ -43,6 +43,8 @@ enum PermissionKey: String, CaseIterable, Sendable, Identifiable {
     case alertsRead = "alerts.read"
     case commandsRead = "commands.read"
     case commandsSend = "commands.send"
+    case deviceBlueprintsManage = "device_blueprints.manage"
+    case deviceBlueprintsRead = "device_blueprints.read"
     case deviceTypesManage = "device_types.manage"
     case deviceTypesRead = "device_types.read"
     case devicesManage = "devices.manage"
@@ -84,6 +86,7 @@ enum PermissionKey: String, CaseIterable, Sendable, Identifiable {
     private static let impliedPermissions: [PermissionKey: [PermissionKey]] = [
         .alertsRead: [.alertsManage],
         .commandsRead: [.commandsSend],
+        .deviceBlueprintsRead: [.deviceBlueprintsManage],
         .deviceTypesRead: [.deviceTypesManage],
         .devicesRead: [.devicesManage],
         .firmwareRead: [.firmwareManage, .firmwareDeploy],

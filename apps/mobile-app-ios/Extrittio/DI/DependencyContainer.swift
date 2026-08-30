@@ -24,11 +24,13 @@ final class DependencyContainer {
     private let _firmwareRepository: any FirmwareRepository
     private let _fleetRepository: any FleetRepository
     private let _deviceTypeRepository: any DeviceTypeRepository
+    private let _deviceBlueprintRepository: any DeviceBlueprintRepository
     private let _zoneRepository: any ZoneRepository
     private let _userRepository: any UserRepository
     private let _roleRepository: any RoleRepository
     private let _apiKeyRepository: any ApiKeyRepository
     private let _certificateRepository: any CertificateRepository
+    private let _threadDatasetRepository: any ThreadDatasetRepository
 
     init() {
         // SwiftData setup
@@ -90,11 +92,13 @@ final class DependencyContainer {
         self._firmwareRepository = CachingFirmwareRepository(remote: FirmwareRepositoryImpl(apiClient: client), cacheManager: cache)
         self._fleetRepository = CachingFleetRepository(remote: FleetRepositoryImpl(apiClient: client), cacheManager: cache)
         self._deviceTypeRepository = CachingDeviceTypeRepository(remote: DeviceTypeRepositoryImpl(apiClient: client), cacheManager: cache)
+        self._deviceBlueprintRepository = DeviceBlueprintRepositoryImpl(apiClient: client)
         self._zoneRepository = CachingZoneRepository(remote: ZoneRepositoryImpl(apiClient: client), cacheManager: cache)
         self._userRepository = UserRepositoryImpl(apiClient: client)
         self._roleRepository = RoleRepositoryImpl(apiClient: client)
         self._apiKeyRepository = ApiKeyRepositoryImpl(apiClient: client)
         self._certificateRepository = CertificateRepositoryImpl(apiClient: client)
+        self._threadDatasetRepository = ThreadDatasetRepositoryImpl(apiClient: client)
     }
 
     // MARK: - Use Case Factories
@@ -113,6 +117,20 @@ final class DependencyContainer {
     func makeUpdateDeviceUseCase() -> UpdateDeviceUseCase { UpdateDeviceUseCase(repository: _deviceRepository) }
     func makeDeleteDeviceUseCase() -> DeleteDeviceUseCase { DeleteDeviceUseCase(repository: _deviceRepository) }
     func makeRestartDeviceUseCase() -> RestartDeviceUseCase { RestartDeviceUseCase(repository: _deviceRepository) }
+    func makeProvisionDeviceUseCase() -> ProvisionDeviceUseCase {
+        let provider = serverAddressProvider
+        return ProvisionDeviceUseCase(
+            deviceRepository: _deviceRepository,
+            certificateRepository: _certificateRepository,
+            threadDatasetRepository: _threadDatasetRepository,
+            backendProvider: {
+                guard let baseURL = APIConfiguration.current.baseURL(
+                    serverAddress: provider.serverAddress
+                ) else { return nil }
+                return DeviceProvisioningBackend(baseURL: baseURL)
+            }
+        )
+    }
     func makeGetTelemetryUseCase() -> GetTelemetryUseCase { GetTelemetryUseCase(repository: _telemetryRepository) }
     func makeGetShadowUseCase() -> GetShadowUseCase { GetShadowUseCase(repository: _shadowRepository) }
     func makeUpdateDesiredStateUseCase() -> UpdateDesiredStateUseCase { UpdateDesiredStateUseCase(repository: _shadowRepository) }
@@ -136,6 +154,22 @@ final class DependencyContainer {
     func makeGetDeviceLatestLocationUseCase() -> GetDeviceLatestLocationUseCase { GetDeviceLatestLocationUseCase(repository: _deviceRepository) }
 
     // MARK: - ViewModel Factories
+
+    func makeNearbyDeviceScanner() -> NearbyDeviceScanner {
+        NearbyDeviceScanner()
+    }
+
+    func makeProvisioningDeviceScanner() -> NearbyDeviceScanner {
+        NearbyDeviceScanner(sendsIdentificationFeedback: false)
+    }
+
+    func makeProvisionDeviceViewModel() -> ProvisionDeviceViewModel {
+        ProvisionDeviceViewModel(
+            blueprintRepository: _deviceBlueprintRepository,
+            fleetRepository: _fleetRepository,
+            provisionDevice: makeProvisionDeviceUseCase()
+        )
+    }
 
     func makeSettingsViewModel() -> SettingsViewModel {
         SettingsViewModel(cacheManager: cacheManager)

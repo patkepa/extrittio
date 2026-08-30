@@ -4,6 +4,9 @@ import { hasRequiredPermissions, type PermissionKey } from '../auth/permissions'
 import type { NavGroup, NavItem } from '../types/navigation';
 
 const Dashboard = lazy(() => import('../pages/dashboard').then((m) => ({ default: m.Dashboard })));
+const Analytics = lazy(() =>
+  import('../features/analytics').then((m) => ({ default: m.Analytics })),
+);
 const Devices = lazy(() => import('../features/devices').then((m) => ({ default: m.Devices })));
 const Updates = lazy(() => import('../pages/updates').then((m) => ({ default: m.Updates })));
 const DeviceDetail = lazy(() =>
@@ -21,6 +24,9 @@ const Settings = lazy(() =>
 const Help = lazy(() => import('../pages/help').then((m) => ({ default: m.Help })));
 const Rules = lazy(() => import('../features/rules').then((m) => ({ default: m.Rules })));
 const Alerts = lazy(() => import('../features/alerts').then((m) => ({ default: m.Alerts })));
+const ActivityLogs = lazy(() =>
+  import('../features/activity').then((m) => ({ default: m.ActivityLogs })),
+);
 const MapPage = lazy(() => import('../pages/map-page'));
 
 export interface AppRoute {
@@ -46,6 +52,13 @@ export interface SettingsRoute {
 
 export const settingsRoutes: SettingsRoute[] = [
   { id: 'profile', label: 'Profile', icon: 'user', path: 'profile' },
+  {
+    id: 'device-blueprints',
+    label: 'Device Blueprints',
+    icon: 'diagram-tree',
+    path: 'device-blueprints',
+    requiredPermissions: ['device_blueprints.read'],
+  },
   {
     id: 'device-types',
     label: 'Device Types',
@@ -117,6 +130,16 @@ export const appRoutes: AppRoute[] = [
     navGroup: 'General',
     showInCommandPalette: true,
     requiredPermissions: ['devices.read'],
+  },
+  {
+    id: 'analytics',
+    label: 'Analytics',
+    icon: 'timeline-line-chart',
+    path: '/analytics',
+    element: <Analytics />,
+    navGroup: 'General',
+    showInCommandPalette: true,
+    requiredPermissions: ['telemetry.read', 'devices.read', 'device_types.read', 'fleets.read'],
   },
   {
     id: 'device-detail',
@@ -229,6 +252,16 @@ export const appRoutes: AppRoute[] = [
     navGroup: 'Management',
     showInCommandPalette: true,
     requiredPermissions: ['fleets.read'],
+  },
+  {
+    id: 'logs',
+    label: 'Logs',
+    icon: 'document-open',
+    path: '/logs',
+    element: <ActivityLogs />,
+    navGroup: 'Management',
+    showInCommandPalette: true,
+    requiredPermissions: ['logs.read'],
   },
   {
     id: 'help',

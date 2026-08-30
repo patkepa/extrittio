@@ -87,7 +87,7 @@ pub async fn serve(
         .set_reuse_address(true)
         .context("Failed to set SO_REUSEADDR")?;
     socket
-        .set_nodelay(true)
+        .set_tcp_nodelay(true)
         .context("Failed to set TCP_NODELAY")?;
     socket.bind(&addr.into()).context("Failed to bind socket")?;
     socket.listen(1024).context("Failed to listen")?;

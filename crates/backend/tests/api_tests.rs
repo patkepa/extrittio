@@ -20,6 +20,8 @@ use extrittio_backend::state::AppState;
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations/postgres");
 const DEFAULT_TEST_DATABASE_URL: &str =
     "postgres://extrittio:extrittio@127.0.0.1:5432/extrittio?connect_timeout=2";
+const TEST_BLUEPRINT_ID: &str = "test-default-blueprint";
+const TEST_BLUEPRINT_REVISION_ID: &str = "test-default-blueprint-r1";
 static TEST_DB_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 fn tenant_context(tenant_id: &str) -> extrittio_backend::auth::context::RequestContext {
@@ -64,7 +66,7 @@ fn setup_test_db() -> Pool<ConnectionManager<PgConnection>> {
     conn.run_pending_migrations(MIGRATIONS).unwrap();
 
     // Clean all data for test isolation (truncate in dependency order)
-    diesel::sql_query("TRUNCATE TABLE rule_action_outbox, rule_cooldowns, alerts, rule_actions, rule_conditions, rules, zones, app_metrics, server_metrics, device_certificates, ca_certificates, command_history, device_logs, ota_deployments, firmware_blobs, firmware_updates, api_keys, device_configs, device_shadows, telemetry_rollups_hourly, telemetry, devices, fleets, device_types, users, server_config CASCADE")
+    diesel::sql_query("TRUNCATE TABLE device_metric_samples, device_events, device_contract_assignments, device_contracts, device_blueprint_revisions, device_blueprint_drafts, device_blueprints, rule_action_outbox, rule_cooldowns, alerts, rule_actions, rule_conditions, rules, zones, app_metrics, server_metrics, device_certificates, ca_certificates, command_history, device_logs, ota_deployments, firmware_blobs, firmware_updates, api_keys, device_configs, device_shadows, telemetry_rollups_hourly, telemetry, devices, fleets, device_types, users, server_config CASCADE")
         .execute(&mut conn)
         .unwrap();
 
@@ -82,6 +84,26 @@ fn setup_test_db() -> Pool<ConnectionManager<PgConnection>> {
     diesel::sql_query("SELECT setval('device_types_id_seq', 2)")
         .execute(&mut conn)
         .unwrap();
+    diesel::sql_query(
+        "INSERT INTO device_blueprints (id, tenant_id, blueprint_key, name)
+         VALUES ($1, 'default', 'test-default', 'Test default')",
+    )
+    .bind::<diesel::sql_types::Text, _>(TEST_BLUEPRINT_ID)
+    .execute(&mut conn)
+    .unwrap();
+    diesel::sql_query(
+        "INSERT INTO device_blueprint_revisions
+            (id, tenant_id, blueprint_id, revision, document, document_hash, compatibility)
+         VALUES ($1, 'default', $2, 1, $3::jsonb, $4, '{}'::jsonb)",
+    )
+    .bind::<diesel::sql_types::Text, _>(TEST_BLUEPRINT_REVISION_ID)
+    .bind::<diesel::sql_types::Text, _>(TEST_BLUEPRINT_ID)
+    .bind::<diesel::sql_types::Text, _>(
+        blueprint_document("test-default", "Test default").to_string(),
+    )
+    .bind::<diesel::sql_types::Text, _>("0".repeat(64))
+    .execute(&mut conn)
+    .unwrap();
 
     pool
 }
@@ -89,6 +111,7 @@ fn setup_test_db() -> Pool<ConnectionManager<PgConnection>> {
 async fn setup_app_with_context(
     ctx: extrittio_backend::auth::context::RequestContext,
 ) -> (axum::Router, Pool<ConnectionManager<PgConnection>>) {
+    extrittio_backend::init::install_crypto_provider();
     let db_pool = setup_test_db();
     let zenoh_session = zenoh::open(zenoh::Config::default())
         .await
@@ -97,6 +120,8 @@ async fn setup_app_with_context(
     let state = Arc::new(extrittio_backend::state::AppState {
         persistence: extrittio_backend::persistence::postgres::create_persistence(db_pool.clone()),
         zenoh_session: Arc::new(zenoh_session),
+        zenoh_tls_enabled: false,
+        zenoh_port: 7447,
         jwt_secret: "test-secret-key".to_string(),
         public_url: "http://localhost:8080".to_string(),
         cookie_secure: false,
@@ -126,6 +151,575 @@ async fn setup_app_with_context(
 
 async fn setup_app() -> axum::Router {
     setup_app_with_context(test_context()).await.0
+}
+
+fn blueprint_document(key: &str, name: &str) -> Value {
+    serde_json::json!({
+        "apiVersion": "extrittio.io/v1alpha1",
+        "kind": "DeviceBlueprint",
+        "metadata": {"key": key, "name": name},
+        "spec": {
+            "runtime": {
+                "minimumContractApi": 1,
+                "heartbeat": {"interval": "30s", "offlineAfter": "95s"},
+                "limits": {"maxMessageBytes": 8192, "maxMessagesPerMinute": 120}
+            },
+            "firmware": {
+                "strategy": "binary_replacement",
+                "compatibility": {"board": "test-board"}
+            }
+        }
+    })
+}
+
+fn contract_blueprint_document() -> Value {
+    serde_json::json!({
+        "apiVersion": "extrittio.io/v1alpha1",
+        "kind": "DeviceBlueprint",
+        "metadata": {"key": "freezer", "name": "Freezer Monitor"},
+        "spec": {
+            "runtime": {
+                "minimumContractApi": 1,
+                "heartbeat": {"interval": "30s", "offlineAfter": "95s"},
+                "limits": {"maxMessageBytes": 8192, "maxMessagesPerMinute": 120}
+            },
+            "transports": [{
+                "key": "primary", "binding": "site_bus", "protocol": "zenoh"
+            }],
+            "schemas": [{
+                "key": "reading@1", "format": "json_schema",
+                "schema": {
+                    "type": "object",
+                    "properties": {"temperature": {"type": "number"}},
+                    "required": ["temperature"],
+                    "additionalProperties": false
+                }
+            }],
+            "routes": [{
+                "key": "readings", "transport": "primary", "direction": "device_to_cloud",
+                "address": "extrittio/devices/{device.id}/events/readings",
+                "messageSchema": "reading@1", "encoding": "json"
+            }, {
+                "key": "command_requests", "transport": "primary", "direction": "cloud_to_device",
+                "address": "extrittio/devices/{device.id}/commands/request",
+                "messageSchema": "extrittio.command-request@1", "encoding": "protobuf"
+            }, {
+                "key": "command_results", "transport": "primary", "direction": "device_to_cloud",
+                "address": "extrittio/devices/{device.id}/commands/result",
+                "messageSchema": "extrittio.command-result@1", "encoding": "protobuf"
+            }],
+            "streams": [{
+                "key": "environment", "route": "readings",
+                "fields": [{
+                    "path": "/temperature", "type": "float64", "label": "Temperature",
+                    "unit": "Cel", "index": true, "aggregates": ["min", "max", "avg"]
+                }]
+            }],
+            "commands": [{
+                "key": "set_limit", "requestRoute": "command_requests",
+                "responseRoute": "command_results", "label": "Set alarm limit", "danger": "confirm",
+                "timeout": "10s", "idempotency": "idempotent",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {"temperature": {"type": "number", "minimum": -40, "maximum": 40}},
+                    "required": ["temperature"], "additionalProperties": false
+                },
+                "resultSchema": {
+                    "type": "object",
+                    "properties": {"applied": {"type": "boolean"}},
+                    "required": ["applied"], "additionalProperties": false
+                }
+            }],
+            "configuration": {
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "sampleSeconds": {"type": "integer", "minimum": 5, "default": 30}
+                    },
+                    "required": ["sampleSeconds"],
+                    "additionalProperties": false
+                },
+                "defaults": {"sampleSeconds": 30},
+                "apply": {
+                    "mode": "desired_reported", "acknowledgementTimeout": "30s", "atomic": true
+                }
+            }
+        }
+    })
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_device_blueprint_draft_validation_and_publication() {
+    let _guard = TEST_DB_LOCK.lock().await;
+    let app = setup_app().await;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/device-blueprints")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "document": blueprint_document("cold-room", "Cold Room")
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&body)
+    );
+    let created: Value = serde_json::from_slice(&body).unwrap();
+    let blueprint_id = created["id"].as_str().unwrap();
+    assert_eq!(created["key"], "cold-room");
+    assert!(created["latest_revision"].is_null());
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/v1/device-blueprints/{blueprint_id}/draft/validate"
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let validation: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(validation["valid"], true);
+    assert_eq!(validation["issues"], serde_json::json!([]));
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/v1/device-blueprints/{blueprint_id}/draft/publish"
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&body)
+    );
+    let revision: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(revision["revision"], 1);
+    assert_eq!(revision["document_hash"].as_str().unwrap().len(), 64);
+    assert_eq!(revision["compatibility"]["breaking"], false);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/v1/device-blueprints/{blueprint_id}/revisions/latest"
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let latest: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(latest["id"], revision["id"]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_device_creation_materializes_and_assigns_contract() {
+    let _guard = TEST_DB_LOCK.lock().await;
+    let (app, pool) = setup_app_with_context(test_context()).await;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/device-blueprints")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "document": contract_blueprint_document()
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let blueprint: Value = serde_json::from_slice(&body).unwrap();
+    let blueprint_id = blueprint["id"].as_str().unwrap();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/v1/device-blueprints/{}/draft/publish",
+                    blueprint_id
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&body)
+    );
+    let revision: Value = serde_json::from_slice(&body).unwrap();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/devices")
+                .header("content-type", "application/json")
+                .header("host", "hub.example.test:8080")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "name": "Freezer A",
+                        "device_type_id": 1,
+                        "blueprint_revision_id": revision["id"],
+                        "configuration": {"sampleSeconds": 10}
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&body)
+    );
+    let device: Value = serde_json::from_slice(&body).unwrap();
+    let device_id = device["id"].as_str().unwrap();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/devices/{device_id}/contract"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+    let contract: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(contract["assignment_status"], "pending");
+    assert_eq!(contract["contract_hash"].as_str().unwrap().len(), 64);
+    assert_eq!(
+        contract["document"]["transports"]["primary"]["endpoint"],
+        "tcp/hub.example.test:7447"
+    );
+    assert_eq!(
+        contract["document"]["routes"]["readings"]["address"],
+        format!("extrittio/devices/{device_id}/events/readings")
+    );
+    assert_eq!(
+        contract["document"]["configuration"]["desired"]["sampleSeconds"],
+        10
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/devices/{device_id}/commands"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "command": "set_limit",
+                        "params": {"temperature": "not-a-number"}
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+
+    let persistence = extrittio_backend::persistence::postgres::create_persistence(pool.clone());
+    let identity = extrittio_backend::tenancy::DeviceIdentity::new(
+        extrittio_backend::tenancy::DEFAULT_TENANT_ID,
+        device_id,
+    )
+    .unwrap();
+    let envelope = serde_json::json!({
+        "apiVersion": 1,
+        "eventId": "2b7e1516-28ae-4f2b-a6ab-f7158809cf4f",
+        "contractHash": contract["contract_hash"],
+        "occurredAt": chrono::Utc::now().to_rfc3339(),
+        "payload": {"temperature": 21.5}
+    });
+    let metrics_recorded = extrittio_backend::zenoh_handler::handlers::event::handle_event(
+        &persistence,
+        &identity,
+        "readings",
+        &serde_json::to_vec(&envelope).unwrap(),
+        &std::sync::RwLock::new(extrittio_backend::rule_engine::cache::RuleCache::default()),
+    )
+    .await;
+    assert_eq!(metrics_recorded, 1);
+
+    let assigned = persistence
+        .devices
+        .assigned_contract(identity.tenant_id(), device_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(assigned.assignment_status, "converged");
+    assert_eq!(assigned.contract_hash, contract["contract_hash"]);
+    let ingress = persistence
+        .devices
+        .ingress_context(&identity)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(ingress.blueprint_id.as_deref(), Some(blueprint_id));
+    let mut connection = pool.get().unwrap();
+    let metric_count = extrittio_backend::db::schema::device_metric_samples::table
+        .filter(extrittio_backend::db::schema::device_metric_samples::device_id.eq(device_id))
+        .count()
+        .get_result::<i64>(&mut connection)
+        .unwrap();
+    assert_eq!(metric_count, 1);
+    drop(connection);
+    let stored_metrics = persistence
+        .events
+        .list_metrics(
+            identity.tenant_id(),
+            device_id,
+            extrittio_backend::domains::events::types::DeviceMetricQuery {
+                stream_key: Some("environment".into()),
+                field_path: Some("/temperature".into()),
+                since: None,
+                before: None,
+                limit: 10,
+            },
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored_metrics.len(), 1);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/v1/devices/{device_id}/metrics?stream_key=environment&field_path=%2Ftemperature"
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+    let metrics: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(metrics.as_array().unwrap().len(), 1);
+    assert_eq!(metrics[0]["stream_key"], "environment");
+    assert_eq!(metrics[0]["field_path"], "/temperature");
+    assert_eq!(metrics[0]["value_type"], "float64");
+    assert_eq!(metrics[0]["value"], 21.5);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/analytics/catalog")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+    let catalog: Value = serde_json::from_slice(&body).unwrap();
+    assert!(catalog["metrics"].as_array().unwrap().iter().any(|metric| {
+        metric["blueprint_id"] == blueprint_id
+            && metric["stream_key"] == "environment"
+            && metric["field_path"] == "/temperature"
+            && metric["unit"] == "Cel"
+    }));
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/analytics/query")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "scope": {"device_ids": [device_id]},
+                        "metric": {
+                            "blueprint_id": blueprint_id,
+                            "stream_key": "environment",
+                            "field_path": "/temperature"
+                        },
+                        "from": (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339(),
+                        "to": (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339(),
+                        "mode": "per_device"
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+    let analytics: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(analytics["metric"]["key"], "environment./temperature");
+    assert_eq!(analytics["metric"]["blueprint_id"], blueprint_id);
+    assert_eq!(analytics["scope"]["compatible_devices"], 1);
+    assert_eq!(analytics["series"][0]["stats"]["average"], 21.5);
+    assert_eq!(analytics["effective"]["source"], "blueprint_metric_samples");
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/analytics/query")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "scope": {"device_ids": [device_id]},
+                        "metric": {
+                            "blueprint_id": blueprint_id,
+                            "stream_key": "environment",
+                            "field_path": "/undeclared"
+                        },
+                        "from": (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339(),
+                        "to": (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339()
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_device_creation_requires_a_blueprint_revision() {
+    let _guard = TEST_DB_LOCK.lock().await;
+    let app = setup_app().await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/devices")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"name":"Contractless","device_type_id":1}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_firmware_is_registered_against_a_blueprint_revision() {
+    let _guard = TEST_DB_LOCK.lock().await;
+    let app = setup_app().await;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/firmware-updates")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "blueprint_revision_id": TEST_BLUEPRINT_REVISION_ID,
+                        "version": "2.0.0",
+                        "url": "https://firmware.example.com/test-device-2.0.0.bin",
+                        "sha256": "a".repeat(64)
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&body)
+    );
+    let firmware: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+        firmware["blueprint_revision_id"],
+        TEST_BLUEPRINT_REVISION_ID
+    );
+    assert_eq!(firmware["update_strategy"], "binary_replacement");
+    assert_eq!(firmware["compatibility"]["board"], "test-board");
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/v1/firmware-updates?blueprint_revision_id={TEST_BLUEPRINT_REVISION_ID}"
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let listed: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(listed["total"], 1);
+    assert_eq!(
+        listed["data"][0]["blueprint_revision_id"],
+        TEST_BLUEPRINT_REVISION_ID
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -389,7 +983,8 @@ async fn test_device_configuration_merges_atomically() {
                 .body(Body::from(
                     serde_json::to_vec(&serde_json::json!({
                         "name": "Config Device",
-                        "device_type_id": 1
+                        "device_type_id": 1,
+                        "blueprint_revision_id": TEST_BLUEPRINT_REVISION_ID
                     }))
                     .unwrap(),
                 ))
@@ -465,7 +1060,8 @@ async fn test_device_shadow_mutations_return_the_committed_state() {
                 .body(Body::from(
                     serde_json::to_vec(&serde_json::json!({
                         "name": "Shadow Device",
-                        "device_type_id": 1
+                        "device_type_id": 1,
+                        "blueprint_revision_id": TEST_BLUEPRINT_REVISION_ID
                     }))
                     .unwrap(),
                 ))
@@ -558,7 +1154,8 @@ async fn test_policy_rejects_missing_permission() {
 
     let create_body = serde_json::json!({
         "name": "Blocked Device",
-        "device_type_id": 1
+        "device_type_id": 1,
+        "blueprint_revision_id": TEST_BLUEPRINT_REVISION_ID
     });
 
     let response = app
@@ -772,10 +1369,10 @@ async fn test_create_and_get_device() {
     let _guard = TEST_DB_LOCK.lock().await;
     let app = setup_app().await;
 
-    // POST to create a device (device_type_id=1 is the seeded "default")
+    // Blueprint-based creation does not expose the legacy storage type.
     let create_body = serde_json::json!({
         "name": "Sensor A",
-        "device_type_id": 1,
+        "blueprint_revision_id": TEST_BLUEPRINT_REVISION_ID,
         "firmware": "v1.0.0"
     });
 
@@ -831,7 +1428,8 @@ async fn test_update_device() {
     // Create a device first
     let create_body = serde_json::json!({
         "name": "Sensor B",
-        "device_type_id": 1
+        "device_type_id": 1,
+        "blueprint_revision_id": TEST_BLUEPRINT_REVISION_ID
     });
 
     let response = app
@@ -886,7 +1484,8 @@ async fn test_delete_device() {
     // Create a device
     let create_body = serde_json::json!({
         "name": "Sensor C",
-        "device_type_id": 1
+        "device_type_id": 1,
+        "blueprint_revision_id": TEST_BLUEPRINT_REVISION_ID
     });
 
     let response = app
@@ -963,7 +1562,8 @@ async fn test_dashboard_stats() {
     for name in &["Device X", "Device Y"] {
         let create_body = serde_json::json!({
             "name": name,
-            "device_type_id": 1
+            "device_type_id": 1,
+            "blueprint_revision_id": TEST_BLUEPRINT_REVISION_ID
         });
 
         let response = app
@@ -1011,7 +1611,8 @@ async fn test_filter_devices_by_status() {
     // Create a device (defaults to "offline")
     let create_body = serde_json::json!({
         "name": "Filter Test Device",
-        "device_type_id": 1
+        "device_type_id": 1,
+        "blueprint_revision_id": TEST_BLUEPRINT_REVISION_ID
     });
 
     let response = app
@@ -1124,6 +1725,8 @@ async fn test_ci_ingest_success() {
     let state = Arc::new(AppState {
         persistence: extrittio_backend::persistence::postgres::create_persistence(db_pool.clone()),
         zenoh_session: Arc::new(zenoh_session),
+        zenoh_tls_enabled: false,
+        zenoh_port: 7447,
         jwt_secret: "test-secret-key".to_string(),
         public_url: "http://localhost:8080".to_string(),
         cookie_secure: false,

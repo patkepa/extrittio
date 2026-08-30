@@ -24,6 +24,19 @@
     <string>$(PRODUCT_NAME)</string>
     <key>CFBundlePackageType</key>
     <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>CFBundleURLName</key>
+            <string>com.extrittio.pairing</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>extrittio</string>
+            </array>
+        </dict>
+    </array>
     <key>CFBundleShortVersionString</key>
     <string>$(MARKETING_VERSION)</string>
     <key>CFBundleVersion</key>
@@ -32,6 +45,8 @@
     <true/>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>Extrittio uses your location to center the map on your current position.</string>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>Extrittio uses Bluetooth to identify, provision, and control nearby Extrittio devices.</string>
     <key>UIApplicationSceneManifest</key>
     <dict>
         <key>UIApplicationSupportsMultipleScenes</key>

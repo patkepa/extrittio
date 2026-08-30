@@ -1,8 +1,0 @@
-node_modules/
-.npm-cache/
-dist/
-examples/*/.astro/
-examples/*/dist/
-packages/*/dist/
-.DS_Store
-npm-debug.log*

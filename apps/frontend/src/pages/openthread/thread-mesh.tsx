@@ -30,6 +30,8 @@ export function ThreadMesh() {
   const status = statusQuery.data;
   const scan = scanQuery.data;
   const scanning = Boolean(scan?.scanning);
+  const meshSource = scan?.sources.find((source) => source.source === 'mesh_devices');
+  const meshObservedAt = meshSource?.observed_at ?? scan?.scanned_at;
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [nodePositionOverrides, setNodePositionOverrides] = useState(
     () => new Map<string, { x: number; y: number }>(),
@@ -79,6 +81,7 @@ export function ThreadMesh() {
   const scanError = scanQuery.error;
   const scanWarning =
     scan?.error ??
+    meshSource?.error ??
     scan?.warnings.find((warning) => warning.startsWith('Mesh discovery is unavailable')) ??
     (scanError ? apiErrorMessage(scanError) : null);
 
@@ -106,7 +109,7 @@ export function ThreadMesh() {
           <div>
             <strong>{selectedNode?.name ?? 'OpenThread Mesh'}</strong>
             <span>
-              {selectedNode ? 'Selected topology node' : scanTimestamp(scan?.scanned_at, scanning)}
+              {selectedNode ? 'Selected topology node' : scanTimestamp(meshObservedAt, scanning)}
             </span>
           </div>
         </div>
@@ -160,7 +163,7 @@ export function ThreadMesh() {
           <ThreadScanStatus
             connected={Boolean(status?.connected)}
             scanning={scanning}
-            scannedAt={scan?.scanned_at}
+            scannedAt={meshObservedAt}
             error={scanWarning}
           />
         </div>
@@ -176,17 +179,22 @@ export function ThreadMesh() {
                 The border-router status could not be loaded.
               </Callout>
             </div>
-          ) : !status?.connected ? (
+          ) : !status?.available ? (
+            <div className="thread-mesh-callout">
+              <Callout intent="warning" icon="warning-sign" title="Thread radio not detected">
+                {status?.error ?? 'Connect a compatible Thread RCP dongle.'} Detection, connection,
+                and scanning retry automatically.
+              </Callout>
+            </div>
+          ) : !status.connected ? (
             <div className="thread-mesh-callout">
               <Callout
                 intent="warning"
                 icon="warning-sign"
-                title={
-                  status?.available ? 'Border router is unavailable' : 'Thread radio not detected'
-                }
+                title="Thread network is not configured"
               >
-                {status?.error ?? 'Connect a compatible Thread RCP dongle.'} Detection, connection,
-                and scanning retry automatically.
+                {status.error ??
+                  'The Thread radio is ready. Create a new network or import an existing dataset to view the mesh.'}
               </Callout>
             </div>
           ) : graphData && dimensions.width > 0 && dimensions.height > 0 ? (

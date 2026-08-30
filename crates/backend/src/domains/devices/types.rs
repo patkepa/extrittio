@@ -52,13 +52,36 @@ pub struct DeviceFilter {
     pub fleet_id: Option<i32>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CreateDeviceRecord {
     pub id: String,
     pub name: String,
     pub device_type_id: i32,
     pub fleet_id: Option<i32>,
     pub firmware: String,
+    pub contract: Option<NewDeviceContractRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NewDeviceContractRecord {
+    pub id: String,
+    pub blueprint_revision_id: String,
+    pub document: Value,
+    pub contract_hash: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeviceContractRecord {
+    pub id: String,
+    pub device_id: String,
+    pub blueprint_revision_id: String,
+    pub document: Value,
+    pub contract_hash: String,
+    pub assignment_status: String,
+    pub acknowledged_at: Option<DateTime<Utc>>,
+    pub error: Option<String>,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -75,14 +98,8 @@ pub struct DeviceIngressContext {
     pub identity: DeviceIdentity,
     pub device_type_id: i32,
     pub fleet_id: Option<i32>,
+    pub blueprint_id: Option<String>,
     pub status: String,
-}
-
-#[derive(Debug, Clone)]
-pub enum AutoRegisterOutcome {
-    Existing(DeviceIngressContext),
-    Created(DeviceIngressContext),
-    NoDeviceType,
 }
 
 #[derive(Debug, Clone)]

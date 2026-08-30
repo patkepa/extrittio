@@ -43,7 +43,17 @@ enum Endpoints {
     // Devices
     static func devices(_ server: String) -> String { endpoint(server, "devices") }
     static func device(_ server: String, id: String) -> String { endpoint(server, "devices/\(id)") }
+    static func deviceContract(_ server: String, id: String) -> String { endpoint(server, "devices/\(id)/contract") }
     static func deviceRestart(_ server: String, id: String) -> String { endpoint(server, "devices/\(id)/restart") }
+
+    // Thread provisioning
+    static func threadDataset(_ server: String) -> String { endpoint(server, "system/thread/dataset") }
+
+    // Device blueprints
+    static func deviceBlueprints(_ server: String) -> String { endpoint(server, "device-blueprints") }
+    static func latestDeviceBlueprintRevision(_ server: String, id: String) -> String {
+        endpoint(server, "device-blueprints/\(id)/revisions/latest")
+    }
 
     // Telemetry
     static func telemetry(_ server: String, deviceId: String) -> String { endpoint(server, "devices/\(deviceId)/telemetry") }

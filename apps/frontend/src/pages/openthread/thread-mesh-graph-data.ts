@@ -220,6 +220,7 @@ export function buildThreadMeshGraphData(
     deviceTypeColor: BORDER_ROUTER_COLOR,
     deviceTypeIcon: 'satellite',
     deviceTypeName: 'Border router',
+    initialViewportAnchor: true,
     details: discoveredBorderRouter
       ? deviceDetails(discoveredBorderRouter)
       : details([

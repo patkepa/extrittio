@@ -1,1 +1,1 @@
-export { useFormNavigation } from '@extrittio/interactions';
+export { useFormNavigation } from '@patkepa/kantzen-ui/interactions';

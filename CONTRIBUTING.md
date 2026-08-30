@@ -23,8 +23,8 @@ cargo run -p extrittio -- migrate
 cd apps/frontend && npm ci
 ```
 
-GitHub Packages dependencies under `@extrittio` require a package token in
-`NODE_AUTH_TOKEN` with read access.
+The frontend's `@patkepa/kantzen-ui` dependency is public and installs from npm
+without a package token.
 
 ## Quality Gates
 
@@ -45,7 +45,7 @@ npm run build
 Changes to protobuf definitions must regenerate and commit the C nanopb output:
 
 ```bash
-clients/c/sdk-c/scripts/generate-proto.sh
+cargo xtask protocol generate
 ```
 
 Changes to REST routes or schemas must regenerate and commit both API artifacts:

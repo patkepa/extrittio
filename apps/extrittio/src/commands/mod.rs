@@ -32,7 +32,7 @@ pub(crate) async fn run(cli: Cli) -> Result<()> {
     let output_format = cli.output;
 
     match command {
-        Command::Run(args) => service::run_hobby(args).await,
+        Command::Run(args) => service::run_edge(args).await,
         Command::Serve(args) => service::serve(args).await,
         Command::Migrate(args) => service::migrate(args, output_format).await,
         Command::Init(args) => service::init(args, output_format).await,

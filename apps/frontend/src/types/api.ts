@@ -69,8 +69,15 @@ export type DashboardStats = components['schemas']['DashboardStats'];
 // ---------------------------------------------------------------------------
 
 export type Device = components['schemas']['DeviceResponse'];
+export type DeviceContract = components['schemas']['DeviceContractResponse'];
 export type CreateDeviceRequest = components['schemas']['NewDeviceRequest'];
 export type UpdateDeviceRequest = components['schemas']['UpdateDeviceRequest'];
+export type DeviceBlueprint = components['schemas']['BlueprintResponse'];
+export type DeviceBlueprintRevision = components['schemas']['BlueprintRevisionResponse'];
+export type DeviceBlueprintList = components['schemas']['PaginatedResponse_BlueprintResponse'];
+export type DeviceBlueprintDraft = components['schemas']['BlueprintDraftResponse'];
+export type DeviceBlueprintValidation = components['schemas']['BlueprintValidationResponse'];
+export type DeviceBlueprintDocument = Record<string, unknown>;
 
 export type ListDevicesParams = NonNullable<operations['list_devices']['parameters']['query']>;
 
@@ -146,9 +153,13 @@ export type DeviceShadow = components['schemas']['ShadowResponse'];
 // ---------------------------------------------------------------------------
 
 export type TelemetryRecord = components['schemas']['TelemetryResponse'];
+export type DeviceMetric = components['schemas']['DeviceMetricResponse'];
 
 export type TelemetryParams = NonNullable<
   operations['get_device_telemetry']['parameters']['query']
+>;
+export type DeviceMetricParams = NonNullable<
+  operations['get_device_metrics']['parameters']['query']
 >;
 
 // ---------------------------------------------------------------------------
@@ -212,6 +223,12 @@ export type LogRecord = components['schemas']['LogResponse'];
 
 export type LogsParams = NonNullable<operations['get_device_logs']['parameters']['query']>;
 
+export type ActivityEvent = components['schemas']['ActivityEventResponse'];
+export type ActivityEventPage = components['schemas']['ActivityEventListResponse'];
+export type ActivityEventsParams = NonNullable<
+  operations['list_activity_events']['parameters']['query']
+>;
+
 // ---------------------------------------------------------------------------
 // Device Config
 // ---------------------------------------------------------------------------
@@ -236,7 +253,14 @@ export interface ThreadStatus {
   connected: boolean;
   error: string | null;
   rcp_device: string | null;
+  configured_rcp_device: string | null;
   available_rcp_devices: string[];
+  available_rcp_candidates: ThreadRcpCandidate[];
+  runtime_phase: string;
+  consecutive_failures: number;
+  restart_count: number;
+  next_retry_at: string | null;
+  last_exit: string | null;
   role: string | null;
   network_name: string | null;
   channel: number | null;
@@ -244,6 +268,21 @@ export interface ThreadStatus {
   extended_pan_id: string | null;
   mesh_local_prefix: string | null;
   addresses: string[];
+}
+
+export interface ConfigureThreadRuntimeRequest {
+  rcp_device: string | null;
+}
+
+export interface ThreadRcpCandidate {
+  path: string;
+  confidence: 'verified' | 'plausible' | string;
+  match_reason: string;
+  usb_vendor_id: number | null;
+  usb_product_id: number | null;
+  manufacturer: string | null;
+  product: string | null;
+  serial_number: string | null;
 }
 
 export interface CreateThreadNetworkRequest {
@@ -268,6 +307,7 @@ export interface ThreadNetwork {
   network_name: string | null;
   pan_id: string;
   extended_address: string;
+  extended_pan_id: string | null;
   channel: number;
   rssi: number;
   lqi: number;
@@ -300,7 +340,21 @@ export interface ThreadNetworkDiagnostics {
   networks: ThreadNetwork[];
   devices: ThreadMeshDevice[];
   statistics: ThreadRadioStatistics;
+  sources: ThreadScanSourceStatus[];
   warnings: string[];
+}
+
+export interface ThreadScanSourceStatus {
+  source:
+    | 'nearby_networks'
+    | 'channel_energy'
+    | 'channel_utilization'
+    | 'radio_statistics'
+    | 'mesh_devices'
+    | string;
+  state: 'fresh' | 'stale' | 'unavailable' | string;
+  observed_at: string | null;
+  error: string | null;
 }
 
 export interface ThreadMeshDevice {

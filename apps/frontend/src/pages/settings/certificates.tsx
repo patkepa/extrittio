@@ -206,6 +206,7 @@ export function CertificatesSettings() {
         isOpen={downloadBundle !== null}
         onClose={() => setDownloadBundle(null)}
         certBundle={downloadBundle?.bundle ?? null}
+        contract={null}
         deviceName={downloadBundle?.name ?? ''}
       />
     </div>

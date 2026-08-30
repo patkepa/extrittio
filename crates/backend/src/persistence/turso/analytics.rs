@@ -1,0 +1,310 @@
+use async_trait::async_trait;
+use turso::params;
+
+use crate::domains::analytics::repository::AnalyticsRepository;
+use crate::domains::analytics::types::{
+    AnalyticsBlueprintRevision, AnalyticsBucket, AnalyticsDevice, AnalyticsQuery,
+    AnalyticsQueryData,
+};
+use crate::persistence::PersistenceError;
+use crate::tenancy::TenantId;
+
+use super::{TursoAdapter, row};
+
+const SCOPE_FILTER: &str = r#"
+    d.tenant_id = ?1
+    AND (?2 = '[]' OR d.device_type_id IN (SELECT value FROM json_each(?2)))
+    AND (?3 = '[]' OR d.fleet_id IN (SELECT value FROM json_each(?3)))
+    AND (?4 = '[]' OR d.id IN (SELECT value FROM json_each(?4)))
+"#;
+
+#[async_trait]
+impl AnalyticsRepository for TursoAdapter {
+    async fn blueprint_catalog(
+        &self,
+        tenant: &TenantId,
+    ) -> Result<Vec<AnalyticsBlueprintRevision>, PersistenceError> {
+        let connection = self.database.connect()?;
+        let mut rows = connection
+            .query(
+                r#"
+                SELECT b.id, b.blueprint_key, b.name, r.id, r.revision, r.document
+                FROM device_blueprints b
+                JOIN device_blueprint_revisions r
+                  ON r.tenant_id = b.tenant_id
+                 AND r.blueprint_id = b.id
+                WHERE b.tenant_id = ?1
+                  AND r.revision = (
+                      SELECT max(latest.revision)
+                      FROM device_blueprint_revisions latest
+                      WHERE latest.tenant_id = b.tenant_id
+                        AND latest.blueprint_id = b.id
+                  )
+                ORDER BY b.name, b.id
+                "#,
+                params![tenant.as_str()],
+            )
+            .await
+            .map_err(row::error)?;
+        let mut revisions = Vec::new();
+        while let Some(record) = rows.next().await.map_err(row::error)? {
+            let document: String = record.get(5).map_err(row::error)?;
+            revisions.push(AnalyticsBlueprintRevision {
+                blueprint_id: record.get(0).map_err(row::error)?,
+                blueprint_key: record.get(1).map_err(row::error)?,
+                blueprint_name: record.get(2).map_err(row::error)?,
+                revision_id: record.get(3).map_err(row::error)?,
+                revision: record.get(4).map_err(row::error)?,
+                document: serde_json::from_str(&document).map_err(|error| {
+                    PersistenceError::CorruptData(format!(
+                        "stored blueprint revision document is invalid: {error}"
+                    ))
+                })?,
+            });
+        }
+        Ok(revisions)
+    }
+
+    async fn query(
+        &self,
+        tenant: &TenantId,
+        query: AnalyticsQuery,
+    ) -> Result<AnalyticsQueryData, PersistenceError> {
+        let connection = self.database.connect()?;
+        let type_ids = serde_json::to_string(&query.scope.device_type_ids)
+            .map_err(|error| PersistenceError::Internal(error.to_string()))?;
+        let fleet_ids = serde_json::to_string(&query.scope.fleet_ids)
+            .map_err(|error| PersistenceError::Internal(error.to_string()))?;
+        let requested_device_ids = serde_json::to_string(&query.scope.device_ids)
+            .map_err(|error| PersistenceError::Internal(error.to_string()))?;
+
+        let count_sql = format!("SELECT count(*) FROM devices d WHERE {SCOPE_FILTER}");
+        let mut count_rows = connection
+            .query(
+                &count_sql,
+                params![
+                    tenant.as_str(),
+                    type_ids.clone(),
+                    fleet_ids.clone(),
+                    requested_device_ids.clone()
+                ],
+            )
+            .await
+            .map_err(row::error)?;
+        let selected_devices = count_rows
+            .next()
+            .await
+            .map_err(row::error)?
+            .ok_or(PersistenceError::NotFound)?
+            .get::<i64>(0)
+            .map_err(row::error)
+            .and_then(|value| {
+                usize::try_from(value).map_err(|_| {
+                    PersistenceError::CorruptData("analytics device count is invalid".to_string())
+                })
+            })?;
+
+        let compatible_sql = format!(
+            r#"
+            SELECT count(*)
+            FROM devices d
+            JOIN device_contract_assignments a
+              ON a.tenant_id = d.tenant_id
+             AND a.device_id = d.id
+            JOIN device_contracts c
+              ON c.tenant_id = a.tenant_id
+             AND c.device_id = a.device_id
+             AND c.id = a.desired_contract_id
+            JOIN device_blueprint_revisions r
+              ON r.tenant_id = c.tenant_id
+             AND r.id = c.blueprint_revision_id
+            WHERE {SCOPE_FILTER}
+              AND r.blueprint_id = ?5
+            "#
+        );
+        let mut compatible_rows = connection
+            .query(
+                &compatible_sql,
+                params![
+                    tenant.as_str(),
+                    type_ids.clone(),
+                    fleet_ids.clone(),
+                    requested_device_ids.clone(),
+                    query.metric.selector.blueprint_id.clone()
+                ],
+            )
+            .await
+            .map_err(row::error)?;
+        let compatible_devices = compatible_rows
+            .next()
+            .await
+            .map_err(row::error)?
+            .ok_or(PersistenceError::NotFound)?
+            .get::<i64>(0)
+            .map_err(row::error)
+            .and_then(|value| {
+                usize::try_from(value).map_err(|_| {
+                    PersistenceError::CorruptData(
+                        "analytics compatible device count is invalid".to_string(),
+                    )
+                })
+            })?;
+        drop(compatible_rows);
+
+        let device_sql = format!(
+            r#"
+            SELECT d.id, d.name
+            FROM devices d
+            JOIN device_contract_assignments a
+              ON a.tenant_id = d.tenant_id
+             AND a.device_id = d.id
+            JOIN device_contracts c
+              ON c.tenant_id = a.tenant_id
+             AND c.device_id = a.device_id
+             AND c.id = a.desired_contract_id
+            JOIN device_blueprint_revisions r
+              ON r.tenant_id = c.tenant_id
+             AND r.id = c.blueprint_revision_id
+            WHERE {SCOPE_FILTER}
+              AND r.blueprint_id = ?5
+            ORDER BY d.name, d.id
+            LIMIT ?6
+            "#
+        );
+        let device_limit = i64::try_from(query.max_devices.saturating_add(1)).unwrap_or(i64::MAX);
+        let mut device_rows = connection
+            .query(
+                &device_sql,
+                params![
+                    tenant.as_str(),
+                    type_ids,
+                    fleet_ids,
+                    requested_device_ids,
+                    query.metric.selector.blueprint_id.clone(),
+                    device_limit
+                ],
+            )
+            .await
+            .map_err(row::error)?;
+        let mut devices = Vec::new();
+        while let Some(record) = device_rows.next().await.map_err(row::error)? {
+            devices.push(AnalyticsDevice {
+                id: record.get(0).map_err(row::error)?,
+                name: record.get(1).map_err(row::error)?,
+            });
+        }
+
+        if compatible_devices > query.max_devices || devices.is_empty() {
+            return Ok(AnalyticsQueryData {
+                selected_devices,
+                compatible_devices,
+                devices,
+                buckets: Vec::new(),
+            });
+        }
+
+        let device_ids = serde_json::to_string(
+            &devices
+                .iter()
+                .map(|device| device.id.as_str())
+                .collect::<Vec<_>>(),
+        )
+        .map_err(|error| PersistenceError::Internal(error.to_string()))?;
+        let bucket_micros = query.bucket_seconds.saturating_mul(1_000_000);
+        let row_limit = i64::try_from(query.max_rows.saturating_add(1)).unwrap_or(i64::MAX);
+        let mut rows = connection
+            .query(
+                metric_samples_query(),
+                params![
+                    tenant.as_str(),
+                    device_ids,
+                    query.start.and_utc().timestamp_micros(),
+                    query.end.and_utc().timestamp_micros(),
+                    bucket_micros,
+                    query.metric.selector.stream_key,
+                    query.metric.selector.field_path,
+                    query.metric.selector.blueprint_id,
+                    row_limit
+                ],
+            )
+            .await
+            .map_err(row::error)?;
+        let mut buckets = Vec::new();
+        while let Some(record) = rows.next().await.map_err(row::error)? {
+            let bucket_micros: i64 = record.get(2).map_err(row::error)?;
+            buckets.push(AnalyticsBucket {
+                device_id: record.get(0).map_err(row::error)?,
+                device_name: record.get(1).map_err(row::error)?,
+                bucket_start: row::datetime(bucket_micros)?.naive_utc(),
+                sample_count: record.get(3).map_err(row::error)?,
+                average: record.get(4).map_err(row::error)?,
+                minimum: record.get(5).map_err(row::error)?,
+                maximum: record.get(6).map_err(row::error)?,
+                latest: record.get(7).map_err(row::error)?,
+            });
+        }
+
+        Ok(AnalyticsQueryData {
+            selected_devices,
+            compatible_devices,
+            devices,
+            buckets,
+        })
+    }
+}
+
+fn metric_samples_query() -> &'static str {
+    r#"
+        WITH bucketed AS (
+            SELECT
+                d.id AS device_id,
+                d.name AS device_name,
+                s.occurred_at - (s.occurred_at % ?5) AS bucket_start,
+                coalesce(s.value_double, CAST(s.value_int AS REAL)) AS value,
+                s.occurred_at,
+                s.event_id
+            FROM device_metric_samples s
+            JOIN devices d
+              ON d.tenant_id = s.tenant_id
+             AND d.id = s.device_id
+            JOIN device_events e
+              ON e.tenant_id = s.tenant_id
+             AND e.device_id = s.device_id
+             AND e.id = s.event_id
+            JOIN device_contracts c
+              ON c.tenant_id = e.tenant_id
+             AND c.device_id = e.device_id
+             AND c.id = e.contract_id
+            JOIN device_blueprint_revisions r
+              ON r.tenant_id = c.tenant_id
+             AND r.id = c.blueprint_revision_id
+            WHERE s.tenant_id = ?1
+              AND s.device_id IN (SELECT value FROM json_each(?2))
+              AND s.occurred_at >= ?3
+              AND s.occurred_at < ?4
+              AND s.stream_key = ?6
+              AND s.field_path = ?7
+              AND s.value_type IN ('float64', 'int64')
+              AND r.blueprint_id = ?8
+        ), ranked AS (
+            SELECT *, row_number() OVER (
+                PARTITION BY device_id, bucket_start
+                ORDER BY occurred_at DESC, event_id DESC
+            ) AS latest_rank
+            FROM bucketed
+        )
+        SELECT
+            device_id,
+            device_name,
+            bucket_start,
+            count(*) AS sample_count,
+            avg(value) AS average,
+            min(value) AS minimum,
+            max(value) AS maximum,
+            max(CASE WHEN latest_rank = 1 THEN value END) AS latest
+        FROM ranked
+        GROUP BY device_id, device_name, bucket_start
+        ORDER BY bucket_start, device_name, device_id
+        LIMIT ?9
+        "#
+}

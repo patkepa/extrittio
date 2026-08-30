@@ -19,6 +19,7 @@ pub enum FirmwareStorageConfig {
     Local {
         path: PathBuf,
     },
+    #[cfg(feature = "s3")]
     S3 {
         bucket: String,
         region: String,
@@ -32,7 +33,7 @@ pub enum FirmwareStorageConfig {
 pub enum DeploymentProfile {
     Production,
     Development,
-    Hobby,
+    Edge,
 }
 
 impl DeploymentProfile {
@@ -40,11 +41,11 @@ impl DeploymentProfile {
         match value.trim().to_ascii_lowercase().as_str() {
             "production" => Ok(Self::Production),
             "development" => Ok(Self::Development),
-            "hobby" => Ok(Self::Hobby),
+            "edge" => Ok(Self::Edge),
             _ => Err(ConfigError::InvalidValue {
                 key: "EXTRITTIO_DEPLOYMENT_PROFILE".to_string(),
                 value: value.to_string(),
-                reason: "expected production, development, or hobby".to_string(),
+                reason: "expected production, development, or edge".to_string(),
             }),
         }
     }
@@ -131,7 +132,6 @@ pub struct AppConfig {
     pub cookie_secure: bool,
     pub health_token: Option<String>,
     pub max_zenoh_payload_size_bytes: usize,
-    pub auto_register_devices: bool,
     pub trusted_proxies: Vec<String>,
     pub outbox_batch_size: i64,
     pub outbox_concurrency: usize,
@@ -152,7 +152,7 @@ impl AppConfig {
         let deployment_profile = DeploymentProfile::parse(
             &read_env("EXTRITTIO_DEPLOYMENT_PROFILE").unwrap_or_else(|| {
                 if cfg!(all(feature = "turso", not(feature = "postgres"))) {
-                    "hobby".to_string()
+                    "edge".to_string()
                 } else {
                     "development".to_string()
                 }
@@ -221,6 +221,7 @@ impl AppConfig {
                     .map(PathBuf::from)
                     .unwrap_or(default_firmware_path),
             },
+            #[cfg(feature = "s3")]
             "s3" => FirmwareStorageConfig::S3 {
                 bucket: read_env("FIRMWARE_S3_BUCKET")
                     .filter(|value| !value.trim().is_empty())
@@ -238,11 +239,22 @@ impl AppConfig {
                 virtual_hosted_style: env_bool(&read_env, "FIRMWARE_S3_VIRTUAL_HOSTED_STYLE")?
                     .unwrap_or(false),
             },
+            #[cfg(not(feature = "s3"))]
+            "s3" => {
+                return Err(ConfigError::Validation(
+                    "this Extrittio build does not include S3 firmware storage; rebuild with the `s3` feature or use FIRMWARE_STORAGE_BACKEND=local"
+                        .to_string(),
+                ));
+            }
             value => {
                 return Err(ConfigError::InvalidValue {
                     key: "FIRMWARE_STORAGE_BACKEND".to_string(),
                     value: value.to_string(),
-                    reason: "expected local or s3".to_string(),
+                    reason: if cfg!(feature = "s3") {
+                        "expected local or s3".to_string()
+                    } else {
+                        "expected local".to_string()
+                    },
                 });
             }
         };
@@ -333,8 +345,6 @@ impl AppConfig {
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty()),
             max_zenoh_payload_size_bytes,
-            auto_register_devices: env_bool(&read_env, "EXTRITTIO_AUTO_REGISTER_DEVICES")?
-                .unwrap_or(false),
             trusted_proxies: csv_env(&read_env, "EXTRITTIO_TRUSTED_PROXIES"),
             outbox_batch_size: env_parse(&read_env, "RULE_ACTION_OUTBOX_BATCH_SIZE")?
                 .unwrap_or(DEFAULT_OUTBOX_BATCH_SIZE),
@@ -401,6 +411,7 @@ impl AppConfig {
                 "payload size limits must be greater than zero".to_string(),
             ));
         }
+        #[cfg(feature = "s3")]
         if let FirmwareStorageConfig::S3 {
             endpoint: Some(endpoint),
             allow_http,
@@ -484,7 +495,7 @@ impl AppConfig {
                 }
                 if self.deployment_profile == DeploymentProfile::Production {
                     return Err(ConfigError::Validation(
-                        "production deployments require PostgreSQL; Turso is single-node hobby support"
+                        "production deployments require PostgreSQL; Turso is single-node Extrittio Edge support"
                             .to_string(),
                     ));
                 }
@@ -661,7 +672,6 @@ mod tests {
             super::DEFAULT_ZENOH_MAX_PAYLOAD_KB * 1024
         );
         assert_eq!(config.health_token, None);
-        assert!(!config.auto_register_devices);
         assert!(config.trusted_proxies.is_empty());
         assert_eq!(config.outbox_batch_size, 64);
         assert_eq!(config.outbox_concurrency, 8);
@@ -726,14 +736,14 @@ mod tests {
     fn turso_keeps_mutable_defaults_under_the_data_directory() {
         let config = config_from(&[
             ("EXTRITTIO_DATABASE_BACKEND", "turso"),
-            ("EXTRITTIO_DEPLOYMENT_PROFILE", "hobby"),
-            ("EXTRITTIO_DATA_DIR", "/tmp/extrittio-hobby"),
+            ("EXTRITTIO_DEPLOYMENT_PROFILE", "edge"),
+            ("EXTRITTIO_DATA_DIR", "/tmp/extrittio-edge"),
         ]);
-        assert_eq!(config.certs_dir, "/tmp/extrittio-hobby/certs");
+        assert_eq!(config.certs_dir, "/tmp/extrittio-edge/certs");
         assert_eq!(
             config.firmware_storage,
             FirmwareStorageConfig::Local {
-                path: "/tmp/extrittio-hobby/firmware".into()
+                path: "/tmp/extrittio-edge/firmware".into()
             }
         );
     }
@@ -768,7 +778,6 @@ mod tests {
             ("METRICS_RETENTION_HOURS", "6"),
             ("ZENOH_MAX_PAYLOAD_KB", "512"),
             ("EXTRITTIO_HEALTH_TOKEN", "ready-secret"),
-            ("EXTRITTIO_AUTO_REGISTER_DEVICES", "true"),
             ("EXTRITTIO_TRUSTED_PROXIES", "127.0.0.1, 172.30.0.3"),
         ]);
 
@@ -782,7 +791,6 @@ mod tests {
         assert_eq!(config.metrics_retention_hours, 6);
         assert_eq!(config.max_zenoh_payload_size_bytes, 512 * 1024);
         assert_eq!(config.health_token.as_deref(), Some("ready-secret"));
-        assert!(config.auto_register_devices);
         assert_eq!(
             config.trusted_proxies,
             vec!["127.0.0.1".to_string(), "172.30.0.3".to_string()]
@@ -843,6 +851,7 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[cfg(feature = "s3")]
     #[test]
     fn requires_a_bucket_for_s3_firmware_storage() {
         let result = AppConfig::from_env_reader(|key| {
@@ -852,6 +861,7 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[cfg(feature = "s3")]
     #[test]
     fn rejects_insecure_s3_endpoint_without_explicit_opt_in() {
         let result = AppConfig::from_env_reader(|key| match key {

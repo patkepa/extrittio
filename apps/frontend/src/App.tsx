@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Spinner } from '@blueprintjs/core';
-import { ThemeProvider } from '@extrittio/theme';
+import { ThemeProvider } from '@patkepa/kantzen-ui/theme';
 import { ExtrittioShell } from './app/extrittio-shell';
 import { AuthGuard } from './components/auth-guard';
 import { Login } from './pages/login';
@@ -11,7 +11,10 @@ import { useAuthStore } from './stores/auth-store';
 // Import Blueprint.js styles
 import '@blueprintjs/core/lib/css/blueprint.css';
 import '@blueprintjs/icons/lib/css/blueprint-icons.css';
-import '@extrittio/theme/theme.css';
+import '@patkepa/kantzen-ui/styles.css';
+import '@patkepa/kantzen-ui/app-shell/styles.css';
+import '@patkepa/kantzen-ui/command-palette/styles.css';
+import './styles/kantzen-ui-compat.css';
 
 const PageFallback = () => (
   <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>

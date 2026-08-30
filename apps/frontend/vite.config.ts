@@ -6,10 +6,8 @@ const resolveFrontendModule = (path: string) => resolvePath(`./node_modules/${pa
 
 export default defineConfig({
   resolve: {
-    // All @extrittio/* dependencies are local file links from ../../ui. Their
-    // source directory has a separate node_modules tree, so pin every React
-    // entry point to this app's copy to keep one hooks dispatcher at runtime.
-    preserveSymlinks: true,
+    // Keep a single hooks dispatcher if a locally packed Kantzen UI build is
+    // used while developing the framework and application together.
     alias: [
       { find: /^react$/, replacement: resolveFrontendModule('react/index.js') },
       {

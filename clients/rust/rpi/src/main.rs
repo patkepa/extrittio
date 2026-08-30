@@ -4,7 +4,8 @@ use std::time::Duration;
 
 use clap::Parser;
 use extrittio_client_runtime::{
-    EMBED_MARKER_LEN, EMBED_SLOT_LEN, NativeClientConfig, TelemetrySource, run_native_client,
+    EMBED_MARKER_LEN, EMBED_SLOT_LEN, NativeClientConfig, TelemetrySource, contract::ContractEvent,
+    run_native_client,
 };
 use extrittio_common::extrittio::DeviceTelemetry;
 
@@ -26,6 +27,9 @@ pub static DEVICE_ID_EMBED: [u8; EMBED_SLOT_LEN] = {
 struct Args {
     #[arg(long)]
     device_id: Option<String>,
+    /// Provisioned contract JSON downloaded from the Extrittio device contract endpoint.
+    #[arg(long)]
+    contract: Option<String>,
     #[arg(long, default_value_t = 10)]
     interval: u64,
     #[arg(long, default_value_t = 30)]
@@ -105,6 +109,26 @@ impl TelemetrySource for SystemTelemetry {
                 .map_or("-", String::as_str),
         )
     }
+
+    fn contract_event(&self, telemetry: &DeviceTelemetry) -> Option<ContractEvent> {
+        let number = |key: &str| {
+            telemetry
+                .metadata
+                .get(key)
+                .and_then(|value| value.parse::<f64>().ok())
+        };
+        Some(ContractEvent::new(
+            "system",
+            serde_json::json!({
+                "cpuTemperature": telemetry.temperature,
+                "cpuUsagePercent": number("cpu_usage_pct"),
+                "memoryUsagePercent": number("mem_used_pct"),
+                "load1m": number("load_1m"),
+                "load5m": number("load_5m"),
+                "load15m": number("load_15m")
+            }),
+        ))
+    }
 }
 
 #[tokio::main]
@@ -118,6 +142,7 @@ async fn main() {
     let args = Args::parse();
     let config = NativeClientConfig {
         device_id: args.device_id,
+        contract_path: args.contract,
         telemetry_interval: Duration::from_secs(args.interval),
         heartbeat_interval: Duration::from_secs(args.heartbeat_interval),
         connect: args.connect,

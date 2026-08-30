@@ -17,6 +17,12 @@ use crate::persistence::{BootstrapOwner, BuiltinDeviceType, Persistence, SeedOwn
 use crate::services::{cert_service, user_service};
 use extrittio_common::topics::{self, patterns};
 
+/// Installs the process-wide provider required by clients built with
+/// `rustls-no-provider`. Calling this more than once is harmless.
+pub fn install_crypto_provider() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
 /// Create the PostgreSQL connection pool.
 #[cfg(feature = "postgres")]
 pub fn create_db_pool(database_url: &str, pool_size: u32) -> anyhow::Result<PostgresPool> {
@@ -53,7 +59,6 @@ pub async fn seed_persistence_device_types(persistence: &Persistence) -> anyhow:
     let records = [
         ("default", "cube", "#8ABBFF"),
         ("mac-device", "desktop", "#F7C948"),
-        ("network-analyzer", "antenna", "#36CFC9"),
         ("OrganBath", "heatmap", "#E76A6E"),
     ]
     .into_iter()

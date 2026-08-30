@@ -7,7 +7,7 @@ use crate::tenancy::DeviceIdentity;
 use crate::tenancy::TenantId;
 
 use super::types::{
-    AutoRegisterOutcome, CreateDeviceRecord, DeviceDetails, DeviceFilter, DeviceIngressContext,
+    CreateDeviceRecord, DeviceContractRecord, DeviceDetails, DeviceFilter, DeviceIngressContext,
     DeviceList, DeviceListQuery, DeviceWriteOutcome, HeartbeatWrite, OfflineTransition,
     OfflineWriteOutcome, UpdateDeviceRecord,
 };
@@ -25,16 +25,6 @@ pub trait DeviceRepository: Send + Sync {
         &self,
         identity: &DeviceIdentity,
     ) -> Result<Option<DeviceIngressContext>, PersistenceError>;
-
-    /// Atomically creates a device, initial shadow, and registration log, or
-    /// returns the existing globally unique device identity.
-    async fn auto_register(
-        &self,
-        tenant: &TenantId,
-        device_id: &str,
-        firmware: &str,
-        preferred_device_type: &str,
-    ) -> Result<AutoRegisterOutcome, PersistenceError>;
 
     /// Updates heartbeat state and enqueues status-rule actions in one commit.
     /// `applied=false` requests a caller retry after concurrent state change.
@@ -68,6 +58,14 @@ pub trait DeviceRepository: Send + Sync {
         tenant: &TenantId,
         device_id: &str,
     ) -> Result<Option<DeviceDetails>, PersistenceError>;
+
+    /// Returns the contract currently assigned to the device. Until the device
+    /// acknowledges a replacement, the desired contract is authoritative.
+    async fn assigned_contract(
+        &self,
+        tenant: &TenantId,
+        device_id: &str,
+    ) -> Result<Option<DeviceContractRecord>, PersistenceError>;
 
     /// Atomically creates the device, its initial shadow, and optional
     /// certificate, then returns the committed joined record.
@@ -105,10 +103,5 @@ pub trait DeviceRepository: Send + Sync {
         &self,
         tenant: &TenantId,
         device_ids: Vec<String>,
-    ) -> Result<usize, PersistenceError>;
-
-    async fn delete_observed_hosts_before(
-        &self,
-        cutoff: chrono::NaiveDateTime,
     ) -> Result<usize, PersistenceError>;
 }

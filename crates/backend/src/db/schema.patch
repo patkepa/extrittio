@@ -1,0 +1,67 @@
+--- schema.rs
++++ schema.rs
+@@ -637,41 +637,64 @@
+ }
+ 
++diesel::joinable!(alerts -> devices (device_id));
+ diesel::joinable!(alerts -> organizations (tenant_id));
++diesel::joinable!(alerts -> rules (rule_id));
++diesel::joinable!(api_keys -> device_types (device_type_id));
+ diesel::joinable!(api_keys -> organizations (tenant_id));
+ diesel::joinable!(audit_events -> organizations (tenant_id));
++diesel::joinable!(command_history -> devices (device_id));
+ diesel::joinable!(command_history -> organizations (tenant_id));
+ diesel::joinable!(device_blueprints -> organizations (tenant_id));
++diesel::joinable!(device_certificates -> devices (device_id));
+ diesel::joinable!(device_certificates -> organizations (tenant_id));
++diesel::joinable!(device_configs -> devices (device_id));
+ diesel::joinable!(device_configs -> organizations (tenant_id));
+ diesel::joinable!(device_contract_assignments -> organizations (tenant_id));
+ diesel::joinable!(device_contracts -> organizations (tenant_id));
+ diesel::joinable!(device_events -> organizations (tenant_id));
+ diesel::joinable!(device_latest_state -> organizations (tenant_id));
++diesel::joinable!(device_logs -> devices (device_id));
+ diesel::joinable!(device_logs -> organizations (tenant_id));
+ diesel::joinable!(device_metric_samples -> device_events (event_id));
+ diesel::joinable!(device_metric_samples -> organizations (tenant_id));
++diesel::joinable!(device_shadows -> devices (device_id));
+ diesel::joinable!(device_shadows -> organizations (tenant_id));
+ diesel::joinable!(device_types -> organizations (tenant_id));
++diesel::joinable!(devices -> device_types (device_type_id));
++diesel::joinable!(devices -> fleets (fleet_id));
+ diesel::joinable!(devices -> organizations (tenant_id));
++diesel::joinable!(firmware_blobs -> firmware_updates (firmware_update_id));
+ diesel::joinable!(firmware_blobs -> organizations (tenant_id));
++diesel::joinable!(firmware_updates -> device_types (device_type_id));
+ diesel::joinable!(firmware_updates -> organizations (tenant_id));
+ diesel::joinable!(fleets -> organizations (tenant_id));
++diesel::joinable!(ota_deployments -> devices (device_id));
++diesel::joinable!(ota_deployments -> firmware_updates (firmware_update_id));
+ diesel::joinable!(ota_deployments -> organizations (tenant_id));
+ diesel::joinable!(role_permissions -> roles (role_id));
+ diesel::joinable!(roles -> organizations (tenant_id));
+ diesel::joinable!(rule_action_outbox -> organizations (tenant_id));
+ diesel::joinable!(rule_actions -> organizations (tenant_id));
++diesel::joinable!(rule_actions -> rules (rule_id));
+ diesel::joinable!(rule_conditions -> organizations (tenant_id));
++diesel::joinable!(rule_conditions -> rules (rule_id));
++diesel::joinable!(rule_conditions -> zones (zone_id));
++diesel::joinable!(rule_cooldowns -> devices (device_id));
+ diesel::joinable!(rule_cooldowns -> organizations (tenant_id));
++diesel::joinable!(rule_cooldowns -> rules (rule_id));
+ diesel::joinable!(rules -> organizations (tenant_id));
++diesel::joinable!(telemetry -> devices (device_id));
+ diesel::joinable!(telemetry -> organizations (tenant_id));
+ diesel::joinable!(telemetry_default -> organizations (tenant_id));
++diesel::joinable!(telemetry_rollups_hourly -> devices (device_id));
+ diesel::joinable!(telemetry_rollups_hourly -> organizations (tenant_id));
+ diesel::joinable!(telemetry_y202608 -> organizations (tenant_id));
+ diesel::joinable!(telemetry_y202609 -> organizations (tenant_id));
+ diesel::joinable!(telemetry_y202610 -> organizations (tenant_id));
+ diesel::joinable!(telemetry_y202611 -> organizations (tenant_id));
+ diesel::joinable!(user_roles -> organizations (tenant_id));
++diesel::joinable!(user_roles -> roles (role_id));
++diesel::joinable!(user_roles -> users (user_id));
+ diesel::joinable!(users -> organizations (tenant_id));
+ diesel::joinable!(zones -> organizations (tenant_id));
+ 

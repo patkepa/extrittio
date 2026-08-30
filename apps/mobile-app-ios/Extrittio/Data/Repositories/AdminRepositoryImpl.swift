@@ -105,3 +105,13 @@ final class CertificateRepositoryImpl: CertificateRepository, Sendable {
         return try await apiClient.get(Endpoints.deviceCertificateStatus(server, id: deviceId))
     }
 }
+
+final class ThreadDatasetRepositoryImpl: ThreadDatasetRepository, Sendable {
+    private let apiClient: APIClient
+    init(apiClient: APIClient) { self.apiClient = apiClient }
+
+    func getActiveDataset() async throws -> DeviceProvisioningThread {
+        let server = await apiClient.serverAddress
+        return try await apiClient.get(Endpoints.threadDataset(server))
+    }
+}

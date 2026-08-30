@@ -29,12 +29,15 @@ pub async fn run_subscriber(
     zenoh_metrics: Arc<ZenohMetrics>,
     rule_cache: Arc<RwLock<RuleCache>>,
     max_payload_size_bytes: usize,
-    allow_auto_register: bool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use extrittio_common::topics;
     use extrittio_common::topics::patterns;
 
     let telemetry_sub = session.declare_subscriber(patterns::TELEMETRY).await?;
+
+    let contract_sub = session
+        .declare_subscriber(patterns::CONTRACT_INGRESS)
+        .await?;
 
     let heartbeat_sub = session.declare_subscriber(patterns::HEARTBEAT).await?;
 
@@ -52,6 +55,49 @@ pub async fn run_subscriber(
         "Zenoh subscribers declared for telemetry, heartbeat, shadow, log, and command response topics"
     );
     let mut subscriber_tasks = tokio::task::JoinSet::new();
+
+    let contract_persistence = persistence.clone();
+    let contract_metrics = zenoh_metrics.clone();
+    let contract_cache = rule_cache.clone();
+    subscriber_tasks.spawn(async move {
+        loop {
+            match contract_sub.recv_async().await {
+                Ok(sample) => {
+                    let Some((topic_device_id, topic, payload)) =
+                        accept_contract_sample(&sample, max_payload_size_bytes)
+                    else {
+                        continue;
+                    };
+                    let Some(identity) = handlers::resolve_ingress_identity(
+                        &contract_persistence,
+                        "contract event",
+                        &topic_device_id,
+                        true,
+                    )
+                    .await
+                    else {
+                        continue;
+                    };
+                    let handled = handlers::contract_ingress::handle_contract_ingress(
+                        &contract_persistence,
+                        &identity,
+                        &topic,
+                        &payload,
+                        &contract_cache,
+                    )
+                    .await;
+                    if handled {
+                        contract_metrics.messages_in.fetch_add(1, Ordering::Relaxed);
+                    }
+                }
+                Err(error) => {
+                    return Err::<(), String>(format!(
+                        "contract event subscriber channel closed: {error}"
+                    ));
+                }
+            }
+        }
+    });
 
     // Spawn heartbeat handler in a background task
     let heartbeat_persistence = persistence.clone();
@@ -73,7 +119,7 @@ pub async fn run_subscriber(
                         &heartbeat_persistence,
                         "heartbeat",
                         &topic_device_id,
-                        !allow_auto_register,
+                        true,
                     )
                     .await;
                     handlers::heartbeat::handle_heartbeat(
@@ -82,7 +128,6 @@ pub async fn run_subscriber(
                         &topic_device_id,
                         &payload,
                         &heartbeat_cache,
-                        allow_auto_register,
                     )
                     .await;
                     heartbeat_metrics
@@ -329,4 +374,27 @@ fn accept_sample<'a>(
     }
 
     Some((device_id.to_string(), sample.payload().to_bytes().to_vec()))
+}
+
+fn accept_contract_sample(
+    sample: &zenoh::sample::Sample,
+    max_payload_size_bytes: usize,
+) -> Option<(String, String, Vec<u8>)> {
+    let topic = sample.key_expr().as_str();
+    let Some(device_id) = extrittio_common::topics::contract_device_id(topic) else {
+        warn!("contract event sample arrived on invalid topic `{topic}`; dropping message");
+        return None;
+    };
+    let payload_len = sample.payload().len();
+    if payload_len > max_payload_size_bytes {
+        warn!(
+            "contract event sample for device {device_id} exceeded server payload limit: {payload_len} > {max_payload_size_bytes}; dropping message"
+        );
+        return None;
+    }
+    Some((
+        device_id.to_string(),
+        topic.to_string(),
+        sample.payload().to_bytes().to_vec(),
+    ))
 }

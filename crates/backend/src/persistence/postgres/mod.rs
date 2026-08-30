@@ -3,7 +3,9 @@ use std::sync::Arc;
 use crate::persistence::{BackendDescriptor, Persistence, PersistencePorts};
 use executor::PostgresPool;
 
+mod activity;
 mod alerts;
+mod analytics;
 mod api_keys;
 mod audit;
 mod bootstrap;
@@ -11,8 +13,10 @@ mod certificates;
 mod commands;
 mod configuration;
 mod dashboard;
+mod device_blueprints;
 mod device_types;
 mod devices;
+mod events;
 pub mod executor;
 mod firmware;
 mod fleets;
@@ -48,6 +52,8 @@ pub fn create_persistence(pool: PostgresPool) -> Persistence {
     Persistence::new(
         BackendDescriptor::postgres(),
         PersistencePorts {
+            activity: adapter.clone(),
+            analytics: adapter.clone(),
             api_keys: adapter.clone(),
             alerts: adapter.clone(),
             audit: adapter.clone(),
@@ -56,8 +62,10 @@ pub fn create_persistence(pool: PostgresPool) -> Persistence {
             commands: adapter.clone(),
             configuration: adapter.clone(),
             dashboard: adapter.clone(),
+            device_blueprints: adapter.clone(),
             device_types: adapter.clone(),
             devices: adapter.clone(),
+            events: adapter.clone(),
             fleets: adapter.clone(),
             firmware: adapter.clone(),
             logs: adapter.clone(),

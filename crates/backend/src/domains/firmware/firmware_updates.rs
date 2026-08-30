@@ -12,6 +12,7 @@ use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::auth::context::RequestContext;
+use crate::domains::device_blueprints::blueprint_service;
 use crate::domains::firmware::types::{
     FirmwareRecord, GlobalOtaDeploymentRecord, NewFirmwareBlobRecord, NewFirmwareRecord,
 };
@@ -44,11 +45,14 @@ pub struct FirmwareUpdateResponse {
     pub build_timestamp: Option<String>,
     pub changelog: Option<String>,
     pub source: String,
+    pub blueprint_revision_id: Option<String>,
+    pub compatibility: serde_json::Value,
+    pub update_strategy: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct NewFirmwareUpdateRequest {
-    pub device_type_id: i32,
+    pub blueprint_revision_id: String,
     pub version: Option<String>,
     pub url: String,
     pub sha256: Option<String>,
@@ -59,6 +63,8 @@ pub struct NewFirmwareUpdateRequest {
 pub struct ListFirmwareUpdatesQuery {
     /// Filter by device type.
     pub device_type_id: Option<i32>,
+    /// Filter by an immutable device blueprint revision.
+    pub blueprint_revision_id: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
@@ -117,6 +123,9 @@ impl From<FirmwareRecord> for FirmwareUpdateResponse {
                 .map(|timestamp| timestamp.format("%Y-%m-%dT%H:%M:%S").to_string()),
             changelog: firmware.changelog,
             source: firmware.source,
+            blueprint_revision_id: firmware.blueprint_revision_id,
+            compatibility: firmware.compatibility,
+            update_strategy: firmware.update_strategy,
         }
     }
 }
@@ -171,6 +180,10 @@ pub fn router(max_firmware_size: usize) -> Router<Arc<AppState>> {
             "/api/v1/firmware-updates/next-version/{device_type_id}",
             get(get_next_version),
         )
+        .route(
+            "/api/v1/firmware-updates/next-version/blueprint/{revision_id}",
+            get(get_next_blueprint_version),
+        )
 }
 
 // ---------------------------------------------------------------------------
@@ -199,6 +212,7 @@ pub(crate) async fn list_firmware_updates(
         &ctx,
         state.persistence.firmware.as_ref(),
         params.device_type_id,
+        params.blueprint_revision_id,
         limit,
         offset,
     )
@@ -284,13 +298,41 @@ pub(crate) async fn create_firmware_update(
         ));
     }
 
+    let revision = blueprint_service::get_revision(
+        &ctx,
+        state.persistence.device_blueprints.as_ref(),
+        &body.blueprint_revision_id,
+    )
+    .await?;
+    let blueprint: extrittio_device_contract::DeviceBlueprint =
+        serde_json::from_value(revision.document).map_err(|error| {
+            AppError::Internal(format!(
+                "Stored device blueprint revision is invalid: {error}"
+            ))
+        })?;
+    let firmware_definition = blueprint.spec.firmware.ok_or_else(|| {
+        AppError::UnprocessableEntity(
+            "The selected blueprint does not declare firmware update behavior".into(),
+        )
+    })?;
+    let update_strategy = serde_json::to_value(firmware_definition.strategy)?
+        .as_str()
+        .map(ToOwned::to_owned);
+    let compatibility = serde_json::to_value(firmware_definition.compatibility)?;
+    let compatibility_type = crate::services::device_type_service::resolve_for_device_creation(
+        &ctx,
+        state.persistence.device_types.as_ref(),
+        None,
+    )
+    .await?;
+
     let version = match body.version {
         Some(version) if !version.trim().is_empty() => version.trim().to_string(),
         _ => {
-            firmware_service::next_version_with_repository(
+            firmware_service::next_blueprint_version_with_repository(
                 &ctx,
                 state.persistence.firmware.as_ref(),
-                body.device_type_id,
+                &body.blueprint_revision_id,
             )
             .await?
         }
@@ -299,7 +341,7 @@ pub(crate) async fn create_firmware_update(
         &ctx,
         state.persistence.firmware.as_ref(),
         NewFirmwareRecord {
-            device_type_id: body.device_type_id,
+            device_type_id: compatibility_type.id,
             version,
             url: body.url,
             sha256: body.sha256,
@@ -310,6 +352,9 @@ pub(crate) async fn create_firmware_update(
             build_timestamp: None,
             changelog: None,
             source: None,
+            blueprint_revision_id: Some(body.blueprint_revision_id),
+            compatibility,
+            update_strategy,
         },
         None,
     )
@@ -325,7 +370,7 @@ pub(crate) async fn create_firmware_update(
     path = "/api/v1/firmware-updates/upload",
     tag = "firmware",
     security(("bearer_auth" = [])),
-    request_body(content_type = "multipart/form-data", description = "Multipart form: device_type_id (required), version (optional), description (optional), file (required)"),
+    request_body(content_type = "multipart/form-data", description = "Multipart form: blueprint_revision_id (required), version (optional), description (optional), file (required)"),
     responses(
         (status = 201, description = "Firmware uploaded", body = FirmwareUpdateResponse),
         (status = 400, description = "Invalid input"),
@@ -339,7 +384,7 @@ pub(crate) async fn upload_firmware_update(
     Extension(ctx): Extension<RequestContext>,
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<FirmwareUpdateResponse>), AppError> {
-    let mut device_type_id: Option<i32> = None;
+    let mut blueprint_revision_id: Option<String> = None;
     let mut version: Option<String> = None;
     let mut description: Option<String> = None;
     let mut file_data: Option<Vec<u8>> = None;
@@ -352,15 +397,14 @@ pub(crate) async fn upload_firmware_update(
     {
         let name = field.name().unwrap_or_default().to_string();
         match name.as_str() {
-            "device_type_id" => {
+            "blueprint_revision_id" => {
                 let text = field
                     .text()
                     .await
                     .map_err(|_| AppError::BadRequest("Invalid multipart upload".into()))?;
-                device_type_id = Some(
-                    text.parse()
-                        .map_err(|_| AppError::BadRequest("Invalid device_type_id".into()))?,
-                );
+                if !text.trim().is_empty() {
+                    blueprint_revision_id = Some(text.trim().to_string());
+                }
             }
             "version" => {
                 let text = field
@@ -394,9 +438,37 @@ pub(crate) async fn upload_firmware_update(
         }
     }
 
-    let device_type_id =
-        device_type_id.ok_or_else(|| AppError::BadRequest("Missing device_type_id".into()))?;
+    let blueprint_revision_id = blueprint_revision_id
+        .ok_or_else(|| AppError::BadRequest("Missing blueprint_revision_id".into()))?;
     let file_data = file_data.ok_or_else(|| AppError::BadRequest("Missing file".into()))?;
+
+    let revision = blueprint_service::get_revision(
+        &ctx,
+        state.persistence.device_blueprints.as_ref(),
+        &blueprint_revision_id,
+    )
+    .await?;
+    let blueprint: extrittio_device_contract::DeviceBlueprint =
+        serde_json::from_value(revision.document).map_err(|error| {
+            AppError::Internal(format!(
+                "Stored device blueprint revision is invalid: {error}"
+            ))
+        })?;
+    let firmware_definition = blueprint.spec.firmware.ok_or_else(|| {
+        AppError::UnprocessableEntity(
+            "The selected blueprint does not declare firmware update behavior".into(),
+        )
+    })?;
+    let update_strategy = serde_json::to_value(firmware_definition.strategy)?
+        .as_str()
+        .map(ToOwned::to_owned);
+    let compatibility = serde_json::to_value(firmware_definition.compatibility)?;
+    let compatibility_type = crate::services::device_type_service::resolve_for_device_creation(
+        &ctx,
+        state.persistence.device_types.as_ref(),
+        None,
+    )
+    .await?;
 
     // Sanitize filename: strip path components to prevent traversal
     let filename = filename
@@ -425,10 +497,10 @@ pub(crate) async fn upload_firmware_update(
     let version = match version {
         Some(version) => version,
         None => {
-            firmware_service::next_version_with_repository(
+            firmware_service::next_blueprint_version_with_repository(
                 &ctx,
                 state.persistence.firmware.as_ref(),
-                device_type_id,
+                &blueprint_revision_id,
             )
             .await?
         }
@@ -451,7 +523,7 @@ pub(crate) async fn upload_firmware_update(
         &ctx,
         state.persistence.firmware.as_ref(),
         NewFirmwareRecord {
-            device_type_id,
+            device_type_id: compatibility_type.id,
             version,
             url: String::new(),
             sha256: Some(sha256_hex),
@@ -462,6 +534,9 @@ pub(crate) async fn upload_firmware_update(
             build_timestamp: None,
             changelog: None,
             source: None,
+            blueprint_revision_id: Some(blueprint_revision_id),
+            compatibility,
+            update_strategy,
         },
         Some(NewFirmwareBlobRecord {
             size: file_size,
@@ -629,6 +704,34 @@ pub(crate) async fn get_next_version(
         &ctx,
         state.persistence.firmware.as_ref(),
         device_type_id,
+    )
+    .await?;
+
+    Ok(Json(NextVersionResponse {
+        next_version: version,
+    }))
+}
+
+/// Get the next auto-generated version for a published blueprint revision.
+#[utoipa::path(
+    get,
+    path = "/api/v1/firmware-updates/next-version/blueprint/{revision_id}",
+    tag = "firmware",
+    security(("bearer_auth" = [])),
+    params(("revision_id" = String, Path, description = "Published device blueprint revision ID")),
+    responses(
+        (status = 200, description = "Next version string", body = NextVersionResponse),
+    ),
+)]
+pub(crate) async fn get_next_blueprint_version(
+    State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
+    Path(revision_id): Path<String>,
+) -> Result<Json<NextVersionResponse>, AppError> {
+    let version = firmware_service::next_blueprint_version_with_repository(
+        &ctx,
+        state.persistence.firmware.as_ref(),
+        &revision_id,
     )
     .await?;
 

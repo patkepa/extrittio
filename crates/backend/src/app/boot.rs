@@ -15,6 +15,7 @@ pub async fn initialize_state(
     config: &AppConfig,
     thread_runtime: Option<Arc<extrittio_openthread_runtime::ThreadRuntime>>,
 ) -> anyhow::Result<Arc<AppState>> {
+    init::install_crypto_provider();
     let persistence = crate::persistence::factory::create(&config.database).await?;
     info!(
         backend = persistence.backend.kind.as_str(),
@@ -30,7 +31,7 @@ pub async fn initialize_state(
             .unwrap_or("local database");
         info!(
             database,
-            "Embedded Turso backend enabled: single-node hobby deployment"
+            "Embedded Turso backend enabled: single-node Extrittio Edge deployment"
         );
     }
 
@@ -104,6 +105,8 @@ pub async fn initialize_state(
     Ok(Arc::new(AppState {
         persistence,
         zenoh_session,
+        zenoh_tls_enabled: config.zenoh_tls_enabled,
+        zenoh_port: config.zenoh_tls_port,
         jwt_secret,
         public_url: config.public_url.clone(),
         cookie_secure: config.cookie_secure,

@@ -22,6 +22,8 @@ use extrittio_backend::services::cert_service;
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations/postgres");
 const DEFAULT_TEST_DATABASE_URL: &str =
     "postgres://extrittio:extrittio@127.0.0.1:5432/extrittio?connect_timeout=2";
+const TEST_BLUEPRINT_ID: &str = "cert-test-blueprint";
+const TEST_BLUEPRINT_REVISION_ID: &str = "cert-test-blueprint-r1";
 static TEST_DB_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 fn insert_generated_ca(conn: &mut PgConnection, ca: NewCaCertificateRecord) -> CaCertificateRecord {
@@ -67,7 +69,7 @@ fn setup_test_db() -> Pool<ConnectionManager<PgConnection>> {
     conn.run_pending_migrations(MIGRATIONS).unwrap();
 
     // Clean all data for test isolation (truncate in dependency order)
-    diesel::sql_query("TRUNCATE TABLE rule_cooldowns, alerts, rule_actions, rule_conditions, rules, zones, app_metrics, server_metrics, device_certificates, ca_certificates, command_history, device_logs, ota_deployments, firmware_blobs, firmware_updates, api_keys, device_configs, device_shadows, telemetry, devices, fleets, device_types, users, server_config CASCADE")
+    diesel::sql_query("TRUNCATE TABLE device_contract_assignments, device_contracts, device_blueprint_revisions, device_blueprint_drafts, device_blueprints, rule_cooldowns, alerts, rule_actions, rule_conditions, rules, zones, app_metrics, server_metrics, device_certificates, ca_certificates, command_history, device_logs, ota_deployments, firmware_blobs, firmware_updates, api_keys, device_configs, device_shadows, telemetry, devices, fleets, device_types, users, server_config CASCADE")
         .execute(&mut conn)
         .unwrap();
 
@@ -85,11 +87,42 @@ fn setup_test_db() -> Pool<ConnectionManager<PgConnection>> {
     diesel::sql_query("SELECT setval('device_types_id_seq', 2)")
         .execute(&mut conn)
         .unwrap();
+    let blueprint_document = serde_json::json!({
+        "apiVersion": "extrittio.io/v1alpha1",
+        "kind": "DeviceBlueprint",
+        "metadata": {"key": "cert-test", "name": "Certificate test"},
+        "spec": {
+            "runtime": {
+                "minimumContractApi": 1,
+                "heartbeat": {"interval": "30s", "offlineAfter": "95s"},
+                "limits": {"maxMessageBytes": 8192, "maxMessagesPerMinute": 120}
+            }
+        }
+    });
+    diesel::sql_query(
+        "INSERT INTO device_blueprints (id, tenant_id, blueprint_key, name)
+         VALUES ($1, 'default', 'cert-test', 'Certificate test')",
+    )
+    .bind::<diesel::sql_types::Text, _>(TEST_BLUEPRINT_ID)
+    .execute(&mut conn)
+    .unwrap();
+    diesel::sql_query(
+        "INSERT INTO device_blueprint_revisions
+            (id, tenant_id, blueprint_id, revision, document, document_hash, compatibility)
+         VALUES ($1, 'default', $2, 1, $3::jsonb, $4, '{}'::jsonb)",
+    )
+    .bind::<diesel::sql_types::Text, _>(TEST_BLUEPRINT_REVISION_ID)
+    .bind::<diesel::sql_types::Text, _>(TEST_BLUEPRINT_ID)
+    .bind::<diesel::sql_types::Text, _>(blueprint_document.to_string())
+    .bind::<diesel::sql_types::Text, _>("0".repeat(64))
+    .execute(&mut conn)
+    .unwrap();
 
     pool
 }
 
 async fn setup_app_with_ca() -> (axum::Router, Pool<ConnectionManager<PgConnection>>) {
+    extrittio_backend::init::install_crypto_provider();
     let db_pool = setup_test_db();
     let zenoh_session = zenoh::open(zenoh::Config::default())
         .await
@@ -105,6 +138,8 @@ async fn setup_app_with_ca() -> (axum::Router, Pool<ConnectionManager<PgConnecti
     let state = Arc::new(extrittio_backend::state::AppState {
         persistence: extrittio_backend::persistence::postgres::create_persistence(db_pool.clone()),
         zenoh_session: Arc::new(zenoh_session),
+        zenoh_tls_enabled: false,
+        zenoh_port: 7447,
         jwt_secret: "test-secret-key".to_string(),
         public_url: "http://localhost:8080".to_string(),
         cookie_secure: false,
@@ -276,9 +311,10 @@ fn test_device_certificate_crud() {
     // Generate CA and a device to reference
     let new_ca = cert_service::generate_ca_certificate().unwrap();
     insert_generated_ca(&mut conn, new_ca);
+    drop(conn);
 
     // Create a device in the DB to satisfy the FK constraint
-    use extrittio_backend::domains::devices::types::CreateDeviceRecord;
+    use extrittio_backend::domains::devices::types::{CreateDeviceRecord, NewDeviceContractRecord};
     use extrittio_backend::persistence::postgres;
     use extrittio_backend::services::device_catalog_service;
     let ctx = test_context();
@@ -288,6 +324,13 @@ fn test_device_certificate_crud() {
         device_type_id: 1,
         fleet_id: None,
         firmware: "v1".to_string(),
+        contract: Some(NewDeviceContractRecord {
+            id: "dev-cert-test-contract".to_string(),
+            blueprint_revision_id: TEST_BLUEPRINT_REVISION_ID.to_string(),
+            document: serde_json::json!({"contractApi": 1}),
+            contract_hash: "0".repeat(64),
+            created_at: chrono::Utc::now(),
+        }),
     };
     let persistence = postgres::create_persistence(pool.clone());
     tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -300,6 +343,7 @@ fn test_device_certificate_crud() {
         .await
         .unwrap();
     });
+    let mut conn = pool.get().unwrap();
 
     // Device cert was auto-generated on device creation
     let cert = cert_repo::get_device_certificate(&mut conn, "dev-cert-test")
@@ -368,7 +412,8 @@ async fn test_device_certificate_lifecycle() {
     // Create a device (cert is auto-generated)
     let create_body = serde_json::json!({
         "name": "Cert Lifecycle Device",
-        "device_type_id": 1
+        "device_type_id": 1,
+        "blueprint_revision_id": TEST_BLUEPRINT_REVISION_ID
     });
 
     let response = app

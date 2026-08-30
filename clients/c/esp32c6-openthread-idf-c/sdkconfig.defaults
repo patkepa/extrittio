@@ -1,8 +1,16 @@
 # The ESP32-C6 has a native IEEE 802.15.4 radio, used by OpenThread.
-CONFIG_PARTITION_TABLE_TWO_OTA=y
+CONFIG_PARTITION_TABLE_TWO_OTA_LARGE=y
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 CONFIG_ESP_TASK_WDT_TIMEOUT_S=30
 CONFIG_FREERTOS_HZ=1000
+
+# BLE contact pairing runs alongside the native OpenThread radio. NimBLE is
+# used only as a connectable GATT peripheral, while ESP coexistence arbitrates
+# the shared 2.4 GHz radio.
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BT_NIMBLE_50_FEATURE_SUPPORT=n
+CONFIG_ESP_COEX_SW_COEXIST_ENABLE=y
 
 # OpenThread and its ESP-NETIF/lwIP IPv6 bridge.
 CONFIG_OPENTHREAD_ENABLED=y
@@ -18,7 +26,7 @@ CONFIG_LWIP_IPV6_NUM_ADDRESSES=8
 CONFIG_LWIP_HOOK_IP6_SELECT_SRC_ADDR_CUSTOM=y
 
 # Development-only public OpenThread test dataset. It must match the dataset
-# imported into the Extrittio hobby backend. Do not use this key outside a
+# imported into Extrittio Edge. Do not use this key outside an
 # controlled local test mesh.
 CONFIG_EXTRITTIO_THREAD_ACTIVE_DATASET_TLVS="4a0300000c0e08000000000001000035060004001fffe00708fd35344133d1d73e04105e9b9b360f80b88be2603fb0135c8d650c0402a0f7f800030000190208a6c9c979b7f141590510b7fd07e5ce003cbe047f62c0b8bd7349031065787472697474696f2d63362d64657601027880"
 CONFIG_EXTRITTIO_THREAD_CLEAR_PERSISTENT_STATE_ON_BOOT=y

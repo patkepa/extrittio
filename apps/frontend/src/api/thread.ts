@@ -1,6 +1,7 @@
 import client from './client';
 import type {
   CreateThreadNetworkRequest,
+  ConfigureThreadRuntimeRequest,
   ImportThreadDatasetRequest,
   ThreadDataset,
   ThreadNetworkDiagnostics,
@@ -19,6 +20,13 @@ export async function getThreadScan(): Promise<ThreadNetworkDiagnostics> {
 
 export async function getThreadDataset(): Promise<ThreadDataset> {
   const { data } = await client.get<ThreadDataset>('/system/thread/dataset');
+  return data;
+}
+
+export async function configureThreadRuntime(
+  body: ConfigureThreadRuntimeRequest,
+): Promise<ThreadStatus> {
+  const { data } = await client.put<ThreadStatus>('/system/thread/configuration', body);
   return data;
 }
 

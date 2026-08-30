@@ -27,6 +27,7 @@
 #include "openthread/platform/radio.h"
 #include "sdkconfig.h"
 
+#include "ble_contact.h"
 #include "extrittio/extrittio.h"
 #include <zenoh-pico.h>
 
@@ -417,6 +418,7 @@ static void publish_loop(void)
 void app_main(void)
 {
     initialize_nvs();
+    ESP_ERROR_CHECK(ble_contact_start());
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 

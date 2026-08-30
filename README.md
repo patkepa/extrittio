@@ -2,7 +2,7 @@
 
 Extrittio is a self-hosted IoT hub for provisioning, operating, and observing
 connected devices. It combines a Rust control plane, Zenoh device messaging,
-Protobuf contracts, PostgreSQL production persistence or embedded Turso hobby
+Protobuf contracts, PostgreSQL production persistence or embedded Turso Edge
 persistence, a React operations console, and a native SwiftUI companion app for
 iOS.
 
@@ -10,20 +10,19 @@ The platform supports multi-tenant device and fleet management, telemetry and
 logs, desired/reported shadows, commands, OTA firmware deployments, rules,
 alerts, audit events, operational metrics, and native/embedded client SDKs.
 
-## One-command hobby install
+## One-command Extrittio Edge install
 
 Build the frontend once, install the Turso-only executable, and run the whole
 hub:
 
 ```bash
 cd apps/frontend
-export NODE_AUTH_TOKEN='your-github-packages-token'
 npm ci
 npm run build
 cd ../..
 
 cargo install --path apps/extrittio --locked \
-  --no-default-features --features hobby
+  --no-default-features --features edge
 
 extrittio run
 ```
@@ -33,6 +32,17 @@ directory, creates the local owner account as `admin` / `admin`, prints the web
 URL, and starts the UI, API, Zenoh listener, and background workers. Open
 [http://localhost:8080](http://localhost:8080) and change the default password
 after signing in.
+
+To build on an Apple Silicon Mac and deploy the complete Linux arm64 Extrittio
+Edge package (including OpenThread Border Router) to a Raspberry Pi, use the
+[Raspberry Pi Edge Deployment](docs/RASPBERRY_PI_EDGE_DEPLOYMENT.md)
+workflow. It produces a checksum-verified release archive and deploys it
+atomically without replacing the Pi's persistent data.
+
+For a native Raspberry Pi OS/Debian package that contains only the embedded-UI
+single-node executable and optionally uses a locally installed OpenThread agent,
+use the
+[Debian Edge Package Deployment](docs/DEBIAN_EDGE_DEPLOYMENT.md) workflow.
 
 By default mutable data uses the operating system's local application-data
 directory. Override it with `extrittio run --data-dir /path/to/extrittio`.
@@ -71,9 +81,8 @@ through `clients/rust/runtime`.
 ## Quick Start
 
 Required tools are Docker, the Rust toolchain declared in `rust-toolchain.toml`,
-Protobuf, PostgreSQL client libraries, and Node.js 22. The frontend consumes
-GitHub Packages under `@extrittio`; set `NODE_AUTH_TOKEN` to a token with package
-read access before running `npm ci`.
+Protobuf, PostgreSQL client libraries, and Node.js 22. The frontend consumes the
+public `@patkepa/kantzen-ui` package from npm, so `npm ci` needs no package token.
 
 On macOS, install native dependencies with:
 
@@ -88,13 +97,9 @@ The native iOS app additionally requires Xcode 26.x with the iOS 26 SDK,
 XcodeGen, SwiftLint, and SwiftFormat. The expected tool versions are listed in
 `apps/mobile-app-ios/Tools/versions.env`.
 
-Start the full development stack:
-
-```bash
-./start-dev.sh
-```
-
-Or run each part explicitly:
+Use `cargo xtask --help` for supported build, install, packaging, native iOS,
+protocol-generation, and Edge operations. For local development, run each
+service explicitly:
 
 ```bash
 docker compose -f deploy/docker/docker-compose.yml up -d postgres
@@ -134,10 +139,9 @@ bearer token stored in its local configuration; override its connection with
 The native SwiftUI companion app lives in [`apps/mobile-app-ios`](apps/mobile-app-ios/README.md).
 
 ```bash
-cd apps/mobile-app-ios
-make bootstrap
-make build
-make test
+cargo xtask ios bootstrap
+cargo xtask ios build
+cargo xtask ios test
 ```
 
 ## Verification

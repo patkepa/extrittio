@@ -5,6 +5,15 @@ import Testing
 
 @Suite("Auth use cases")
 struct AuthUseCaseTests {
+    @Test("login requests a bearer token for native API authentication")
+    func loginRequestIssuesBearerToken() throws {
+        let request = LoginRequest(username: "admin", password: "password")
+        let data = try JSONEncoder().encode(request)
+        let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+
+        #expect(payload?["issue_token"] as? Bool == true)
+    }
+
     @Test("checkAuth keeps token and returns cached user on network failure")
     func checkAuthPreservesSessionOnNetworkFailure() async throws {
         let cachedUser = makeUser(username: "cached-user")

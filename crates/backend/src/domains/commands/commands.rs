@@ -5,7 +5,6 @@ use axum::{
     routing::get,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
@@ -22,7 +21,8 @@ use crate::state::AppState;
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SendCommandRequest {
     pub command: String,
-    pub params: Option<HashMap<String, String>>,
+    /// JSON input validated against the selected command's blueprint schema.
+    pub params: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -30,10 +30,10 @@ pub struct CommandResponse {
     pub id: String,
     pub device_id: String,
     pub command: String,
-    #[schema(value_type = HashMap<String, Value>)]
+    #[schema(value_type = Object)]
     pub params: serde_json::Value,
     pub status: String,
-    #[schema(value_type = Option<HashMap<String, Value>>)]
+    #[schema(value_type = Option<Object>)]
     pub response_payload: Option<serde_json::Value>,
     pub created_at: String,
     pub updated_at: String,
@@ -105,10 +105,11 @@ pub(crate) async fn send_command(
         return Err(AppError::BadRequest("Command must not be empty".into()));
     }
 
-    let params = body.params.unwrap_or_default();
+    let params = body.params.unwrap_or_else(|| serde_json::json!({}));
     let record = command_service::send_command_as_user_with_repository(
         &ctx,
         state.persistence.commands.as_ref(),
+        state.persistence.devices.as_ref(),
         &state.zenoh_session,
         &id,
         &body.command,

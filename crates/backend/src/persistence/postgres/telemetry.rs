@@ -14,7 +14,7 @@ use crate::domains::telemetry::types::{
 };
 use crate::error::AppError;
 use crate::persistence::PersistenceError;
-use crate::repositories::{device_repo, network_observed_host_repo, telemetry_repo};
+use crate::repositories::{device_repo, telemetry_repo};
 use crate::tenancy::{DeviceIdentity, TenantId};
 
 use super::PostgresAdapter;
@@ -120,19 +120,6 @@ impl TelemetryRepository for PostgresAdapter {
                             telemetry_id,
                             received_at,
                         )?;
-                        if let Some(hosts) = write.observed_network_hosts {
-                            network_observed_host_repo::replace_active_scan(
-                                connection,
-                                &tenant_id,
-                                &device_id,
-                                &hosts,
-                                write.observed_at,
-                            )?;
-                            network_observed_host_repo::delete_older_than(
-                                connection,
-                                write.observed_at - chrono::Duration::days(30),
-                            )?;
-                        }
                         device_repo::update_device(
                             connection,
                             &tenant_id,
@@ -140,7 +127,6 @@ impl TelemetryRepository for PostgresAdapter {
                             &UpdateDevice {
                                 last_seen: Some(write.observed_at),
                                 updated_at: Some(write.observed_at),
-                                declared_connections: write.declared_connections,
                                 ..Default::default()
                             },
                         )?;

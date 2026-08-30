@@ -19,7 +19,7 @@ import { useFleets } from '../../../hooks/use-fleets';
 import { useAllDevices } from '../../../hooks/use-devices';
 import { useUIStore } from '../../../stores/ui-store';
 import { RuleDialog } from '../components/rule-dialog';
-import { EmptyState, FilterPill } from '@extrittio/ui';
+import { EmptyState, FilterPill } from '@patkepa/kantzen-ui';
 import { showSuccessToast, showErrorToast } from '../../../utils/toaster';
 import type { Rule } from '../../../types/rules';
 import './rules.css';

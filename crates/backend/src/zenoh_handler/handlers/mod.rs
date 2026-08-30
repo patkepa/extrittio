@@ -1,4 +1,6 @@
 pub mod command_response;
+pub mod contract_ingress;
+pub mod event;
 pub mod heartbeat;
 pub mod log;
 pub mod shadow;

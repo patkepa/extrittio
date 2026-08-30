@@ -5,7 +5,10 @@ use extrittio_backend::{
     init as backend_init, observability,
 };
 use serde::Serialize;
-use tracing::{info, warn};
+use tracing::info;
+
+#[cfg(feature = "edge")]
+use tracing::warn;
 
 use crate::{
     args::{DatabaseArgs, DatabaseCommand, InitArgs, RunArgs, ServeArgs, ServiceConfigArgs},
@@ -28,15 +31,15 @@ pub(crate) async fn serve(args: ServeArgs) -> Result<()> {
     serve_config(config, None).await
 }
 
-pub(crate) async fn run_hobby(args: RunArgs) -> Result<()> {
-    #[cfg(not(feature = "hobby"))]
+pub(crate) async fn run_edge(args: RunArgs) -> Result<()> {
+    #[cfg(not(feature = "edge"))]
     {
         let _ = args;
         anyhow::bail!(
-            "`extrittio run` requires the standalone hobby build; install it with: cargo install --path apps/extrittio --locked --no-default-features --features hobby"
+            "`extrittio run` requires the standalone Extrittio Edge build; install it with: cargo install --path apps/extrittio --locked --no-default-features --features edge"
         )
     }
-    #[cfg(feature = "hobby")]
+    #[cfg(feature = "edge")]
     {
         load_dotenv();
         let data_dir = args.data_dir.clone().unwrap_or_else(|| {
@@ -48,7 +51,7 @@ pub(crate) async fn run_hobby(args: RunArgs) -> Result<()> {
             .public_url
             .clone()
             .unwrap_or_else(|| format!("http://localhost:{}", args.port));
-        let thread_runtime = start_hobby_thread_runtime(&args, &data_dir)?;
+        let thread_runtime = start_edge_thread_runtime(&args, &data_dir)?;
         let zenoh_listen_host = args
             .zenoh_listen_host
             .clone()
@@ -56,7 +59,7 @@ pub(crate) async fn run_hobby(args: RunArgs) -> Result<()> {
         let mut config = app_config(ServiceConfigArgs {
             database: DatabaseArgs {
                 database_backend: Some("turso".into()),
-                deployment_profile: Some("hobby".into()),
+                deployment_profile: Some("edge".into()),
                 data_dir: Some(data_dir),
                 ..Default::default()
             },
@@ -93,6 +96,22 @@ pub(crate) async fn run_hobby(args: RunArgs) -> Result<()> {
         }
         drop(persistence);
 
+        if args.thread_seed_default_dataset
+            && let Some(runtime) = thread_runtime.as_ref()
+            && runtime.snapshot().available
+        {
+            let runtime = runtime.clone();
+            let seeded =
+                tokio::task::spawn_blocking(move || runtime.ensure_default_development_network())
+                    .await
+                    .context("Thread default-dataset task failed")??;
+            if seeded {
+                eprintln!(
+                    "Created the built-in Thread development network (extrittio-c6-dev). \\\n+                     Use --thread-seed-default-dataset false to disable this on future empty RCPs.\n"
+                );
+            }
+        }
+
         eprintln!("Extrittio web UI: {public_url}");
         eprintln!(
             "Data directory: {}\n",
@@ -105,8 +124,8 @@ pub(crate) async fn run_hobby(args: RunArgs) -> Result<()> {
     }
 }
 
-#[cfg(feature = "hobby")]
-fn start_hobby_thread_runtime(
+#[cfg(feature = "edge")]
+fn start_edge_thread_runtime(
     args: &RunArgs,
     data_dir: &std::path::Path,
 ) -> Result<Option<std::sync::Arc<extrittio_openthread_runtime::ThreadRuntime>>> {
@@ -115,7 +134,7 @@ fn start_hobby_thread_runtime(
     };
 
     if !args.thread_enabled {
-        info!("OpenThread hobby runtime disabled");
+        info!("Extrittio Edge OpenThread runtime disabled");
         return Ok(None);
     }
 
@@ -391,8 +410,8 @@ fn apply_database_args(config: &mut AppConfig, args: DatabaseArgs) -> Result<()>
         config.deployment_profile = match profile.trim().to_ascii_lowercase().as_str() {
             "production" => DeploymentProfile::Production,
             "development" => DeploymentProfile::Development,
-            "hobby" => DeploymentProfile::Hobby,
-            _ => anyhow::bail!("--deployment-profile must be production, development, or hobby"),
+            "edge" => DeploymentProfile::Edge,
+            _ => anyhow::bail!("--deployment-profile must be production, development, or edge"),
         };
     }
     if let Some(database_url) = args.database_url {

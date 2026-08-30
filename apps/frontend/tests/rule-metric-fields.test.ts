@@ -1,0 +1,69 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+import {
+  blueprintRuleCommands,
+  blueprintRuleMetricFields,
+  contractRuleCommands,
+  contractRuleMetricFields,
+} from '../src/features/rules/model/rule-metric-fields.ts';
+import type { DeviceBlueprintRevision, DeviceContract } from '../src/types/api.ts';
+
+test('derives numeric rule fields from a blueprint without fixed sensor names', () => {
+  const revision = {
+    document: {
+      spec: {
+        streams: [
+          {
+            key: 'air',
+            fields: [
+              {
+                path: '/particles/pm25',
+                type: 'float64',
+                label: 'PM2.5',
+                semantic: 'particulate_matter_2_5',
+              },
+              { path: '/state', type: 'string', label: 'State' },
+            ],
+          },
+        ],
+        commands: [{ key: 'calibrate', label: 'Calibrate sensor' }],
+      },
+    },
+  } as DeviceBlueprintRevision;
+
+  assert.deepEqual(blueprintRuleMetricFields(revision), [
+    {
+      value: 'air.particles.pm25',
+      label: 'PM2.5 · particulate_matter_2_5',
+    },
+  ]);
+  assert.deepEqual(blueprintRuleCommands(revision), [
+    { value: 'calibrate', label: 'Calibrate sensor' },
+  ]);
+});
+
+test('derives the same canonical rule field from a compiled device contract', () => {
+  const contract = {
+    document: {
+      streams: {
+        air: {
+          fields: {
+            '/particles/pm25': {
+              valueType: 'float64',
+              label: 'PM2.5',
+            },
+          },
+        },
+      },
+      commands: { calibrate: { label: 'Calibrate sensor' } },
+    },
+  } as DeviceContract;
+
+  assert.deepEqual(contractRuleMetricFields(contract), [
+    { value: 'air.particles.pm25', label: 'PM2.5' },
+  ]);
+  assert.deepEqual(contractRuleCommands(contract), [
+    { value: 'calibrate', label: 'Calibrate sensor' },
+  ]);
+});

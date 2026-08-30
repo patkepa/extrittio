@@ -1,5 +1,10 @@
 import client from './client';
-import type { TelemetryRecord, TelemetryParams } from '../types/api';
+import type {
+  DeviceMetric,
+  DeviceMetricParams,
+  TelemetryRecord,
+  TelemetryParams,
+} from '../types/api';
 
 export async function getDeviceTelemetry(
   deviceId: string,
@@ -8,5 +13,13 @@ export async function getDeviceTelemetry(
   const { data } = await client.get<TelemetryRecord[]>(`/devices/${deviceId}/telemetry`, {
     params,
   });
+  return data;
+}
+
+export async function getDeviceMetrics(
+  deviceId: string,
+  params?: DeviceMetricParams,
+): Promise<DeviceMetric[]> {
+  const { data } = await client.get<DeviceMetric[]>(`/devices/${deviceId}/metrics`, { params });
   return data;
 }

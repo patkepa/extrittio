@@ -1,5 +1,6 @@
 use async_trait::async_trait;
-use diesel::{Connection, OptionalExtension};
+use diesel::sql_types::Text;
+use diesel::{Connection, OptionalExtension, QueryableByName, RunQueryDsl};
 
 use crate::db::models::{
     FirmwareBlob, FirmwareUpdate, NewFirmwareBlob, NewFirmwareUpdate, NewOtaDeployment,
@@ -52,6 +53,9 @@ fn firmware_record(
         build_timestamp: firmware.build_timestamp,
         changelog: firmware.changelog,
         source: firmware.source,
+        blueprint_revision_id: firmware.blueprint_revision_id,
+        compatibility: firmware.compatibility,
+        update_strategy: firmware.update_strategy,
     }
 }
 
@@ -73,6 +77,32 @@ fn increment_version(version: &str) -> String {
         return format!("{}.{}.{}", parts[0], parts[1], patch + 1);
     }
     format!("{version}.1")
+}
+
+#[derive(QueryableByName)]
+struct AssignedBlueprintRevision {
+    #[diesel(sql_type = Text)]
+    blueprint_revision_id: String,
+}
+
+fn assigned_blueprint_revision(
+    connection: &mut diesel::PgConnection,
+    tenant_id: &str,
+    device_id: &str,
+) -> Result<Option<String>, diesel::result::Error> {
+    diesel::sql_query(
+        "SELECT contract.blueprint_revision_id
+         FROM device_contract_assignments assignment
+         JOIN device_contracts contract
+           ON contract.tenant_id = assignment.tenant_id
+          AND contract.id = assignment.desired_contract_id
+         WHERE assignment.tenant_id = $1 AND assignment.device_id = $2",
+    )
+    .bind::<Text, _>(tenant_id)
+    .bind::<Text, _>(device_id)
+    .get_result::<AssignedBlueprintRevision>(connection)
+    .optional()
+    .map(|row| row.map(|row| row.blueprint_revision_id))
 }
 
 fn update_desired_shadow(
@@ -163,6 +193,9 @@ impl FirmwareRepository for PostgresAdapter {
                         build_timestamp: params.build_timestamp,
                         changelog: params.changelog,
                         source: Some("ci".to_string()),
+                        blueprint_revision_id: None,
+                        compatibility: serde_json::json!({}),
+                        update_strategy: None,
                     },
                 )
                 .map_err(map_diesel_error)?;
@@ -179,6 +212,7 @@ impl FirmwareRepository for PostgresAdapter {
         &self,
         tenant: &TenantId,
         device_type_id: Option<i32>,
+        blueprint_revision_id: Option<String>,
         limit: i64,
         offset: i64,
     ) -> Result<FirmwarePage, PersistenceError> {
@@ -189,6 +223,7 @@ impl FirmwareRepository for PostgresAdapter {
                     connection,
                     &tenant_id,
                     device_type_id,
+                    blueprint_revision_id.as_deref(),
                     limit,
                     offset,
                 )
@@ -289,6 +324,9 @@ impl FirmwareRepository for PostgresAdapter {
                                 build_timestamp: record.build_timestamp,
                                 changelog: record.changelog,
                                 source: record.source,
+                                blueprint_revision_id: record.blueprint_revision_id,
+                                compatibility: record.compatibility,
+                                update_strategy: record.update_strategy,
                             },
                         )?;
                         let (firmware, size, filename) = if let Some(blob) = blob {
@@ -345,6 +383,28 @@ impl FirmwareRepository for PostgresAdapter {
                         version.map_or_else(|| "1.0.0".to_string(), |v| increment_version(&v))
                     })
                     .map_err(map_diesel_error)
+            })
+            .await
+    }
+
+    async fn next_blueprint_version(
+        &self,
+        tenant: &TenantId,
+        blueprint_revision_id: &str,
+    ) -> Result<String, PersistenceError> {
+        let tenant_id = tenant.as_str().to_string();
+        let blueprint_revision_id = blueprint_revision_id.to_string();
+        self.executor
+            .run(move |connection| {
+                firmware_repo::find_next_blueprint_version(
+                    connection,
+                    &tenant_id,
+                    &blueprint_revision_id,
+                )
+                .map(|version| {
+                    version.map_or_else(|| "1.0.0".to_string(), |v| increment_version(&v))
+                })
+                .map_err(map_diesel_error)
             })
             .await
     }
@@ -499,7 +559,14 @@ impl FirmwareRepository for PostgresAdapter {
                         let Some(firmware) = firmware else {
                             return Ok(TriggerOtaOutcome::FirmwareNotFound);
                         };
-                        if firmware.device_type_id != device.device_type_id {
+                        if let Some(target_revision) = firmware.blueprint_revision_id.as_deref() {
+                            if assigned_blueprint_revision(connection, &tenant_id, &device_id)?
+                                .as_deref()
+                                != Some(target_revision)
+                            {
+                                return Ok(TriggerOtaOutcome::Incompatible);
+                            }
+                        } else if firmware.device_type_id != device.device_type_id {
                             return Ok(TriggerOtaOutcome::Incompatible);
                         }
 

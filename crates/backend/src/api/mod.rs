@@ -1,5 +1,9 @@
+#[path = "../domains/activity/activity.rs"]
+pub mod activity;
 #[path = "../domains/alerts/alerts.rs"]
 pub mod alerts;
+#[path = "../domains/analytics/analytics.rs"]
+pub mod analytics;
 #[path = "../domains/identity/api_keys.rs"]
 pub mod api_keys;
 #[path = "../domains/audit/audit.rs"]
@@ -16,6 +20,8 @@ pub mod commands;
 pub mod configs;
 #[path = "../domains/dashboard/dashboard.rs"]
 pub mod dashboard;
+#[path = "../domains/device_blueprints/device_blueprints.rs"]
+pub mod device_blueprints;
 #[path = "../domains/device_types/device_types.rs"]
 pub mod device_types;
 #[path = "../domains/devices/devices.rs"]
@@ -28,6 +34,7 @@ pub mod fleets;
 pub mod health;
 #[path = "../domains/logs/logs.rs"]
 pub mod logs;
+#[cfg(feature = "openapi")]
 pub mod openapi;
 #[path = "../domains/operations/outbox.rs"]
 pub mod outbox;
@@ -52,13 +59,17 @@ pub mod zones;
 
 use axum::Router;
 use std::sync::Arc;
+#[cfg(feature = "swagger-ui")]
 use utoipa::OpenApi;
+#[cfg(feature = "swagger-ui")]
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::state::AppState;
 
 pub fn router(max_firmware_size: usize, enable_api_docs: bool) -> Router<Arc<AppState>> {
     let router = Router::new()
+        .merge(activity::router())
+        .merge(analytics::router())
         .merge(api_keys::router())
         .merge(audit::router())
         .merge(auth_routes::router())
@@ -66,6 +77,7 @@ pub fn router(max_firmware_size: usize, enable_api_docs: bool) -> Router<Arc<App
         .merge(devices::router())
         .merge(dashboard::router())
         .merge(telemetry::router())
+        .merge(device_blueprints::router())
         .merge(device_types::router())
         .merge(fleets::router())
         .merge(shadows::router())
@@ -85,11 +97,18 @@ pub fn router(max_firmware_size: usize, enable_api_docs: bool) -> Router<Arc<App
         .merge(thread::router())
         .merge(zones::router());
 
+    #[cfg(feature = "swagger-ui")]
     if enable_api_docs {
         router.merge(
             SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", openapi::ApiDoc::openapi()),
         )
     } else {
+        router
+    }
+
+    #[cfg(not(feature = "swagger-ui"))]
+    {
+        let _ = enable_api_docs;
         router
     }
 }

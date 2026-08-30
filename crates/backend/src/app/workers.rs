@@ -1,13 +1,15 @@
 use std::future::Future;
 use std::sync::Arc;
-#[cfg(not(target_os = "macos"))]
+#[cfg(all(feature = "mdns", not(target_os = "macos")))]
 use std::time::Duration;
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(all(feature = "mdns", not(target_os = "macos")))]
 use mdns_sd::{ServiceDaemon, ServiceInfo};
 use tokio::task::{JoinHandle, JoinSet};
 use tokio_util::sync::CancellationToken;
-use tracing::{info, warn};
+#[cfg(feature = "mdns")]
+use tracing::info;
+use tracing::warn;
 
 use crate::config::AppConfig;
 use crate::state::{AppState, ReadinessRegistry};
@@ -100,23 +102,26 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
             move |cancellation| async move { run_thread_scanner(scan_runtime, cancellation).await },
         );
 
-        let service = ThreadDnsSdService {
-            instance_name: config.thread_zenoh_service_instance.clone(),
-            service_name: config.thread_zenoh_service_name.clone(),
-            port: config.zenoh_tls_port,
-            tls_enabled: config.zenoh_tls_enabled,
-        };
-        let listen_host = config.zenoh_listen_host.clone();
-        spawn_shutdown_worker(
-            &mut workers,
-            &cancellation,
-            &state.readiness,
-            "thread-dns-sd",
-            move |cancellation| async move {
-                run_thread_dns_sd_advertiser(thread_runtime, service, listen_host, cancellation)
-                    .await
-            },
-        );
+        #[cfg(feature = "mdns")]
+        {
+            let service = ThreadDnsSdService {
+                instance_name: config.thread_zenoh_service_instance.clone(),
+                service_name: config.thread_zenoh_service_name.clone(),
+                port: config.zenoh_tls_port,
+                tls_enabled: config.zenoh_tls_enabled,
+            };
+            let listen_host = config.zenoh_listen_host.clone();
+            spawn_shutdown_worker(
+                &mut workers,
+                &cancellation,
+                &state.readiness,
+                "thread-dns-sd",
+                move |cancellation| async move {
+                    run_thread_dns_sd_advertiser(thread_runtime, service, listen_host, cancellation)
+                        .await
+                },
+            );
+        }
     }
 
     let subscriber_persistence = state.persistence.clone();
@@ -124,7 +129,6 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
     let subscriber_metrics = state.zenoh_metrics.clone();
     let sub_cache = state.rule_cache.clone();
     let max_zenoh_payload_size_bytes = config.max_zenoh_payload_size_bytes;
-    let auto_register_devices = config.auto_register_devices;
     spawn_worker(
         &mut workers,
         &cancellation,
@@ -137,7 +141,6 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
                 subscriber_metrics,
                 sub_cache,
                 max_zenoh_payload_size_bytes,
-                auto_register_devices,
             )
             .await
             .map_err(|error| error.to_string())
@@ -436,6 +439,7 @@ async fn run_thread_scanner(
     }
 }
 
+#[cfg(feature = "mdns")]
 async fn run_thread_dns_sd_advertiser(
     runtime: Arc<extrittio_openthread_runtime::ThreadRuntime>,
     service: ThreadDnsSdService,
@@ -463,17 +467,29 @@ async fn run_thread_dns_sd_advertiser(
                     continue;
                 }
 
-                let seed_runtime = runtime.clone();
-                match tokio::task::spawn_blocking(move || seed_runtime.ensure_default_development_network()).await {
-                    Ok(Ok(true)) => info!(
-                        "Created the shared Extrittio development Thread network for the ESP32-C6 example"
-                    ),
-                    Ok(Ok(false)) => {}
+                // A border router without an Active Operational Dataset is a
+                // valid, ready-to-provision appliance. DNS-SD must not seed a
+                // shared development network on its behalf: that competes
+                // with explicit create/import requests and exposes a known
+                // network credential on a real installation.
+                let status_runtime = runtime.clone();
+                let attached = match tokio::task::spawn_blocking(move || {
+                    status_runtime.status().map(|status| status.is_attached())
+                })
+                .await
+                {
+                    Ok(Ok(attached)) => attached,
                     Ok(Err(error)) => {
-                        warn!(%error, "Thread network initialization is waiting for OTBR");
+                        warn!(%error, "Thread DNS-SD service is waiting for OTBR status");
                         continue;
                     }
-                    Err(error) => return Err(format!("Thread network initialization task failed: {error}")),
+                    Err(error) => return Err(format!("Thread DNS-SD status task failed: {error}")),
+                };
+                if !attached {
+                    if let Some(registration) = registration.take() {
+                        withdraw_thread_service(registration).await;
+                    }
+                    continue;
                 }
 
                 let generation = runtime.network_generation();
@@ -522,6 +538,7 @@ async fn run_thread_dns_sd_advertiser(
     }
 }
 
+#[cfg(feature = "mdns")]
 async fn withdraw_thread_service(registration: ThreadDnsSdRegistration) {
     match tokio::task::spawn_blocking(move || registration.withdraw()).await {
         Ok(Ok(())) => info!("Withdrew Zenoh DNS-SD service from the Thread mesh"),
@@ -532,6 +549,7 @@ async fn withdraw_thread_service(registration: ThreadDnsSdRegistration) {
     }
 }
 
+#[cfg(feature = "mdns")]
 #[derive(Clone)]
 struct ThreadDnsSdService {
     instance_name: String,
@@ -540,11 +558,13 @@ struct ThreadDnsSdService {
     tls_enabled: bool,
 }
 
+#[cfg(feature = "mdns")]
 struct ThreadDnsSdRegistration {
     registration: ThreadDnsSdRegistrationKind,
     generation: u64,
 }
 
+#[cfg(feature = "mdns")]
 enum ThreadDnsSdRegistrationKind {
     #[cfg(target_os = "macos")]
     NativeBonjour(NativeBonjourRegistration),
@@ -555,6 +575,7 @@ enum ThreadDnsSdRegistrationKind {
     },
 }
 
+#[cfg(feature = "mdns")]
 impl ThreadDnsSdRegistration {
     fn withdraw(self) -> Result<(), String> {
         match self.registration {
@@ -575,6 +596,7 @@ impl ThreadDnsSdRegistration {
     }
 }
 
+#[cfg(feature = "mdns")]
 fn register_thread_dns_sd_service(
     service: ThreadDnsSdService,
     address: std::net::Ipv6Addr,
@@ -623,12 +645,12 @@ fn register_thread_dns_sd_service(
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "mdns", target_os = "macos"))]
 struct NativeBonjourRegistration {
     child: std::process::Child,
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "mdns", target_os = "macos"))]
 impl NativeBonjourRegistration {
     fn register(service: &ThreadDnsSdService, address: std::net::Ipv6Addr) -> Result<Self, String> {
         use std::process::{Command, Stdio};
@@ -682,6 +704,7 @@ impl NativeBonjourRegistration {
     }
 }
 
+#[cfg(feature = "mdns")]
 fn validate_thread_dns_sd_service(service: &ThreadDnsSdService) -> Result<(), String> {
     if service.port == 0 {
         return Err("DNS-SD service port must be greater than zero".to_string());
@@ -699,6 +722,7 @@ fn validate_thread_dns_sd_service(service: &ThreadDnsSdService) -> Result<(), St
     Ok(())
 }
 
+#[cfg(feature = "mdns")]
 fn valid_dns_sd_label(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 63
@@ -709,6 +733,7 @@ fn valid_dns_sd_label(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
 }
 
+#[cfg(feature = "mdns")]
 fn zenoh_listener_accepts(listen_host: &str, address: std::net::Ipv6Addr) -> bool {
     let listen_host = listen_host.trim();
     listen_host == "::" || listen_host.parse::<std::net::Ipv6Addr>() == Ok(address)

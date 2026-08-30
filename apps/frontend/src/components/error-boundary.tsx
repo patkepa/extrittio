@@ -1,2 +1,2 @@
-export { ErrorBoundary } from '@extrittio/app-shell';
-export type { ErrorBoundaryProps } from '@extrittio/app-shell';
+export { ErrorBoundary } from '@patkepa/kantzen-ui/app-shell';
+export type { ErrorBoundaryProps } from '@patkepa/kantzen-ui/app-shell';

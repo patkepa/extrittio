@@ -4,6 +4,22 @@
  */
 
 export interface paths {
+    "/api/v1/activity-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_activity_events"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/alerts": {
         parameters: {
             query?: never;
@@ -148,6 +164,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analytics/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get numeric metrics declared by the tenant's latest published device blueprints. */
+        get: operations["get_catalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analytics/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run a bounded tenant-scoped telemetry analytics query. */
+        post: operations["run_query"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/api-keys": {
         parameters: {
             query?: never;
@@ -273,6 +323,118 @@ export interface paths {
         };
         /** Get dashboard summary statistics. */
         get: operations["get_stats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/device-blueprint-revisions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_blueprint_revision"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/device-blueprints": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_blueprints"];
+        put?: never;
+        post: operations["create_blueprint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/device-blueprints/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_blueprint"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/device-blueprints/{id}/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_blueprint_draft"];
+        put: operations["replace_blueprint_draft"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/device-blueprints/{id}/draft/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["publish_blueprint_draft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/device-blueprints/{id}/draft/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["validate_blueprint_draft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/device-blueprints/{id}/revisions/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_latest_blueprint_revision"];
         put?: never;
         post?: never;
         delete?: never;
@@ -515,6 +677,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/devices/{id}/contract": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the immutable contract currently assigned to a device. */
+        get: operations["get_device_contract"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/devices/{id}/location/latest": {
         parameters: {
             query?: never;
@@ -541,6 +720,23 @@ export interface paths {
         };
         /** Get logs for a device. */
         get: operations["get_device_logs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/{id}/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get typed metric samples extracted according to the device's assigned contract. */
+        get: operations["get_device_metrics"];
         put?: never;
         post?: never;
         delete?: never;
@@ -731,6 +927,23 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["ci_ingest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/firmware-updates/next-version/blueprint/{revision_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the next auto-generated version for a published blueprint revision. */
+        get: operations["get_next_blueprint_version"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1057,6 +1270,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/thread/configuration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["configure_thread_runtime"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/system/thread/dataset": {
         parameters: {
             query?: never;
@@ -1083,6 +1312,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["create_thread_network"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/thread/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["refresh_thread_runtime"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1270,6 +1515,36 @@ export interface components {
             config: unknown;
             id: string;
         };
+        ActivityEventListResponse: {
+            data: components["schemas"]["ActivityEventResponse"][];
+            /** Format: int64 */
+            limit: number;
+            /** Format: int64 */
+            offset: number;
+            /** Format: int64 */
+            total: number;
+        };
+        ActivityEventResponse: {
+            actor_id?: string | null;
+            actor_type: string;
+            /** @description Product domain associated with the event. */
+            category: string;
+            /** @description Machine-readable event name. */
+            event_type: string;
+            /** @description Stable source-qualified event identifier. */
+            id: string;
+            /** @description Human-readable event summary. */
+            message: string;
+            metadata: unknown;
+            occurred_at: string;
+            request_id?: string | null;
+            resource_id?: string | null;
+            resource_type: string;
+            /** @description Normalized severity: debug, info, warning, or error. */
+            severity: string;
+            /** @description Originating stream: device, audit, alert, command, or deployment. */
+            source: string;
+        };
         AlertResponse: {
             acknowledged_at?: string | null;
             created_at: string;
@@ -1296,6 +1571,132 @@ export interface components {
             /** Format: int64 */
             total_active: number;
         };
+        AnalyticsCatalogResponse: {
+            bucket_seconds: number[];
+            max_devices_per_query: number;
+            max_points_per_series: number;
+            metrics: components["schemas"]["AnalyticsMetricCatalogEntry"][];
+        };
+        AnalyticsCoverageResponse: {
+            reporting_devices: number;
+            selected_devices: number;
+            /** Format: int64 */
+            timestamp_ms: number;
+        };
+        AnalyticsDeviceStatsResponse: {
+            /** Format: double */
+            coverage_percent: number;
+            device_id: string;
+            device_name: string;
+            stats?: null | components["schemas"]["AnalyticsStatsResponse"];
+        };
+        AnalyticsEffectiveResponse: {
+            /** Format: int64 */
+            bucket_seconds: number;
+            fill: string;
+            from: string;
+            source: string;
+            to: string;
+            weighting: string;
+        };
+        AnalyticsMetricCatalogEntry: {
+            aggregates: string[];
+            blueprint_id: string;
+            blueprint_key: string;
+            blueprint_name: string;
+            field_path: string;
+            key: string;
+            label: string;
+            /** Format: int32 */
+            precision?: number | null;
+            series_modes: string[];
+            stream_key: string;
+            unit?: string | null;
+            value_type: string;
+        };
+        AnalyticsMetricRequest: {
+            blueprint_id: string;
+            field_path: string;
+            stream_key: string;
+        };
+        AnalyticsMetricResponse: {
+            blueprint_id: string;
+            blueprint_key: string;
+            blueprint_name: string;
+            field_path: string;
+            key: string;
+            label: string;
+            /** Format: int32 */
+            precision?: number | null;
+            stream_key: string;
+            unit?: string | null;
+            value_type: string;
+        };
+        AnalyticsPointResponse: {
+            /** Format: int64 */
+            timestamp_ms: number;
+            /** Format: double */
+            value: number;
+        };
+        AnalyticsQueryRequest: {
+            /**
+             * Format: int64
+             * @description Null selects an automatic bounded bucket.
+             */
+            bucket_seconds?: number | null;
+            /** @description Inclusive RFC 3339 range start. */
+            from: string;
+            max_points_per_series?: number | null;
+            metric: components["schemas"]["AnalyticsMetricRequest"];
+            mode?: components["schemas"]["AnalyticsSeriesModeName"];
+            scope?: components["schemas"]["AnalyticsScopeRequest"];
+            /** @description Exclusive RFC 3339 range end. */
+            to: string;
+            weighting?: components["schemas"]["AnalyticsWeightingName"];
+        };
+        AnalyticsQueryResponse: {
+            coverage: components["schemas"]["AnalyticsCoverageResponse"][];
+            devices: components["schemas"]["AnalyticsDeviceStatsResponse"][];
+            effective: components["schemas"]["AnalyticsEffectiveResponse"];
+            metric: components["schemas"]["AnalyticsMetricResponse"];
+            scope: components["schemas"]["AnalyticsScopeResponse"];
+            series: components["schemas"]["AnalyticsSeriesResponse"][];
+            stats?: null | components["schemas"]["AnalyticsStatsResponse"];
+            warnings: string[];
+        };
+        AnalyticsScopeRequest: {
+            device_ids?: string[];
+            device_type_ids?: number[];
+            fleet_ids?: number[];
+        };
+        AnalyticsScopeResponse: {
+            compatible_devices: number;
+            selected_devices: number;
+        };
+        /** @enum {string} */
+        AnalyticsSeriesModeName: "per_device" | "fleet_mean" | "mean_and_range" | "latest_ranking";
+        AnalyticsSeriesResponse: {
+            device_id?: string | null;
+            id: string;
+            kind: string;
+            label: string;
+            points: components["schemas"]["AnalyticsPointResponse"][];
+            stats: components["schemas"]["AnalyticsStatsResponse"];
+        };
+        AnalyticsStatsResponse: {
+            /** Format: double */
+            average: number;
+            /** Format: double */
+            latest: number;
+            /** Format: double */
+            maximum: number;
+            /** Format: double */
+            minimum: number;
+            /** Format: int64 */
+            sample_count: number;
+        };
+        /** @enum {string} */
+        AnalyticsWeightingName: "equal_device" | "sample";
         ApiKeyResponse: {
             created_at: string;
             /** Format: int32 */
@@ -1340,6 +1741,44 @@ export interface components {
             request_id: string;
             resource_id?: string | null;
             resource_type: string;
+        };
+        BlueprintDocumentRequest: {
+            document: Record<string, never>;
+        };
+        BlueprintDraftResponse: {
+            blueprint_id: string;
+            created_at: string;
+            document: Record<string, never>;
+            id: string;
+            updated_at: string;
+        };
+        BlueprintResponse: {
+            created_at: string;
+            description?: string | null;
+            id: string;
+            key: string;
+            /** Format: int32 */
+            latest_revision?: number | null;
+            name: string;
+            updated_at: string;
+        };
+        BlueprintRevisionResponse: {
+            blueprint_id: string;
+            compatibility: Record<string, never>;
+            created_at: string;
+            document: Record<string, never>;
+            document_hash: string;
+            id: string;
+            /** Format: int32 */
+            revision: number;
+        };
+        BlueprintValidationIssueResponse: {
+            message: string;
+            path: string;
+        };
+        BlueprintValidationResponse: {
+            issues: components["schemas"]["BlueprintValidationIssueResponse"][];
+            valid: boolean;
         };
         BulkAffectedResponse: {
             /** Format: int64 */
@@ -1420,12 +1859,8 @@ export interface components {
             created_at: string;
             device_id: string;
             id: string;
-            params: {
-                [key: string]: unknown;
-            };
-            response_payload?: {
-                [key: string]: unknown;
-            } | null;
+            params: Record<string, never>;
+            response_payload?: Record<string, never> | null;
             status: string;
             updated_at: string;
         };
@@ -1446,6 +1881,10 @@ export interface components {
             };
             device_id: string;
             updated_at: string;
+        };
+        ConfigureThreadRuntimeRequest: {
+            /** @description Detected serial device to persist, or null to restore automatic discovery. */
+            rcp_device?: string | null;
         };
         CreateApiKeyRequest: {
             /** Format: int32 */
@@ -1558,6 +1997,26 @@ export interface components {
             source?: string | null;
             status?: string | null;
         };
+        DeviceContractResponse: {
+            acknowledged_at?: string | null;
+            assignment_status: string;
+            blueprint_revision_id: string;
+            contract_hash: string;
+            created_at: string;
+            device_id: string;
+            document: unknown;
+            error?: string | null;
+            id: string;
+        };
+        DeviceMetricResponse: {
+            device_id: string;
+            event_id: string;
+            field_path: string;
+            occurred_at: string;
+            stream_key: string;
+            value: components["schemas"]["MetricValueResponse"];
+            value_type: string;
+        };
         DeviceResponse: {
             declared_connections: components["schemas"]["DeviceConnectionResponse"][];
             device_type_color_hex: string;
@@ -1605,11 +2064,13 @@ export interface components {
             request_id: string;
         };
         FirmwareUpdateResponse: {
+            blueprint_revision_id?: string | null;
             branch?: string | null;
             build_timestamp?: string | null;
             changelog?: string | null;
             ci_run_url?: string | null;
             commit_sha?: string | null;
+            compatibility: unknown;
             created_at: string;
             description?: string | null;
             /** Format: int32 */
@@ -1623,6 +2084,7 @@ export interface components {
             id: number;
             sha256?: string | null;
             source: string;
+            update_strategy?: string | null;
             url: string;
             version: string;
         };
@@ -1723,13 +2185,21 @@ export interface components {
             token?: string | null;
             user: components["schemas"]["UserResponse"];
         };
+        MetricValueResponse: number | string | boolean | Record<string, never>;
         MetricsHistoryResponse: {
             app: components["schemas"]["AppMetricsSnapshot"][];
             system: components["schemas"]["SystemMetricsSnapshot"][];
         };
         NewDeviceRequest: {
-            /** Format: int32 */
-            device_type_id: number;
+            /** @description Published immutable blueprint revision used to compile this device's contract. */
+            blueprint_revision_id: string;
+            /** @description Device-specific configuration overlay, validated against the blueprint schema. */
+            configuration?: unknown;
+            /**
+             * Format: int32
+             * @description Deprecated compatibility selector. Omit for blueprint-based devices.
+             */
+            device_type_id?: number | null;
             firmware?: string | null;
             /** Format: int32 */
             fleet_id?: number | null;
@@ -1741,9 +2211,8 @@ export interface components {
             name: string;
         };
         NewFirmwareUpdateRequest: {
+            blueprint_revision_id: string;
             description?: string | null;
-            /** Format: int32 */
-            device_type_id: number;
             sha256?: string | null;
             url: string;
             version?: string | null;
@@ -1778,6 +2247,24 @@ export interface components {
                 severity: string;
                 status: string;
                 triggered_value?: string | null;
+            }[];
+            /** Format: int64 */
+            limit: number;
+            /** Format: int64 */
+            offset: number;
+            /** Format: int64 */
+            total: number;
+        };
+        PaginatedResponse_BlueprintResponse: {
+            data: {
+                created_at: string;
+                description?: string | null;
+                id: string;
+                key: string;
+                /** Format: int32 */
+                latest_revision?: number | null;
+                name: string;
+                updated_at: string;
             }[];
             /** Format: int64 */
             limit: number;
@@ -1835,11 +2322,13 @@ export interface components {
         };
         PaginatedResponse_FirmwareUpdateResponse: {
             data: {
+                blueprint_revision_id?: string | null;
                 branch?: string | null;
                 build_timestamp?: string | null;
                 changelog?: string | null;
                 ci_run_url?: string | null;
                 commit_sha?: string | null;
+                compatibility: unknown;
                 created_at: string;
                 description?: string | null;
                 /** Format: int32 */
@@ -1853,6 +2342,7 @@ export interface components {
                 id: number;
                 sha256?: string | null;
                 source: string;
+                update_strategy?: string | null;
                 url: string;
                 version: string;
             }[];
@@ -2019,9 +2509,8 @@ export interface components {
         };
         SendCommandRequest: {
             command: string;
-            params?: {
-                [key: string]: string;
-            } | null;
+            /** @description JSON input validated against the selected command's blueprint schema. */
+            params?: unknown;
         };
         SetUserRolesRequest: {
             role_ids: number[];
@@ -2164,6 +2653,7 @@ export interface components {
             networks: components["schemas"]["ThreadNetworkResponse"][];
             scanned_at?: string | null;
             scanning: boolean;
+            sources: components["schemas"]["ThreadScanSourceResponse"][];
             statistics: components["schemas"]["ThreadRadioStatisticsResponse"];
             /** @description Measurements unsupported by the current OTBR/RCP combination. */
             warnings: string[];
@@ -2172,6 +2662,7 @@ export interface components {
             /** Format: int32 */
             channel: number;
             extended_address: string;
+            extended_pan_id?: string | null;
             /** Format: int32 */
             lqi: number;
             network_name?: string | null;
@@ -2197,22 +2688,50 @@ export interface components {
             /** Format: int32 */
             tx_total?: number | null;
         };
+        ThreadRcpCandidateResponse: {
+            confidence: string;
+            manufacturer?: string | null;
+            match_reason: string;
+            path: string;
+            product?: string | null;
+            serial_number?: string | null;
+            /** Format: int32 */
+            usb_product_id?: number | null;
+            /** Format: int32 */
+            usb_vendor_id?: number | null;
+        };
+        ThreadScanSourceResponse: {
+            error?: string | null;
+            observed_at?: string | null;
+            source: string;
+            state: string;
+        };
         ThreadStatusResponse: {
             addresses: string[];
-            /** @description Whether this process is the hobby appliance with a controllable OTBR. */
+            /** @description Whether this process is Extrittio Edge with a controllable OTBR. */
             available: boolean;
+            available_rcp_candidates: components["schemas"]["ThreadRcpCandidateResponse"][];
             /** @description Serial devices currently detected as plausible Thread RCPs. */
             available_rcp_devices: string[];
             /** Format: int32 */
             channel?: number | null;
+            /** @description Persisted host-local RCP selection. Omitted when automatic discovery is enabled. */
+            configured_rcp_device?: string | null;
             connected: boolean;
+            /** Format: int32 */
+            consecutive_failures: number;
             error?: string | null;
             extended_pan_id?: string | null;
+            last_exit?: string | null;
             mesh_local_prefix?: string | null;
             network_name?: string | null;
+            next_retry_at?: string | null;
             pan_id?: string | null;
             rcp_device?: string | null;
+            /** Format: int64 */
+            restart_count: number;
             role?: string | null;
+            runtime_phase: string;
         };
         TriggerOtaRequest: {
             /** Format: int32 */
@@ -2286,6 +2805,52 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_activity_events: {
+        parameters: {
+            query?: {
+                /** @description Event origin: device, audit, alert, command, or deployment. */
+                source?: string | null;
+                /** @description Normalized severity: debug, info, warning, or error. */
+                severity?: string | null;
+                /** @description Domain category, such as device, users, rules, or firmware-updates. */
+                category?: string | null;
+                /** @description Restrict events to one device when a device identity is available. */
+                device_id?: string | null;
+                /** @description Case-insensitive search across messages, event types, actors, resources, and request IDs. */
+                search?: string | null;
+                /** @description Only return events at or after this timestamp. */
+                since?: string | null;
+                /** @description Only return events at or before this timestamp. */
+                until?: string | null;
+                /** @description Maximum rows to return (default 100, max 200). */
+                limit?: number | null;
+                /** @description Pagination offset. */
+                offset?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tenant-wide operational and audit event stream */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityEventListResponse"];
+                };
+            };
+            /** @description Invalid event filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     list_alerts: {
         parameters: {
             query?: {
@@ -2510,6 +3075,64 @@ export interface operations {
             };
         };
     };
+    get_catalog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Analytics metric catalog */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalyticsCatalogResponse"];
+                };
+            };
+        };
+    };
+    run_query: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnalyticsQueryRequest"];
+            };
+        };
+        responses: {
+            /** @description Chart-ready analytics result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalyticsQueryResponse"];
+                };
+            };
+            /** @description Invalid query */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Query exceeds a cost or compatibility limit */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     list_api_keys: {
         parameters: {
             query?: never;
@@ -2722,6 +3345,309 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DashboardStats"];
                 };
+            };
+        };
+    };
+    get_blueprint_revision: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Blueprint revision ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Published blueprint revision */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlueprintRevisionResponse"];
+                };
+            };
+            /** @description Revision not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_blueprints: {
+        parameters: {
+            query?: {
+                limit?: number | null;
+                offset?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated device blueprints */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponse_BlueprintResponse"];
+                };
+            };
+        };
+    };
+    create_blueprint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BlueprintDocumentRequest"];
+            };
+        };
+        responses: {
+            /** @description Blueprint and initial draft created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlueprintResponse"];
+                };
+            };
+            /** @description Malformed blueprint document */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Blueprint key already exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_blueprint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Blueprint ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Device blueprint */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlueprintResponse"];
+                };
+            };
+            /** @description Blueprint not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_blueprint_draft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Blueprint ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Mutable blueprint draft */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlueprintDraftResponse"];
+                };
+            };
+            /** @description Blueprint not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    replace_blueprint_draft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Blueprint ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BlueprintDocumentRequest"];
+            };
+        };
+        responses: {
+            /** @description Replaced blueprint draft */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlueprintDraftResponse"];
+                };
+            };
+            /** @description Malformed blueprint document */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Blueprint not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Blueprint key already exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    publish_blueprint_draft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Blueprint ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Immutable blueprint revision published */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlueprintRevisionResponse"];
+                };
+            };
+            /** @description Blueprint not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Draft changed during publication */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Blueprint validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    validate_blueprint_draft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Blueprint ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Blueprint validation result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlueprintValidationResponse"];
+                };
+            };
+            /** @description Blueprint not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_latest_blueprint_revision: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Blueprint ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Latest published blueprint revision */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlueprintRevisionResponse"];
+                };
+            };
+            /** @description No published revision */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -3361,6 +4287,36 @@ export interface operations {
             };
         };
     };
+    get_device_contract: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Device ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Assigned device contract */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceContractResponse"];
+                };
+            };
+            /** @description Device or contract not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     get_device_latest_location: {
         parameters: {
             query?: never;
@@ -3410,6 +4366,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LogResponse"][];
+                };
+            };
+            /** @description Device not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_device_metrics: {
+        parameters: {
+            query?: {
+                /** @description Filter by the stream key declared in the assigned device contract. */
+                stream_key?: string | null;
+                /** @description Filter by the JSON pointer field path declared in the stream. */
+                field_path?: string | null;
+                /** @description Only return samples at or after this timestamp. */
+                since?: string | null;
+                /** @description Only return samples before this timestamp. */
+                before?: string | null;
+                /** @description Maximum number of samples to return (default 1000, max 10000). */
+                limit?: number | null;
+            };
+            header?: never;
+            path: {
+                /** @description Device ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Contract-defined metric samples */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceMetricResponse"][];
                 };
             };
             /** @description Device not found */
@@ -3749,6 +4746,8 @@ export interface operations {
             query?: {
                 /** @description Filter by device type. */
                 device_type_id?: number | null;
+                /** @description Filter by an immutable device blueprint revision. */
+                blueprint_revision_id?: string | null;
                 limit?: number | null;
                 offset?: number | null;
             };
@@ -3849,6 +4848,29 @@ export interface operations {
             };
         };
     };
+    get_next_blueprint_version: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Published device blueprint revision ID */
+                revision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Next version string */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NextVersionResponse"];
+                };
+            };
+        };
+    };
     get_next_version: {
         parameters: {
             query?: never;
@@ -3879,7 +4901,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        /** @description Multipart form: device_type_id (required), version (optional), description (optional), file (required) */
+        /** @description Multipart form: blueprint_revision_id (required), version (optional), description (optional), file (required) */
         requestBody?: {
             content: {
                 "multipart/form-data": unknown;
@@ -4602,6 +5624,51 @@ export interface operations {
             };
         };
     };
+    configure_thread_runtime: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfigureThreadRuntimeRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated host-local OpenThread runtime configuration */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadStatusResponse"];
+                };
+            };
+            /** @description The selected RCP is not currently detected */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Owner access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Thread is unavailable on this deployment */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     get_thread_dataset: {
         parameters: {
             query?: never;
@@ -4719,6 +5786,33 @@ export interface operations {
             };
             /** @description Thread is unavailable */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    refresh_thread_runtime: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Refreshed local Thread border-router status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThreadStatusResponse"];
+                };
+            };
+            /** @description Owner access required */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

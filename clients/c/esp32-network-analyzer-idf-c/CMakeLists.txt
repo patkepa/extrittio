@@ -1,9 +1,0 @@
-cmake_minimum_required(VERSION 3.16)
-
-set(EXTRA_COMPONENT_DIRS
-    "${CMAKE_CURRENT_SOURCE_DIR}/../sdk-c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../zenohpico"
-)
-
-include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(extrittio-esp32-network-analyzer-c)

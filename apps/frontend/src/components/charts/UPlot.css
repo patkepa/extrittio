@@ -1,0 +1,8 @@
+.uplot-chart--zoomable .u-over {
+  cursor: crosshair;
+}
+
+.uplot-chart--zoomable .u-select {
+  background: hsl(var(--primary) / 0.16);
+  border: 1px solid hsl(var(--primary) / 0.75);
+}

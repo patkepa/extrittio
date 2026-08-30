@@ -1,0 +1,95 @@
+diff --git a/src/rest/rest_web_server.cpp b/src/rest/rest_web_server.cpp
+--- a/src/rest/rest_web_server.cpp
++++ b/src/rest/rest_web_server.cpp
+@@ -31,6 +31,8 @@
+ #include "rest/rest_web_server.hpp"
+ 
+ #include <chrono>
++#include <cstdlib>
++#include <fstream>
+ 
+ #include <arpa/inet.h>
+ #include <errno.h>
+@@ -138,5 +139,25 @@ RestWebServer::RestWebServer(Host::RcpHost &aHost)
+     : mHost(aHost)
+ {
++    const char *token = std::getenv("EXTRITTIO_OTBR_REST_TOKEN");
++    const std::string expectedAuthorization =
++        token == nullptr || token[0] == '\0' ? std::string() : std::string("Bearer ") + token;
++    unsetenv("EXTRITTIO_OTBR_REST_TOKEN");
++
++    // The REST API includes dataset and destructive node routes. Authenticate
++    // every request before routing so a different local user cannot retrieve
++    // credentials or mutate OTBR merely because the listener is on loopback.
++    mServer.set_pre_routing_handler(
++        [expectedAuthorization](const Request &aRequest, Response &aResponse) {
++            if (expectedAuthorization.empty() ||
++                aRequest.get_header_value("Authorization") != expectedAuthorization)
++            {
++                aResponse.status = static_cast<int>(StatusCode::Unauthorized_401);
++                aResponse.set_content("{\"error\":\"unauthorized\"}", OT_REST_CONTENT_TYPE_JSON);
++                return Server::HandlerResponse::Handled;
++            }
++            return Server::HandlerResponse::Unhandled;
++        });
++
+     mServer.Get(OT_REST_RESOURCE_PATH_NODE, MakeHandler(&RestWebServer::NodeInfo));
+     mServer.Delete(OT_REST_RESOURCE_PATH_NODE, MakeHandler(&RestWebServer::NodeInfo));
+     mServer.Get(OT_REST_RESOURCE_PATH_NODE_BAID, MakeHandler(&RestWebServer::BaId));
+@@ -1911,6 +1933,10 @@ void RestWebServer::Init(const std::string &aRestListenAddress, int aRestListenP
+         return;
+     }
+     sInitialized = true;
++    const char *restPortFileValue = std::getenv("EXTRITTIO_OTBR_REST_PORT_FILE");
++    const std::string restPortFile =
++        restPortFileValue == nullptr ? std::string() : std::string(restPortFileValue);
++    unsetenv("EXTRITTIO_OTBR_REST_PORT_FILE");
+
+     mServices.Init(GetInstance());
+     // Add current node to device collection for API exposure
+@@ -1919,7 +1945,7 @@ void RestWebServer::Init(const std::string &aRestListenAddress, int aRestListenP
+     // Use shared_from_this() to get a shared_ptr, then capture a weak_ptr in the thread lambda
+     // to avoid undefined behavior if the RestWebServer object is destroyed while the thread is running.
+     std::weak_ptr<RestWebServer> weakSelf = shared_from_this();
+-    mServerThread                         = std::thread([aRestListenAddress, aRestListenPort, weakSelf]() {
++    mServerThread = std::thread([aRestListenAddress, aRestListenPort, restPortFile, weakSelf]() {
+         if (auto self = weakSelf.lock())
+         {
+             otbrLogInfo("RestWebServer listening on %s:%u", aRestListenAddress.c_str(), aRestListenPort);
+@@ -1935,9 +1961,33 @@ void RestWebServer::Init(const std::string &aRestListenAddress, int aRestListenP
+                 {"Access-Control-Allow-Methods", OTBR_REST_ACCESS_CONTROL_ALLOW_METHODS},
+                 {"Access-Control-Allow-Headers", OTBR_REST_ACCESS_CONTROL_ALLOW_HEADERS}};
+             self->mServer.set_default_headers(defaultHeaders);
+-            if (!self->mServer.listen(aRestListenAddress, aRestListenPort))
++            bool listening = false;
++            if (aRestListenPort == 0)
+             {
+-                otbrLogWarning("REST server failed to start on %s:%d", aRestListenAddress.c_str(), aRestListenPort);
++                const int selectedPort = self->mServer.bind_to_any_port(aRestListenAddress);
++                if (selectedPort > 0 && !restPortFile.empty())
++                {
++                    std::ofstream portOutput(restPortFile, std::ios::trunc);
++                    if (portOutput)
++                    {
++                        portOutput << selectedPort << std::endl;
++                        portOutput.close();
++                        listening = self->mServer.listen_after_bind();
++                    }
++                    else
++                    {
++                        otbrLogWarning("Unable to report the selected REST port through %s", restPortFile.c_str());
++                    }
++                }
++            }
++            else
++            {
++                listening = self->mServer.listen(aRestListenAddress, aRestListenPort);
++            }
++            if (!listening)
++            {
++                otbrLogWarning("REST server failed to start on %s:%d", aRestListenAddress.c_str(),
++                               aRestListenPort);
+             }
+         }
+     });
+     mServer.Get(OT_REST_RESOURCE_PATH_NODE_BAID, MakeHandler(&RestWebServer::BaId));

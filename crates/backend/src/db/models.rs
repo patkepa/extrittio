@@ -6,10 +6,9 @@ use serde_json::Value as JsonValue;
 use super::schema::{
     alerts, api_keys, app_metrics, audit_events, ca_certificates, command_history,
     device_certificates, device_configs, device_logs, device_shadows, device_types, devices,
-    firmware_blobs, firmware_updates, fleets, network_observed_hosts, ota_deployments,
-    role_permissions, roles, rule_action_outbox, rule_actions, rule_conditions, rule_cooldowns,
-    rules, server_config, server_metrics, telemetry, telemetry_rollups_hourly, user_roles, users,
-    zones,
+    firmware_blobs, firmware_updates, fleets, ota_deployments, role_permissions, roles,
+    rule_action_outbox, rule_actions, rule_conditions, rule_cooldowns, rules, server_config,
+    server_metrics, telemetry, telemetry_rollups_hourly, user_roles, users, zones,
 };
 
 // ---------------------------------------------------------------------------
@@ -190,6 +189,9 @@ pub struct FirmwareUpdate {
     pub build_timestamp: Option<NaiveDateTime>,
     pub changelog: Option<String>,
     pub source: String,
+    pub blueprint_revision_id: Option<String>,
+    pub compatibility: serde_json::Value,
+    pub update_strategy: Option<String>,
 }
 
 #[derive(Insertable, Debug)]
@@ -207,6 +209,9 @@ pub struct NewFirmwareUpdate {
     pub build_timestamp: Option<NaiveDateTime>,
     pub changelog: Option<String>,
     pub source: Option<String>,
+    pub blueprint_revision_id: Option<String>,
+    pub compatibility: serde_json::Value,
+    pub update_strategy: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -332,45 +337,6 @@ pub struct UpdateDevice {
     pub uptime_seconds: Option<i32>,
     pub updated_at: Option<NaiveDateTime>,
     pub declared_connections: Option<JsonValue>,
-}
-
-// ---------------------------------------------------------------------------
-// Network Observed Hosts
-// ---------------------------------------------------------------------------
-
-#[derive(Queryable, Selectable, Debug, Clone)]
-#[diesel(table_name = network_observed_hosts)]
-#[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct NetworkObservedHost {
-    pub id: i64,
-    pub tenant_id: String,
-    pub analyzer_device_id: String,
-    pub host_key: String,
-    pub label: String,
-    pub address: Option<String>,
-    pub device_type: Option<String>,
-    pub source: Option<String>,
-    pub status: String,
-    pub first_seen_at: NaiveDateTime,
-    pub last_seen_at: NaiveDateTime,
-    pub created_at: NaiveDateTime,
-    pub updated_at: NaiveDateTime,
-}
-
-#[derive(Insertable, Debug)]
-#[diesel(table_name = network_observed_hosts)]
-pub struct NewNetworkObservedHost {
-    pub tenant_id: String,
-    pub analyzer_device_id: String,
-    pub host_key: String,
-    pub label: String,
-    pub address: Option<String>,
-    pub device_type: Option<String>,
-    pub source: Option<String>,
-    pub status: String,
-    pub first_seen_at: NaiveDateTime,
-    pub last_seen_at: NaiveDateTime,
-    pub updated_at: NaiveDateTime,
 }
 
 // ---------------------------------------------------------------------------

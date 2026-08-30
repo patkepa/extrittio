@@ -7,6 +7,7 @@ use crate::error::AppError;
 pub enum Permission {
     DeployFirmware,
     ManageAlerts,
+    ManageDeviceBlueprints,
     ManageDeviceTypes,
     ManageDevices,
     ManageApiKeys,
@@ -19,6 +20,7 @@ pub enum Permission {
     ManageZones,
     ReadCommands,
     ReadAlerts,
+    ReadDeviceBlueprints,
     ReadDeviceTypes,
     ReadDevices,
     ReadFleets,
@@ -37,6 +39,7 @@ pub enum Permission {
 const ALL_PERMISSIONS: &[Permission] = &[
     Permission::DeployFirmware,
     Permission::ManageAlerts,
+    Permission::ManageDeviceBlueprints,
     Permission::ManageDeviceTypes,
     Permission::ManageDevices,
     Permission::ManageApiKeys,
@@ -49,6 +52,7 @@ const ALL_PERMISSIONS: &[Permission] = &[
     Permission::ManageZones,
     Permission::ReadCommands,
     Permission::ReadAlerts,
+    Permission::ReadDeviceBlueprints,
     Permission::ReadDeviceTypes,
     Permission::ReadDevices,
     Permission::ReadFleets,
@@ -75,6 +79,7 @@ impl Permission {
         match self {
             Permission::DeployFirmware => "firmware.deploy",
             Permission::ManageAlerts => "alerts.manage",
+            Permission::ManageDeviceBlueprints => "device_blueprints.manage",
             Permission::ManageDeviceTypes => "device_types.manage",
             Permission::ManageDevices => "devices.manage",
             Permission::ManageApiKeys => "api_keys.manage",
@@ -87,6 +92,7 @@ impl Permission {
             Permission::ManageZones => "zones.manage",
             Permission::ReadCommands => "commands.read",
             Permission::ReadAlerts => "alerts.read",
+            Permission::ReadDeviceBlueprints => "device_blueprints.read",
             Permission::ReadDeviceTypes => "device_types.read",
             Permission::ReadDevices => "devices.read",
             Permission::ReadFleets => "fleets.read",
@@ -108,6 +114,7 @@ impl Permission {
         match key {
             "firmware.deploy" => Some(Permission::DeployFirmware),
             "alerts.manage" => Some(Permission::ManageAlerts),
+            "device_blueprints.manage" => Some(Permission::ManageDeviceBlueprints),
             "device_types.manage" => Some(Permission::ManageDeviceTypes),
             "devices.manage" => Some(Permission::ManageDevices),
             "api_keys.manage" => Some(Permission::ManageApiKeys),
@@ -120,6 +127,7 @@ impl Permission {
             "zones.manage" => Some(Permission::ManageZones),
             "commands.read" => Some(Permission::ReadCommands),
             "alerts.read" => Some(Permission::ReadAlerts),
+            "device_blueprints.read" => Some(Permission::ReadDeviceBlueprints),
             "device_types.read" => Some(Permission::ReadDeviceTypes),
             "devices.read" => Some(Permission::ReadDevices),
             "fleets.read" => Some(Permission::ReadFleets),
@@ -167,6 +175,7 @@ pub fn satisfies(held_permission: Permission, required_permission: Permission) -
 fn implied_permissions(permission: Permission) -> &'static [Permission] {
     match permission {
         Permission::ReadAlerts => &[Permission::ManageAlerts],
+        Permission::ReadDeviceBlueprints => &[Permission::ManageDeviceBlueprints],
         Permission::ReadCommands => &[Permission::SendCommands],
         Permission::ReadDeviceTypes => &[Permission::ManageDeviceTypes],
         Permission::ReadDevices => &[Permission::ManageDevices],
@@ -187,6 +196,7 @@ pub fn require_legacy(ctx: &RequestContext, permission: Permission) -> Result<()
         Permission::ReadFirmware => require_authenticated(ctx),
         Permission::ReadCommands => require_authenticated(ctx),
         Permission::ReadAlerts => require_authenticated(ctx),
+        Permission::ReadDeviceBlueprints => require_authenticated(ctx),
         Permission::ReadDeviceTypes => require_authenticated(ctx),
         Permission::ReadDevices => require_authenticated(ctx),
         Permission::ReadFleets => require_authenticated(ctx),
@@ -198,6 +208,7 @@ pub fn require_legacy(ctx: &RequestContext, permission: Permission) -> Result<()
         Permission::ReadZones => require_authenticated(ctx),
         Permission::DeployFirmware => require_admin(ctx),
         Permission::ManageAlerts => require_admin(ctx),
+        Permission::ManageDeviceBlueprints => require_admin(ctx),
         Permission::ManageApiKeys | Permission::ManageFirmware => require_admin(ctx),
         Permission::ManageDeviceTypes => require_admin(ctx),
         Permission::ManageDevices => require_admin(ctx),

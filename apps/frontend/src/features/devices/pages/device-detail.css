@@ -432,11 +432,37 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
   margin-bottom: 16px;
 }
 
 .telemetry-range-bar .bp6-segmented-control {
   background: hsla(0, 0%, 100%, 0.04);
+}
+
+.telemetry-range-controls,
+.telemetry-refresh-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.telemetry-range-controls {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.telemetry-zoom-status {
+  color: hsl(var(--muted));
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.telemetry-refresh-control {
+  color: hsl(var(--muted));
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 /* ── Logs tab ── */

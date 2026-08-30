@@ -33,6 +33,10 @@ final class CachingDeviceRepository: DeviceRepository, Sendable {
         }
     }
 
+    func getDeviceContract(id: String) async throws -> DeviceContract {
+        try await remote.getDeviceContract(id: id)
+    }
+
     func createDevice(_ request: CreateDeviceRequest) async throws -> Device {
         let device = try await remote.createDevice(request)
         await cacheManager.cacheDevice(device)

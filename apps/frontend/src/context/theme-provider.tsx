@@ -1,2 +1,2 @@
-export { ThemeProvider, useTheme } from '@extrittio/theme';
-export type { Theme } from '@extrittio/theme';
+export { ThemeProvider, useTheme } from '@patkepa/kantzen-ui/theme';
+export type { Theme } from '@patkepa/kantzen-ui/theme';

@@ -15,6 +15,22 @@ pub mod alerts {
     pub use crate::services::alert_service as service;
 }
 
+pub mod analytics {
+    pub mod analytics_service;
+    pub mod repository;
+    pub mod types;
+
+    pub use crate::api::analytics as api;
+}
+
+pub mod activity {
+    pub mod repository;
+    pub mod types;
+
+    pub use crate::api::activity as api;
+    pub use crate::services::activity_service as service;
+}
+
 pub mod audit {
     #[path = "repository.rs"]
     pub mod port;
@@ -68,12 +84,23 @@ pub mod devices {
     pub use crate::api::devices as api;
     #[cfg(feature = "postgres")]
     pub use crate::repositories::device_repo as legacy_repository;
-    #[cfg(feature = "postgres")]
-    pub use crate::repositories::network_observed_host_repo as observed_hosts;
     pub use crate::services::device_catalog_service as catalog_service;
-    pub use crate::services::device_connections as connections;
     pub use crate::services::device_ingress_service as ingress_service;
     pub use crate::services::device_service as service;
+}
+
+pub mod events {
+    pub mod repository;
+    pub mod service;
+    pub mod types;
+}
+
+pub mod device_blueprints {
+    pub mod blueprint_service;
+    pub mod repository;
+    pub mod types;
+
+    pub use crate::api::device_blueprints as api;
 }
 
 pub mod device_types {

@@ -1,3 +1,4 @@
+#[cfg(feature = "otlp")]
 use axum::http::HeaderMap;
 use axum::http::Method;
 use axum::{
@@ -5,10 +6,13 @@ use axum::{
     middleware::Next,
     response::Response,
 };
+#[cfg(feature = "otlp")]
 use opentelemetry::global;
+#[cfg(feature = "otlp")]
 use opentelemetry::propagation::Extractor;
 use std::sync::Arc;
 use tracing::Instrument;
+#[cfg(feature = "otlp")]
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::auth::validate_token;
@@ -45,10 +49,13 @@ pub async fn request_id_middleware(mut request: Request, next: Next) -> Response
         method = %request.method(),
         uri = %request.uri(),
     );
-    let parent_context = global::get_text_map_propagator(|propagator| {
-        propagator.extract(&HeaderExtractor(request.headers()))
-    });
-    let _ = span.set_parent(parent_context);
+    #[cfg(feature = "otlp")]
+    {
+        let parent_context = global::get_text_map_propagator(|propagator| {
+            propagator.extract(&HeaderExtractor(request.headers()))
+        });
+        let _ = span.set_parent(parent_context);
+    }
     let mut response =
         crate::error::scope_request_id(request_id.clone(), next.run(request).instrument(span))
             .await;
@@ -58,8 +65,10 @@ pub async fn request_id_middleware(mut request: Request, next: Next) -> Response
     response
 }
 
+#[cfg(feature = "otlp")]
 struct HeaderExtractor<'a>(&'a HeaderMap);
 
+#[cfg(feature = "otlp")]
 impl Extractor for HeaderExtractor<'_> {
     fn get(&self, key: &str) -> Option<&str> {
         self.0.get(key).and_then(|value| value.to_str().ok())

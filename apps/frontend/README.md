@@ -7,7 +7,7 @@ platform settings.
 ## Stack
 
 - Vite 7 and React Router 7
-- Blueprint.js 6 with the Extrittio theme and shared `@extrittio` components
+- Blueprint.js 6 with the Extrittio-compatible Kantzen UI theme and components
 - TanStack Query 5 and Axios for server state
 - Zustand 5 for local UI and selection state
 - uPlot, Recharts, Leaflet, and force-graph views
@@ -19,8 +19,9 @@ Cross-feature UI and infrastructure remain under `src/components`, `src/hooks`,
 
 ## Setup
 
-Node.js 22 and npm 10 are declared in `package.json`. Private GitHub Packages
-under `@extrittio` require `NODE_AUTH_TOKEN` with package read access.
+Node.js 22 and npm 10 are declared in `package.json`. The public
+`@patkepa/kantzen-ui` package is installed from the npm registry and does not
+require a GitHub Packages token.
 
 ```bash
 cd apps/frontend
@@ -54,4 +55,4 @@ only UI concerns such as shell panels, dialogs, and multi-selection.
 
 Keep new domain code within a feature slice, reuse query keys from
 `src/hooks/query-keys.ts`, and use CSS custom properties from
-`src/styles/theme.css` instead of hard-coded theme colors.
+Kantzen UI semantic tokens instead of hard-coded theme colors.

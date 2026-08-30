@@ -11,7 +11,7 @@ fn main() {
     println!("cargo:rerun-if-changed={}", frontend.display());
     if !frontend.join("index.html").is_file() {
         panic!(
-            "the `embedded-ui`/`hobby` feature requires apps/frontend/dist; run `npm ci && npm run build` in apps/frontend before cargo build/install"
+            "the `embedded-ui`/`edge` feature requires apps/frontend/dist; run `npm ci && npm run build` in apps/frontend before cargo build/install"
         );
     }
 }

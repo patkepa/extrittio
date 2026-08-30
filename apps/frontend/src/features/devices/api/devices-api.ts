@@ -1,6 +1,7 @@
 import client from '../../../api/client';
 import type {
   Device,
+  DeviceContract,
   CreateDeviceRequest,
   UpdateDeviceRequest,
   ListDevicesParams,
@@ -58,6 +59,11 @@ export async function getAllDevices(
 
 export async function getDevice(id: string): Promise<Device> {
   const { data } = await client.get<Device>(`/devices/${id}`);
+  return data;
+}
+
+export async function getDeviceContract(id: string): Promise<DeviceContract> {
+  const { data } = await client.get<DeviceContract>(`/devices/${id}/contract`);
   return data;
 }
 

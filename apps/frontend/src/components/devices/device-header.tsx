@@ -1,6 +1,6 @@
 import { Button, Tab, Tabs, Tooltip } from '@blueprintjs/core';
 import { useNavigate } from 'react-router-dom';
-import { MainToolbar, StatusLed } from '@extrittio/ui';
+import { StatusLed, WorkspaceToolbar } from '@patkepa/kantzen-ui';
 import { showSuccessToast } from '../../utils/toaster';
 import type { Device } from '../../types/api';
 
@@ -15,7 +15,7 @@ export const DeviceHeader = ({ device, currentTab, onTabChange, tabs }: DeviceHe
   const navigate = useNavigate();
 
   return (
-    <MainToolbar className="device-toolbar-shell" ariaLabel="Device detail toolbar">
+    <WorkspaceToolbar className="device-toolbar-shell" ariaLabel="Device detail toolbar">
       <div className="device-toolbar">
         <div className="device-toolbar-actions device-toolbar-actions--left">
           <Button
@@ -63,6 +63,6 @@ export const DeviceHeader = ({ device, currentTab, onTabChange, tabs }: DeviceHe
           </Tabs>
         </div>
       </div>
-    </MainToolbar>
+    </WorkspaceToolbar>
   );
 };

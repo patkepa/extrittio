@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { AxiosError } from 'axios';
 import {
   Alert,
   Button,
@@ -14,6 +15,7 @@ import {
 } from '@blueprintjs/core';
 import { QRCodeSVG } from 'qrcode.react';
 import {
+  useConfigureThreadRuntime,
   useCreateThreadNetwork,
   useImportThreadDataset,
   useRevealThreadDataset,
@@ -33,11 +35,29 @@ export function ThreadSettings() {
   const [networkKey, setNetworkKey] = useState('');
   const [dataset, setDataset] = useState('');
   const [pendingAction, setPendingAction] = useState<'create' | 'import' | null>(null);
+  const [selectedRcpOverride, setSelectedRcpOverride] = useState<string | null>(null);
 
+  const configureRuntimeMutation = useConfigureThreadRuntime();
   const createMutation = useCreateThreadNetwork();
   const importMutation = useImportThreadDataset();
   const statusQuery = useThreadStatus();
   const datasetMutation = useRevealThreadDataset();
+  const selectedRcp = selectedRcpOverride ?? statusQuery.data?.configured_rcp_device ?? '';
+
+  const applyRcpSelection = () => {
+    configureRuntimeMutation.mutate(
+      { rcp_device: selectedRcp || null },
+      {
+        onSuccess: () => {
+          setSelectedRcpOverride(null);
+          void showSuccessToast('Thread radio selection saved');
+        },
+        onError: (error) => {
+          void showErrorToast(apiErrorMessage(error, 'Unable to select the Thread radio'));
+        },
+      },
+    );
+  };
 
   const submit = () => {
     if (pendingAction === 'create') {
@@ -56,8 +76,8 @@ export function ThreadSettings() {
             setPendingAction(null);
             void showSuccessToast('Thread network created');
           },
-          onError: () => {
-            void showErrorToast('Unable to create the Thread network');
+          onError: (error) => {
+            void showErrorToast(apiErrorMessage(error, 'Unable to create the Thread network'));
           },
         },
       );
@@ -74,8 +94,8 @@ export function ThreadSettings() {
             setPendingAction(null);
             void showSuccessToast('Thread dataset imported');
           },
-          onError: () => {
-            void showErrorToast('Unable to import the Thread dataset');
+          onError: (error) => {
+            void showErrorToast(apiErrorMessage(error, 'Unable to import the Thread dataset'));
           },
         },
       );
@@ -96,6 +116,73 @@ export function ThreadSettings() {
       </div>
 
       <div className="settings-content">
+        <Card elevation={Elevation.ONE} className="settings-card">
+          <span className="section-label">Border Router Hardware</span>
+          <p className="thread-help">
+            Extrittio automatically uses a single detected OpenThread RCP. Choose an adapter only
+            when more than one compatible serial device is connected.
+          </p>
+          {statusQuery.isPending ? (
+            <div className="thread-status-loading">
+              <Spinner size={20} />
+              Detecting radio adapters…
+            </div>
+          ) : statusQuery.isError ? (
+            <Callout intent="danger" icon="error" title="Radio detection is unavailable">
+              Refresh the page to try again.
+            </Callout>
+          ) : statusQuery.data ? (
+            <>
+              <div className="thread-radio-controls">
+                <FormGroup label="Radio adapter" labelFor="thread-rcp-device">
+                  <HTMLSelect
+                    id="thread-rcp-device"
+                    fill
+                    value={selectedRcp}
+                    onChange={(event) => setSelectedRcpOverride(event.target.value)}
+                  >
+                    <option value="">Automatic (recommended)</option>
+                    {statusQuery.data.configured_rcp_device &&
+                    !statusQuery.data.available_rcp_candidates.some(
+                      (candidate) => candidate.path === statusQuery.data?.configured_rcp_device,
+                    ) ? (
+                      <option value={statusQuery.data.configured_rcp_device}>
+                        {statusQuery.data.configured_rcp_device} (saved; disconnected)
+                      </option>
+                    ) : null}
+                    {statusQuery.data.available_rcp_candidates.map((candidate) => (
+                      <option key={candidate.path} value={candidate.path}>
+                        {rcpCandidateLabel(candidate)}
+                      </option>
+                    ))}
+                  </HTMLSelect>
+                </FormGroup>
+                <Button
+                  intent="primary"
+                  icon="floppy-disk"
+                  loading={configureRuntimeMutation.isPending}
+                  disabled={
+                    configureRuntimeMutation.isPending ||
+                    selectedRcp === (statusQuery.data.configured_rcp_device ?? '')
+                  }
+                  onClick={applyRcpSelection}
+                >
+                  Save selection
+                </Button>
+              </div>
+              {statusQuery.data.rcp_device ? (
+                <p className="thread-runtime-detail">
+                  Active adapter: <code>{statusQuery.data.rcp_device}</code>
+                </p>
+              ) : statusQuery.data.available_rcp_candidates.length > 1 && !selectedRcp ? (
+                <Callout intent="warning" icon="comparison" title="Choose a radio adapter">
+                  Automatic discovery found multiple candidates and cannot safely choose one.
+                </Callout>
+              ) : null}
+            </>
+          ) : null}
+        </Card>
+
         <Card elevation={Elevation.ONE} className="settings-card thread-active-card">
           <div className="thread-card-heading">
             <span className="section-label">Current Thread Network</span>
@@ -139,7 +226,7 @@ export function ThreadSettings() {
               {!statusQuery.data.connected ? (
                 <Callout intent="warning" icon="warning-sign">
                   {statusQuery.data.error ??
-                    'The border router is not attached to a Thread network.'}
+                    'The border router is ready. Create a new Thread network or import an existing dataset to attach it.'}
                 </Callout>
               ) : datasetMutation.data ? (
                 <div className="thread-credentials">
@@ -350,6 +437,11 @@ function optionalValue(value: string) {
   return trimmed || undefined;
 }
 
+function apiErrorMessage(error: unknown, fallback: string): string {
+  const axiosError = error as AxiosError<{ error?: string; message?: string }>;
+  return axiosError.response?.data?.error ?? axiosError.response?.data?.message ?? fallback;
+}
+
 function ThreadDetail({ label, value }: { label: string; value: string | null }) {
   return (
     <div>
@@ -397,4 +489,14 @@ async function copyCredential(value: string | null, label: string) {
   } catch {
     void showErrorToast(`Unable to copy ${label.toLowerCase()}`);
   }
+}
+
+function rcpCandidateLabel(candidate: {
+  path: string;
+  product: string | null;
+  manufacturer: string | null;
+  confidence: string;
+}) {
+  const identity = candidate.product ?? candidate.manufacturer;
+  return `${identity ? `${identity} — ` : ''}${candidate.path} (${candidate.confidence})`;
 }

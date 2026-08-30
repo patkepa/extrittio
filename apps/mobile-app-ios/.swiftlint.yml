@@ -1,6 +1,8 @@
 included:
   - Extrittio
+  - ExtrittioPairingWidget
   - ExtrittioTests
+  - Shared
 
 excluded:
   - Extrittio.xcodeproj

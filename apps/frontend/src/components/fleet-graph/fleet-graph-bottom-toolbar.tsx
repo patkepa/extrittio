@@ -9,7 +9,7 @@ import {
   Tooltip,
 } from '@blueprintjs/core';
 import { useRef, useState, type ReactNode } from 'react';
-import { BottomToolbar } from '@extrittio/ui';
+import { WorkspaceBottomToolbar } from '@patkepa/kantzen-ui';
 import { useFleets } from '../../hooks/use-fleets';
 import {
   useBulkChangeFleet,
@@ -366,7 +366,7 @@ export const FleetGraphBottomToolbar = ({
 
   return (
     <>
-      <BottomToolbar
+      <WorkspaceBottomToolbar
         className="fleet-graph-toolbar-shell"
         ariaLabel="Fleet graph multi-device toolbar"
       >
@@ -421,7 +421,7 @@ export const FleetGraphBottomToolbar = ({
           </div>
           <div className="fleet-graph-toolbar-spacer" />
         </div>
-      </BottomToolbar>
+      </WorkspaceBottomToolbar>
 
       <Alert
         isOpen={restartAlertOpen}

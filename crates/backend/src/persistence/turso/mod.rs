@@ -1,4 +1,6 @@
+mod activity;
 mod alerts;
+mod analytics;
 mod api_keys;
 mod audit;
 mod bootstrap;
@@ -7,8 +9,10 @@ mod commands;
 mod configuration;
 mod dashboard;
 mod database;
+mod device_blueprints;
 mod device_types;
 mod devices;
+mod events;
 mod firmware;
 mod fleets;
 mod logs;
@@ -47,6 +51,8 @@ pub fn create_persistence(database: Arc<TursoDatabase>) -> Persistence {
     Persistence::new(
         BackendDescriptor::turso(path),
         PersistencePorts {
+            activity: adapter.clone(),
+            analytics: adapter.clone(),
             api_keys: adapter.clone(),
             alerts: adapter.clone(),
             audit: adapter.clone(),
@@ -55,8 +61,10 @@ pub fn create_persistence(database: Arc<TursoDatabase>) -> Persistence {
             commands: adapter.clone(),
             configuration: adapter.clone(),
             dashboard: adapter.clone(),
+            device_blueprints: adapter.clone(),
             device_types: adapter.clone(),
             devices: adapter.clone(),
+            events: adapter.clone(),
             fleets: adapter.clone(),
             firmware: adapter.clone(),
             logs: adapter.clone(),
@@ -80,16 +88,33 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::domains::activity::repository::ActivityRepository;
+    use crate::domains::activity::types::ActivityQuery;
     use crate::domains::alerts::port::AlertRepository;
     use crate::domains::alerts::types::NewAlertRecord;
+    use crate::domains::analytics::repository::AnalyticsRepository;
+    use crate::domains::analytics::types::{
+        AnalyticsMetric, AnalyticsMetricSelector, AnalyticsQuery, AnalyticsScope,
+    };
     use crate::domains::commands::port::CommandRepository;
     use crate::domains::commands::types::NewCommandRecord;
     use crate::domains::configuration::repository::DeviceConfigRepository;
     use crate::domains::configuration::types::MergeDeviceConfigOutcome;
+    use crate::domains::device_blueprints::repository::DeviceBlueprintRepository;
+    use crate::domains::device_blueprints::types::{
+        CreateBlueprintRecord, PublishBlueprintOutcome, PublishBlueprintRecord,
+        ReplaceBlueprintDraftRecord,
+    };
     use crate::domains::device_types::repository::DeviceTypeRepository;
     use crate::domains::device_types::types::CreateDeviceTypeRecord;
     use crate::domains::devices::repository::DeviceRepository;
-    use crate::domains::devices::types::{CreateDeviceRecord, DeviceListQuery};
+    use crate::domains::devices::types::{
+        CreateDeviceRecord, DeviceListQuery, NewDeviceContractRecord,
+    };
+    use crate::domains::events::repository::DeviceEventRepository;
+    use crate::domains::events::types::{
+        DeviceMetricQuery, DeviceMetricSample, MetricValue, RecordDeviceEvent,
+    };
     use crate::domains::firmware::port::FirmwareRepository;
     use crate::domains::firmware::types::{NewFirmwareRecord, TriggerOtaOutcome};
     use crate::domains::fleets::repository::FleetRepository;
@@ -127,6 +152,445 @@ mod tests {
         .unwrap();
         database.migrate().await.unwrap();
         (directory, TursoAdapter::new(database))
+    }
+
+    fn blueprint_document(key: &str, name: &str) -> serde_json::Value {
+        json!({
+            "apiVersion": "extrittio.io/v1alpha1",
+            "kind": "DeviceBlueprint",
+            "metadata": {"key": key, "name": name},
+            "spec": {
+                "runtime": {
+                    "minimumContractApi": 1,
+                    "heartbeat": {"interval": "30s", "offlineAfter": "95s"},
+                    "limits": {"maxMessageBytes": 8192, "maxMessagesPerMinute": 120}
+                },
+                "streams": [{
+                    "key": "environment",
+                    "route": "readings",
+                    "fields": [{
+                        "path": "/temperature",
+                        "type": "float64",
+                        "label": "Temperature",
+                        "unit": "Cel",
+                        "index": true,
+                        "aggregates": ["min", "max", "avg"],
+                        "presentation": {"precision": 2}
+                    }]
+                }]
+            }
+        })
+    }
+
+    #[tokio::test]
+    async fn device_blueprint_draft_and_revision_round_trip() {
+        let (_directory, adapter) = adapter().await;
+        let tenant = TenantId::new(DEFAULT_TENANT_ID).unwrap();
+        let now = Utc::now();
+        let (created, draft) = DeviceBlueprintRepository::create(
+            &adapter,
+            &tenant,
+            CreateBlueprintRecord {
+                id: "blueprint-1".into(),
+                draft_id: "draft-1".into(),
+                key: "sensor".into(),
+                name: "Sensor".into(),
+                description: None,
+                document: blueprint_document("sensor", "Sensor"),
+                now,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(created.latest_revision, None);
+
+        let updated_at = now + chrono::Duration::seconds(1);
+        let updated = DeviceBlueprintRepository::replace_draft(
+            &adapter,
+            &tenant,
+            &created.id,
+            ReplaceBlueprintDraftRecord {
+                key: "sensor".into(),
+                name: "Updated Sensor".into(),
+                description: Some("updated".into()),
+                document: blueprint_document("sensor", "Updated Sensor"),
+                now: updated_at,
+            },
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_ne!(draft.updated_at, updated.updated_at);
+
+        let published = DeviceBlueprintRepository::publish(
+            &adapter,
+            &tenant,
+            &created.id,
+            PublishBlueprintRecord {
+                revision_id: "revision-1".into(),
+                expected_draft_updated_at: updated.updated_at,
+                document: updated.document,
+                document_hash: "a".repeat(64),
+                compatibility: json!({"breaking": false, "changes": []}),
+                now: updated_at + chrono::Duration::seconds(1),
+            },
+        )
+        .await
+        .unwrap();
+        let PublishBlueprintOutcome::Published(revision) = published else {
+            panic!("expected published revision");
+        };
+        assert_eq!(revision.revision, 1);
+        assert_eq!(
+            DeviceBlueprintRepository::get(&adapter, &tenant, &created.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .latest_revision,
+            Some(1)
+        );
+
+        let device_type = DeviceTypeRepository::create(
+            &adapter,
+            &tenant,
+            CreateDeviceTypeRecord {
+                name: "contract-device".into(),
+                icon: "cube".into(),
+                color_hex: "#112233".into(),
+            },
+        )
+        .await
+        .unwrap();
+        DeviceRepository::create(
+            &adapter,
+            &tenant,
+            CreateDeviceRecord {
+                id: "device-contract-1".into(),
+                name: "Contract Device".into(),
+                device_type_id: device_type.id,
+                fleet_id: None,
+                firmware: "v1".into(),
+                contract: Some(NewDeviceContractRecord {
+                    id: "contract-1".into(),
+                    blueprint_revision_id: revision.id.clone(),
+                    document: json!({"contractApi": 1, "deviceId": "device-contract-1"}),
+                    contract_hash: "b".repeat(64),
+                    created_at: updated_at + chrono::Duration::seconds(2),
+                }),
+            },
+            None,
+        )
+        .await
+        .unwrap();
+        let assigned = DeviceRepository::assigned_contract(&adapter, &tenant, "device-contract-1")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(assigned.id, "contract-1");
+        assert_eq!(assigned.assignment_status, "pending");
+        assert_eq!(assigned.document["contractApi"], 1);
+        let ingress = DeviceRepository::ingress_context(
+            &adapter,
+            &crate::tenancy::DeviceIdentity::new(tenant.as_str(), "device-contract-1").unwrap(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(ingress.blueprint_id.as_deref(), Some(created.id.as_str()));
+
+        let firmware = FirmwareRepository::create(
+            &adapter,
+            &tenant,
+            NewFirmwareRecord {
+                device_type_id: device_type.id,
+                version: "2.0.0".into(),
+                url: "firmware/contract-device.bin".into(),
+                sha256: Some("c".repeat(64)),
+                description: None,
+                commit_sha: None,
+                branch: None,
+                ci_run_url: None,
+                build_timestamp: None,
+                changelog: None,
+                source: None,
+                blueprint_revision_id: Some(revision.id.clone()),
+                compatibility: json!({"board": "test-board"}),
+                update_strategy: Some("binary_replacement".into()),
+            },
+            None,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(firmware.blueprint_revision_id, Some(revision.id.clone()));
+        assert_eq!(firmware.compatibility["board"], "test-board");
+        assert!(matches!(
+            FirmwareRepository::trigger_ota(
+                &adapter,
+                &tenant,
+                "device-contract-1",
+                firmware.id,
+                "https://hub.example.test",
+            )
+            .await
+            .unwrap(),
+            TriggerOtaOutcome::Ready { .. }
+        ));
+        let incompatible_firmware = FirmwareRepository::create(
+            &adapter,
+            &tenant,
+            NewFirmwareRecord {
+                device_type_id: device_type.id,
+                version: "3.0.0".into(),
+                url: "firmware/wrong-contract.bin".into(),
+                sha256: Some("d".repeat(64)),
+                description: None,
+                commit_sha: None,
+                branch: None,
+                ci_run_url: None,
+                build_timestamp: None,
+                changelog: None,
+                source: None,
+                blueprint_revision_id: Some("another-revision".into()),
+                compatibility: json!({}),
+                update_strategy: Some("binary_replacement".into()),
+            },
+            None,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert!(matches!(
+            FirmwareRepository::trigger_ota(
+                &adapter,
+                &tenant,
+                "device-contract-1",
+                incompatible_firmware.id,
+                "https://hub.example.test",
+            )
+            .await
+            .unwrap(),
+            TriggerOtaOutcome::Incompatible
+        ));
+
+        let occurred_at = updated_at + chrono::Duration::seconds(3);
+        let event = RecordDeviceEvent {
+            event_id: "event-1".into(),
+            device_id: "device-contract-1".into(),
+            contract_id: "contract-1".into(),
+            route_key: "readings".into(),
+            occurred_at,
+            received_at: occurred_at,
+            payload: json!({"temperature": 21.5}),
+            metrics: vec![DeviceMetricSample {
+                stream_key: "environment".into(),
+                field_path: "/temperature".into(),
+                value: MetricValue::Float64(21.5),
+            }],
+            pending_actions: Vec::new(),
+        };
+        let outcome = DeviceEventRepository::record(&adapter, &tenant, event.clone())
+            .await
+            .unwrap();
+        assert!(outcome.recorded);
+        assert_eq!(outcome.metrics_recorded, 1);
+        assert!(
+            !DeviceEventRepository::record(&adapter, &tenant, event)
+                .await
+                .unwrap()
+                .recorded
+        );
+        let metrics = DeviceEventRepository::list_metrics(
+            &adapter,
+            &tenant,
+            "device-contract-1",
+            DeviceMetricQuery {
+                stream_key: Some("environment".into()),
+                field_path: Some("/temperature".into()),
+                since: None,
+                before: None,
+                limit: 10,
+            },
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(metrics.len(), 1);
+        assert_eq!(metrics[0].event_id, "event-1");
+        assert_eq!(metrics[0].value, MetricValue::Float64(21.5));
+        assert!(
+            DeviceEventRepository::list_metrics(
+                &adapter,
+                &TenantId::new("another-tenant").unwrap(),
+                "device-contract-1",
+                DeviceMetricQuery {
+                    stream_key: None,
+                    field_path: None,
+                    since: None,
+                    before: None,
+                    limit: 10,
+                },
+            )
+            .await
+            .unwrap()
+            .is_none()
+        );
+        let acknowledged =
+            DeviceRepository::assigned_contract(&adapter, &tenant, "device-contract-1")
+                .await
+                .unwrap()
+                .unwrap();
+        assert_eq!(acknowledged.assignment_status, "converged");
+        assert_eq!(acknowledged.id, "contract-1");
+    }
+
+    #[tokio::test]
+    async fn analytics_catalogs_and_queries_blueprint_metrics() {
+        let (_directory, adapter) = adapter().await;
+        let tenant = TenantId::new(DEFAULT_TENANT_ID).unwrap();
+        let published_at = Utc::now();
+        let (blueprint, draft) = DeviceBlueprintRepository::create(
+            &adapter,
+            &tenant,
+            CreateBlueprintRecord {
+                id: "analytics-blueprint".into(),
+                draft_id: "analytics-draft".into(),
+                key: "cold-room".into(),
+                name: "Cold room sensor".into(),
+                description: None,
+                document: blueprint_document("cold-room", "Cold room sensor"),
+                now: published_at,
+            },
+        )
+        .await
+        .unwrap();
+        let published = DeviceBlueprintRepository::publish(
+            &adapter,
+            &tenant,
+            &blueprint.id,
+            PublishBlueprintRecord {
+                revision_id: "analytics-revision".into(),
+                expected_draft_updated_at: draft.updated_at,
+                document: draft.document,
+                document_hash: "a".repeat(64),
+                compatibility: json!({"breaking": false, "changes": []}),
+                now: published_at + chrono::Duration::seconds(1),
+            },
+        )
+        .await
+        .unwrap();
+        let PublishBlueprintOutcome::Published(revision) = published else {
+            panic!("expected published analytics blueprint");
+        };
+        let device_type = DeviceTypeRepository::create(
+            &adapter,
+            &tenant,
+            CreateDeviceTypeRecord {
+                name: "temperature sensor".into(),
+                icon: "heatmap".into(),
+                color_hex: "#ff7a00".into(),
+            },
+        )
+        .await
+        .unwrap();
+        DeviceRepository::create(
+            &adapter,
+            &tenant,
+            CreateDeviceRecord {
+                id: "analytics-device".into(),
+                name: "Cold room".into(),
+                device_type_id: device_type.id,
+                fleet_id: None,
+                firmware: "v1".into(),
+                contract: Some(NewDeviceContractRecord {
+                    id: "analytics-contract".into(),
+                    blueprint_revision_id: revision.id,
+                    document: json!({"contractApi": 1, "deviceId": "analytics-device"}),
+                    contract_hash: "b".repeat(64),
+                    created_at: published_at + chrono::Duration::seconds(2),
+                }),
+            },
+            None,
+        )
+        .await
+        .unwrap();
+
+        let now = Utc::now()
+            .date_naive()
+            .and_hms_opt(12, 10, 0)
+            .expect("test timestamp is valid");
+        for (index, temperature) in [21.5, 23.5].into_iter().enumerate() {
+            let occurred_at = now + chrono::Duration::minutes(i64::try_from(index).unwrap());
+            DeviceEventRepository::record(
+                &adapter,
+                &tenant,
+                RecordDeviceEvent {
+                    event_id: format!("analytics-event-{index}"),
+                    device_id: "analytics-device".into(),
+                    contract_id: "analytics-contract".into(),
+                    route_key: "readings".into(),
+                    occurred_at: occurred_at.and_utc(),
+                    received_at: occurred_at.and_utc(),
+                    payload: json!({"temperature": temperature}),
+                    metrics: vec![DeviceMetricSample {
+                        stream_key: "environment".into(),
+                        field_path: "/temperature".into(),
+                        value: MetricValue::Float64(temperature),
+                    }],
+                    pending_actions: Vec::new(),
+                },
+            )
+            .await
+            .unwrap();
+        }
+
+        let catalog = AnalyticsRepository::blueprint_catalog(&adapter, &tenant)
+            .await
+            .unwrap();
+        assert_eq!(catalog.len(), 1);
+        assert_eq!(catalog[0].blueprint_id, blueprint.id);
+
+        let metric = AnalyticsMetric {
+            selector: AnalyticsMetricSelector {
+                blueprint_id: blueprint.id,
+                stream_key: "environment".into(),
+                field_path: "/temperature".into(),
+            },
+            blueprint_key: "cold-room".into(),
+            blueprint_name: "Cold room sensor".into(),
+            label: "Temperature".into(),
+            unit: Some("Cel".into()),
+            value_type: "float64".into(),
+            aggregates: vec!["minimum".into(), "maximum".into(), "average".into()],
+            precision: Some(2),
+        };
+        let analytics_query = AnalyticsQuery {
+            scope: AnalyticsScope {
+                device_type_ids: vec![device_type.id],
+                fleet_ids: Vec::new(),
+                device_ids: Vec::new(),
+            },
+            metric,
+            start: now - chrono::Duration::hours(1),
+            end: now + chrono::Duration::hours(2),
+            bucket_seconds: 3_600,
+            max_devices: 50,
+            max_rows: 100,
+        };
+        let result = AnalyticsRepository::query(&adapter, &tenant, analytics_query)
+            .await
+            .unwrap();
+        assert_eq!(result.selected_devices, 1);
+        assert_eq!(result.compatible_devices, 1);
+        assert_eq!(
+            result
+                .buckets
+                .iter()
+                .map(|bucket| bucket.sample_count)
+                .sum::<i64>(),
+            2
+        );
+        assert!((result.buckets[0].average - 22.5).abs() < f64::EPSILON);
     }
 
     #[tokio::test]
@@ -209,6 +673,7 @@ mod tests {
                 device_type_id: device_type.id,
                 fleet_id: Some(fleet.id),
                 firmware: "v1".into(),
+                contract: None,
             },
             None,
         )
@@ -275,6 +740,26 @@ mod tests {
             .unwrap()
             .is_some()
         );
+        let activity = ActivityRepository::list(
+            &adapter,
+            &tenant,
+            ActivityQuery {
+                source: None,
+                severity: None,
+                category: None,
+                device_id: Some("device-1".into()),
+                search: None,
+                since: None,
+                until: None,
+                limit: 10,
+                offset: 0,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(activity.total, 2);
+        assert!(activity.data.iter().any(|event| event.source == "device"));
+        assert!(activity.data.iter().any(|event| event.source == "command"));
         let observed_at = Utc::now().naive_utc();
         let telemetry = TelemetryRepository::record(
             &adapter,
@@ -292,8 +777,6 @@ mod tests {
                 speed: None,
                 altitude: None,
                 heading: None,
-                declared_connections: None,
-                observed_network_hosts: None,
                 pending_actions: Vec::new(),
                 observed_at,
             },
@@ -408,6 +891,9 @@ mod tests {
                 build_timestamp: None,
                 changelog: None,
                 source: None,
+                blueprint_revision_id: None,
+                compatibility: serde_json::json!({}),
+                update_strategy: None,
             },
             None,
         )

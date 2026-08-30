@@ -22,7 +22,7 @@ import {
   useBulkResolve,
   useBulkReactivate,
 } from '../queries/use-alerts';
-import { EmptyState, FilterPill } from '@extrittio/ui';
+import { EmptyState, FilterPill } from '@patkepa/kantzen-ui';
 import { showSuccessToast, showErrorToast } from '../../../utils/toaster';
 import type { Alert } from '../../../types/alerts';
 import './alerts.css';

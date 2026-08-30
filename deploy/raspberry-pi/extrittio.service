@@ -1,0 +1,19 @@
+[Unit]
+Description=Extrittio Edge with OpenThread Border Router
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# otbr-agent creates wpan0 and installs IPv6 routes. Start with root instead
+# of a separate OTBR service; Extrittio owns and supervises that child process.
+User=root
+WorkingDirectory=/var/lib/extrittio
+EnvironmentFile=/etc/extrittio/edge.env
+ExecStart=/opt/extrittio/current/bin/extrittio run
+Restart=on-failure
+RestartSec=3s
+TimeoutStopSec=30s
+
+[Install]
+WantedBy=multi-user.target

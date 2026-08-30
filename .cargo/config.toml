@@ -3,6 +3,12 @@
 #   brew install sccache (macOS) or cargo install sccache
 # rustc-wrapper = "sccache"
 
+[alias]
+xtask = "run --package xtask --"
+dev-check = "check --workspace --exclude extrittio-macos"
+dev-server = "run --package extrittio --"
+build-fast = "build --profile ci-release"
+
 [target.aarch64-apple-darwin]
 # Wrapper script: uses lld (brew install llvm) when available, falls back to default clang linker.
 linker = ".cargo/macos-linker.sh"

@@ -3,7 +3,8 @@ use std::time::Duration;
 
 use clap::Parser;
 use extrittio_client_runtime::{
-    EMBED_MARKER_LEN, EMBED_SLOT_LEN, NativeClientConfig, TelemetrySource, run_native_client,
+    EMBED_MARKER_LEN, EMBED_SLOT_LEN, NativeClientConfig, TelemetrySource, contract::ContractEvent,
+    run_native_client,
 };
 use extrittio_common::extrittio::DeviceTelemetry;
 use extrittio_sdk::sensor::SensorState;
@@ -27,6 +28,9 @@ pub static DEVICE_ID_EMBED: [u8; EMBED_SLOT_LEN] = {
 struct Args {
     #[arg(long)]
     device_id: Option<String>,
+    /// Provisioned contract JSON downloaded from the Extrittio device contract endpoint.
+    #[arg(long)]
+    contract: Option<String>,
     #[arg(long, default_value_t = 5)]
     interval: u64,
     #[arg(long, default_value_t = 30)]
@@ -82,6 +86,17 @@ impl TelemetrySource for SimulatedTelemetry {
             self.sensor.temperature, self.sensor.humidity, self.sensor.battery
         )
     }
+
+    fn contract_event(&self, telemetry: &DeviceTelemetry) -> Option<ContractEvent> {
+        Some(ContractEvent::new(
+            "environment",
+            serde_json::json!({
+                "temperature": telemetry.temperature,
+                "humidity": telemetry.humidity,
+                "batteryLevel": telemetry.battery_level
+            }),
+        ))
+    }
 }
 
 #[tokio::main]
@@ -95,6 +110,7 @@ async fn main() {
     let args = Args::parse();
     let config = NativeClientConfig {
         device_id: args.device_id,
+        contract_path: args.contract,
         telemetry_interval: Duration::from_secs(args.interval),
         heartbeat_interval: Duration::from_secs(args.heartbeat_interval),
         connect: args.connect,

@@ -1,3 +1,5 @@
+#[path = "../domains/activity/activity_service.rs"]
+pub mod activity_service;
 #[path = "../domains/alerts/alert_service.rs"]
 pub mod alert_service;
 #[path = "../domains/identity/api_key_service.rs"]
@@ -16,8 +18,6 @@ pub mod config_service;
 pub mod dashboard_service;
 #[path = "../domains/devices/device_catalog_service.rs"]
 pub mod device_catalog_service;
-#[path = "../domains/devices/device_connections.rs"]
-pub mod device_connections;
 #[path = "../domains/devices/device_ingress_service.rs"]
 pub mod device_ingress_service;
 #[path = "../domains/devices/device_service.rs"]

@@ -10,6 +10,25 @@ const EXTERNAL_RADIUS = 8;
 const LEGACY_LINK_DISTANCE = 80;
 const LEGACY_CHARGE_STRENGTH = -30;
 
+interface InitialViewportControls {
+  centerAt: (x?: number, y?: number, durationMs?: number) => unknown;
+  zoomToFit: (durationMs?: number, padding?: number) => unknown;
+}
+
+export function applyInitialGraphViewport(
+  graph: InitialViewportControls | undefined,
+  nodes: readonly GraphNode[],
+) {
+  if (!graph) return;
+
+  const viewportAnchor = nodes.find((node) => node.initialViewportAnchor);
+  if (viewportAnchor?.x != null && viewportAnchor.y != null) {
+    graph.centerAt(viewportAnchor.x, viewportAnchor.y, 400);
+  } else {
+    graph.zoomToFit(400, 60);
+  }
+}
+
 function getLinkDevice(link: GraphLink): GraphNode | null {
   const source = link.source as GraphNode | string;
   const target = link.target as GraphNode | string;
@@ -77,14 +96,16 @@ export function useForceSimulation(
     fg.d3ReheatSimulation();
   }, [graphData.nodes, graphData.links, graphRef]);
 
-  // Fit to view only on initial simulation settle
+  // Establish the viewport only on initial simulation settle. Topology views
+  // can nominate a local anchor so peripheral discoveries do not pull the
+  // opening camera away from the node the operator controls.
   const handleEngineStop = useCallback(() => {
     if (!hasInitialFitRef.current) {
       hasInitialFitRef.current = true;
-      graphRef.current?.zoomToFit(400, 60);
+      applyInitialGraphViewport(graphRef.current, graphData.nodes);
     }
     updateNodeBounds();
-  }, [graphRef, updateNodeBounds, hasInitialFitRef]);
+  }, [graphData.nodes, graphRef, updateNodeBounds, hasInitialFitRef]);
 
   return { handleEngineStop };
 }
