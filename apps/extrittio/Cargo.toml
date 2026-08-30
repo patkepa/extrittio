@@ -40,4 +40,4 @@ dirs = "6"
 extrittio-openthread-runtime = { version = "0.1.0", path = "../../crates/openthread-runtime" }
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
-tikv-jemallocator = { version = "0.6", optional = true }
+tikv-jemallocator = { version = "0.7", optional = true }

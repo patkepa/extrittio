@@ -9,11 +9,11 @@ homepage.workspace = true
 publish.workspace = true
 
 [dependencies]
-getrandom = "0.3"
+getrandom = "0.4"
 nix = { version = "0.31", features = ["net", "poll", "signal", "process", "socket"] }
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "charset", "http2", "json", "rustls-no-provider", "system-proxy"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
-secrecy = "0.8"
+secrecy = "0.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serialport = { version = "4.9", default-features = false }

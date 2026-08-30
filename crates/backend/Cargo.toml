@@ -40,7 +40,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 diesel = { version = "2.2", features = ["postgres", "r2d2", "chrono", "serde_json"], optional = true }
 diesel_migrations = { version = "2.2", optional = true }
-tower-http = { version = "0.6", features = ["cors", "trace"] }
+tower-http = { version = "0.7", features = ["cors", "trace"] }
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
@@ -53,32 +53,32 @@ opentelemetry-otlp = { version = "0.32", default-features = false, features = ["
 object_store = { version = "0.14", default-features = false, features = ["fs"] }
 zenoh = { version = "1", default-features = false, features = ["transport_tcp", "transport_tls", "unstable"] }
 prost = "0.14"
-argon2 = "0.5"
-jsonwebtoken = "9"
-rand = "0.8"
-sha2 = "0.10"
+argon2 = "0.6"
+jsonwebtoken = "11"
+rand = "0.10"
+sha2 = "0.11"
 thiserror = "2"
 utoipa = { version = "5", features = ["axum_extras"] }
 utoipa-swagger-ui = { version = "9", default-features = false, features = ["axum", "vendored"], optional = true }
 rcgen = { version = "0.14", features = ["pem", "x509-parser"] }
 time = "0.3"
-pem = "3"
+pem = "4"
 socket2 = "0.6"
-sysinfo = "0.34"
+sysinfo = "0.39"
 dashmap = "6"
 reqwest = { version = "0.13", default-features = false, features = ["charset", "http2", "json", "rustls-no-provider", "system-proxy"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 anyhow = "1"
 async-trait = "0.1"
 dotenvy = "0.15"
-base64 = "0.22"
+base64 = "0.23"
 ring = "0.17"
 turso = { version = "=0.7.2", default-features = false, optional = true }
 include_dir = { version = "0.7", optional = true }
-mdns-sd = { version = "0.20", optional = true }
+mdns-sd = { version = "0.21", optional = true }
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
-tikv-jemallocator = { version = "0.6", optional = true }
+tikv-jemallocator = { version = "0.7", optional = true }
 
 [dev-dependencies]
 http-body-util = "0.1"
