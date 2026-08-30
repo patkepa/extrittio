@@ -1,7 +1,7 @@
 [advisories]
 yanked = "deny"
 # Every exception is justified, time-bounded, and tracked in
-# docs/DEPENDENCY_EXCEPTIONS.md. Do not add bare advisory IDs here.
+# docs/operations/dependency-exceptions.md. Do not add bare advisory IDs here.
 ignore = [
     "RUSTSEC-2024-0436",
     "RUSTSEC-2025-0134",

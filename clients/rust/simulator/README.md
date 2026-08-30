@@ -1,6 +1,10 @@
 # Extrittio Device Simulator
 
-Simulates many logical Extrittio devices over the same Zenoh protobuf topics used by real clients. Each simulated device sends an initial heartbeat before telemetry, so the backend can auto-register it through the normal heartbeat path.
+Simulates many logical devices over the legacy Zenoh Protobuf heartbeat and
+telemetry topics. Every generated ID must already exist in Extrittio; the
+backend rejects traffic from unprovisioned devices and does not auto-register
+heartbeats. Create the devices from a published blueprint before starting the
+simulator, using IDs such as `sim-device-000001` through the selected `--count`.
 
 ```bash
 cargo run -p extrittio-simulator -- \
@@ -13,8 +17,12 @@ cargo run -p extrittio-simulator -- \
   --jitter-percent 35 \
   --device-interval-variance-percent 20 \
   --sensor-noise-percent 8 \
-  --stats-interval 5
+--stats-interval 5
 ```
+
+For a TLS listener, also pass `--ca-cert`, `--client-cert`, and `--client-key`.
+The simulator can share one Zenoh session for throughput tests or create one
+session per device for connection-pressure tests.
 
 Useful options:
 

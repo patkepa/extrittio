@@ -13,6 +13,10 @@ Zenoh-Pico and supports shadow-driven FOTA using Arduino ESP32 `Update`.
 UNO/AVR-class Arduino boards are not supported. They do not have the memory,
 network stack, or flash partition model needed for this protocol and FOTA path.
 
+Create the device from a published Extrittio blueprint before connecting and
+use that exact provisioned device ID in the sketch. Unknown device IDs are
+rejected; heartbeats do not auto-register devices.
+
 ## PlatformIO Setup
 
 Add the library folder and Zenoh-Pico dependency to `platformio.ini`:

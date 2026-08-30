@@ -64,19 +64,18 @@ local test mesh. Create or import a private network in the backend before any
 non-test deployment, then replace this ESP32-C6 dataset with that network's
 exported Active Operational Dataset.
 
-Create the matching Extrittio device before flashing. A generic device type is
-enough for this telemetry example:
+Create the matching Extrittio device before flashing. In the web console,
+publish a blueprint, choose **Devices → Add Device**, and download the resulting
+provisioning material. Set `Device ID` in `menuconfig` to the generated device
+ID from that material; the display name is not the protocol identity. Unknown
+IDs are rejected and are not auto-registered by heartbeat.
 
-```bash
-cargo run -p extrittio -- provision \
-  --name esp32c6-thread-001 \
-  --device-type esp32c6-thread \
-  --firmware v1.0.0-esp32c6-thread-c
-```
-
-Use the same device ID in `menuconfig`. After the log reports `Attached to the
-configured Thread network`, `Discovered Extrittio Zenoh endpoint`, and `Zenoh
-connected`, telemetry and heartbeats appear in the Extrittio device view.
+This compact example still publishes the compatibility Protobuf telemetry and
+heartbeat messages rather than loading the materialized contract. Use a plain
+TCP development listener because it does not yet load the generated mTLS
+certificate bundle. After the log reports `Attached to the configured Thread
+network`, `Discovered Extrittio Zenoh endpoint`, and `Zenoh connected`, the
+telemetry and heartbeats appear in the device view.
 
 ## BLE contact pairing
 
@@ -114,7 +113,7 @@ The log distinguishes the two layers:
 
 If discovery does not find a service, ensure the backend log contains
 `Advertised Zenoh DNS-SD service on the Thread mesh` and that OTBR's DNS-SD/SRP
-proxy is enabled. See [OpenThread Edge deployment](../../../docs/OPENTHREAD_EDGE.md)
+proxy is enabled. See [OpenThread deployment](../../../docs/deployment/openthread.md)
 for the host and border-router setup.
 
 ## TLS and commands

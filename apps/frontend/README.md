@@ -1,27 +1,26 @@
-# Extrittio Operations Console
+# Extrittio operations console
 
-The operations console is a React 18 and TypeScript 5.9 SPA for managing Extrittio
-devices, fleets, telemetry, commands, shadows, firmware, rules, alerts, users, and
-platform settings.
+The operations console is a React 18 and TypeScript 5.9 SPA. It manages devices,
+blueprints, fleets, telemetry and analytics, commands and shadows, firmware and
+OTA, rules and alerts, users and roles, certificates, API keys, and OpenThread
+settings.
 
-## Stack
+## Stack and layout
 
 - Vite 7 and React Router 7
-- Blueprint.js 6 with the Extrittio-compatible Kantzen UI theme and components
-- TanStack Query 5 and Axios for server state
-- Zustand 5 for local UI and selection state
-- uPlot, Recharts, Leaflet, and force-graph views
+- Blueprint.js 6 plus `@patkepa/kantzen-ui`
+- TanStack Query and Axios for server state
+- Zustand for local shell and selection state
+- uPlot, Leaflet, and force-graph views
 - OpenAPI-generated REST types
 
-Feature-owned API, query, component, and page code lives under `src/features`.
-Cross-feature UI and infrastructure remain under `src/components`, `src/hooks`,
-`src/stores`, and `src/lib`.
+Feature-owned code lives under `src/features`. Shared components, hooks, stores,
+and infrastructure live under `src/components`, `src/hooks`, `src/stores`, and
+`src/lib`.
 
 ## Setup
 
-Node.js 22 and npm 10 are declared in `package.json`. The public
-`@patkepa/kantzen-ui` package is installed from the npm registry and does not
-require a GitHub Packages token.
+Node.js 22 and npm 10 are declared in `package.json`:
 
 ```bash
 cd apps/frontend
@@ -35,24 +34,36 @@ Vite serves `http://localhost:5173` and proxies `/api` to
 ## Commands
 
 ```bash
-npm run build          # TypeScript check and production bundle
-npm run lint           # ESLint
-npm run lint:fix       # ESLint with safe fixes
-npm run format         # Prettier write
-npm run format:check   # Prettier verification
-npm test               # Dependency-free Node unit tests
+npm run build          # Type-check and create the production bundle
+npm run lint           # Run ESLint
+npm run lint:fix       # Apply ESLint fixes
+npm run format         # Apply Prettier
+npm run format:check   # Check Prettier formatting
+npm test               # Run Node-based unit tests
 npm run generate-api   # Regenerate OpenAPI JSON and TypeScript types
 ```
 
 REST contract changes must commit both `api/openapi.json` and
 `src/types/openapi.ts`. CI regenerates them and rejects drift.
 
-## Authentication and State
+## State and authentication
 
-The browser uses an HTTP-only session cookie; application code does not persist a
-JWT in local storage. TanStack Query owns remote cache state, while Zustand stores
-only UI concerns such as shell panels, dialogs, and multi-selection.
+The browser uses an HTTP-only session cookie and does not persist a JWT in local
+storage. TanStack Query owns remote cache state. Zustand stores only UI concerns
+such as shell panels, dialogs, and multi-selection.
 
-Keep new domain code within a feature slice, reuse query keys from
-`src/hooks/query-keys.ts`, and use CSS custom properties from
-Kantzen UI semantic tokens instead of hard-coded theme colors.
+Keep new domain behavior inside a feature slice, reuse query keys from
+`src/hooks/query-keys.ts`, and keep API types generated rather than manually
+duplicated.
+
+## Kantzen UI
+
+The public `@patkepa/kantzen-ui` package supplies components, theme tokens,
+navigation, interactions, application shell, and command palette exports. It is
+installed from npm and does not need a package token.
+
+Global package styles load before
+`src/styles/kantzen-ui-compat.css`. Keep Extrittio-specific compatibility and
+product treatment in that file instead of patching or vendoring the package.
+When updating the dependency, update `package-lock.json` and run the frontend
+format, lint, test, and build commands above.

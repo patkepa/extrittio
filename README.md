@@ -1,19 +1,69 @@
 # Extrittio
 
 Extrittio is a self-hosted IoT hub for provisioning, operating, and observing
-connected devices. It combines a Rust control plane, Zenoh device messaging,
-Protobuf contracts, PostgreSQL production persistence or embedded Turso Edge
-persistence, a React operations console, and a native SwiftUI companion app for
-iOS.
+connected devices. The repository contains a Rust control plane, a React
+operations console, a native iOS app, and clients for Linux, macOS, Raspberry
+Pi, ESP32, and Arduino-class projects.
 
-The platform supports multi-tenant device and fleet management, telemetry and
-logs, desired/reported shadows, commands, OTA firmware deployments, rules,
-alerts, audit events, operational metrics, and native/embedded client SDKs.
+The platform currently supports tenant-scoped device blueprints and contracts,
+fleets, telemetry and analytics, desired/reported state, commands, firmware and
+OTA deployments, rules, alerts, audit events, and operational metrics. Devices
+communicate over Zenoh; the HTTP API is described by the committed
+[`api/openapi.json`](api/openapi.json) contract.
 
-## One-command Extrittio Edge install
+## Choose a runtime
 
-Build the frontend once, install the Turso-only executable, and run the whole
-hub:
+Extrittio has two supported runtime shapes:
+
+| Runtime | Database | Intended use |
+| --- | --- | --- |
+| `extrittio serve` | PostgreSQL | Development and multi-service production deployments |
+| `extrittio run` | Local Turso | A single-node Edge appliance with an embedded web UI |
+
+The Edge runtime can supervise a packaged OpenThread Border Router when a
+compatible radio co-processor is attached. It is not a high-availability or
+multi-process database mode.
+
+## Local development
+
+The repository pins Rust 1.90 and requires Node.js 22. Backend development also
+needs Docker, Protobuf, and PostgreSQL client libraries. Check the complete
+toolchain with:
+
+```bash
+cargo xtask doctor
+```
+
+On macOS, the core native dependencies are:
+
+```bash
+brew install protobuf libpq cmake ninja
+```
+
+Start PostgreSQL and the backend from the repository root:
+
+```bash
+docker compose -f deploy/docker/docker-compose.yml up -d postgres
+cargo run -p extrittio -- migrate
+cargo run -p extrittio -- serve
+```
+
+In another terminal, start the frontend:
+
+```bash
+cd apps/frontend
+npm ci
+npm run dev
+```
+
+The API listens on `http://localhost:8080`. Vite listens on
+`http://localhost:5173` and proxies `/api` to the backend. The development seed
+account is `admin` / `admin`; change it before using the installation with real
+devices or data.
+
+## Single-node Edge
+
+Build the web assets, install the local Edge executable, and run it:
 
 ```bash
 cd apps/frontend
@@ -24,166 +74,56 @@ cd ../..
 cargo install --path apps/extrittio --locked \
   --no-default-features --features edge
 
-extrittio run
+EXTRITTIO_BOOTSTRAP_ADMIN_PASSWORD='choose-a-strong-password' extrittio run
 ```
 
-On first run Extrittio creates its local database, certificates, and firmware
-directory, creates the local owner account as `admin` / `admin`, prints the web
-URL, and starts the UI, API, Zenoh listener, and background workers. Open
-[http://localhost:8080](http://localhost:8080) and change the default password
-after signing in.
+By default, Edge stores its database, certificates, firmware, and backups in
+the operating system's application-data directory. Use `--data-dir` or
+`EXTRITTIO_DATA_DIR` to choose an explicit location.
 
-To build on an Apple Silicon Mac and deploy the complete Linux arm64 Extrittio
-Edge package (including OpenThread Border Router) to a Raspberry Pi, use the
-[Raspberry Pi Edge Deployment](docs/RASPBERRY_PI_EDGE_DEPLOYMENT.md)
-workflow. It produces a checksum-verified release archive and deploys it
-atomically without replacing the Pi's persistent data.
+See [Edge deployment](docs/deployment/edge.md) for packaged Debian and
+Raspberry Pi workflows and [OpenThread](docs/deployment/openthread.md) for the
+radio and IPv6 path.
 
-For a native Raspberry Pi OS/Debian package that contains only the embedded-UI
-single-node executable and optionally uses a locally installed OpenThread agent,
-use the
-[Debian Edge Package Deployment](docs/DEBIAN_EDGE_DEPLOYMENT.md) workflow.
-
-By default mutable data uses the operating system's local application-data
-directory. Override it with `extrittio run --data-dir /path/to/extrittio`.
-
-## Architecture
-
-```text
-Devices and gateways
-  -> Zenoh + Protobuf
-  -> supervised ingestion and rule processing
-  -> tenant-scoped services and PostgreSQL or local Turso
-  -> Axum REST API / OpenAPI
-  -> React operations console and CLI
-```
-
-The Rust backend is organized as vertical domains under
-`crates/backend/src/domains`. Shared device contracts and topic builders live in
-`crates/common`; native clients share lifecycle, identity, shadow, and OTA logic
-through `clients/rust/runtime`.
-
-## Repository Layout
+## Repository layout
 
 | Path | Purpose |
 | --- | --- |
-| `apps/extrittio` | Server and administrative CLI |
+| `apps/extrittio` | Server, Edge runtime, and administrative CLI |
 | `apps/frontend` | React/TypeScript operations console |
 | `apps/mobile-app-ios` | Native SwiftUI companion app |
-| `crates/backend` | API, services, repositories, workers, and Zenoh ingestion |
-| `crates/common` | Canonical Protobuf types, topics, shadows, OTA constants |
-| `clients/rust` | Shared SDK/runtime and Linux, macOS, RPi, ESP32 clients |
-| `clients/c` | C SDK and ESP-IDF examples |
-| `clients/arduino` | Arduino/PlatformIO client library |
-| `deploy/docker` | Development and production Compose definitions |
-| `api` | Committed OpenAPI contract |
-
-## Quick Start
-
-Required tools are Docker, the Rust toolchain declared in `rust-toolchain.toml`,
-Protobuf, PostgreSQL client libraries, and Node.js 22. The frontend consumes the
-public `@patkepa/kantzen-ui` package from npm, so `npm ci` needs no package token.
-
-On macOS, install native dependencies with:
-
-```bash
-brew install protobuf libpq
-export LIBRARY_PATH="/opt/homebrew/opt/libpq/lib:$LIBRARY_PATH"
-```
-
-> **Note:** Without the `LIBRARY_PATH` export, the build will fail with `ld: library 'pq' not found` even after `brew install libpq`.
-
-The native iOS app additionally requires Xcode 26.x with the iOS 26 SDK,
-XcodeGen, SwiftLint, and SwiftFormat. The expected tool versions are listed in
-`apps/mobile-app-ios/Tools/versions.env`.
-
-Use `cargo xtask --help` for supported build, install, packaging, native iOS,
-protocol-generation, and Edge operations. For local development, run each
-service explicitly:
-
-```bash
-docker compose -f deploy/docker/docker-compose.yml up -d postgres
-export DATABASE_URL=postgres://extrittio:extrittio@localhost/extrittio
-cargo run -p extrittio -- migrate
-cargo run -p extrittio -- serve
-
-cd apps/frontend
-npm ci
-npm run dev
-```
-
-The backend listens on `http://localhost:8080`; Vite listens on
-`http://localhost:5173` and proxies `/api` to the backend. The production binary
-can serve the built SPA directly.
-
-## CLI
-
-```bash
-cargo run -p extrittio -- --help
-cargo run -p extrittio -- serve
-cargo run -p extrittio -- migrate
-cargo run -p extrittio -- init
-cargo run -p extrittio -- health
-cargo run -p extrittio -- ready
-cargo run -p extrittio -- auth login --username admin
-cargo run -p extrittio -- device-types list
-cargo run -p extrittio -- fleets list
-```
-
-Browser authentication uses secure HTTP-only cookies. The CLI can opt into a
-bearer token stored in its local configuration; override its connection with
-`--url`, `--token`, `EXTRITTIO_URL`, or `EXTRITTIO_TOKEN`.
-
-## iOS App
-
-The native SwiftUI companion app lives in [`apps/mobile-app-ios`](apps/mobile-app-ios/README.md).
-
-```bash
-cargo xtask ios bootstrap
-cargo xtask ios build
-cargo xtask ios test
-```
+| `crates/backend` | HTTP API, domains, persistence adapters, workers, and Zenoh ingestion |
+| `crates/device-contract` | Blueprint validation and deterministic contract compilation |
+| `crates/common` | Shared Protobuf messages and Zenoh topic helpers |
+| `clients` | Native, embedded, Arduino, and simulator clients |
+| `deploy` | Docker, Debian, and Raspberry Pi packaging |
+| `tools/xtask` | Repository build, verification, packaging, and iOS tasks |
 
 ## Verification
 
-```bash
-cargo fmt --all -- --check
-cargo clippy --workspace --exclude extrittio-macos --all-targets -- -D warnings
-cargo test --workspace --exclude extrittio-macos
+Run the checks for the part of the repository you changed:
 
-cd apps/frontend
-npm run format:check
-npm run lint
-npm test
-npm run build
+```bash
+cargo xtask verify backend
+cargo xtask verify frontend
+cargo xtask verify protocol
+cargo xtask verify ios
 ```
 
-CI also verifies constrained Rust SDK feature sets, canonical Protobuf-to-nanopb
-generation, the C SDK, generated OpenAPI types, dependency changes, and dependency
-vulnerabilities. Release images include an SPDX SBOM, keyless signature, and
-provenance attestation. Reviewed, time-bounded dependency-policy exceptions are
-documented in [docs/DEPENDENCY_EXCEPTIONS.md](docs/DEPENDENCY_EXCEPTIONS.md).
+`cargo xtask verify --changed` selects checks from the current working tree.
+`cargo xtask verify all` includes the native iOS build and therefore requires
+the Apple toolchain.
 
-## Production and Operations
+## Documentation
 
-Use the version-pinned stack in
-[`deploy/docker/docker-compose.production.yml`](deploy/docker/docker-compose.production.yml),
-not the development Compose file. Production configuration fails fast for unsafe
-origins, missing secrets, malformed URLs, and incompatible TLS settings.
+Start with the [documentation index](docs/README.md). It links to the current
+architecture, device-blueprint and analytics behavior, production Docker
+deployment, Edge deployment, and OpenThread setup.
 
-The service exposes liveness and dependency-aware readiness endpoints, structured
-request IDs and error responses, audit events, bounded rate limiting, JSON logs,
-and optional OTLP/HTTP tracing. See:
+Contributor workflow and security reporting live in
+[CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
 
-- [Production deployment](docs/PRODUCTION_DEPLOYMENT.md)
-- [Server upgrades and rollback](docs/SERVER_UPGRADES.md)
-- [Contributing](CONTRIBUTING.md)
-- [Security policy](SECURITY.md)
-- [Governance](GOVERNANCE.md)
-- [Code of conduct](CODE_OF_CONDUCT.md)
-
-## Private Project
+## License status
 
 This is a private, proprietary project. No license or permission to use, copy,
-modify, publish, or redistribute the source is granted. All first-party Rust and
-frontend packages are explicitly marked as non-publishable.
+modify, publish, or redistribute the source is granted.
