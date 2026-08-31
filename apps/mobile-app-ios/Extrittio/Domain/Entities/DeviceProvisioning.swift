@@ -85,14 +85,16 @@ struct DeviceContract: Codable, Sendable, Equatable {
 }
 
 struct DeviceProvisioningPayload: Codable, Sendable, Equatable {
-    static let protocolVersion = 3
+    static let legacyProtocolVersion = 3
+    static let currentProtocolVersion = 4
 
     let version: Int
     let factoryDeviceId: String
     let deviceId: String
     let deviceName: String
     let backend: DeviceProvisioningBackend
-    let thread: DeviceProvisioningThread
+    let thread: DeviceProvisioningThread?
+    let network: DeviceProvisioningNetwork?
     let contract: AnyCodableValue
     let credentials: DeviceProvisioningCredentials
 
@@ -102,15 +104,26 @@ struct DeviceProvisioningPayload: Codable, Sendable, Equatable {
         backend: DeviceProvisioningBackend,
         thread: DeviceProvisioningThread,
         contract: DeviceContract,
-        certificate: DeviceCertificateResponse
+        certificate: DeviceCertificateResponse,
+        protocolVersion: Int = Self.legacyProtocolVersion
     ) {
-        self.version = Self.protocolVersion
+        self.version = protocolVersion
         self.factoryDeviceId = factoryDeviceId
         self.deviceId = device.id
         self.deviceName = device.name
         self.backend = backend
-        self.thread = thread
-        self.contract = contract.document
+        if protocolVersion >= Self.currentProtocolVersion {
+            self.thread = nil
+            self.network = DeviceProvisioningNetwork(thread: thread)
+            self.contract = .object([
+                "contract_hash": .string(contract.contractHash),
+                "document": contract.document
+            ])
+        } else {
+            self.thread = thread
+            self.network = nil
+            self.contract = contract.document
+        }
         self.credentials = DeviceProvisioningCredentials(certificate: certificate)
     }
 
@@ -119,13 +132,28 @@ struct DeviceProvisioningPayload: Codable, Sendable, Equatable {
         case factoryDeviceId = "factory_device_id"
         case deviceId = "device_id"
         case deviceName = "device_name"
-        case backend, thread, contract, credentials
+        case backend, thread, network, contract, credentials
     }
 
     func encoded() throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         return try encoder.encode(self)
+    }
+}
+
+struct DeviceProvisioningNetwork: Codable, Sendable, Equatable {
+    let type: String
+    let activeDatasetTLVs: String
+
+    init(thread: DeviceProvisioningThread) {
+        self.type = "thread"
+        self.activeDatasetTLVs = thread.activeDatasetTLVs
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case activeDatasetTLVs = "active_dataset_tlvs"
     }
 }
 

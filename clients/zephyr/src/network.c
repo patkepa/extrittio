@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <string.h>
 
+#include <openthread.h>
 #include <openthread/dataset.h>
 #include <openthread/ip6.h>
 #include <openthread/thread.h>
@@ -58,7 +59,7 @@ static int start_thread(const extrittio_bootstrap_network_t *network) {
         return -ENODEV;
     }
     otInstance *instance = openthread_get_default_instance();
-    openthread_api_mutex_lock(context);
+    openthread_mutex_lock();
     otError error = otDatasetSetActiveTlvs(instance, &dataset);
     if (error == OT_ERROR_NONE) {
         error = otIp6SetEnabled(instance, true);
@@ -66,7 +67,7 @@ static int start_thread(const extrittio_bootstrap_network_t *network) {
     if (error == OT_ERROR_NONE) {
         error = otThreadSetEnabled(instance, true);
     }
-    openthread_api_mutex_unlock(context);
+    openthread_mutex_unlock();
     if (error != OT_ERROR_NONE) {
         LOG_ERR("OpenThread start failed: %d", error);
         return -EIO;
@@ -74,9 +75,9 @@ static int start_thread(const extrittio_bootstrap_network_t *network) {
 
     int64_t deadline = k_uptime_get() + 60000;
     while (k_uptime_get() < deadline) {
-        openthread_api_mutex_lock(context);
+        openthread_mutex_lock();
         otDeviceRole role = otThreadGetDeviceRole(instance);
-        openthread_api_mutex_unlock(context);
+        openthread_mutex_unlock();
         if (role == OT_DEVICE_ROLE_CHILD || role == OT_DEVICE_ROLE_ROUTER ||
             role == OT_DEVICE_ROLE_LEADER) {
             ready = true;

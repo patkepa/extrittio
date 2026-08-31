@@ -237,11 +237,23 @@ final class NearbyDeviceScanner: NSObject {
             deviceId: deviceId,
             model: model,
             firmwareVersion: firmware,
-            transport: transport
+            transport: transport,
+            capabilities: characteristicValues[BLEContract.capabilities]
+                .flatMap { $0.data(using: .utf8) }
+                .flatMap { try? JSONDecoder().decode(NearbyDeviceCapabilities.self, from: $0) }
         )
         state = .identified(info, candidate)
         writeState = .idle
         writeInitialContactMessageIfNeeded()
+    }
+
+    private func completeIdentityReadIfReady(peripheral: CBPeripheral) {
+        guard pendingCharacteristicUUIDs.isEmpty else { return }
+        guard let candidate = candidates[peripheral.identifier] else {
+            fail("The nearby device could not be identified.")
+            return
+        }
+        completeIdentityRead(candidate: candidate)
     }
 
     private func writeInitialContactMessageIfNeeded() {
@@ -364,8 +376,17 @@ extension NearbyDeviceScanner: @preconcurrency CBPeripheralDelegate {
 
         characteristicValues.removeAll()
         pendingCharacteristicUUIDs = Set(BLEContract.identityCharacteristics)
+        let capabilitiesCharacteristic = service.characteristics?.first(where: {
+            $0.uuid == BLEContract.capabilities && $0.properties.contains(.read)
+        })
+        if capabilitiesCharacteristic != nil {
+            pendingCharacteristicUUIDs.insert(BLEContract.capabilities)
+        }
         for characteristic in identityCharacteristics {
             peripheral.readValue(for: characteristic)
+        }
+        if let capabilitiesCharacteristic {
+            peripheral.readValue(for: capabilitiesCharacteristic)
         }
     }
 
@@ -375,28 +396,33 @@ extension NearbyDeviceScanner: @preconcurrency CBPeripheralDelegate {
         error: (any Error)?
     ) {
         if let error {
+            if characteristic.uuid == BLEContract.capabilities {
+                logger.notice("Optional BLE capabilities could not be read: \(error.localizedDescription, privacy: .public)")
+                pendingCharacteristicUUIDs.remove(characteristic.uuid)
+                completeIdentityReadIfReady(peripheral: peripheral)
+                return
+            }
             fail(error.localizedDescription)
             return
         }
-        guard
-            pendingCharacteristicUUIDs.contains(characteristic.uuid),
-            let data = characteristic.value,
-            let value = String(data: data, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines),
-            !value.isEmpty
+        guard pendingCharacteristicUUIDs.contains(characteristic.uuid) else { return }
+        guard let data = characteristic.value,
+              let value = String(data: data, encoding: .utf8)?
+                  .trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty
         else {
+            if characteristic.uuid == BLEContract.capabilities {
+                pendingCharacteristicUUIDs.remove(characteristic.uuid)
+                completeIdentityReadIfReady(peripheral: peripheral)
+                return
+            }
             fail("The device returned an unreadable identity field.")
             return
         }
 
         characteristicValues[characteristic.uuid] = value
         pendingCharacteristicUUIDs.remove(characteristic.uuid)
-        guard pendingCharacteristicUUIDs.isEmpty else { return }
-        guard let candidate = candidates[peripheral.identifier] else {
-            fail("The nearby device could not be identified.")
-            return
-        }
-        completeIdentityRead(candidate: candidate)
+        completeIdentityReadIfReady(peripheral: peripheral)
     }
 
     func peripheral(
@@ -451,6 +477,7 @@ private enum BLEContract {
     static let firmware = CBUUID(string: "9D8D0004-1A7C-4A21-9F25-E6B17EB89C11")
     static let transport = CBUUID(string: "9D8D0005-1A7C-4A21-9F25-E6B17EB89C11")
     static let message = CBUUID(string: "9D8D0006-1A7C-4A21-9F25-E6B17EB89C11")
+    static let capabilities = CBUUID(string: "9D8D0007-1A7C-4A21-9F25-E6B17EB89C11")
     static let identityCharacteristics = [deviceId, model, firmware, transport]
-    static let allCharacteristics = identityCharacteristics + [message]
+    static let allCharacteristics = identityCharacteristics + [message, capabilities]
 }

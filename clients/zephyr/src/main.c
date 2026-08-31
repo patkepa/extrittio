@@ -6,6 +6,7 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/dfu/mcuboot.h>
 
 #include <extrittio/bootstrap.h>
 
@@ -13,6 +14,7 @@
 #include "extrittio_zephyr/client.h"
 #include "extrittio_zephyr/identity.h"
 #include "extrittio_zephyr/network.h"
+#include "extrittio_zephyr/ota.h"
 #include "extrittio_zephyr/provisioning_store.h"
 
 LOG_MODULE_REGISTER(extrittio_main, CONFIG_LOG_DEFAULT_LEVEL);
@@ -43,9 +45,14 @@ static void default_command(const extrittio_command_t *command,
 static void default_shadow(const char *device_id, const char *delta_json,
                            int64_t version, void *user_data) {
     ARG_UNUSED(device_id);
-    ARG_UNUSED(delta_json);
-    ARG_UNUSED(user_data);
     LOG_INF("Received shadow delta version %lld", version);
+    extrittio_ota_payload_t update;
+    if (extrittio_ota_parse_from_delta(delta_json, &update)) {
+        int result = extrittio_zephyr_ota_request(user_data, &update);
+        if (result != 0 && result != -EBUSY) {
+            LOG_ERR("Could not schedule firmware update: %d", result);
+        }
+    }
 }
 
 int main(void) {
@@ -55,6 +62,7 @@ int main(void) {
         LOG_ERR("Extrittio platform initialization failed");
         return -EIO;
     }
+    (void)boot_write_img_confirmed();
 
     bool provisioned = extrittio_provisioning_store_has_bootstrap();
     bool physical_reprovision = provisioned && provisioning_button_pressed();
@@ -92,6 +100,7 @@ int main(void) {
     const extrittio_zephyr_client_callbacks_t callbacks = {
         .command = default_command,
         .shadow_delta = default_shadow,
+        .user_data = bootstrap,
     };
     result = extrittio_zephyr_client_run(bootstrap, &callbacks);
     extrittio_bootstrap_clear(bootstrap);

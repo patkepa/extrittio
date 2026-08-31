@@ -30,7 +30,7 @@ config EXTRITTIO_PROVISIONING_WINDOW_SECONDS
 
 config EXTRITTIO_BOOTSTRAP_BUFFER_SIZE
 	int "Bootstrap validation buffer size"
-	default 24576
+	default 16384
 	range 4096 65536
 
 config EXTRITTIO_ZENOH_RETRY_SECONDS
@@ -40,7 +40,7 @@ config EXTRITTIO_ZENOH_RETRY_SECONDS
 
 config EXTRITTIO_OTA_DOWNLOAD_BUFFER_SIZE
 	int "OTA HTTP receive buffer"
-	default 2048
+	default 1024
 	range 512 8192
 
 endmenu

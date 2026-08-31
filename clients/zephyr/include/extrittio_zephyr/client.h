@@ -5,6 +5,7 @@
 
 #include <extrittio/bootstrap.h>
 #include <extrittio/commands.h>
+#include <extrittio/shadow.h>
 
 #ifdef __cplusplus
 extern "C" {

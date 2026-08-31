@@ -20,7 +20,8 @@ struct ProvisionDeviceUseCase: Sendable {
 
     func execute(
         request: CreateDeviceRequest,
-        factoryDeviceId: String
+        factoryDeviceId: String,
+        bootstrapVersion: Int = DeviceProvisioningPayload.legacyProtocolVersion
     ) async throws -> PreparedDeviceProvisioning {
         guard let backend = backendProvider() else {
             throw ProvisionDeviceError.invalidBackendAddress
@@ -39,7 +40,8 @@ struct ProvisionDeviceUseCase: Sendable {
                 backend: backend,
                 thread: thread,
                 contract: contract,
-                certificate: certificate
+                certificate: certificate,
+                protocolVersion: bootstrapVersion
             )
             return try PreparedDeviceProvisioning(device: device, payload: payload.encoded())
         } catch {

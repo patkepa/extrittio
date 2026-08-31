@@ -18,23 +18,23 @@
 		};
 		slot0_partition: partition@c000 {
 			label = "image-0";
-			reg = <0x0000c000 0x00070000>;
+			reg = <0x0000c000 0x00074000>;
 		};
-		slot1_partition: partition@7c000 {
+		slot1_partition: partition@80000 {
 			label = "image-1";
-			reg = <0x0007c000 0x00070000>;
+			reg = <0x00080000 0x00074000>;
 		};
-		extrittio_bootstrap_a_partition: partition@ec000 {
+		extrittio_bootstrap_a_partition: partition@f4000 {
 			label = "extrittio-bootstrap-a";
-			reg = <0x000ec000 0x00008000>;
+			reg = <0x000f4000 0x00005000>;
 		};
-		extrittio_bootstrap_b_partition: partition@f4000 {
+		extrittio_bootstrap_b_partition: partition@f9000 {
 			label = "extrittio-bootstrap-b";
-			reg = <0x000f4000 0x00008000>;
+			reg = <0x000f9000 0x00005000>;
 		};
-		storage_partition: partition@fc000 {
+		storage_partition: partition@fe000 {
 			label = "storage";
-			reg = <0x000fc000 0x00004000>;
+			reg = <0x000fe000 0x00002000>;
 		};
 	};
 };

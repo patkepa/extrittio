@@ -5,11 +5,44 @@ struct NearbyDeviceInfo: Equatable, Identifiable, Sendable {
     let model: String
     let firmwareVersion: String
     let transport: String
+    let capabilities: NearbyDeviceCapabilities?
+
+    init(
+        deviceId: String,
+        model: String,
+        firmwareVersion: String,
+        transport: String,
+        capabilities: NearbyDeviceCapabilities? = nil
+    ) {
+        self.deviceId = deviceId
+        self.model = model
+        self.firmwareVersion = firmwareVersion
+        self.transport = transport
+        self.capabilities = capabilities
+    }
 
     var id: String { deviceId }
 
+    var preferredBootstrapVersion: Int {
+        capabilities?.bootstrap.contains(DeviceProvisioningPayload.currentProtocolVersion) == true
+            ? DeviceProvisioningPayload.currentProtocolVersion
+            : DeviceProvisioningPayload.legacyProtocolVersion
+    }
+
     var isDoubleSocket: Bool {
         model.range(of: "Double Socket", options: .caseInsensitive) != nil
+    }
+}
+
+struct NearbyDeviceCapabilities: Codable, Equatable, Sendable {
+    let bootstrap: [Int]
+    let network: [String]
+    let transport: [String]
+    let maxPayload: Int
+
+    enum CodingKeys: String, CodingKey {
+        case bootstrap, network, transport
+        case maxPayload = "max_payload"
     }
 }
 

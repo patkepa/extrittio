@@ -118,10 +118,12 @@ static int select_active_slot(uint8_t *selected,
     return 0;
 }
 
+#if MBEDTLS_VERSION_MAJOR < 4
 static int random_bytes(void *context, unsigned char *output, size_t length) {
     ARG_UNUSED(context);
     return sys_csrand_get(output, length);
 }
+#endif
 
 static int validate_credentials(const extrittio_bootstrap_t *bootstrap) {
     int result;
@@ -143,7 +145,13 @@ static int validate_credentials(const extrittio_bootstrap_t *bootstrap) {
             strlen(bootstrap->credentials.ca_pem) + 1U);
     }
     if (result == 0) {
-#if MBEDTLS_VERSION_MAJOR >= 3
+#if MBEDTLS_VERSION_MAJOR >= 4
+        result = mbedtls_pk_parse_key(
+            &private_key,
+            (const unsigned char *)bootstrap->credentials.private_key_pem,
+            strlen(bootstrap->credentials.private_key_pem) + 1U,
+            NULL, 0);
+#elif MBEDTLS_VERSION_MAJOR >= 3
         result = mbedtls_pk_parse_key(
             &private_key,
             (const unsigned char *)bootstrap->credentials.private_key_pem,
@@ -325,10 +333,10 @@ static const extrittio_provisioning_storage_t callbacks = {
 
 int extrittio_provisioning_store_init(void) {
     int result = flash_area_open(
-        FIXED_PARTITION_ID(extrittio_bootstrap_a_partition), &slots[0]);
+        PARTITION_ID(extrittio_bootstrap_a_partition), &slots[0]);
     if (result == 0) {
         result = flash_area_open(
-            FIXED_PARTITION_ID(extrittio_bootstrap_b_partition), &slots[1]);
+            PARTITION_ID(extrittio_bootstrap_b_partition), &slots[1]);
     }
     if (result != 0) {
         LOG_ERR("Could not open bootstrap flash slots: %d", result);

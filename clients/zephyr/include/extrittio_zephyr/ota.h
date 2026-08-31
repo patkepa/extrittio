@@ -12,6 +12,10 @@ int extrittio_zephyr_ota_install(
     const extrittio_bootstrap_t *bootstrap,
     const extrittio_ota_payload_t *update);
 
+int extrittio_zephyr_ota_request(
+    const extrittio_bootstrap_t *bootstrap,
+    const extrittio_ota_payload_t *update);
+
 #ifdef __cplusplus
 }
 #endif

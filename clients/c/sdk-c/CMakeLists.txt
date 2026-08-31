@@ -76,7 +76,7 @@ if(DEFINED ZEPHYR_BASE)
 
     set(
         EXTRITTIO_CJSON_ROOT
-        "${CMAKE_CURRENT_LIST_DIR}/../../../../modules/lib/cjson"
+        "${ZEPHYR_BASE}/../modules/lib/cjson"
         CACHE PATH
         "Path to the pinned cJSON source in the west workspace"
     )
@@ -89,6 +89,7 @@ if(DEFINED ZEPHYR_BASE)
     zephyr_library_named(extrittio_sdk_c)
     zephyr_library_sources(${SDK_SOURCES} "${EXTRITTIO_CJSON_ROOT}/cJSON.c")
     zephyr_library_include_directories(
+        "${APPLICATION_SOURCE_DIR}/include"
         include
         generated
         "${EXTRITTIO_CJSON_ROOT}"
