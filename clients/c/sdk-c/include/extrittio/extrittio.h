@@ -2,6 +2,8 @@
 #define EXTRITTIO_H
 
 #include "extrittio/device_status.h"
+#include "extrittio/bootstrap.h"
+#include "extrittio/contract.h"
 #include "extrittio/topics.h"
 #include "extrittio/time_utils.h"
 #include "extrittio/sensor.h"
@@ -11,5 +13,7 @@
 #include "extrittio/logs.h"
 #include "extrittio/commands.h"
 #include "extrittio/ota.h"
+#include "extrittio/provisioning.h"
+#include "extrittio/sha256.h"
 
 #endif /* EXTRITTIO_H */

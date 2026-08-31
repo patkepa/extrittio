@@ -88,13 +88,75 @@ struct DeviceProvisioningTests {
             from: payload.encoded()
         )
 
-        #expect(decoded.version == 3)
+        #expect(decoded.version == DeviceProvisioningPayload.legacyProtocolVersion)
         #expect(decoded.factoryDeviceId == "factory-c6-001")
         #expect(decoded.deviceId == testDevice.id)
         #expect(decoded.backend.address == "192.168.4.20")
         #expect(decoded.backend.apiBaseURL == "http://192.168.4.20:8080/api/v1")
-        #expect(decoded.thread.activeDatasetTLVs == "0e0800000000000100000003000019")
+        #expect(decoded.thread?.activeDatasetTLVs == "0e0800000000000100000003000019")
+        #expect(decoded.network == nil)
         #expect(decoded.credentials.privateKeyPem == "PRIVATE KEY")
+    }
+
+    @Test("Zephyr capabilities select the v4 network and contract envelope")
+    func versionFourPayloadEncoding() throws {
+        let capabilities = try JSONDecoder().decode(
+            NearbyDeviceCapabilities.self,
+            from: Data(
+                #"{"bootstrap":[3,4],"network":["thread"],"transport":["zenoh-mtls"],"max_payload":20480}"#.utf8
+            )
+        )
+        let info = NearbyDeviceInfo(
+            deviceId: "factory-c6-001",
+            model: "Zephyr device",
+            firmwareVersion: "0.1.0",
+            transport: "thread+zenoh-mtls",
+            capabilities: capabilities
+        )
+        #expect(info.preferredBootstrapVersion == DeviceProvisioningPayload.currentProtocolVersion)
+
+        let payload = DeviceProvisioningPayload(
+            factoryDeviceId: info.deviceId,
+            device: testDevice,
+            backend: try #require(
+                DeviceProvisioningBackend(baseURL: URL(string: "https://hub.example/api/v1")!)
+            ),
+            thread: DeviceProvisioningThread(
+                activeDatasetTLVs: "0e0800000000000100000003000019"
+            ),
+            contract: DeviceContract(
+                id: "contract-1",
+                deviceId: testDevice.id,
+                blueprintRevisionId: "revision-1",
+                contractHash: String(repeating: "a", count: 64),
+                assignmentStatus: "pending",
+                acknowledgedAt: nil,
+                error: nil,
+                createdAt: "2026-08-30T12:00:00Z",
+                document: .object(["deviceId": .string(testDevice.id)])
+            ),
+            certificate: DeviceCertificateResponse(
+                certificatePem: "DEVICE CERT",
+                privateKeyPem: "PRIVATE KEY",
+                caPem: "CA CERT",
+                fingerprint: "fingerprint",
+                expiresAt: "2027-08-30T12:00:00Z",
+                createdAt: "2026-08-30T12:00:00Z"
+            ),
+            protocolVersion: info.preferredBootstrapVersion
+        )
+
+        let object = try #require(
+            JSONSerialization.jsonObject(with: payload.encoded()) as? [String: Any]
+        )
+        let network = try #require(object["network"] as? [String: Any])
+        let contract = try #require(object["contract"] as? [String: Any])
+        #expect(object["version"] as? Int == 4)
+        #expect(object["thread"] == nil)
+        #expect(network["type"] as? String == "thread")
+        #expect(network["active_dataset_tlvs"] as? String == "0e0800000000000100000003000019")
+        #expect(contract["contract_hash"] as? String == String(repeating: "a", count: 64))
+        #expect(contract["document"] != nil)
     }
 
     @Test("Thread dataset response decodes the active operational dataset")

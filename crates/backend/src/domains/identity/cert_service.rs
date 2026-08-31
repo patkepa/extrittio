@@ -21,9 +21,13 @@ use crate::tenancy::DEFAULT_TENANT_ID;
 const ENCRYPTED_KEY_PREFIX: &str = "enc:v1:";
 const KEY_ENCRYPTION_SECRET_ENV: &str = "EXTRITTIO_KEY_ENCRYPTION_SECRET";
 
-/// Generate a self-signed root CA certificate (Ed25519, 10-year validity).
+/// Generate a self-signed root CA certificate (ECDSA P-256, 10-year validity).
+///
+/// P-256 is supported by rustls as well as the constrained TLS stacks used by
+/// Zephyr devices. Existing installations keep using their stored CA; fresh
+/// installations get a CA that can enroll every supported client platform.
 pub fn generate_ca_certificate() -> Result<NewCaCertificateRecord, AppError> {
-    let key_pair = KeyPair::generate_for(&rcgen::PKCS_ED25519)
+    let key_pair = KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256)
         .map_err(|e| AppError::Internal(format!("Failed to generate CA key pair: {e}")))?;
 
     let mut params = CertificateParams::new(Vec::<String>::new())
@@ -53,7 +57,7 @@ pub fn generate_ca_certificate() -> Result<NewCaCertificateRecord, AppError> {
     })
 }
 
-/// Generate a device certificate signed by the CA (Ed25519, 1-year validity).
+/// Generate a device certificate signed by the CA (ECDSA P-256, 1-year validity).
 /// CN is set to the device ID.
 pub fn generate_device_certificate(
     device_id: &str,
@@ -77,7 +81,7 @@ pub fn generate_device_certificate_for_tenant(
         .map_err(|e| AppError::Internal(format!("Failed to parse CA certificate: {e}")))?;
 
     // Generate device key pair
-    let device_key_pair = KeyPair::generate_for(&rcgen::PKCS_ED25519)
+    let device_key_pair = KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256)
         .map_err(|e| AppError::Internal(format!("Failed to generate device key pair: {e}")))?;
 
     let mut params = CertificateParams::new(Vec::<String>::new())
@@ -131,7 +135,7 @@ pub fn generate_server_certificate(ca: &CaCertificateRecord) -> Result<(String, 
     let issuer = Issuer::from_ca_cert_pem(&ca.certificate_pem, ca_key_pair)
         .map_err(|e| AppError::Internal(format!("Failed to parse CA certificate: {e}")))?;
 
-    let server_key_pair = KeyPair::generate_for(&rcgen::PKCS_ED25519)
+    let server_key_pair = KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256)
         .map_err(|e| AppError::Internal(format!("Failed to generate server key pair: {e}")))?;
 
     let mut params = CertificateParams::new(vec!["localhost".to_string()])

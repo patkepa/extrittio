@@ -1,0 +1,48 @@
+# Copyright (c) 2026 Extrittio contributors
+# SPDX-License-Identifier: Apache-2.0
+
+menu "Extrittio Zephyr client"
+
+config EXTRITTIO_FACTORY_DEVICE_ID
+	string "Factory device identity"
+	default ""
+	help
+	  Stable factory identity presented over BLE and checked against the
+	  bootstrap package. Production builds should derive this from protected
+	  manufacturing data instead of using this development setting.
+
+config EXTRITTIO_MODEL
+	string "Device model"
+	default "zephyr-device"
+
+config EXTRITTIO_FIRMWARE_VERSION
+	string "Firmware version"
+	default "0.1.0"
+
+config EXTRITTIO_PROVISIONING_WINDOW_SECONDS
+	int "BLE provisioning window after boot"
+	default 300
+	range 30 3600
+	help
+	  A provisioned device advertises the provisioning service after boot only
+	  when the board's sw0 button is held. An unprovisioned device always opens
+	  this bounded window.
+
+config EXTRITTIO_BOOTSTRAP_BUFFER_SIZE
+	int "Bootstrap validation buffer size"
+	default 16384
+	range 4096 65536
+
+config EXTRITTIO_ZENOH_RETRY_SECONDS
+	int "Zenoh reconnect delay"
+	default 5
+	range 1 300
+
+config EXTRITTIO_OTA_DOWNLOAD_BUFFER_SIZE
+	int "OTA HTTP receive buffer"
+	default 1024
+	range 512 8192
+
+endmenu
+
+source "Kconfig.zephyr"

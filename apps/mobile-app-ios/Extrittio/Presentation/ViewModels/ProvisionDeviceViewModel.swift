@@ -116,7 +116,8 @@ final class ProvisionDeviceViewModel {
         do {
             prepared = try await provisionDevice.execute(
                 request: request,
-                factoryDeviceId: info.deviceId
+                factoryDeviceId: info.deviceId,
+                bootstrapVersion: info.preferredBootstrapVersion
             )
             step = .transfer
         } catch {

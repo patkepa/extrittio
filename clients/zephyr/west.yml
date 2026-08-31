@@ -1,0 +1,19 @@
+manifest:
+  version: "1.2"
+
+  projects:
+    - name: zephyr
+      url: https://github.com/zephyrproject-rtos/zephyr.git
+      revision: 1f6485eca25431b5ff27ce9a754218c9e559bbbb # v4.4.1
+      import: true
+    - name: zenoh-pico
+      url: https://github.com/eclipse-zenoh/zenoh-pico.git
+      revision: e83d39b4415f6897e8d6c3b3b651ca88a05f4a17 # v1.9.0
+      path: modules/lib/zenoh-pico
+    - name: cjson
+      url: https://github.com/DaveGamble/cJSON.git
+      revision: acc76239bee01d8e9c858ae2cab296704e52d916 # v1.7.18
+      path: modules/lib/cjson
+
+  self:
+    path: extrittio
