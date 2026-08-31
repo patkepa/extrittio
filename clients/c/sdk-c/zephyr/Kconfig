@@ -1,0 +1,25 @@
+# Copyright (c) 2026 Extrittio contributors
+# SPDX-License-Identifier: Apache-2.0
+
+menuconfig EXTRITTIO_SDK_C
+	bool "Extrittio embedded C SDK"
+	default y
+	depends on ZEPHYR_NANOPB_MODULE
+	depends on ZEPHYR_ZENOH_PICO_MODULE
+	select NANOPB
+	select ZENOH_PICO
+	help
+	  Build Extrittio's portable protocol, provisioning, contract, shadow,
+	  command, telemetry, logging, heartbeat, and OTA helpers.
+
+if EXTRITTIO_SDK_C
+
+config EXTRITTIO_PROVISIONING_MAX_PAYLOAD
+	int "Maximum BLE bootstrap payload size"
+	default 24576
+	range 4096 65536
+	help
+	  Maximum accepted bootstrap JSON size. The payload is streamed directly
+	  to flash and is not retained in RAM while it is transferred.
+
+endif

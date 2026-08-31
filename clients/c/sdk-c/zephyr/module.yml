@@ -1,0 +1,4 @@
+name: extrittio-sdk-c
+build:
+  cmake: .
+  kconfig: zephyr/Kconfig

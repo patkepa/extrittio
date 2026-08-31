@@ -8,7 +8,7 @@ include(FetchContent)
 FetchContent_Declare(
     zenohpico_src
     GIT_REPOSITORY https://github.com/eclipse-zenoh/zenoh-pico.git
-    GIT_TAG        f9c59bb19c2fb4204e1f6348fb74a45882dd17af # 1.2.1
+    GIT_TAG        e83d39b4415f6897e8d6c3b3b651ca88a05f4a17 # 1.9.0
 )
 FetchContent_Populate(zenohpico_src)
 

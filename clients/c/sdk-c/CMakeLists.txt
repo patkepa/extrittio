@@ -8,8 +8,8 @@ set(
 )
 set(EXTRITTIO_NANOPB_OPTIONS "${CMAKE_CURRENT_SOURCE_DIR}/nanopb/telemetry.options")
 
-# When used standalone (not as ESP-IDF component)
-if(NOT ESP_PLATFORM)
+# When used standalone (not as an ESP-IDF component or Zephyr module)
+if(NOT ESP_PLATFORM AND NOT DEFINED ZEPHYR_BASE)
     project(extrittio-sdk-c C)
     set(CMAKE_C_STANDARD 11)
     set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -42,13 +42,17 @@ if(NOT ESP_PLATFORM)
     FetchContent_Declare(
         zenohpico
         GIT_REPOSITORY https://github.com/eclipse-zenoh/zenoh-pico.git
-        GIT_TAG        f9c59bb19c2fb4204e1f6348fb74a45882dd17af # 1.2.1
+        GIT_TAG        e83d39b4415f6897e8d6c3b3b651ca88a05f4a17 # 1.9.0
     )
     FetchContent_MakeAvailable(zenohpico)
 endif()
 
 # --- SDK Library ---
 set(SDK_SOURCES
+    src/sha256.c
+    src/provisioning.c
+    src/bootstrap.c
+    src/contract.c
     src/topics.c
     src/time_utils.c
     src/sensor.c
@@ -61,7 +65,37 @@ set(SDK_SOURCES
     generated/telemetry.pb.c
 )
 
-if(ESP_PLATFORM)
+if(DEFINED ZEPHYR_BASE)
+    if(NOT CONFIG_EXTRITTIO_SDK_C)
+        return()
+    endif()
+
+    if(NOT ZEPHYR_NANOPB_MODULE_DIR)
+        message(FATAL_ERROR "Extrittio SDK requires the nanopb Zephyr module")
+    endif()
+
+    set(
+        EXTRITTIO_CJSON_ROOT
+        "${CMAKE_CURRENT_LIST_DIR}/../../../../modules/lib/cjson"
+        CACHE PATH
+        "Path to the pinned cJSON source in the west workspace"
+    )
+    if(NOT EXISTS "${EXTRITTIO_CJSON_ROOT}/cJSON.c")
+        message(FATAL_ERROR
+            "cJSON was not found at ${EXTRITTIO_CJSON_ROOT}; run west update from the Zephyr workspace"
+        )
+    endif()
+
+    zephyr_library_named(extrittio_sdk_c)
+    zephyr_library_sources(${SDK_SOURCES} "${EXTRITTIO_CJSON_ROOT}/cJSON.c")
+    zephyr_library_include_directories(
+        include
+        generated
+        "${EXTRITTIO_CJSON_ROOT}"
+        "${ZEPHYR_NANOPB_MODULE_DIR}"
+    )
+    zephyr_library_compile_options(-Wall -Wextra -Werror=implicit-function-declaration)
+elseif(ESP_PLATFORM)
     # ESP-IDF component mode
     idf_component_register(
         SRCS ${SDK_SOURCES}
@@ -91,6 +125,10 @@ else()
     endfunction()
 
     sdk_add_test(test_topics tests/test_topics.c)
+    sdk_add_test(test_sha256 tests/test_sha256.c)
+    sdk_add_test(test_provisioning tests/test_provisioning.c)
+    sdk_add_test(test_bootstrap tests/test_bootstrap.c)
+    sdk_add_test(test_contract tests/test_contract.c)
     sdk_add_test(test_sensor tests/test_sensor.c)
     sdk_add_test(test_ota tests/test_ota.c)
     sdk_add_test(test_telemetry tests/test_telemetry.c)

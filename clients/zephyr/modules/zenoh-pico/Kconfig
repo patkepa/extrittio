@@ -1,0 +1,54 @@
+# Extrittio extension of zenoh-pico 1.9.0's Zephyr Kconfig.
+
+config ZENOH_PICO
+	bool "Zenoh PICO library"
+
+if ZENOH_PICO
+
+config ZENOH_PICO_LINK_SERIAL
+	bool "Serial link"
+
+config ZENOH_PICO_MULTI_THREAD
+	bool "Multithreading support"
+
+config ZENOH_PICO_PUBLICATION
+	bool "Publication support"
+
+config ZENOH_PICO_SUBSCRIPTION
+	bool "Subscription support"
+
+config ZENOH_PICO_QUERY
+	bool "Query support"
+
+config ZENOH_PICO_QUERYABLE
+	bool "Queryable support"
+
+config ZENOH_PICO_RAWETH_TRANSPORT
+	bool "Raw Ethernet support"
+
+config ZENOH_PICO_LINK_TCP
+	bool "TCP link"
+	depends on NET_TCP
+
+config ZENOH_PICO_LINK_TLS
+	bool "TLS link"
+	depends on ZENOH_PICO_LINK_TCP
+	depends on MBEDTLS
+	help
+	  Enable zenoh-pico's TLS locator and mTLS client credentials on Zephyr.
+	  This fills the Zephyr integration gap in the pinned upstream 1.9.0
+	  release without changing zenoh-pico's protocol implementation.
+
+config ZENOH_PICO_LINK_UDP_UNICAST
+	bool "UDP unicast"
+
+config ZENOH_PICO_LINK_UDP_MULTICAST
+	bool "UDP multicast"
+
+config ZENOH_PICO_SCOUTING
+	bool "Scouting UDP"
+
+config ZENOH_PICO_LINK_WS
+	bool "WebSocket link"
+
+endif

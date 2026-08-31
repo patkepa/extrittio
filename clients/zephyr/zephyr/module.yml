@@ -1,0 +1,10 @@
+name: extrittio-zephyr
+build:
+  cmake: .
+  kconfig: Kconfig
+  settings:
+    module_ext_root: .
+samples:
+  - .
+tests:
+  - tests
