@@ -9,8 +9,7 @@ use diesel::result::{DatabaseErrorKind, Error};
 use diesel::sql_types::Text;
 use diesel::{Connection, PgConnection, QueryableByName, RunQueryDsl};
 
-const AUTH_EPOCH_SQL: &str =
-    include_str!("../migrations/20260831010000_user_auth_epoch/up.sql");
+const AUTH_EPOCH_SQL: &str = include_str!("../migrations/20260831010000_user_auth_epoch/up.sql");
 const NONEMPTY_SQL: &str =
     include_str!("../migrations/20260831020000_user_auth_epoch_nonempty/up.sql");
 
@@ -66,14 +65,14 @@ struct EpochRow {
 #[test]
 fn migration_backfills_unique_epochs_and_enforces_future_values() {
     let Some(mut schema) = IsolatedSchema::from_environment() else {
-        eprintln!("skipping PostgreSQL user-auth-epoch migration contract: DATABASE_URL is not set");
+        eprintln!(
+            "skipping PostgreSQL user-auth-epoch migration contract: DATABASE_URL is not set"
+        );
         return;
     };
     schema
         .connection
-        .batch_execute(
-            "INSERT INTO users (username) VALUES ('legacy-a'), ('legacy-b');",
-        )
+        .batch_execute("INSERT INTO users (username) VALUES ('legacy-a'), ('legacy-b');")
         .expect("seed representative pre-migration users");
 
     schema
@@ -101,11 +100,10 @@ fn migration_backfills_unique_epochs_and_enforces_future_values() {
         "every existing principal receives a distinct epoch"
     );
 
-    let generated = diesel::sql_query(
-        "INSERT INTO users (username) VALUES ('new-user') RETURNING auth_epoch",
-    )
-    .get_result::<EpochRow>(&mut schema.connection)
-    .expect("the database default protects non-repository inserts");
+    let generated =
+        diesel::sql_query("INSERT INTO users (username) VALUES ('new-user') RETURNING auth_epoch")
+            .get_result::<EpochRow>(&mut schema.connection)
+            .expect("the database default protects non-repository inserts");
     assert!(!generated.auth_epoch.is_empty());
 
     let duplicate = diesel::sql_query(
@@ -119,11 +117,10 @@ fn migration_backfills_unique_epochs_and_enforces_future_values() {
         Error::DatabaseError(DatabaseErrorKind::UniqueViolation, _)
     ));
 
-    let empty = diesel::sql_query(
-        "INSERT INTO users (username, auth_epoch) VALUES ('empty-epoch', '')",
-    )
-    .execute(&mut schema.connection)
-    .expect_err("empty epochs must be rejected");
+    let empty =
+        diesel::sql_query("INSERT INTO users (username, auth_epoch) VALUES ('empty-epoch', '')")
+            .execute(&mut schema.connection)
+            .expect_err("empty epochs must be rejected");
     let Error::DatabaseError(DatabaseErrorKind::CheckViolation, information) = empty else {
         panic!("expected the auth-epoch check constraint, got {empty}");
     };

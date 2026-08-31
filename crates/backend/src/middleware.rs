@@ -205,7 +205,10 @@ pub async fn auth_middleware(
         }
     };
     let claims = mapped_claims.claims().clone();
-    let auth_epoch = claims.auth_epoch.as_deref().filter(|value| !value.is_empty());
+    let auth_epoch = claims
+        .auth_epoch
+        .as_deref()
+        .filter(|value| !value.is_empty());
     let Some(auth_epoch) = auth_epoch else {
         tracing::warn!(
             path,

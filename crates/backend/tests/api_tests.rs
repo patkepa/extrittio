@@ -1448,10 +1448,11 @@ async fn test_login_cookie_token_me_and_session_invalidation() {
 
     let claims = extrittio_backend::auth::validate_token(&token, "test-secret-key").unwrap();
     assert_eq!(claims.sub, user_id);
-    assert_eq!(
-        claims.tenant_id.as_deref(),
-        Some(extrittio_backend::tenancy::DEFAULT_TENANT_ID)
-    );
+    let persisted_tenant = claims
+        .tenant_id
+        .as_deref()
+        .expect("new sessions carry an explicit tenant");
+    assert_eq!(persisted_tenant, "default");
     assert_eq!(claims.permission_version, 2);
     let issued_auth_epoch = claims
         .auth_epoch
@@ -1510,13 +1511,11 @@ async fn test_login_cookie_token_me_and_session_invalidation() {
             sub: user_id,
             username: "login-user",
             role: "viewer",
-            tenant_id: extrittio_backend::tenancy::DEFAULT_TENANT_ID,
+            tenant_id: persisted_tenant,
             scopes: claims.scopes.clone(),
             permission_version: 2,
-            exp: usize::try_from(
-                (chrono::Utc::now() + chrono::Duration::hours(1)).timestamp(),
-            )
-            .unwrap(),
+            exp: usize::try_from((chrono::Utc::now() + chrono::Duration::hours(1)).timestamp())
+                .unwrap(),
         },
         &jsonwebtoken::EncodingKey::from_secret(b"test-secret-key"),
     )
@@ -1538,12 +1537,13 @@ async fn test_login_cookie_token_me_and_session_invalidation() {
         "UPDATE users SET permission_version = permission_version + 1 \
          WHERE tenant_id = $1 AND id = $2",
     )
-    .bind::<diesel::sql_types::Text, _>(extrittio_backend::tenancy::DEFAULT_TENANT_ID)
+    .bind::<diesel::sql_types::Text, _>(persisted_tenant)
     .bind::<diesel::sql_types::Integer, _>(user_id)
     .execute(&mut pool.get().unwrap())
     .unwrap();
 
     let invalidated = authenticated_app
+        .clone()
         .oneshot(
             Request::builder()
                 .uri("/api/v1/auth/me")
@@ -1558,7 +1558,7 @@ async fn test_login_cookie_token_me_and_session_invalidation() {
     let replacement_password_hash = extrittio_backend::auth::hash_password(password).unwrap();
     let mut connection = pool.get().unwrap();
     diesel::sql_query("DELETE FROM users WHERE tenant_id = $1 AND id = $2")
-        .bind::<diesel::sql_types::Text, _>(extrittio_backend::tenancy::DEFAULT_TENANT_ID)
+        .bind::<diesel::sql_types::Text, _>(persisted_tenant)
         .bind::<diesel::sql_types::Integer, _>(user_id)
         .execute(&mut connection)
         .unwrap();
@@ -1568,7 +1568,7 @@ async fn test_login_cookie_token_me_and_session_invalidation() {
          VALUES ($2, $1, 'login-user', $3, 'viewer', TRUE, 2) \
          RETURNING auth_epoch",
     )
-    .bind::<diesel::sql_types::Text, _>(extrittio_backend::tenancy::DEFAULT_TENANT_ID)
+    .bind::<diesel::sql_types::Text, _>(persisted_tenant)
     .bind::<diesel::sql_types::Integer, _>(user_id)
     .bind::<diesel::sql_types::Text, _>(replacement_password_hash)
     .get_result::<AuthEpochRow>(&mut connection)
@@ -1579,7 +1579,7 @@ async fn test_login_cookie_token_me_and_session_invalidation() {
          SELECT $1, id, $2 FROM roles WHERE tenant_id = $2 AND name = 'viewer'",
     )
     .bind::<diesel::sql_types::Integer, _>(user_id)
-    .bind::<diesel::sql_types::Text, _>(extrittio_backend::tenancy::DEFAULT_TENANT_ID)
+    .bind::<diesel::sql_types::Text, _>(persisted_tenant)
     .execute(&mut connection)
     .unwrap();
     drop(connection);
