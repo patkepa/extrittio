@@ -252,6 +252,121 @@ fn contract_blueprint_document() -> Value {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_role_http_contract_and_permission_catalog_order_are_preserved() {
+    let _guard = TEST_DB_LOCK.lock().await;
+    let (app, pool) = setup_app_with_context(test_context()).await;
+    diesel::delete(
+        extrittio_backend::db::schema::roles::table
+            .filter(extrittio_backend::db::schema::roles::is_system.eq(false)),
+    )
+    .execute(&mut pool.get().unwrap())
+    .unwrap();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/roles/permissions")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let permissions: Value = serde_json::from_slice(&body).unwrap();
+    let expected = [
+        "firmware.deploy",
+        "alerts.manage",
+        "device_blueprints.manage",
+        "device_types.manage",
+        "devices.manage",
+        "api_keys.manage",
+        "firmware.manage",
+        "fleets.manage",
+        "rules.manage",
+        "roles.manage",
+        "shadows.manage",
+        "users.manage",
+        "zones.manage",
+        "commands.read",
+        "alerts.read",
+        "device_blueprints.read",
+        "device_types.read",
+        "devices.read",
+        "fleets.read",
+        "firmware.read",
+        "logs.read",
+        "rules.read",
+        "roles.read",
+        "server_metrics.read",
+        "shadows.read",
+        "telemetry.read",
+        "users.read",
+        "zones.read",
+        "commands.send",
+    ];
+    assert_eq!(
+        permissions,
+        Value::Array(
+            expected
+                .iter()
+                .map(|key| serde_json::json!({ "key": key }))
+                .collect()
+        )
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/roles")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"name":"owner","description":null,"permissions":[]}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let error: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(error["code"], "bad_request");
+    assert_eq!(error["message"], "'owner' is reserved for a built-in role");
+    assert_eq!(error["error"], error["message"]);
+
+    let create = || {
+        Request::builder()
+            .method("POST")
+            .uri("/api/v1/roles")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                r#"{"name":"Support_Team","description":"Escalations","permissions":["devices.read","devices.read"]}"#,
+            ))
+            .unwrap()
+    };
+    let response = app.clone().oneshot(create()).await.unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let role: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(role["name"], "support_team");
+    assert_eq!(role["description"], "Escalations");
+    assert_eq!(role["is_system"], false);
+    assert_eq!(role["permissions"], serde_json::json!(["devices.read"]));
+    assert_eq!(role["user_count"], 0);
+
+    let response = app.oneshot(create()).await.unwrap();
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let error: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(error["code"], "conflict");
+    assert_eq!(error["message"], "Role name already exists");
+    assert_eq!(error["error"], error["message"]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_device_blueprint_draft_validation_and_publication() {
     let _guard = TEST_DB_LOCK.lock().await;
     let app = setup_app().await;

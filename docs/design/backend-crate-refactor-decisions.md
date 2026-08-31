@@ -395,7 +395,7 @@ No migration file changes are required: both shipped schemas already enforce ten
 ### Required tests
 
 - Tenant isolation and wrong-tenant update/delete outcomes.
-- System-first binary role ordering, binary permission ordering, and ID tie behavior.
+- System-first binary role ordering and binary permission ordering. Verify that both queries retain `id ASC` as a defensive final key; tenant/name uniqueness means a same-group name-tie fixture is not constructible.
 - Stable duplicate constraint mapping for create and rename, including concurrent duplicate creates.
 - Atomic rollback of multi-field updates.
 - Assigned-user permission-version increments for permission-only and concurrent permission updates; no increment for metadata-only or empty updates.

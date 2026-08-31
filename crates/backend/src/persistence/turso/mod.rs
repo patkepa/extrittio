@@ -55,9 +55,7 @@ pub fn create_runtime(database: Arc<TursoDatabase>) -> DatabaseRuntime {
 
 fn build_repositories(database: Arc<TursoDatabase>) -> RepositorySet {
     let (zones, rule_zone_snapshots) = crate::database::turso_zones(&database);
-    let roles = Arc::new(extrittio_backend_turso::TursoRoleRepository::from_handles(
-        database.shared_handles(),
-    ));
+    let roles = crate::database::turso_roles(&database);
     let adapter = Arc::new(TursoAdapter::new(database));
     RepositorySet::new(RepositoryPorts {
         activity: adapter.clone(),

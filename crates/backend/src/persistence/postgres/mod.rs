@@ -58,8 +58,7 @@ pub fn create_runtime(pool: PostgresPool) -> DatabaseRuntime {
 
 fn build_repositories(pool: PostgresPool) -> RepositorySet {
     let (zones, rule_zone_snapshots) = crate::database::postgres_zones(&pool);
-    let roles =
-        Arc::new(extrittio_backend_postgres::PostgresRoleRepository::from_pool(pool.clone()));
+    let roles = crate::database::postgres_roles(&pool);
     let adapter = Arc::new(PostgresAdapter::new(pool));
     RepositorySet::new(RepositoryPorts {
         activity: adapter.clone(),

@@ -1352,9 +1352,11 @@ Finish **P1/P2 boundary closure** before starting P3.1. The zones pilot has prov
 
 The closure checkpoint passes when the broad runtime state no longer exposes repositories, business ports contain no lifecycle operation, both zone contracts pass, migrations run only from adapter-owned assets, and `cargo xtask architecture` plus the full feature matrix are green.
 
-### 26.3 Then implement P3.1: identity and bootstrap
+### 26.3 Continue P3.1: identity and bootstrap
 
-Move one reviewable sub-slice at a time in this order: roles/permissions, users/passwords, API keys/nonces, certificates/key protection, then idempotent bootstrap. For each sub-slice:
+The roles/permissions sub-slice is complete. It established the core-owned permission catalog and role application/port, adapter-owned repositories, the independent shared role contract, host `Application` routing, and deletion of every legacy host role implementation. ADR-007 is the implementation authority for its resolved ordering, conflict, invalidation, timestamp, and compatibility behavior.
+
+Continue one reviewable sub-slice at a time in this order: users/passwords, API keys/nonces, certificates/key protection, then idempotent bootstrap. For each remaining sub-slice:
 
 1. characterize tenant, authorization, conflict, ordering, and transaction behavior;
 2. move domain policy and use cases to core without transport or environment dependencies;

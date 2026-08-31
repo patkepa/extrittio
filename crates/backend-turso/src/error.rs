@@ -75,9 +75,7 @@ mod tests {
     #[test]
     fn maps_adapter_constraint_text_to_stable_business_names() {
         assert_eq!(
-            unique_constraint(
-                "UNIQUE constraint failed: roles.tenant_id, roles.name"
-            ),
+            unique_constraint("UNIQUE constraint failed: roles.tenant_id, roles.name"),
             "roles.tenant_name"
         );
         assert_eq!(
