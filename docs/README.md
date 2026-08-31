@@ -8,6 +8,9 @@ proposals, not in the operational documentation.
 
 - [Backend crate architecture plan](design/backend-crate-architecture-plan.md)
   — proposed modular-monolith crate boundaries and migration sequence.
+- [Embedded WebRTC live media plan](design/embedded-webrtc-live-media-plan.md)
+  — proposed single-process device publishing and web/iOS live viewing without
+  separately operated media infrastructure.
 
 ## Architecture
 
