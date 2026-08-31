@@ -1,6 +1,5 @@
 use async_trait::async_trait;
 use chrono::NaiveDateTime;
-use serde_json::Value;
 use turso::{Connection, Row, params};
 
 use crate::domains::rules::port::RuleRepository;
@@ -10,9 +9,7 @@ use crate::domains::rules::types::{
 };
 use crate::persistence::PersistenceError;
 use crate::rule_engine::cache::RuleCache;
-use crate::rule_engine::types::{
-    CachedAction, CachedCondition, CachedRule, CachedZone, ZoneGeometry,
-};
+use crate::rule_engine::types::{CachedAction, CachedCondition, CachedRule};
 use crate::tenancy::TenantId;
 
 use super::{TursoAdapter, row};
@@ -97,34 +94,6 @@ async fn insert_children(
         c.execute("INSERT INTO rule_actions(id,tenant_id,rule_id,action_type,config)VALUES(?1,?2,?3,?4,?5)",params![v.id,tenant,rule_id,v.action_type,serde_json::to_string(&v.config).map_err(|e|PersistenceError::Internal(e.to_string()))?]).await.map_err(row::error)?;
     }
     Ok(())
-}
-
-fn geometry(kind: &str, json: &Value) -> Option<ZoneGeometry> {
-    match kind {
-        "circle" => {
-            let c = json.get("center")?.as_array()?;
-            if c.len() != 2 {
-                return None;
-            }
-            Some(ZoneGeometry::Circle {
-                center_lat: c[0].as_f64()?,
-                center_lon: c[1].as_f64()?,
-                radius_meters: json.get("radius_meters")?.as_f64()?,
-            })
-        }
-        "polygon" => Some(ZoneGeometry::Polygon {
-            points: json
-                .get("points")?
-                .as_array()?
-                .iter()
-                .map(|p| {
-                    let p = p.as_array()?;
-                    (p.len() == 2).then(|| Some((p[0].as_f64()?, p[1].as_f64()?)))?
-                })
-                .collect::<Option<Vec<_>>>()?,
-        }),
-        _ => None,
-    }
 }
 
 #[async_trait]
@@ -349,23 +318,6 @@ impl RuleRepository for TursoAdapter {
             );
         }
         drop(rows);
-        let mut rows = c
-            .query("SELECT id,name,geometry_type,geometry_json FROM zones", ())
-            .await
-            .map_err(row::error)?;
-        while let Some(r) = rows.next().await.map_err(row::error)? {
-            let id: String = r.get(0).map_err(row::error)?;
-            let name = r.get(1).map_err(row::error)?;
-            let kind: String = r.get(2).map_err(row::error)?;
-            let raw: String = r.get(3).map_err(row::error)?;
-            let json: Value = serde_json::from_str(&raw)
-                .map_err(|e| PersistenceError::CorruptData(e.to_string()))?;
-            if let Some(geometry) = geometry(&kind, &json) {
-                cache
-                    .zones
-                    .insert(id.clone(), CachedZone { id, name, geometry });
-            }
-        }
         Ok(cache)
     }
     async fn delete_stale_cooldowns(

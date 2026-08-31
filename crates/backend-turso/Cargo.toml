@@ -8,15 +8,24 @@ repository.workspace = true
 homepage.workspace = true
 publish.workspace = true
 
+[features]
+default = []
+# Temporary surface used by unmigrated host repositories. Remove after the
+# final Turso domain slice moves into this crate.
+migration-bridge = []
+
 [dependencies]
 async-trait = "0.1"
+base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 extrittio-backend-core = { path = "../backend-core" }
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 thiserror = "2"
 tokio = { version = "1", features = ["sync"] }
 turso = { version = "=0.7.2", default-features = false }
+uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 tempfile = "3"

@@ -18,7 +18,6 @@ mod fleets;
 mod logs;
 mod metrics;
 mod outbox;
-mod roles;
 mod row;
 mod rules;
 mod shadows;
@@ -55,7 +54,10 @@ pub fn create_runtime(database: Arc<TursoDatabase>) -> DatabaseRuntime {
 }
 
 fn build_repositories(database: Arc<TursoDatabase>) -> RepositorySet {
-    let zones = crate::database::turso_zones(&database);
+    let (zones, rule_zone_snapshots) = crate::database::turso_zones(&database);
+    let roles = Arc::new(extrittio_backend_turso::TursoRoleRepository::from_handles(
+        database.shared_handles(),
+    ));
     let adapter = Arc::new(TursoAdapter::new(database));
     RepositorySet::new(RepositoryPorts {
         activity: adapter.clone(),
@@ -77,7 +79,8 @@ fn build_repositories(database: Arc<TursoDatabase>) -> RepositorySet {
         logs: adapter.clone(),
         metrics: adapter.clone(),
         outbox: adapter.clone(),
-        roles: adapter.clone(),
+        roles,
+        rule_zone_snapshots,
         rules: adapter.clone(),
         shadows: adapter.clone(),
         telemetry: adapter.clone(),

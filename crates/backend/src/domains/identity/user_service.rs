@@ -1,7 +1,6 @@
 use crate::auth::context::{MappedUserClaims, RequestContext};
 use crate::auth::policy::{self, Permission};
 use crate::auth::{hash_password, verify_password};
-use crate::domains::identity::role_types::RoleRecord;
 use crate::domains::identity::user_repository::UserRepository;
 use crate::domains::identity::user_types::{
     CreateUserOutcome, CreateUserRecord, DeleteUserOutcome, SetUserRolesOutcome, UserDetails,
@@ -10,6 +9,7 @@ use crate::domains::identity::user_types::{
 use crate::error::AppError;
 use crate::persistence::PersistenceError;
 use crate::tenancy::TenantId;
+use extrittio_backend_core::{ADMIN_ROLE, OWNER_ROLE, Role};
 
 pub const MIN_PASSWORD_LEN: usize = 12;
 
@@ -19,7 +19,7 @@ pub struct AuthenticatedUser {
     pub tenant_id: String,
     pub username: String,
     pub role: String,
-    pub roles: Vec<RoleRecord>,
+    pub roles: Vec<Role>,
     pub permissions: Vec<String>,
     pub permission_version: i32,
 }
@@ -219,15 +219,11 @@ fn authenticated_user_from_details(details: UserDetails) -> AuthenticatedUser {
     }
 }
 
-fn primary_role_name(roles: &[RoleRecord]) -> Option<&str> {
+fn primary_role_name(roles: &[Role]) -> Option<&str> {
     roles
         .iter()
-        .find(|role| role.name == super::role_service::OWNER_ROLE)
-        .or_else(|| {
-            roles
-                .iter()
-                .find(|role| role.name == super::role_service::ADMIN_ROLE)
-        })
+        .find(|role| role.name == OWNER_ROLE)
+        .or_else(|| roles.iter().find(|role| role.name == ADMIN_ROLE))
         .or_else(|| roles.first())
         .map(|role| role.name.as_str())
 }

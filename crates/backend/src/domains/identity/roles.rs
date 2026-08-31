@@ -4,15 +4,13 @@ use axum::{
     http::StatusCode,
     routing::get,
 };
+use extrittio_backend_core::{CreateRole, RoleDetails, RoleUpdate};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
 
 use crate::auth::context::RequestContext;
-use crate::auth::policy::{self, Permission};
-use crate::domains::identity::role_types::RoleDetails;
 use crate::error::AppError;
-use crate::services::role_service;
 use crate::state::AppState;
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -66,7 +64,11 @@ pub(crate) async fn list_roles(
     State(state): State<Arc<AppState>>,
     axum::Extension(ctx): axum::Extension<RequestContext>,
 ) -> Result<Json<Vec<RoleResponse>>, AppError> {
-    let roles = role_service::list(&ctx, state.persistence.roles.as_ref()).await?;
+    let roles = state
+        .application()
+        .roles()
+        .list(&ctx.tenant_context())
+        .await?;
     Ok(Json(roles.into_iter().map(role_response).collect()))
 }
 
@@ -79,11 +81,15 @@ pub(crate) async fn list_roles(
     responses((status = 200, description = "Available permissions", body = Vec<PermissionResponse>)),
 )]
 pub(crate) async fn list_permissions(
+    State(state): State<Arc<AppState>>,
     axum::Extension(ctx): axum::Extension<RequestContext>,
 ) -> Result<Json<Vec<PermissionResponse>>, AppError> {
-    policy::require(&ctx, Permission::ReadRoles)?;
+    let permissions = state
+        .application()
+        .roles()
+        .available_permissions(&ctx.tenant_context())?;
     Ok(Json(
-        Permission::all()
+        permissions
             .iter()
             .map(|permission| PermissionResponse {
                 key: permission.key().to_string(),
@@ -110,14 +116,18 @@ pub(crate) async fn create_role(
     axum::Extension(ctx): axum::Extension<RequestContext>,
     Json(body): Json<CreateRoleRequest>,
 ) -> Result<(StatusCode, Json<RoleResponse>), AppError> {
-    let role = role_service::create(
-        &ctx,
-        state.persistence.roles.as_ref(),
-        &body.name,
-        body.description,
-        &body.permissions,
-    )
-    .await?;
+    let role = state
+        .application()
+        .roles()
+        .create(
+            &ctx.tenant_context(),
+            CreateRole {
+                name: body.name,
+                description: body.description,
+                permissions: body.permissions,
+            },
+        )
+        .await?;
 
     Ok((StatusCode::CREATED, Json(role_response(role))))
 }
@@ -143,15 +153,19 @@ pub(crate) async fn update_role(
     Path(id): Path<i32>,
     Json(body): Json<UpdateRoleRequest>,
 ) -> Result<Json<RoleResponse>, AppError> {
-    let role = role_service::update(
-        &ctx,
-        state.persistence.roles.as_ref(),
-        id,
-        body.name,
-        body.description.map(Some),
-        body.permissions,
-    )
-    .await?;
+    let role = state
+        .application()
+        .roles()
+        .update(
+            &ctx.tenant_context(),
+            id,
+            RoleUpdate {
+                name: body.name,
+                description: body.description.map(Some),
+                permissions: body.permissions,
+            },
+        )
+        .await?;
 
     Ok(Json(role_response(role)))
 }
@@ -175,7 +189,11 @@ pub(crate) async fn delete_role(
     axum::Extension(ctx): axum::Extension<RequestContext>,
     Path(id): Path<i32>,
 ) -> Result<StatusCode, AppError> {
-    role_service::delete(&ctx, state.persistence.roles.as_ref(), id).await?;
+    state
+        .application()
+        .roles()
+        .delete(&ctx.tenant_context(), id)
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

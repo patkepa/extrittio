@@ -18,6 +18,7 @@ use extrittio_backend::domains::identity::certificate_types::{
 };
 use extrittio_backend::repositories::cert_repo;
 use extrittio_backend::services::cert_service;
+use extrittio_backend::state::{AppState, AppStateInput};
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!("../backend-postgres/migrations");
 const DEFAULT_TEST_DATABASE_URL: &str =
@@ -137,10 +138,8 @@ async fn setup_app_with_ca() -> (axum::Router, Pool<ConnectionManager<PgConnecti
         insert_generated_ca(&mut conn, ca);
     }
     let database = extrittio_backend::persistence::postgres::create_runtime(db_pool.clone());
-    let persistence = database.repositories().clone();
 
-    let state = Arc::new(extrittio_backend::state::AppState {
-        persistence,
+    let state = Arc::new(AppState::new(AppStateInput {
         database,
         zenoh_session: Arc::new(zenoh_session),
         zenoh_tls_enabled: false,
@@ -163,7 +162,7 @@ async fn setup_app_with_ca() -> (axum::Router, Pool<ConnectionManager<PgConnecti
         ),
         readiness: Arc::new(extrittio_backend::state::ReadinessRegistry::new(true, true)),
         thread_runtime: None,
-    });
+    }));
 
     let router = extrittio_backend::api::router(100 * 1024 * 1024, true)
         .layer(axum::Extension(test_context()))

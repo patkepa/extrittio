@@ -15,6 +15,7 @@ This document resolves the behavior choices that must be stable before code move
 | ADR-004 | Firmware upload/delete retains the current best-effort compensation order | P3.6 |
 | ADR-005 | Rule snapshots reload every 5 seconds by default, with a bounded healthy-state contract | P3.3 |
 | ADR-006 | Tenant zone lists use binary `name ASC, id ASC` order | P2.4 |
+| ADR-007 | Roles use system-first binary order, atomic permission invalidation, and one timestamp update per successful mutation | P3.1 |
 
 ## ADR-001: Legacy missing-tenant mapping
 
@@ -345,6 +346,62 @@ Cross-tenant `list_all` is removed from tenant CRUD. The system rule-snapshot lo
 - The system snapshot order includes `tenant_id` as its first key.
 - A PostgreSQL preflight detects existing duplicate `(tenant_id, name)` values without changing data.
 - CRUD not-found, in-use delete, and geometry error behavior remains unchanged.
+
+## ADR-007: Canonical role and permission mutation semantics
+
+- **Status:** Accepted as a cross-adapter security and determinism correction
+- **Owner work package:** P3.1 roles/permissions
+
+### Context and evidence
+
+- The legacy PostgreSQL role list returned system roles first, while Turso ordered every role only by name and ID. Neither contract fixed collation.
+- PostgreSQL advanced `roles.updated_at` for every successful custom-role update, including permission-only and empty patches. Turso advanced it only for name or description changes.
+- PostgreSQL invalidated assigned users' signed authorization state by incrementing `users.permission_version` when role permissions changed. Turso replaced permissions without that invalidation.
+- Database-generated duplicate identifiers differed by engine and were not a stable business contract.
+- The HTTP permission-catalog array order is externally observable and was already consumed by clients.
+
+These differences cannot remain behind one core port. The missing Turso invalidation is security-sensitive because an already issued token could otherwise retain changed authorization until another user mutation.
+
+### Decision
+
+The core `RoleRepository` and `RoleApplication` contract is:
+
+1. Every operation requires the exact tenant. A role ID owned by another tenant behaves as not found and cannot affect that tenant's users or permissions.
+2. `list` returns all system roles first, followed by custom roles. Within each group it sorts by binary `name ASC`, then `id ASC`. Each role's permission keys use binary ascending order.
+3. Exact role names are unique per tenant. A duplicate create or rename maps to `UniqueViolation` with stable constraint name `roles.tenant_name`; generated database constraint names do not cross the adapter boundary. Role primary-key conflicts use `roles.id` where exposed.
+4. Create, hydrate, permission insertion, and every multi-field update are atomic. A failed name or permission write rolls the entire mutation back.
+5. Replacing permissions increments `permission_version` once for every assigned user in the same transaction. Metadata-only and empty patches do not invalidate permission versions.
+6. Every successful update of a custom role sets `updated_at` once from the adapter/database clock, including metadata-only, permission-only, and empty patches. Timestamps round-trip at UTC microsecond precision. Missing and system-role outcomes do not change the timestamp.
+7. Delete atomically distinguishes missing, system, in-use, and deleted. In-use includes the role name and current assignment count; a successful retry returns not found.
+8. The single core `Permission` catalog is authoritative. The host policy module is only a compatibility façade, and `Permission::all()` preserves the existing `/api/v1/roles/permissions` array order exactly.
+
+No migration file changes are required: both shipped schemas already enforce tenant-local role-name uniqueness and have the required permission-version column. Existing migration bytes and checksums remain unchanged.
+
+### Consequences
+
+- Turso now invalidates authorization state with the same transactional guarantee as PostgreSQL.
+- Turso role list order and timestamp behavior intentionally change to the canonical contract.
+- Callers receive deterministic output independent of database locale or insertion order.
+- Empty update requests remain successful and observable through `updated_at`, matching PostgreSQL compatibility behavior.
+- Role contracts live in their own harness and do not couple role fixtures or lifecycle hooks to the zones walking-skeleton harness.
+
+### Compatibility and rollout
+
+- HTTP paths, methods, DTO fields, status codes, public messages, and OpenAPI schemas remain unchanged.
+- The permission endpoint's exact key order is locked by a core golden test and host compatibility coverage.
+- Both adapters are composed from the same physical engine handle already owned by the host: a clone of the PostgreSQL pool or an owner-retaining `TursoConnectionHandles` clone.
+- The old host role service, role port/types, PostgreSQL/Turso implementations, and direct handler repository access are deleted in the same slice.
+
+### Required tests
+
+- Tenant isolation and wrong-tenant update/delete outcomes.
+- System-first binary role ordering, binary permission ordering, and ID tie behavior.
+- Stable duplicate constraint mapping for create and rename, including concurrent duplicate creates.
+- Atomic rollback of multi-field updates.
+- Assigned-user permission-version increments for permission-only and concurrent permission updates; no increment for metadata-only or empty updates.
+- `updated_at` changes once for every successful metadata, permission-only, and empty update and retains microsecond precision.
+- System-role and in-use deletion outcomes and retry behavior.
+- Exact permission-catalog order and unchanged HTTP/OpenAPI compatibility.
 
 ## Architecture exception and removal ledger
 

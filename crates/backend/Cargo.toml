@@ -30,8 +30,8 @@ phase0-turso = ["turso"]
 
 [dependencies]
 extrittio-backend-core = { version = "0.1.0", path = "../backend-core" }
-extrittio-backend-postgres = { version = "0.1.0", path = "../backend-postgres", optional = true }
-extrittio-backend-turso = { version = "0.1.0", path = "../backend-turso", optional = true }
+extrittio-backend-postgres = { version = "0.1.0", path = "../backend-postgres", optional = true, features = ["migration-bridge"] }
+extrittio-backend-turso = { version = "0.1.0", path = "../backend-turso", optional = true, features = ["migration-bridge"] }
 extrittio-common = { version = "0.1.0", path = "../common" }
 extrittio-device-contract = { version = "0.1.0", path = "../device-contract" }
 extrittio-openthread-runtime = { version = "0.1.0", path = "../openthread-runtime" }

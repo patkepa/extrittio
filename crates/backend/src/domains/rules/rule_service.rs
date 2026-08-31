@@ -1,4 +1,5 @@
 use chrono::Utc;
+use extrittio_backend_core::{RuleZoneSnapshotRepository, Zone};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -10,6 +11,7 @@ use crate::domains::rules::types::{
 };
 use crate::error::AppError;
 use crate::rule_engine::cache::RuleCache;
+use crate::rule_engine::types::{CachedZone, ZoneGeometry};
 use crate::security;
 
 const TELEMETRY_FIELDS: &[&str] = &["temperature", "humidity", "battery_level"];
@@ -205,10 +207,61 @@ pub async fn toggle_with_repository(
         .ok_or_else(|| AppError::NotFound(format!("Rule '{id}' not found")))
 }
 
-pub async fn build_cache_with_repository(
+pub async fn build_cache_with_repositories(
     repository: &dyn RuleRepository,
+    zone_snapshots: &dyn RuleZoneSnapshotRepository,
 ) -> Result<RuleCache, AppError> {
-    Ok(repository.build_cache().await?)
+    let mut cache = repository.build_cache().await?;
+    let zones = zone_snapshots
+        .list_for_rule_snapshot()
+        .await
+        .map_err(extrittio_backend_core::ApplicationError::from)?;
+    merge_zone_snapshots(&mut cache, zones);
+    Ok(cache)
+}
+
+fn merge_zone_snapshots(cache: &mut RuleCache, zones: Vec<Zone>) {
+    for zone in zones {
+        if let Some(geometry) = parse_zone_geometry(&zone.geometry_type, &zone.geometry_json) {
+            cache.zones.insert(
+                zone.id.clone(),
+                CachedZone {
+                    id: zone.id,
+                    name: zone.name,
+                    geometry,
+                },
+            );
+        }
+    }
+}
+
+fn parse_zone_geometry(geometry_type: &str, geometry_json: &Value) -> Option<ZoneGeometry> {
+    match geometry_type {
+        "circle" => {
+            let center = geometry_json.get("center")?.as_array()?;
+            if center.len() != 2 {
+                return None;
+            }
+            Some(ZoneGeometry::Circle {
+                center_lat: center[0].as_f64()?,
+                center_lon: center[1].as_f64()?,
+                radius_meters: geometry_json.get("radius_meters")?.as_f64()?,
+            })
+        }
+        "polygon" => {
+            let points = geometry_json.get("points")?.as_array()?;
+            let points = points
+                .iter()
+                .map(|point| {
+                    let coordinates = point.as_array()?;
+                    (coordinates.len() == 2)
+                        .then(|| Some((coordinates[0].as_f64()?, coordinates[1].as_f64()?)))?
+                })
+                .collect::<Option<Vec<_>>>()?;
+            Some(ZoneGeometry::Polygon { points })
+        }
+        _ => None,
+    }
 }
 
 fn validate_rule(
@@ -316,4 +369,72 @@ fn validate_rule(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use extrittio_backend_core::TenantId;
+    use serde_json::json;
+
+    use super::*;
+
+    fn zone(id: &str, name: &str, geometry_type: &str, geometry_json: Value) -> Zone {
+        let now = Utc::now();
+        Zone {
+            id: id.into(),
+            tenant_id: TenantId::new("tenant-a").expect("valid tenant"),
+            name: name.into(),
+            description: String::new(),
+            geometry_type: geometry_type.into(),
+            geometry_json,
+            color: "#4A90D9".into(),
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    #[test]
+    fn zone_snapshot_conversion_preserves_valid_geometry_and_skips_invalid_rows() {
+        let mut cache = RuleCache::default();
+        merge_zone_snapshots(
+            &mut cache,
+            vec![
+                zone(
+                    "circle",
+                    "Circle",
+                    "circle",
+                    json!({"center": [51.1, 17.0], "radius_meters": 25.0}),
+                ),
+                zone(
+                    "polygon",
+                    "Polygon",
+                    "polygon",
+                    json!({"points": [[1.0, 2.0], [3.0, 4.0]]}),
+                ),
+                zone("invalid", "Invalid", "circle", json!({"center": [51.1]})),
+                zone("unknown", "Unknown", "line", json!({})),
+            ],
+        );
+
+        assert_eq!(cache.zones.len(), 2);
+        match &cache.zones["circle"].geometry {
+            ZoneGeometry::Circle {
+                center_lat,
+                center_lon,
+                radius_meters,
+            } => {
+                assert_eq!(
+                    (*center_lat, *center_lon, *radius_meters),
+                    (51.1, 17.0, 25.0)
+                );
+            }
+            ZoneGeometry::Polygon { .. } => panic!("expected circle geometry"),
+        }
+        match &cache.zones["polygon"].geometry {
+            ZoneGeometry::Polygon { points } => {
+                assert_eq!(points, &vec![(1.0, 2.0), (3.0, 4.0)]);
+            }
+            ZoneGeometry::Circle { .. } => panic!("expected polygon geometry"),
+        }
+    }
 }

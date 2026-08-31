@@ -38,6 +38,8 @@ pub trait RuleRepository: Send + Sync {
         enabled: bool,
         updated_at: NaiveDateTime,
     ) -> Result<Option<RuleDetails>, PersistenceError>;
+    /// Loads the rule, cooldown, and active-alert portion of the cache. The
+    /// rule service composes the system-scoped zone snapshot separately.
     async fn build_cache(&self) -> Result<RuleCache, PersistenceError>;
     async fn delete_stale_cooldowns(
         &self,

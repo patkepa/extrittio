@@ -15,7 +15,6 @@ use crate::domains::firmware::port::FirmwareRepository;
 use crate::domains::fleets::repository::FleetRepository;
 use crate::domains::identity::api_key_repository::ApiKeyRepository;
 use crate::domains::identity::certificate_repository::CertificateRepository;
-use crate::domains::identity::role_repository::RoleRepository;
 use crate::domains::identity::user_repository::UserRepository;
 use crate::domains::logs::port::LogRepository;
 use crate::domains::operations::metrics_repository::MetricsRepository;
@@ -23,7 +22,7 @@ use crate::domains::operations::outbox_repository::OutboxRepository;
 use crate::domains::rules::port::RuleRepository;
 use crate::domains::shadows::repository::ShadowRepository;
 use crate::domains::telemetry::port::TelemetryRepository;
-use extrittio_backend_core::ZoneRepository;
+use extrittio_backend_core::{RoleRepository, RuleZoneSnapshotRepository, ZoneRepository};
 
 pub mod backend;
 pub mod bootstrap;
@@ -65,6 +64,7 @@ pub struct RepositorySet {
     pub metrics: Arc<dyn MetricsRepository>,
     pub outbox: Arc<dyn OutboxRepository>,
     pub roles: Arc<dyn RoleRepository>,
+    pub rule_zone_snapshots: Arc<dyn RuleZoneSnapshotRepository>,
     pub rules: Arc<dyn RuleRepository>,
     pub shadows: Arc<dyn ShadowRepository>,
     pub telemetry: Arc<dyn TelemetryRepository>,
@@ -93,6 +93,7 @@ pub struct RepositoryPorts {
     pub metrics: Arc<dyn MetricsRepository>,
     pub outbox: Arc<dyn OutboxRepository>,
     pub roles: Arc<dyn RoleRepository>,
+    pub rule_zone_snapshots: Arc<dyn RuleZoneSnapshotRepository>,
     pub rules: Arc<dyn RuleRepository>,
     pub shadows: Arc<dyn ShadowRepository>,
     pub telemetry: Arc<dyn TelemetryRepository>,
@@ -124,6 +125,7 @@ impl RepositorySet {
             metrics: ports.metrics,
             outbox: ports.outbox,
             roles: ports.roles,
+            rule_zone_snapshots: ports.rule_zone_snapshots,
             rules: ports.rules,
             shadows: ports.shadows,
             telemetry: ports.telemetry,

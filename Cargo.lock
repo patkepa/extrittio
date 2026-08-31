@@ -1517,14 +1517,17 @@ name = "extrittio-backend-turso"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "base64",
  "chrono",
  "extrittio-backend-core",
+ "serde",
  "serde_json",
  "sha2",
  "tempfile",
  "thiserror",
  "tokio",
  "turso",
+ "uuid",
 ]
 
 [[package]]

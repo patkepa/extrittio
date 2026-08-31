@@ -24,7 +24,6 @@ pub(crate) mod lifecycle;
 mod logs;
 mod metrics;
 mod outbox;
-mod roles;
 mod rules;
 mod shadows;
 mod telemetry;
@@ -58,7 +57,9 @@ pub fn create_runtime(pool: PostgresPool) -> DatabaseRuntime {
 }
 
 fn build_repositories(pool: PostgresPool) -> RepositorySet {
-    let zones = crate::database::postgres_zones(&pool);
+    let (zones, rule_zone_snapshots) = crate::database::postgres_zones(&pool);
+    let roles =
+        Arc::new(extrittio_backend_postgres::PostgresRoleRepository::from_pool(pool.clone()));
     let adapter = Arc::new(PostgresAdapter::new(pool));
     RepositorySet::new(RepositoryPorts {
         activity: adapter.clone(),
@@ -80,7 +81,8 @@ fn build_repositories(pool: PostgresPool) -> RepositorySet {
         logs: adapter.clone(),
         metrics: adapter.clone(),
         outbox: adapter.clone(),
-        roles: adapter.clone(),
+        roles,
+        rule_zone_snapshots,
         rules: adapter.clone(),
         shadows: adapter.clone(),
         telemetry: adapter.clone(),

@@ -1,6 +1,5 @@
 use chrono::{DateTime, Utc};
-
-use super::role_types::RoleRecord;
+use extrittio_backend_core::Role;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UserRecord {
@@ -17,7 +16,7 @@ pub struct UserRecord {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UserDetails {
     pub user: UserRecord,
-    pub roles: Vec<RoleRecord>,
+    pub roles: Vec<Role>,
     pub permissions: Vec<String>,
 }
 

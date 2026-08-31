@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
@@ -98,6 +98,12 @@ pub enum Permission {
 }
 
 impl Permission {
+    /// Stable permission-catalog order exposed by the roles API.
+    #[must_use]
+    pub const fn all() -> &'static [Self] {
+        ALL_PERMISSIONS
+    }
+
     #[must_use]
     pub const fn key(self) -> &'static str {
         match self {
@@ -140,32 +146,48 @@ impl Permission {
             .copied()
             .find(|permission| permission.key() == key)
     }
+
+    /// Decode persisted or credential permission keys, ignoring unknown keys.
+    ///
+    /// Unknown persisted keys have never granted authorization. Role mutation
+    /// validates input separately and rejects them before persistence.
+    #[must_use]
+    pub fn from_keys(keys: &[String]) -> HashSet<Self> {
+        keys.iter().filter_map(|key| Self::from_key(key)).collect()
+    }
+
+    #[must_use]
+    pub fn satisfies(self, required: Self) -> bool {
+        self == required || implied_permissions(required).contains(&self)
+    }
 }
 
+// This order is part of the existing `/api/v1/roles/permissions` response.
+// Keep it stable independently of enum declaration order.
 const ALL_PERMISSIONS: &[Permission] = &[
     Permission::DeployFirmware,
     Permission::ManageAlerts,
-    Permission::ManageApiKeys,
     Permission::ManageDeviceBlueprints,
     Permission::ManageDeviceTypes,
     Permission::ManageDevices,
+    Permission::ManageApiKeys,
     Permission::ManageFirmware,
     Permission::ManageFleets,
-    Permission::ManageRoles,
     Permission::ManageRules,
+    Permission::ManageRoles,
     Permission::ManageShadows,
     Permission::ManageUsers,
     Permission::ManageZones,
-    Permission::ReadAlerts,
     Permission::ReadCommands,
+    Permission::ReadAlerts,
     Permission::ReadDeviceBlueprints,
     Permission::ReadDeviceTypes,
     Permission::ReadDevices,
-    Permission::ReadFirmware,
     Permission::ReadFleets,
+    Permission::ReadFirmware,
     Permission::ReadLogs,
-    Permission::ReadRoles,
     Permission::ReadRules,
+    Permission::ReadRoles,
     Permission::ReadServerMetrics,
     Permission::ReadShadows,
     Permission::ReadTelemetry,
@@ -194,10 +216,9 @@ impl PermissionSet {
 
     #[must_use]
     pub fn contains(&self, required: Permission) -> bool {
-        self.0.contains(&required)
-            || implied_permissions(required)
-                .iter()
-                .any(|permission| self.0.contains(permission))
+        self.0
+            .iter()
+            .any(|permission| permission.satisfies(required))
     }
 
     pub fn insert(&mut self, permission: Permission) -> bool {

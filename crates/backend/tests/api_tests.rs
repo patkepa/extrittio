@@ -15,7 +15,7 @@ use tower::ServiceExt;
 
 use extrittio_backend::api_key_util;
 use extrittio_backend::rate_limit::{ApiKeyRateLimiter, RateLimiter};
-use extrittio_backend::state::AppState;
+use extrittio_backend::state::{AppState, AppStateInput};
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!("../backend-postgres/migrations");
 const DEFAULT_TEST_DATABASE_URL: &str =
@@ -119,10 +119,8 @@ async fn setup_app_with_context(
         .await
         .expect("Failed to open test zenoh session");
     let database = extrittio_backend::persistence::postgres::create_runtime(db_pool.clone());
-    let persistence = database.repositories().clone();
 
-    let state = Arc::new(extrittio_backend::state::AppState {
-        persistence,
+    let state = Arc::new(AppState::new(AppStateInput {
         database,
         zenoh_session: Arc::new(zenoh_session),
         zenoh_tls_enabled: false,
@@ -145,7 +143,7 @@ async fn setup_app_with_context(
         ),
         readiness: Arc::new(extrittio_backend::state::ReadinessRegistry::new(true, true)),
         thread_runtime: None,
-    });
+    }));
 
     let app = extrittio_backend::api::router(100 * 1024 * 1024, true)
         .layer(axum::Extension(ctx))
@@ -1727,10 +1725,8 @@ async fn test_ci_ingest_success() {
         .await
         .expect("Failed to open test zenoh session");
     let database = extrittio_backend::persistence::postgres::create_runtime(db_pool.clone());
-    let persistence = database.repositories().clone();
 
-    let state = Arc::new(AppState {
-        persistence,
+    let state = Arc::new(AppState::new(AppStateInput {
         database,
         zenoh_session: Arc::new(zenoh_session),
         zenoh_tls_enabled: false,
@@ -1753,7 +1749,7 @@ async fn test_ci_ingest_success() {
         ),
         readiness: Arc::new(extrittio_backend::state::ReadinessRegistry::new(true, true)),
         thread_runtime: None,
-    });
+    }));
 
     let app = extrittio_backend::api::router(100 * 1024 * 1024, true).with_state(state);
 

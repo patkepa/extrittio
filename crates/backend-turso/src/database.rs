@@ -11,36 +11,28 @@ use crate::error::map_open_error as map_persistence_open_error;
 use crate::lifecycle::{TursoLifecycleError, map_open_error, map_operation_error};
 use crate::migrations;
 
-/// Temporary P2 bridge shared by the host's legacy repositories and migrated
-/// Turso repositories. Both handles must originate from the same local engine.
+/// Cloneable connection lease shared by legacy and migrated repositories.
+///
+/// The private owner also contains the process lock, so a repository cannot
+/// keep the engine or writer alive after accidentally releasing that lock.
 #[derive(Clone)]
 pub struct TursoConnectionHandles {
-    database: Arc<Database>,
-    writer: Arc<Mutex<Connection>>,
+    inner: Arc<TursoDatabaseInner>,
 }
 
 impl TursoConnectionHandles {
-    #[must_use]
-    pub fn new(database: Arc<Database>, writer: Arc<Mutex<Connection>>) -> Self {
-        Self { database, writer }
-    }
-
-    #[must_use]
-    pub fn database(&self) -> Arc<Database> {
-        self.database.clone()
-    }
-
-    #[must_use]
-    pub fn writer(&self) -> Arc<Mutex<Connection>> {
-        self.writer.clone()
+    pub(crate) fn connect_raw(&self) -> Result<Connection, turso::Error> {
+        self.inner.database.connect()
     }
 
     pub(crate) fn connect(&self) -> Result<Connection, PersistenceError> {
-        self.database.connect().map_err(map_persistence_open_error)
+        self.connect_raw().map_err(map_persistence_open_error)
     }
 
-    pub(crate) async fn lock_writer(&self) -> MutexGuard<'_, Connection> {
-        self.writer.lock().await
+    /// Lock the adapter's serialized writer without allowing the connection to
+    /// outlive this handle (and therefore its process-lock lease).
+    pub async fn lock_writer(&self) -> MutexGuard<'_, Connection> {
+        self.inner.writer.lock().await
     }
 }
 
@@ -55,7 +47,8 @@ pub struct TursoDatabase {
 }
 
 struct TursoDatabaseInner {
-    handles: TursoConnectionHandles,
+    database: Arc<Database>,
+    writer: Mutex<Connection>,
     _process_lock: File,
     path: PathBuf,
 }
@@ -89,7 +82,8 @@ impl TursoDatabase {
 
         Ok(Self {
             inner: Arc::new(TursoDatabaseInner {
-                handles: TursoConnectionHandles::new(database, Arc::new(Mutex::new(writer))),
+                database,
+                writer: Mutex::new(writer),
                 _process_lock: process_lock,
                 path: path.to_path_buf(),
             }),
@@ -109,40 +103,30 @@ impl TursoDatabase {
 
     /// Apply pending embedded migrations and reject changed applied assets.
     pub async fn migrate(&self) -> Result<(), TursoLifecycleError> {
-        let mut writer = self.inner.handles.lock_writer().await;
+        let mut writer = self.inner.writer.lock().await;
         migrations::run(&mut writer).await
     }
 
     pub async fn health(&self) -> Result<(), TursoLifecycleError> {
-        let connection = self
-            .inner
-            .handles
-            .database
-            .connect()
-            .map_err(map_operation_error)?;
+        let connection = self.inner.database.connect().map_err(map_operation_error)?;
         scalar_i64(&connection, "SELECT 1").await?;
         Ok(())
     }
 
     pub async fn integrity_check(&self) -> Result<(), TursoLifecycleError> {
-        let connection = self
-            .inner
-            .handles
-            .database
-            .connect()
-            .map_err(map_operation_error)?;
+        let connection = self.inner.database.connect().map_err(map_integrity_error)?;
         let mut rows = connection
             .query("PRAGMA integrity_check", ())
             .await
-            .map_err(map_operation_error)?;
+            .map_err(map_integrity_error)?;
         let row = rows
             .next()
             .await
-            .map_err(map_operation_error)?
+            .map_err(map_integrity_error)?
             .ok_or_else(|| {
                 TursoLifecycleError::CorruptData("integrity check returned no row".into())
             })?;
-        let result: String = row.get(0).map_err(map_operation_error)?;
+        let result: String = row.get(0).map_err(map_integrity_error)?;
         if result != "ok" {
             return Err(TursoLifecycleError::CorruptData(result));
         }
@@ -150,7 +134,7 @@ impl TursoDatabase {
     }
 
     pub async fn checkpoint(&self) -> Result<(), TursoLifecycleError> {
-        let writer = self.inner.handles.lock_writer().await;
+        let writer = self.inner.writer.lock().await;
         let mut rows = writer
             .query("PRAGMA wal_checkpoint(TRUNCATE)", ())
             .await
@@ -160,12 +144,7 @@ impl TursoDatabase {
     }
 
     pub async fn schema_version(&self) -> Result<i64, TursoLifecycleError> {
-        let connection = self
-            .inner
-            .handles
-            .database
-            .connect()
-            .map_err(map_operation_error)?;
+        let connection = self.inner.database.connect().map_err(map_operation_error)?;
         scalar_i64(
             &connection,
             "SELECT COALESCE(max(version), 0) FROM _extrittio_migrations",
@@ -178,14 +157,25 @@ impl TursoDatabase {
         &self.inner.path
     }
 
-    /// Clone raw handles for the temporary legacy-host migration bridge.
+    /// Clone a lease on the exact engine, writer, and process lock owned by
+    /// this database.
     #[must_use]
     pub fn shared_handles(&self) -> TursoConnectionHandles {
-        self.inner.handles.clone()
+        TursoConnectionHandles {
+            inner: self.inner.clone(),
+        }
     }
 }
 
-fn open_process_lock(data_dir: &Path) -> Result<File, TursoLifecycleError> {
+// Historically the host classified driver failures encountered during an
+// integrity check as unavailable. Only a completed check that reports damage
+// (or no result) is classified as corrupt data. Keep that distinction while
+// the host compatibility facade delegates this operation to the adapter.
+fn map_integrity_error(error: turso::Error) -> TursoLifecycleError {
+    TursoLifecycleError::Unavailable(error.to_string())
+}
+
+pub(crate) fn open_process_lock(data_dir: &Path) -> Result<File, TursoLifecycleError> {
     OpenOptions::new()
         .create(true)
         .read(true)
@@ -214,4 +204,86 @@ async fn scalar_i64(connection: &Connection, sql: &str) -> Result<i64, TursoLife
         .ok_or_else(|| TursoLifecycleError::CorruptData("query returned no rows".into()))?
         .get(0)
         .map_err(map_operation_error)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn opens_migrates_and_reopens_one_local_engine() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("extrittio.db");
+        let database =
+            TursoDatabase::open_and_migrate(directory.path(), &path, Duration::from_secs(1))
+                .await
+                .unwrap();
+        database.health().await.unwrap();
+        database.integrity_check().await.unwrap();
+        assert_eq!(database.path(), path);
+        drop(database);
+
+        let reopened =
+            TursoDatabase::open_and_migrate(directory.path(), &path, Duration::from_secs(1))
+                .await
+                .unwrap();
+        reopened.integrity_check().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn rejects_a_changed_applied_migration_checksum() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("extrittio.db");
+        let database =
+            TursoDatabase::open_and_migrate(directory.path(), &path, Duration::from_secs(1))
+                .await
+                .unwrap();
+        database
+            .shared_handles()
+            .lock_writer()
+            .await
+            .execute(
+                "UPDATE _extrittio_migrations SET checksum='changed' WHERE version=1",
+                (),
+            )
+            .await
+            .unwrap();
+        assert!(matches!(
+            database.migrate().await,
+            Err(TursoLifecycleError::Migration(message)) if message.contains("checksum mismatch")
+        ));
+    }
+
+    #[tokio::test]
+    async fn rejects_a_second_owner_for_the_same_data_directory() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("extrittio.db");
+        let _owner = TursoDatabase::open(directory.path(), &path, Duration::from_secs(1))
+            .await
+            .unwrap();
+        assert!(matches!(
+            TursoDatabase::open(directory.path(), &path, Duration::from_secs(1)).await,
+            Err(TursoLifecycleError::Unavailable(message)) if message.contains("already in use")
+        ));
+    }
+
+    #[tokio::test]
+    async fn repository_handles_keep_the_process_lock_alive() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("extrittio.db");
+        let database = TursoDatabase::open(directory.path(), &path, Duration::from_secs(1))
+            .await
+            .unwrap();
+        let repository = crate::TursoZoneRepository::new(database);
+
+        assert!(matches!(
+            TursoDatabase::open(directory.path(), &path, Duration::from_secs(1)).await,
+            Err(TursoLifecycleError::Unavailable(message)) if message.contains("already in use")
+        ));
+
+        drop(repository);
+        TursoDatabase::open(directory.path(), &path, Duration::from_secs(1))
+            .await
+            .expect("dropping the final repository handle must release the process lock");
+    }
 }

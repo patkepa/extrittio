@@ -637,8 +637,11 @@ fn valid_thread_dns_sd_service_name(value: &str) -> bool {
 mod tests {
     use std::collections::HashMap;
 
-    use super::{AppConfig, FirmwareStorageConfig};
+    use super::AppConfig;
+    #[cfg(any(feature = "postgres", feature = "turso"))]
+    use super::FirmwareStorageConfig;
 
+    #[cfg(any(feature = "postgres", feature = "turso"))]
     fn config_from(vars: &[(&str, &str)]) -> AppConfig {
         let vars: HashMap<&str, &str> = vars.iter().copied().collect();
         AppConfig::from_env_reader(|key| vars.get(key).map(|value| (*value).to_string())).unwrap()
@@ -649,6 +652,7 @@ mod tests {
         AppConfig::from_env_reader(|key| vars.get(key).map(|value| (*value).to_string()))
     }
 
+    #[cfg(any(feature = "postgres", feature = "turso"))]
     #[test]
     fn uses_standard_defaults_without_rpi_mode() {
         let config = config_from(&[]);
@@ -701,9 +705,9 @@ mod tests {
         );
     }
 
-    #[cfg(all(feature = "postgres", not(feature = "turso")))]
+    #[cfg(not(feature = "turso"))]
     #[test]
-    fn rejects_backend_missing_from_the_build() {
+    fn rejects_turso_backend_missing_from_the_build() {
         let error = config_result(&[("EXTRITTIO_DATABASE_BACKEND", "turso")])
             .err()
             .expect("unavailable Turso must fail");
@@ -711,6 +715,19 @@ mod tests {
             error
                 .to_string()
                 .contains("built without the `turso` feature")
+        );
+    }
+
+    #[cfg(not(feature = "postgres"))]
+    #[test]
+    fn rejects_postgres_backend_missing_from_the_build() {
+        let error = config_result(&[("EXTRITTIO_DATABASE_BACKEND", "postgres")])
+            .err()
+            .expect("unavailable PostgreSQL must fail");
+        assert!(
+            error
+                .to_string()
+                .contains("built without the `postgres` feature")
         );
     }
 
@@ -748,6 +765,7 @@ mod tests {
         );
     }
 
+    #[cfg(any(feature = "postgres", feature = "turso"))]
     #[test]
     fn rpi_mode_uses_sd_card_friendly_defaults() {
         let config = config_from(&[("RPI_MODE", "true")]);
@@ -764,6 +782,7 @@ mod tests {
         assert_eq!(config.metrics_retention_hours, 24);
     }
 
+    #[cfg(any(feature = "postgres", feature = "turso"))]
     #[test]
     fn explicit_values_override_rpi_mode_defaults() {
         let config = config_from(&[
@@ -797,6 +816,7 @@ mod tests {
         );
     }
 
+    #[cfg(any(feature = "postgres", feature = "turso"))]
     #[test]
     fn enables_zenoh_certificate_acl_when_tls_is_enabled() {
         let config = config_from(&[("ZENOH_TLS_ENABLED", "true")]);
@@ -805,6 +825,7 @@ mod tests {
         assert!(config.zenoh_cert_acl_enabled);
     }
 
+    #[cfg(any(feature = "postgres", feature = "turso"))]
     #[test]
     fn allows_overriding_zenoh_certificate_acl() {
         let config = config_from(&[

@@ -5,7 +5,10 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use extrittio_backend_core::{PersistenceError, RuleZoneSnapshotRepository, ZoneRepository};
 
+pub mod roles;
 pub mod zones;
+
+pub use roles::{RoleContractHarness, UserVersionFixture};
 
 /// Test-only lifecycle used by shared semantic contract suites.
 #[async_trait]

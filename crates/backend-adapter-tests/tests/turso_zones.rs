@@ -35,8 +35,8 @@ impl TursoHarness {
         &self,
         operation: impl AsyncFnOnce(&turso::Connection) -> Result<T, turso::Error>,
     ) -> Result<T, PersistenceError> {
-        let writer = self.database.shared_handles().writer();
-        let connection = writer.lock().await;
+        let handles = self.database.shared_handles();
+        let connection = handles.lock_writer().await;
         operation(&connection)
             .await
             .map_err(|error| PersistenceError::Internal(error.to_string()))

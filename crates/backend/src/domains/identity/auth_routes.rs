@@ -5,13 +5,13 @@ use axum::{
     response::IntoResponse,
     routing::{get, post},
 };
+use extrittio_backend_core::Role;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
 
 use crate::auth::context::RequestContext;
 use crate::auth::create_token_with_scopes;
-use crate::domains::identity::role_types::RoleRecord;
 use crate::error::AppError;
 use crate::services::user_service;
 use crate::state::AppState;
@@ -181,7 +181,7 @@ pub(crate) async fn me(
     )))
 }
 
-pub fn role_summary(role: RoleRecord) -> RoleSummary {
+pub fn role_summary(role: Role) -> RoleSummary {
     RoleSummary {
         id: role.id,
         name: role.name,
@@ -194,7 +194,7 @@ pub fn user_response(
     id: i32,
     username: String,
     role: String,
-    roles: Vec<RoleRecord>,
+    roles: Vec<Role>,
     permissions: Vec<String>,
     permission_version: i32,
 ) -> UserResponse {

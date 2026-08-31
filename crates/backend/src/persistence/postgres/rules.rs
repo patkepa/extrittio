@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 use chrono::NaiveDateTime;
 use diesel::{Connection, OptionalExtension, PgConnection};
-use serde_json::Value;
 
 use crate::db::models::{
     NewRule, NewRuleAction, NewRuleCondition, Rule, RuleAction, RuleCondition, UpdateRule,
@@ -12,11 +11,9 @@ use crate::domains::rules::types::{
     UpdateRuleRecord,
 };
 use crate::persistence::PersistenceError;
-use crate::repositories::{alert_repo, rule_repo, zone_repo};
+use crate::repositories::{alert_repo, rule_repo};
 use crate::rule_engine::cache::RuleCache;
-use crate::rule_engine::types::{
-    CachedAction, CachedCondition, CachedRule, CachedZone, ZoneGeometry,
-};
+use crate::rule_engine::types::{CachedAction, CachedCondition, CachedRule};
 use crate::tenancy::TenantId;
 
 use super::PostgresAdapter;
@@ -76,35 +73,6 @@ fn load_details(
     let conditions = rule_repo::list_conditions(connection, tenant_id, id)?;
     let actions = rule_repo::list_actions(connection, tenant_id, id)?;
     Ok(Some(details(rule, conditions, actions)))
-}
-
-fn parse_zone_geometry(geometry_type: &str, geometry_json: &Value) -> Option<ZoneGeometry> {
-    match geometry_type {
-        "circle" => {
-            let center = geometry_json.get("center")?.as_array()?;
-            if center.len() != 2 {
-                return None;
-            }
-            Some(ZoneGeometry::Circle {
-                center_lat: center[0].as_f64()?,
-                center_lon: center[1].as_f64()?,
-                radius_meters: geometry_json.get("radius_meters")?.as_f64()?,
-            })
-        }
-        "polygon" => {
-            let points = geometry_json.get("points")?.as_array()?;
-            let parsed = points
-                .iter()
-                .map(|point| {
-                    let coordinates = point.as_array()?;
-                    (coordinates.len() == 2)
-                        .then(|| Some((coordinates[0].as_f64()?, coordinates[1].as_f64()?)))?
-                })
-                .collect::<Option<Vec<_>>>()?;
-            Some(ZoneGeometry::Polygon { points: parsed })
-        }
-        _ => None,
-    }
 }
 
 #[async_trait]
@@ -336,7 +304,6 @@ impl RuleRepository for PostgresAdapter {
                     rule_repo::load_all_cooldowns(connection).map_err(map_diesel_error)?;
                 let active_alerts =
                     alert_repo::load_active_alerts(connection).map_err(map_diesel_error)?;
-                let zones = zone_repo::list_all_zones(connection).map_err(map_diesel_error)?;
                 let mut cache = RuleCache::default();
                 for (rule, conditions, actions) in enabled_rules {
                     cache.insert_rule(CachedRule {
@@ -376,20 +343,6 @@ impl RuleRepository for PostgresAdapter {
                         cache
                             .active_alerts
                             .insert((alert.tenant_id, rule_id, alert.device_id), alert.id);
-                    }
-                }
-                for zone in zones {
-                    if let Some(geometry) =
-                        parse_zone_geometry(&zone.geometry_type, &zone.geometry_json)
-                    {
-                        cache.zones.insert(
-                            zone.id.clone(),
-                            CachedZone {
-                                id: zone.id,
-                                name: zone.name,
-                                geometry,
-                            },
-                        );
                     }
                 }
                 Ok(cache)

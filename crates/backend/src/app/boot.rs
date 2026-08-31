@@ -8,7 +8,7 @@ use crate::domains::firmware_store::FirmwareObjectStore;
 use crate::init;
 use crate::rate_limit::{ApiKeyRateLimiter, RateLimiter, parse_trusted_proxies};
 use crate::services;
-use crate::state::{AppState, MetricsAccumulator, ReadinessRegistry, ZenohMetrics};
+use crate::state::{AppState, AppStateInput, MetricsAccumulator, ReadinessRegistry, ZenohMetrics};
 
 /// Initialize infrastructure and shared application state.
 pub async fn initialize_state(
@@ -65,10 +65,12 @@ pub async fn initialize_state(
         .await
         .context("Failed to load active device certificate IDs for Zenoh ACL")?;
 
-    let rule_cache =
-        services::rule_service::build_cache_with_repository(persistence.rules.as_ref())
-            .await
-            .context("Failed to build initial rule cache")?;
+    let rule_cache = services::rule_service::build_cache_with_repositories(
+        persistence.rules.as_ref(),
+        persistence.rule_zone_snapshots.as_ref(),
+    )
+    .await
+    .context("Failed to build initial rule cache")?;
     let rule_cache = Arc::new(RwLock::new(rule_cache));
 
     let http_client = reqwest::Client::builder()
@@ -103,8 +105,7 @@ pub async fn initialize_state(
 
     let zenoh_metrics = Arc::new(ZenohMetrics::new());
 
-    Ok(Arc::new(AppState {
-        persistence,
+    Ok(Arc::new(AppState::new(AppStateInput {
         database,
         zenoh_session,
         zenoh_tls_enabled: config.zenoh_tls_enabled,
@@ -124,5 +125,5 @@ pub async fn initialize_state(
         firmware_store,
         readiness: Arc::new(ReadinessRegistry::new(true, true)),
         thread_runtime,
-    }))
+    })))
 }

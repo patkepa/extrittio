@@ -8,22 +8,36 @@
 use std::sync::Arc;
 
 #[cfg(any(feature = "postgres", feature = "turso"))]
-use extrittio_backend_core::ZoneRepository;
+use extrittio_backend_core::{RuleZoneSnapshotRepository, ZoneRepository};
 
 #[cfg(feature = "postgres")]
-pub use extrittio_backend_postgres::{models, schema};
+pub use extrittio_backend_postgres::{PostgresExecutor, PostgresPool, models, schema};
+
+#[cfg(feature = "turso")]
+mod turso;
+#[cfg(feature = "turso")]
+pub(crate) use extrittio_backend_turso::migration_bridge::{
+    connect as turso_connect, datetime as turso_datetime, i32 as turso_i32,
+    legacy_error as turso_error, lock_writer as turso_lock_writer,
+};
+#[cfg(feature = "turso")]
+pub use turso::{LogicalArchiveInfo, TursoBackupInfo, TursoDatabase, TursoDatabaseInfo};
 
 #[cfg(feature = "postgres")]
 pub(crate) fn postgres_zones(
     pool: &crate::persistence::postgres::executor::PostgresPool,
-) -> Arc<dyn ZoneRepository> {
-    Arc::new(extrittio_backend_postgres::PostgresZoneRepository::from_pool(pool.clone()))
+) -> (Arc<dyn ZoneRepository>, Arc<dyn RuleZoneSnapshotRepository>) {
+    let adapter =
+        Arc::new(extrittio_backend_postgres::PostgresZoneRepository::from_pool(pool.clone()));
+    (adapter.clone(), adapter)
 }
 
 #[cfg(feature = "turso")]
 pub(crate) fn turso_zones(
     database: &crate::persistence::turso::TursoDatabase,
-) -> Arc<dyn ZoneRepository> {
-    let (database, writer) = database.shared_handles();
-    Arc::new(extrittio_backend_turso::TursoZoneRepository::from_shared_handles(database, writer))
+) -> (Arc<dyn ZoneRepository>, Arc<dyn RuleZoneSnapshotRepository>) {
+    let adapter = Arc::new(extrittio_backend_turso::TursoZoneRepository::from_handles(
+        database.shared_handles(),
+    ));
+    (adapter.clone(), adapter)
 }

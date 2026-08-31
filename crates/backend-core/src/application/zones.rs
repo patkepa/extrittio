@@ -4,6 +4,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::TenantContext;
+use crate::application::require_permission;
 use crate::context::Permission;
 use crate::error::ApplicationError;
 use crate::zones::{DeleteZoneOutcome, NewZone, Zone, ZonePatch, ZoneRepository};
@@ -38,7 +39,7 @@ impl ZoneApplication {
     }
 
     pub async fn list(&self, context: &TenantContext) -> Result<Vec<Zone>, ApplicationError> {
-        require(context, Permission::ReadZones)?;
+        require_permission(context, Permission::ReadZones)?;
         Ok(self.repository.list(context.tenant_id()).await?)
     }
 
@@ -47,7 +48,7 @@ impl ZoneApplication {
         context: &TenantContext,
         zone_id: &str,
     ) -> Result<Zone, ApplicationError> {
-        require(context, Permission::ReadZones)?;
+        require_permission(context, Permission::ReadZones)?;
         self.repository
             .get(context.tenant_id(), zone_id)
             .await?
@@ -59,7 +60,7 @@ impl ZoneApplication {
         context: &TenantContext,
         input: CreateZone,
     ) -> Result<Zone, ApplicationError> {
-        require(context, Permission::ManageZones)?;
+        require_permission(context, Permission::ManageZones)?;
         validate_geometry(&input.geometry_type, &input.geometry_json)?;
         Ok(self
             .repository
@@ -83,7 +84,7 @@ impl ZoneApplication {
         zone_id: &str,
         update: ZoneUpdate,
     ) -> Result<Zone, ApplicationError> {
-        require(context, Permission::ManageZones)?;
+        require_permission(context, Permission::ManageZones)?;
         let existing = self
             .repository
             .get(context.tenant_id(), zone_id)
@@ -121,7 +122,7 @@ impl ZoneApplication {
         context: &TenantContext,
         zone_id: &str,
     ) -> Result<(), ApplicationError> {
-        require(context, Permission::ManageZones)?;
+        require_permission(context, Permission::ManageZones)?;
         match self.repository.delete(context.tenant_id(), zone_id).await? {
             DeleteZoneOutcome::NotFound => Err(ApplicationError::NotFound(format!(
                 "Zone '{zone_id}' not found"
@@ -131,17 +132,6 @@ impl ZoneApplication {
             )),
             DeleteZoneOutcome::Deleted => Ok(()),
         }
-    }
-}
-
-fn require(context: &TenantContext, permission: Permission) -> Result<(), ApplicationError> {
-    if context.permissions().contains(permission) {
-        Ok(())
-    } else {
-        Err(ApplicationError::Forbidden(format!(
-            "Missing permission '{}'",
-            permission.key()
-        )))
     }
 }
 

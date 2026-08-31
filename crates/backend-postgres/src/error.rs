@@ -37,6 +37,8 @@ fn semantic_constraint(database_name: Option<&str>) -> ConstraintName {
         Some("zones_pkey" | "zones_tenant_id_id_key") => "zones.id",
         Some("zones_tenant_name_unique") => "zones.tenant_name",
         Some("zones_tenant_id_fkey") => "zones.tenant_id",
+        Some("roles_pkey" | "roles_tenant_id_id_key") => "roles.id",
+        Some("roles_tenant_id_name_key") => "roles.tenant_name",
         Some("rule_conditions_zone_id_fkey" | "rule_conditions_tenant_zone_fk") => {
             "rule_conditions.zone_id"
         }
@@ -55,6 +57,10 @@ mod tests {
         assert_eq!(
             semantic_constraint(Some("zones_tenant_name_unique")).as_str(),
             "zones.tenant_name"
+        );
+        assert_eq!(
+            semantic_constraint(Some("roles_tenant_id_name_key")).as_str(),
+            "roles.tenant_name"
         );
         assert_eq!(
             semantic_constraint(Some("zones_tenant_id_fkey")).as_str(),

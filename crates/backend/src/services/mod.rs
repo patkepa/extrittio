@@ -32,8 +32,6 @@ pub mod fleet_service;
 pub mod log_service;
 #[path = "../domains/operations/metrics_middleware.rs"]
 pub mod metrics_middleware;
-#[path = "../domains/identity/role_service.rs"]
-pub mod role_service;
 #[path = "../domains/rules/rule_service.rs"]
 pub mod rule_service;
 #[path = "../domains/operations/server_metrics_service.rs"]

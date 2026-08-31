@@ -8,8 +8,11 @@ ports. Zone lists use bytewise PostgreSQL `C` collation with the canonical
 `name, id` ordering; snapshots use `tenant_id, name, id`.
 
 PostgreSQL migrations and Diesel schema/model generation are owned by this
-crate. The host temporarily re-exports the adapter models while the remaining
-repository slices migrate; it does not own a second migration chain.
+crate. Its schema and model modules remain private for standalone adapter
+consumers. The host alone enables the temporary `migration-bridge` feature and
+re-exports those modules while the remaining repository slices migrate; it
+does not own a second migration chain. The feature and exports are removed in
+P6 after the last legacy PostgreSQL repository moves into this crate.
 
 Local verification (no database required):
 

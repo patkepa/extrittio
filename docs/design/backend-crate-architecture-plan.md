@@ -1,9 +1,31 @@
 # Backend Crate Architecture and Implementation Plan
 
-- **Status:** Proposed — implementation-ready draft
+- **Status:** In progress — P0, the P2 zones walking skeleton, and the P3.1 roles/permissions slice are implemented
 - **Scope:** Refactor the current backend into a modular monolith with explicit compile-time boundaries
 - **Primary packages:** `extrittio-backend-core`, `extrittio-backend-postgres`, `extrittio-backend-turso`, and `extrittio-backend`
 - **Migration rule:** Preserve externally observable behavior unless a work package explicitly says otherwise
+
+## Implementation status (2026-08-31)
+
+This ledger describes the checked-in implementation, not the target state described by the rest of this document.
+
+| Work package | State | Implemented and remaining work |
+| --- | --- | --- |
+| P0.1, P0.3 | Completed | The build/dependency baseline, known-failure record, and the 25-port/139-operation persistence inventory are checked in. |
+| P0.2 | Completed | Golden coverage locks CLI behavior, device wire bytes, persisted rule actions, firmware object keys, public API errors/OpenAPI, encrypted certificate/key compatibility, the exact Turso backup manifest, PostgreSQL migration preflight, and Turso previous-snapshot upgrades. |
+| P0.4 | Completed | `cargo xtask architecture` enforces package edges, forbidden core/adapter dependencies and imports, bounded legacy exceptions, and dependency-closure rules in CI. |
+| P1.1–P1.2 | Partial | Core-owned errors and mandatory tenant/actor/permission context exist; the HTTP JWT compatibility mapper owns the legacy missing-tenant fallback. Zones use this boundary. Remaining domain, API-key, device, worker, and transport-error paths move with their slices. |
+| P1.3 | Completed | Host business repositories are separated from `DatabaseRuntime` lifecycle/maintenance capabilities, schema migration is distinct from application bootstrap, and business persistence errors no longer contain migration failures. |
+| P1.4 | Partial | `AppState` fields are private or `pub(crate)`, it stores the core `Application`, and the architecture verifier prevents growth in direct handler-to-repository access. Narrow substates and removal of the tracked legacy accesses remain. |
+| P1.5 | Partial | PostgreSQL schema/models and initial Turso row/foundation types are adapter-owned. The remaining legacy row types, UTC/pagination conversions, and dependency-feature reductions move with their domain slices. |
+| P2.1 | Completed | Core, PostgreSQL, Turso, and adapter-contract workspace packages exist; the host has no default database feature and supports no-adapter, single-adapter, and both-adapter builds. |
+| P2.2–P2.3 | Partial | The adapters own their migration assets and cloneable engine handles; core owns the initial application/error/identity/zone contracts and a private, lifecycle-free `RepositorySet` consumed by `Application`. Unmigrated repositories still use host-local connection/row bridges; adapter ownership of the remaining foundations plus core pagination/time types and slice-driven outbound ports remain. |
+| P2.4 | Completed | Zone CRUD runs through the core application façade and both adapter implementations, and rule-zone snapshot loading uses the adapter-owned system port rather than a legacy host query. The shared contract covers tenant isolation, deterministic binary ordering, uniqueness, not-found, in-use deletion, and CRUD behavior; PostgreSQL includes duplicate preflight plus the canonical uniqueness index. |
+| P2.5 | Completed | Package rules are fatal and CI checks core, no-adapter host, PostgreSQL-only host, Turso-only host, both-adapter host, and the extracted packages directly. |
+| P3.1 roles/permissions | Completed | Core owns the permission catalog, role types, authorization/orchestration, and `RoleRepository`; both adapter-owned implementations pass a separate shared role contract. HTTP routes use `Application`, user hydration uses the core tenant-aware `Role`, and all legacy host role services, ports, and implementations are deleted. ADR-007 records ordering, conflict, invalidation, and timestamp semantics. |
+| P3.1 remaining; P3.2–P6 | Not started | Users/passwords are the next P3.1 sub-slice, followed by API keys/nonces, certificates/key protection, and bootstrap. Most handler orchestration, process-shell composition, compatibility bridges, and release cleanup remain. |
+
+The next checkpoint is the P3.1 users/passwords sub-slice. Continue removing broad compatibility access with each vertical slice; do not add a new handler-to-repository path.
 
 ## 1. Executive decision
 
@@ -1201,7 +1223,7 @@ The current `Persistence` aggregate is exhausted by this ledger:
 | `logs` | P3.5 | device ingress/query port |
 | `metrics` | P3.7 | operational read/write port, not database health |
 | `outbox` | P3.3 | durable intent claim/lease/retry operations |
-| `roles` | P3.1 | authorization model |
+| `roles` | P3.1 (completed) | core authorization model and application façade; adapter-owned PostgreSQL/Turso implementations; separate shared role contract |
 | `rules` | P3.3 | split tenant CRUD from system rule-snapshot loading |
 | `shadows` | P3.4 | compare-and-set/update operations; publication outbound |
 | `telemetry` | P3.5 | ingestion/query/retention semantics |
@@ -1310,14 +1332,35 @@ The refactor is complete when:
 
 ## 26. Immediate next implementation stage
 
-Start with **P0-A as the next implementation pull request**. Its concrete deliverables are:
+Finish **P1/P2 boundary closure** before starting P3.1. The zones pilot has proved the dependency direction; the next work should remove the broad escape hatches that the remaining slices would otherwise copy.
 
-1. create `docs/design/backend-persistence-contract-inventory.md` and account for every method on the 25 current ports, using the fields in P0.3;
-2. create a checked-in implementation baseline recording the currently passing workspace/PostgreSQL/Turso commands, test prerequisites, dependency closures, and release linkage/size;
-3. record short ADRs for legacy tenant mapping, audit durability, command publish failure behavior, firmware compensation, rule-cache refresh bound, and canonical zone ordering;
-4. link every architecture exception and unresolved compatibility observation to a later work-package ID;
-5. make no production-code or schema changes.
+### 26.1 Close the remaining P1 boundaries
 
-Then implement **P0-B**: OpenAPI, public error, CLI, device-wire, outbox, object-key, encryption, backup-layout, and previous-snapshot migration fixtures. Implement **P0-C** in `tools/xtask/src/architecture.rs`, wire it through `tools/xtask/src/main.rs`/`verify.rs`, and add dependency-closure assertions to the currently valid PostgreSQL and Turso jobs. Define the future core/no-adapter/both-adapter checks in the verifier, but activate those CI jobs only in P2.5 after the packages exist and the host's crate-wide database `compile_error!` is removed.
+1. Complete P1.1 by moving shared HTTP error/status mapping into a host transport module and removing `AppError`, Axum extractors, JWT claims, and HTTP DTOs from every domain-shaped module touched by the next slice. Add safe public mapping tests for each core `ApplicationError` variant.
+2. Finish identity entry points from P1.2: map API-key, device, worker, and explicit system actors to `TenantContext`; remove remaining accidental default-tenant substitutions; keep the missing-tenant legacy JWT fallback only in the documented compatibility mapper.
+3. Preserve the completed P1.3 split: new business ports enter `RepositorySet`, operational capabilities stay on `DatabaseRuntime`, schema migration remains separate from idempotent application bootstrap, and neither lifecycle errors nor engine handles may leak back into business ports.
+4. Complete P1.4 incrementally: derive narrow HTTP/messaging/worker/operational substates from the now-private `AppState`, and reduce the architecture verifier's tracked handler-to-repository access counts with every slice. Existing handlers may use temporary narrow accessors until their P3 slice, but no accessor may expose the repository bag and no allowlist cap may increase.
+5. Complete the P1.5 prerequisites needed by identity/bootstrap: adapter-owned row/schema types, explicit domain conversions, UTC precision rules, and pagination semantics. Keep Prost, Diesel, Turso, Axum, JWT, and environment access outside core.
 
-After P0 is green, implement P1.1 and P1.2 together: transport-independent errors plus the non-optional core tenant/actor context. That gives subsequent crate moves a stable security boundary and avoids copying the current JWT/default-tenant coupling into `backend-core`.
+### 26.2 Close the P2 walking skeleton
+
+1. Finish moving connection, executor, row-decoding, lifecycle, health, and maintenance foundations to their adapter owners. Keep exactly one shared pool/database handle and retain bridge exports only where an unmigrated repository still requires them.
+2. Complete core foundations with private `RepositorySet` construction, lifecycle-free business ports, pagination/time types, and only the outbound ports required by the next slice. Do not add placeholder abstractions for later domains.
+3. Re-run the zones contract against live PostgreSQL and temporary Turso, including duplicate-data migration preflight, rollback, binary collation/order, wrong-tenant behavior, and in-use deletion. Confirm that no legacy zone CRUD or snapshot-query path remains; keep the system rule-snapshot contract separate until P3.3.
+4. Keep the CI matrix fatal for `core`, no-adapter/OpenAPI host, PostgreSQL-only host, Turso-only host, and `all-databases`; lint and test the three extracted packages directly, and run each shared adapter contract exactly once in its engine-specific job.
+5. Extend the completed P0 compatibility lock only where P3.1 inventory review finds an uncovered writer or decoder; in particular, retain the existing public-error, legacy-credential, encrypted-key, backup-manifest, and migration-snapshot fixtures unchanged while ownership moves.
+
+The closure checkpoint passes when the broad runtime state no longer exposes repositories, business ports contain no lifecycle operation, both zone contracts pass, migrations run only from adapter-owned assets, and `cargo xtask architecture` plus the full feature matrix are green.
+
+### 26.3 Then implement P3.1: identity and bootstrap
+
+Move one reviewable sub-slice at a time in this order: roles/permissions, users/passwords, API keys/nonces, certificates/key protection, then idempotent bootstrap. For each sub-slice:
+
+1. characterize tenant, authorization, conflict, ordering, and transaction behavior;
+2. move domain policy and use cases to core without transport or environment dependencies;
+3. add the smallest stable business port or named atomic operation;
+4. implement and run the same contract against PostgreSQL and Turso;
+5. route HTTP/worker callers through `Application`, then delete the matching legacy implementation and bridge export;
+6. verify JWT/API-key compatibility, permission-denied and public-error mappings, encrypted key readability, retry/concurrency behavior, and migration/bootstrap idempotency.
+
+Do not begin P3.2 until all identity/bootstrap operations have left the legacy aggregate, both adapters pass the shared P3.1 contracts, and core can still be built and tested without any runtime or database SDK.

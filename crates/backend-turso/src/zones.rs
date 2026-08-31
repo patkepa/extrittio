@@ -28,17 +28,6 @@ impl TursoZoneRepository {
         Self { handles }
     }
 
-    /// Construct the migrated repository from the host's existing engine and
-    /// writer. This bridge is removed once all Turso repositories own the new
-    /// database foundation.
-    #[must_use]
-    pub fn from_shared_handles(
-        database: std::sync::Arc<turso::Database>,
-        writer: std::sync::Arc<tokio::sync::Mutex<turso::Connection>>,
-    ) -> Self {
-        Self::from_handles(TursoConnectionHandles::new(database, writer))
-    }
-
     #[must_use]
     pub fn shared_handles(&self) -> TursoConnectionHandles {
         self.handles.clone()
@@ -553,7 +542,7 @@ mod tests {
         );
 
         let handles = database.shared_handles();
-        let clone = TursoZoneRepository::from_shared_handles(handles.database(), handles.writer());
+        let clone = TursoZoneRepository::from_handles(handles);
         assert!(
             clone
                 .get(&default_tenant, "zone-z")

@@ -8,6 +8,10 @@ repository.workspace = true
 homepage.workspace = true
 publish.workspace = true
 
+[features]
+default = []
+migration-bridge = []
+
 [dependencies]
 extrittio-backend-core = { version = "0.1.0", path = "../backend-core" }
 async-trait = "0.1"

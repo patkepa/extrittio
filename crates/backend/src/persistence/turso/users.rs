@@ -2,9 +2,9 @@ use std::collections::HashSet;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use extrittio_backend_core::{Role, TenantId as CoreTenantId};
 use turso::{Connection, Row, params};
 
-use crate::domains::identity::role_types::RoleRecord;
 use crate::domains::identity::user_repository::UserRepository;
 use crate::domains::identity::user_types::{
     CreateUserOutcome, CreateUserRecord, DeleteUserOutcome, SetUserRolesOutcome, UserCredentials,
@@ -38,14 +38,17 @@ fn decode_user(record: &Row) -> Result<(UserRecord, String), PersistenceError> {
     ))
 }
 
-fn decode_role(record: &Row) -> Result<RoleRecord, PersistenceError> {
-    Ok(RoleRecord {
+fn decode_role(record: &Row) -> Result<Role, PersistenceError> {
+    let tenant_id = CoreTenantId::new(record.get::<String>(1).map_err(row::error)?)
+        .map_err(|error| PersistenceError::CorruptData(error.to_string()))?;
+    Ok(Role {
         id: row::i32(record.get::<i64>(0).map_err(row::error)?, "roles.id")?,
-        name: record.get(1).map_err(row::error)?,
-        description: record.get(2).map_err(row::error)?,
-        is_system: record.get::<i64>(3).map_err(row::error)? != 0,
-        created_at: row::datetime(record.get(4).map_err(row::error)?)?,
-        updated_at: row::datetime(record.get(5).map_err(row::error)?)?,
+        tenant_id,
+        name: record.get(2).map_err(row::error)?,
+        description: record.get(3).map_err(row::error)?,
+        is_system: record.get::<i64>(4).map_err(row::error)? != 0,
+        created_at: row::datetime(record.get(5).map_err(row::error)?)?,
+        updated_at: row::datetime(record.get(6).map_err(row::error)?)?,
     })
 }
 
@@ -70,7 +73,7 @@ async fn hydrate(
     drop(rows);
     let mut role_rows = connection
         .query(
-            "SELECT r.id, r.name, r.description, r.is_system, r.created_at, r.updated_at
+            "SELECT r.id, r.tenant_id, r.name, r.description, r.is_system, r.created_at, r.updated_at
              FROM user_roles ur JOIN roles r ON r.id = ur.role_id AND r.tenant_id = ur.tenant_id
              WHERE ur.tenant_id = ?1 AND ur.user_id = ?2 ORDER BY r.name, r.id",
             params![tenant.as_str(), i64::from(user_id)],
@@ -108,10 +111,10 @@ async fn selected_roles(
     connection: &Connection,
     tenant: &TenantId,
     requested: Option<Vec<i32>>,
-) -> Result<Option<Vec<RoleRecord>>, PersistenceError> {
+) -> Result<Option<Vec<Role>>, PersistenceError> {
     let mut rows = connection
         .query(
-            "SELECT id, name, description, is_system, created_at, updated_at
+            "SELECT id, tenant_id, name, description, is_system, created_at, updated_at
              FROM roles WHERE tenant_id = ?1 ORDER BY name, id",
             params![tenant.as_str()],
         )
@@ -137,7 +140,7 @@ async fn selected_roles(
     }
 }
 
-fn primary_role(roles: &[RoleRecord]) -> &str {
+fn primary_role(roles: &[Role]) -> &str {
     roles
         .iter()
         .find(|role| role.name == "owner")
@@ -150,7 +153,7 @@ async fn replace_roles(
     connection: &Connection,
     tenant: &TenantId,
     user_id: i32,
-    roles: &[RoleRecord],
+    roles: &[Role],
 ) -> Result<(), PersistenceError> {
     connection
         .execute(

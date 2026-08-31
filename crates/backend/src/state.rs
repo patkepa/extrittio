@@ -1,7 +1,6 @@
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::RwLock;
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, RwLock};
 
 use crate::rate_limit::{ApiKeyRateLimiter, RateLimiter, TrustedProxy};
 use crate::rule_engine::cache::RuleCache;
@@ -135,8 +134,15 @@ impl Default for MetricsAccumulator {
     }
 }
 
-pub struct AppState {
-    pub persistence: crate::persistence::RepositorySet,
+/// Explicit construction boundary for the host's shared runtime state.
+///
+/// Runtime consumers receive [`AppState`], whose fields are not part of the
+/// public API. Boot code and external integration tests use this input instead
+/// of coupling themselves to the state container's internal layout.
+pub struct AppStateInput {
+    /// Sole persistence composition source. `AppState::new` derives both the
+    /// temporary legacy repository bridge and the core application ports from
+    /// this runtime, preventing mismatched handles.
     pub database: crate::persistence::DatabaseRuntime,
     pub zenoh_session: Arc<zenoh::Session>,
     pub zenoh_tls_enabled: bool,
@@ -160,13 +166,89 @@ pub struct AppState {
     pub thread_runtime: Option<Arc<extrittio_openthread_runtime::ThreadRuntime>>,
 }
 
+pub struct AppState {
+    application: extrittio_backend_core::Application,
+    /// Temporary legacy repository escape hatch. Existing host handlers use
+    /// it while their vertical slices move behind `Application`.
+    pub(crate) persistence: crate::persistence::RepositorySet,
+    pub(crate) database: crate::persistence::DatabaseRuntime,
+    pub(crate) zenoh_session: Arc<zenoh::Session>,
+    pub(crate) zenoh_tls_enabled: bool,
+    pub(crate) zenoh_port: u16,
+    pub(crate) jwt_secret: String,
+    pub(crate) public_url: String,
+    pub(crate) cookie_secure: bool,
+    pub(crate) health_token: Option<String>,
+    pub(crate) api_rate_limiter: RateLimiter,
+    pub(crate) login_rate_limiter: RateLimiter,
+    pub(crate) trusted_proxies: Vec<TrustedProxy>,
+    pub(crate) ci_rate_limiter: ApiKeyRateLimiter,
+    pub(crate) metrics_accumulator: MetricsAccumulator,
+    pub(crate) zenoh_metrics: Arc<ZenohMetrics>,
+    pub(crate) rule_cache: Arc<RwLock<RuleCache>>,
+    pub(crate) http_client: reqwest::Client,
+    pub(crate) firmware_store: crate::domains::firmware_store::FirmwareObjectStore,
+    pub(crate) readiness: Arc<ReadinessRegistry>,
+    pub(crate) thread_runtime: Option<Arc<extrittio_openthread_runtime::ThreadRuntime>>,
+}
+
 impl AppState {
+    #[must_use]
+    pub fn new(input: AppStateInput) -> Self {
+        let persistence = input.database.repositories().clone();
+        let application =
+            extrittio_backend_core::Application::new(extrittio_backend_core::RepositorySet::new(
+                extrittio_backend_core::RepositorySetInput {
+                    roles: persistence.roles.clone(),
+                    zones: persistence.zones.clone(),
+                    rule_zone_snapshots: persistence.rule_zone_snapshots.clone(),
+                },
+            ));
+
+        Self {
+            application,
+            persistence,
+            database: input.database,
+            zenoh_session: input.zenoh_session,
+            zenoh_tls_enabled: input.zenoh_tls_enabled,
+            zenoh_port: input.zenoh_port,
+            jwt_secret: input.jwt_secret,
+            public_url: input.public_url,
+            cookie_secure: input.cookie_secure,
+            health_token: input.health_token,
+            api_rate_limiter: input.api_rate_limiter,
+            login_rate_limiter: input.login_rate_limiter,
+            trusted_proxies: input.trusted_proxies,
+            ci_rate_limiter: input.ci_rate_limiter,
+            metrics_accumulator: input.metrics_accumulator,
+            zenoh_metrics: input.zenoh_metrics,
+            rule_cache: input.rule_cache,
+            http_client: input.http_client,
+            firmware_store: input.firmware_store,
+            readiness: input.readiness,
+            thread_runtime: input.thread_runtime,
+        }
+    }
+
     /// Curated application boundary for transport handlers. More use cases are
     /// added here as their vertical slices leave the legacy persistence host.
     #[must_use]
-    pub fn application(&self) -> extrittio_backend_core::Application {
-        extrittio_backend_core::Application::new(self.persistence.zones.clone())
+    pub fn application(&self) -> &extrittio_backend_core::Application {
+        &self.application
+    }
+
+    /// Temporary narrow bridge for rebuilding the host-local rule cache while
+    /// the rules vertical slice is still migrating behind `Application`.
+    #[must_use]
+    pub(crate) fn rule_cache_repositories(
+        &self,
+    ) -> (
+        &dyn crate::domains::rules::port::RuleRepository,
+        &dyn extrittio_backend_core::RuleZoneSnapshotRepository,
+    ) {
+        (
+            self.persistence.rules.as_ref(),
+            self.persistence.rule_zone_snapshots.as_ref(),
+        )
     }
 }
-
-use std::collections::BTreeMap;

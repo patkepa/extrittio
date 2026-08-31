@@ -1,39 +1,12 @@
-use diesel::PgConnection;
-use diesel::r2d2::{ConnectionManager, Pool};
+//! Compatibility surface for legacy PostgreSQL repositories.
+//!
+//! The executor and pool are owned by `backend-postgres` and routed through
+//! the host's approved database composition boundary. Diesel error mapping is
+//! kept here until the corresponding repositories move into the adapter.
 
-use crate::persistence::error::{ConstraintName, PersistenceError};
+pub use crate::database::{PostgresExecutor, PostgresPool};
 
-pub type PostgresPool = Pool<ConnectionManager<PgConnection>>;
-
-/// The only async boundary around synchronous Diesel operations in migrated
-/// PostgreSQL repositories.
-#[derive(Clone)]
-pub struct PostgresExecutor {
-    pool: PostgresPool,
-}
-
-impl PostgresExecutor {
-    #[must_use]
-    pub fn new(pool: PostgresPool) -> Self {
-        Self { pool }
-    }
-
-    pub async fn run<T, F>(&self, operation: F) -> Result<T, PersistenceError>
-    where
-        T: Send + 'static,
-        F: FnOnce(&mut PgConnection) -> Result<T, PersistenceError> + Send + 'static,
-    {
-        let pool = self.pool.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut connection = pool
-                .get()
-                .map_err(|error| PersistenceError::Unavailable(error.to_string()))?;
-            operation(&mut connection)
-        })
-        .await
-        .map_err(|error| PersistenceError::Internal(format!("database task failed: {error}")))?
-    }
-}
+use crate::persistence::{ConstraintName, PersistenceError};
 
 pub fn map_diesel_error(error: diesel::result::Error) -> PersistenceError {
     use diesel::result::{DatabaseErrorKind, Error};

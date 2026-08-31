@@ -32,10 +32,14 @@ fn map_constraint(message: &str) -> PersistenceError {
     let normalized = message.to_ascii_lowercase();
     if normalized.contains("unique") || normalized.contains("primary key") {
         let constraint =
-            if normalized.contains("zones.tenant_id") && normalized.contains("zones.name") {
+            if normalized.contains("roles.tenant_id") && normalized.contains("roles.name") {
+                "roles.tenant_name"
+            } else if normalized.contains("roles.id") {
+                "roles.id"
+            } else if normalized.contains("zones.tenant_id") && normalized.contains("zones.name") {
                 "zones.tenant_name"
             } else if normalized.contains("zones.id") {
-                "zones_id"
+                "zones.id"
             } else {
                 "unique"
             };
@@ -54,5 +58,35 @@ fn map_constraint(message: &str) -> PersistenceError {
         PersistenceError::Internal(format!(
             "database constraint rejected the operation: {message}"
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn unique_constraint(message: &str) -> String {
+        match map_constraint(message) {
+            PersistenceError::UniqueViolation { constraint } => constraint.as_str().to_owned(),
+            other => panic!("expected unique violation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn maps_adapter_constraint_text_to_stable_business_names() {
+        assert_eq!(
+            unique_constraint(
+                "UNIQUE constraint failed: roles.tenant_id, roles.name"
+            ),
+            "roles.tenant_name"
+        );
+        assert_eq!(
+            unique_constraint("UNIQUE constraint failed: roles.id"),
+            "roles.id"
+        );
+        assert_eq!(
+            unique_constraint("UNIQUE constraint failed: zones.id"),
+            "zones.id"
+        );
     }
 }

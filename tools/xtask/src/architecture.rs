@@ -174,14 +174,6 @@ const DEFAULT_TENANT_ALLOWANCES: &[TokenAllowance] = &[
     ),
 ];
 
-const PUBLIC_PERSISTENCE_ALLOWANCES: &[TokenAllowance] = &[TokenAllowance::new(
-    "crates/backend/src/state.rs",
-    "pub persistence:",
-    1,
-    "P1.4",
-    "current broad AppState field",
-)];
-
 /// Exact P3 migration debt for HTTP handlers that still bypass `Application`.
 ///
 /// Both field counts are capped independently so changing `state.persistence`
@@ -240,7 +232,6 @@ const APP_STATE_REPOSITORY_ACCESS_ALLOWANCES: &[AppStateRepositoryAccessAllowanc
         4,
         0,
     ),
-    AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/identity/roles.rs", 4, 0),
     AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/identity/users.rs", 5, 0),
     AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/logs/logs.rs", 1, 0),
     AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/operations/outbox.rs", 3, 0),
@@ -289,6 +280,8 @@ struct CargoPackage {
 struct CargoDependency {
     name: String,
     path: Option<PathBuf>,
+    #[serde(default)]
+    optional: bool,
     uses_default_features: bool,
     #[serde(default)]
     features: Vec<String>,
@@ -456,6 +449,8 @@ fn check_package_graph(root: &Path, metadata: &CargoMetadata, report: &mut Repor
         check_core_dependencies(core, report);
     }
 
+    check_migration_bridge_features(&packages, report);
+
     if let Some(host) = packages.get(HOST_PACKAGE).copied() {
         let defaults = host.features.get("default").map_or(&[][..], Vec::as_slice);
         if !defaults.is_empty() {
@@ -475,6 +470,67 @@ fn check_package_graph(root: &Path, metadata: &CargoMetadata, report: &mut Repor
                     "{HOST_PACKAGE} still defaults to {defaults:?} (remove in P2.1)"
                 ));
             }
+        }
+    }
+}
+
+fn check_migration_bridge_features(packages: &BTreeMap<&str, &CargoPackage>, report: &mut Report) {
+    const ADAPTER_PACKAGES: &[&str] = &["extrittio-backend-postgres", "extrittio-backend-turso"];
+    const BRIDGE_FEATURE: &str = "migration-bridge";
+
+    for adapter_name in ADAPTER_PACKAGES {
+        let Some(adapter) = packages.get(adapter_name).copied() else {
+            continue;
+        };
+
+        if !adapter.features.contains_key(BRIDGE_FEATURE) {
+            report.error(format!(
+                "{adapter_name} must declare the temporary `{BRIDGE_FEATURE}` feature while legacy host repositories remain"
+            ));
+        }
+        if adapter
+            .features
+            .get("default")
+            .is_some_and(|features| features.iter().any(|feature| feature == BRIDGE_FEATURE))
+        {
+            report.error(format!(
+                "{adapter_name} must keep `{BRIDGE_FEATURE}` disabled by default"
+            ));
+        }
+
+        let mut host_enables_bridge = false;
+        for package in packages.values().copied() {
+            for dependency in package
+                .dependencies
+                .iter()
+                .filter(|dependency| dependency.name == *adapter_name)
+                .filter(|dependency| {
+                    dependency
+                        .features
+                        .iter()
+                        .any(|feature| feature == BRIDGE_FEATURE)
+                })
+            {
+                if package.name != HOST_PACKAGE {
+                    report.error(format!(
+                        "{} must not enable {adapter_name}/{BRIDGE_FEATURE}; the temporary bridge is host-only",
+                        package.name
+                    ));
+                    continue;
+                }
+                host_enables_bridge = true;
+                if !dependency.optional {
+                    report.error(format!(
+                        "{HOST_PACKAGE} must keep its {adapter_name}/{BRIDGE_FEATURE} dependency optional"
+                    ));
+                }
+            }
+        }
+
+        if !host_enables_bridge {
+            report.error(format!(
+                "{HOST_PACKAGE} must explicitly enable {adapter_name}/{BRIDGE_FEATURE} until the legacy repositories are removed"
+            ));
         }
     }
 }
@@ -533,12 +589,7 @@ fn check_source_boundaries(root: &Path, report: &mut Report) -> Result<()> {
         DEFAULT_TENANT_ALLOWANCES,
         report,
     );
-    check_bounded_token(
-        &backend_files,
-        "pub persistence:",
-        PUBLIC_PERSISTENCE_ALLOWANCES,
-        report,
-    );
+    check_bounded_token(&backend_files, "pub persistence:", &[], report);
     check_app_state_repository_access(
         &backend_files,
         APP_STATE_REPOSITORY_ACCESS_ALLOWANCES,

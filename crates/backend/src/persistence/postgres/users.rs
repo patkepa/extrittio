@@ -5,10 +5,10 @@ use chrono::{DateTime, Utc};
 use diesel::Connection;
 use diesel::PgConnection;
 use diesel::prelude::*;
+use extrittio_backend_core::{Role as CoreRole, TenantId as CoreTenantId};
 
-use crate::db::models::{NewUser, NewUserRole, Role, User};
+use crate::db::models::{NewUser, NewUserRole, Role as DbRole, User};
 use crate::db::schema::{role_permissions, roles, user_roles, users};
-use crate::domains::identity::role_types::RoleRecord;
 use crate::domains::identity::user_repository::UserRepository;
 use crate::domains::identity::user_types::{
     CreateUserOutcome, CreateUserRecord, DeleteUserOutcome, SetUserRolesOutcome, UserCredentials,
@@ -37,27 +37,30 @@ fn to_user_record(row: &User) -> UserRecord {
     }
 }
 
-fn to_role_record(row: Role) -> RoleRecord {
-    RoleRecord {
+fn to_role(row: DbRole) -> QueryResult<CoreRole> {
+    let tenant_id = CoreTenantId::new(row.tenant_id.clone())
+        .map_err(|error| diesel::result::Error::DeserializationError(Box::new(error)))?;
+    Ok(CoreRole {
         id: row.id,
+        tenant_id,
         name: row.name,
         description: row.description,
         is_system: row.is_system,
         created_at: row.created_at.and_utc(),
         updated_at: row.updated_at.and_utc(),
-    }
+    })
 }
 
 fn roles_for_user(
     connection: &mut PgConnection,
     tenant_id: &str,
     user_id: i32,
-) -> QueryResult<Vec<Role>> {
+) -> QueryResult<Vec<DbRole>> {
     user_roles::table
         .inner_join(roles::table)
         .filter(user_roles::tenant_id.eq(tenant_id))
         .filter(user_roles::user_id.eq(user_id))
-        .select(Role::as_select())
+        .select(DbRole::as_select())
         .order((roles::name.asc(), roles::id.asc()))
         .load(connection)
 }
@@ -83,7 +86,7 @@ fn hydrate_user(connection: &mut PgConnection, user: User) -> QueryResult<UserDe
     let permissions = permissions_for_roles(connection, &role_ids)?;
     Ok(UserDetails {
         user: to_user_record(&user),
-        roles: roles.into_iter().map(to_role_record).collect(),
+        roles: roles.into_iter().map(to_role).collect::<QueryResult<_>>()?,
         permissions,
     })
 }
@@ -92,18 +95,18 @@ fn load_roles_by_ids(
     connection: &mut PgConnection,
     tenant_id: &str,
     role_ids: &[i32],
-) -> QueryResult<Option<Vec<Role>>> {
+) -> QueryResult<Option<Vec<DbRole>>> {
     let unique_count = role_ids.iter().copied().collect::<HashSet<_>>().len();
     let selected = roles::table
         .filter(roles::tenant_id.eq(tenant_id))
         .filter(roles::id.eq_any(role_ids))
-        .select(Role::as_select())
+        .select(DbRole::as_select())
         .order((roles::name.asc(), roles::id.asc()))
-        .load::<Role>(connection)?;
+        .load::<DbRole>(connection)?;
     Ok((selected.len() == unique_count).then_some(selected))
 }
 
-fn primary_role_name(roles: &[Role]) -> &str {
+fn primary_role_name(roles: &[DbRole]) -> &str {
     roles
         .iter()
         .find(|role| role.name == OWNER_ROLE)
@@ -116,7 +119,7 @@ fn replace_user_roles(
     connection: &mut PgConnection,
     tenant_id: &str,
     user_id: i32,
-    selected_roles: &[Role],
+    selected_roles: &[DbRole],
 ) -> QueryResult<User> {
     diesel::delete(
         user_roles::table
@@ -215,8 +218,8 @@ impl UserRepository for PostgresAdapter {
                                 roles::table
                                     .filter(roles::tenant_id.eq(&tenant_id))
                                     .filter(roles::name.eq(VIEWER_ROLE))
-                                    .select(Role::as_select())
-                                    .first::<Role>(connection)?,
+                                    .select(DbRole::as_select())
+                                    .first::<DbRole>(connection)?,
                             ],
                         };
                         let user = diesel::insert_into(users::table)

@@ -1,41 +1,43 @@
+//! PostgreSQL implementation of tenant-scoped roles and permissions.
+
 use async_trait::async_trait;
 use diesel::Connection;
 use diesel::PgConnection;
+use diesel::dsl::sql;
 use diesel::prelude::*;
-
-use crate::db::models::{NewRole, NewRolePermission, Role};
-use crate::db::schema::{role_permissions, roles, user_roles, users};
-use crate::domains::identity::role_repository::RoleRepository;
-use crate::domains::identity::role_types::{
-    CreateRoleRecord, DeleteRoleOutcome, RoleDetails, RoleRecord, UpdateRoleOutcome,
-    UpdateRoleRecord,
+use diesel::sql_types::Text;
+use extrittio_backend_core::{
+    DeleteRoleOutcome, NewRole, PersistenceError, Role, RoleDetails, RolePatch, RoleRepository,
+    TenantId, UpdateRoleOutcome,
 };
-use crate::persistence::PersistenceError;
-use crate::tenancy::TenantId;
 
-use super::PostgresAdapter;
-use super::executor::map_diesel_error;
+use crate::error::map_diesel_error;
+use crate::models::{NewRole as NewRoleRow, NewRolePermission, Role as RoleRow};
+use crate::schema::{role_permissions, roles, user_roles, users};
+use crate::{PostgresExecutor, PostgresPool};
 
-fn to_record(row: Role) -> RoleRecord {
-    RoleRecord {
+fn into_domain(row: RoleRow) -> QueryResult<Role> {
+    Ok(Role {
         id: row.id,
+        tenant_id: TenantId::new(row.tenant_id)
+            .map_err(|error| diesel::result::Error::DeserializationError(Box::new(error)))?,
         name: row.name,
         description: row.description,
         is_system: row.is_system,
         created_at: row.created_at.and_utc(),
         updated_at: row.updated_at.and_utc(),
-    }
+    })
 }
 
 fn hydrate_role(
     connection: &mut PgConnection,
     tenant_id: &str,
-    role: Role,
+    role: RoleRow,
 ) -> QueryResult<RoleDetails> {
     let permissions = role_permissions::table
         .filter(role_permissions::role_id.eq(role.id))
         .select(role_permissions::permission)
-        .order(role_permissions::permission.asc())
+        .order(sql::<Text>(r#"permission COLLATE "C""#).asc())
         .load::<String>(connection)?;
     let user_count = user_roles::table
         .filter(user_roles::tenant_id.eq(tenant_id))
@@ -43,7 +45,7 @@ fn hydrate_role(
         .count()
         .get_result(connection)?;
     Ok(RoleDetails {
-        role: to_record(role),
+        role: into_domain(role)?,
         permissions,
         user_count,
     })
@@ -71,17 +73,38 @@ fn replace_permissions(
     Ok(())
 }
 
+#[derive(Clone)]
+pub struct PostgresRoleRepository {
+    executor: PostgresExecutor,
+}
+
+impl PostgresRoleRepository {
+    #[must_use]
+    pub fn new(executor: PostgresExecutor) -> Self {
+        Self { executor }
+    }
+
+    #[must_use]
+    pub fn from_pool(pool: PostgresPool) -> Self {
+        Self::new(PostgresExecutor::new(pool))
+    }
+}
+
 #[async_trait]
-impl RoleRepository for PostgresAdapter {
+impl RoleRepository for PostgresRoleRepository {
     async fn list(&self, tenant: &TenantId) -> Result<Vec<RoleDetails>, PersistenceError> {
         let tenant_id = tenant.as_str().to_owned();
         self.executor
             .run(move |connection| {
                 let rows = roles::table
                     .filter(roles::tenant_id.eq(&tenant_id))
-                    .select(Role::as_select())
-                    .order((roles::is_system.desc(), roles::name.asc(), roles::id.asc()))
-                    .load::<Role>(connection)
+                    .select(RoleRow::as_select())
+                    .order((
+                        roles::is_system.desc(),
+                        sql::<Text>(r#"name COLLATE "C""#).asc(),
+                        roles::id.asc(),
+                    ))
+                    .load::<RoleRow>(connection)
                     .map_err(map_diesel_error)?;
                 rows.into_iter()
                     .map(|role| hydrate_role(connection, &tenant_id, role))
@@ -94,24 +117,24 @@ impl RoleRepository for PostgresAdapter {
     async fn create(
         &self,
         tenant: &TenantId,
-        record: CreateRoleRecord,
+        role: NewRole,
     ) -> Result<RoleDetails, PersistenceError> {
         let tenant_id = tenant.as_str().to_owned();
         self.executor
             .run(move |connection| {
                 connection
-                    .transaction(|connection| {
-                        let role = diesel::insert_into(roles::table)
-                            .values(NewRole {
+                    .transaction::<_, diesel::result::Error, _>(|connection| {
+                        let row = diesel::insert_into(roles::table)
+                            .values(NewRoleRow {
                                 tenant_id: tenant_id.clone(),
-                                name: record.name,
-                                description: record.description,
+                                name: role.name,
+                                description: role.description,
                                 is_system: false,
                             })
-                            .returning(Role::as_returning())
-                            .get_result::<Role>(connection)?;
-                        replace_permissions(connection, role.id, &record.permissions)?;
-                        hydrate_role(connection, &tenant_id, role)
+                            .returning(RoleRow::as_returning())
+                            .get_result::<RoleRow>(connection)?;
+                        replace_permissions(connection, row.id, &role.permissions)?;
+                        hydrate_role(connection, &tenant_id, row)
                     })
                     .map_err(map_diesel_error)
             })
@@ -121,20 +144,20 @@ impl RoleRepository for PostgresAdapter {
     async fn update(
         &self,
         tenant: &TenantId,
-        id: i32,
-        record: UpdateRoleRecord,
+        role_id: i32,
+        patch: RolePatch,
     ) -> Result<UpdateRoleOutcome, PersistenceError> {
         let tenant_id = tenant.as_str().to_owned();
         self.executor
             .run(move |connection| {
                 connection
-                    .transaction(|connection| {
+                    .transaction::<_, diesel::result::Error, _>(|connection| {
                         let existing = roles::table
                             .filter(roles::tenant_id.eq(&tenant_id))
-                            .filter(roles::id.eq(id))
-                            .select(Role::as_select())
+                            .filter(roles::id.eq(role_id))
+                            .select(RoleRow::as_select())
                             .for_update()
-                            .first::<Role>(connection)
+                            .first::<RoleRow>(connection)
                             .optional()?;
                         let Some(existing) = existing else {
                             return Ok(UpdateRoleOutcome::NotFound);
@@ -143,22 +166,22 @@ impl RoleRepository for PostgresAdapter {
                             return Ok(UpdateRoleOutcome::SystemRole);
                         }
 
-                        let name = record.name.unwrap_or(existing.name);
-                        let description = record.description.unwrap_or(existing.description);
+                        let name = patch.name.unwrap_or(existing.name);
+                        let description = patch.description.unwrap_or(existing.description);
                         let role = diesel::update(
                             roles::table
                                 .filter(roles::tenant_id.eq(&tenant_id))
-                                .filter(roles::id.eq(id)),
+                                .filter(roles::id.eq(role_id)),
                         )
                         .set((
                             roles::name.eq(name),
                             roles::description.eq(description),
                             roles::updated_at.eq(diesel::dsl::now),
                         ))
-                        .returning(Role::as_returning())
-                        .get_result::<Role>(connection)?;
+                        .returning(RoleRow::as_returning())
+                        .get_result::<RoleRow>(connection)?;
 
-                        if let Some(permissions) = record.permissions {
+                        if let Some(permissions) = patch.permissions {
                             replace_permissions(connection, role.id, &permissions)?;
                             let user_ids = user_roles::table
                                 .filter(user_roles::tenant_id.eq(&tenant_id))
@@ -183,7 +206,7 @@ impl RoleRepository for PostgresAdapter {
     async fn delete(
         &self,
         tenant: &TenantId,
-        id: i32,
+        role_id: i32,
     ) -> Result<DeleteRoleOutcome, PersistenceError> {
         let tenant_id = tenant.as_str().to_owned();
         self.executor
@@ -192,10 +215,10 @@ impl RoleRepository for PostgresAdapter {
                     .transaction(|connection| {
                         let role = roles::table
                             .filter(roles::tenant_id.eq(&tenant_id))
-                            .filter(roles::id.eq(id))
-                            .select(Role::as_select())
+                            .filter(roles::id.eq(role_id))
+                            .select(RoleRow::as_select())
                             .for_update()
-                            .first::<Role>(connection)
+                            .first::<RoleRow>(connection)
                             .optional()?;
                         let Some(role) = role else {
                             return Ok(DeleteRoleOutcome::NotFound);
@@ -205,7 +228,7 @@ impl RoleRepository for PostgresAdapter {
                         }
                         let user_count = user_roles::table
                             .filter(user_roles::tenant_id.eq(&tenant_id))
-                            .filter(user_roles::role_id.eq(id))
+                            .filter(user_roles::role_id.eq(role_id))
                             .count()
                             .get_result::<i64>(connection)?;
                         if user_count > 0 {
@@ -217,7 +240,7 @@ impl RoleRepository for PostgresAdapter {
                         diesel::delete(
                             roles::table
                                 .filter(roles::tenant_id.eq(&tenant_id))
-                                .filter(roles::id.eq(id)),
+                                .filter(roles::id.eq(role_id)),
                         )
                         .execute(connection)?;
                         Ok(DeleteRoleOutcome::Deleted)
