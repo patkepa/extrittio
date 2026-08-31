@@ -12,8 +12,8 @@ use diesel::sql_types::Text;
 use extrittio_backend_core::{
     ADMIN_ROLE, ChangePasswordOutcome, CreateUserOutcome, DeleteUserOutcome, EncodedPasswordHash,
     NewUser, OWNER_ROLE, PageRequest, PersistenceError, RecordSuccessfulLoginOutcome, Role,
-    SetUserRolesOutcome, TenantId, User, UserCredentials, UserDetails, UserPage, UserRepository,
-    UserAuthEpoch, VIEWER_ROLE,
+    SetUserRolesOutcome, TenantId, User, UserAuthEpoch, UserCredentials, UserDetails, UserPage,
+    UserRepository, VIEWER_ROLE,
 };
 use uuid::Uuid;
 

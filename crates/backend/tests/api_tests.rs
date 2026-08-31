@@ -8,6 +8,7 @@ use diesel::r2d2::{ConnectionManager, Pool};
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
 use http_body_util::BodyExt;
 use prost::Message;
+use serde::Serialize;
 use serde_json::Value;
 use std::sync::Arc;
 use std::time::Duration;
@@ -23,6 +24,23 @@ const DEFAULT_TEST_DATABASE_URL: &str =
 const TEST_BLUEPRINT_ID: &str = "test-default-blueprint";
 const TEST_BLUEPRINT_REVISION_ID: &str = "test-default-blueprint-r1";
 static TEST_DB_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+#[derive(Serialize)]
+struct LegacyClaimsWithoutAuthEpoch<'a> {
+    sub: i32,
+    username: &'a str,
+    role: &'a str,
+    tenant_id: &'a str,
+    scopes: Vec<String>,
+    permission_version: i32,
+    exp: usize,
+}
+
+#[derive(QueryableByName)]
+struct AuthEpochRow {
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    auth_epoch: String,
+}
 
 fn tenant_context(tenant_id: &str) -> extrittio_backend::auth::context::RequestContext {
     extrittio_backend::auth::context::RequestContext::from_claims(extrittio_backend::auth::Claims {
@@ -1435,6 +1453,13 @@ async fn test_login_cookie_token_me_and_session_invalidation() {
         Some(extrittio_backend::tenancy::DEFAULT_TENANT_ID)
     );
     assert_eq!(claims.permission_version, 2);
+    let issued_auth_epoch = claims
+        .auth_epoch
+        .as_deref()
+        .filter(|value| !value.is_empty())
+        .expect("new sessions carry a nonempty authentication epoch")
+        .to_string();
+    assert!(login["user"].get("auth_epoch").is_none());
 
     let authenticated_app = extrittio_backend::api::router(100 * 1024 * 1024, true)
         .layer(axum::middleware::from_fn_with_state(
@@ -1479,6 +1504,36 @@ async fn test_login_cookie_token_me_and_session_invalidation() {
         .unwrap();
     assert_eq!(me_with_cookie.status(), StatusCode::OK);
 
+    let legacy_token = jsonwebtoken::encode(
+        &jsonwebtoken::Header::default(),
+        &LegacyClaimsWithoutAuthEpoch {
+            sub: user_id,
+            username: "login-user",
+            role: "viewer",
+            tenant_id: extrittio_backend::tenancy::DEFAULT_TENANT_ID,
+            scopes: claims.scopes.clone(),
+            permission_version: 2,
+            exp: usize::try_from(
+                (chrono::Utc::now() + chrono::Duration::hours(1)).timestamp(),
+            )
+            .unwrap(),
+        },
+        &jsonwebtoken::EncodingKey::from_secret(b"test-secret-key"),
+    )
+    .unwrap();
+    let legacy_rejected = authenticated_app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/auth/me")
+                .header("authorization", format!("Bearer {legacy_token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(legacy_rejected.status(), StatusCode::UNAUTHORIZED);
+
     diesel::sql_query(
         "UPDATE users SET permission_version = permission_version + 1 \
          WHERE tenant_id = $1 AND id = $2",
@@ -1499,6 +1554,50 @@ async fn test_login_cookie_token_me_and_session_invalidation() {
         .await
         .unwrap();
     assert_eq!(invalidated.status(), StatusCode::UNAUTHORIZED);
+
+    let replacement_password_hash = extrittio_backend::auth::hash_password(password).unwrap();
+    let mut connection = pool.get().unwrap();
+    diesel::sql_query("DELETE FROM users WHERE tenant_id = $1 AND id = $2")
+        .bind::<diesel::sql_types::Text, _>(extrittio_backend::tenancy::DEFAULT_TENANT_ID)
+        .bind::<diesel::sql_types::Integer, _>(user_id)
+        .execute(&mut connection)
+        .unwrap();
+    let replacement = diesel::sql_query(
+        "INSERT INTO users \
+             (id, tenant_id, username, password_hash, role, is_active, permission_version) \
+         VALUES ($2, $1, 'login-user', $3, 'viewer', TRUE, 2) \
+         RETURNING auth_epoch",
+    )
+    .bind::<diesel::sql_types::Text, _>(extrittio_backend::tenancy::DEFAULT_TENANT_ID)
+    .bind::<diesel::sql_types::Integer, _>(user_id)
+    .bind::<diesel::sql_types::Text, _>(replacement_password_hash)
+    .get_result::<AuthEpochRow>(&mut connection)
+    .unwrap();
+    assert_ne!(replacement.auth_epoch, issued_auth_epoch);
+    diesel::sql_query(
+        "INSERT INTO user_roles (user_id, role_id, tenant_id) \
+         SELECT $1, id, $2 FROM roles WHERE tenant_id = $2 AND name = 'viewer'",
+    )
+    .bind::<diesel::sql_types::Integer, _>(user_id)
+    .bind::<diesel::sql_types::Text, _>(extrittio_backend::tenancy::DEFAULT_TENANT_ID)
+    .execute(&mut connection)
+    .unwrap();
+    drop(connection);
+
+    let replacement_cannot_revive_deleted_session = authenticated_app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/auth/me")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        replacement_cannot_revive_deleted_session.status(),
+        StatusCode::UNAUTHORIZED
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

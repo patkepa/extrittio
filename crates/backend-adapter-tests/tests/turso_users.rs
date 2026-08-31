@@ -146,6 +146,10 @@ impl UserContractHarness for TursoUserHarness {
             Err(PersistenceError::NotFound)
         }
     }
+
+    fn expects_deleted_user_id_reuse(&self) -> bool {
+        true
+    }
 }
 
 fn internal(error: turso::Error) -> PersistenceError {

@@ -125,9 +125,14 @@ impl RoleContractHarness for TursoRoleHarness {
         transaction
             .execute(
                 "INSERT INTO users (
-                    tenant_id, username, password_hash, role, created_at
-                 ) VALUES (?1, ?2, 'role-contract-password', 'viewer', ?3)",
-                params![tenant.as_str(), username, Utc::now().timestamp_micros()],
+                    tenant_id, username, password_hash, role, created_at, auth_epoch
+                 ) VALUES (?1, ?2, 'role-contract-password', 'viewer', ?3, ?4)",
+                params![
+                    tenant.as_str(),
+                    username,
+                    Utc::now().timestamp_micros(),
+                    format!("role-contract-{username}")
+                ],
             )
             .await
             .map_err(internal)?;

@@ -145,6 +145,10 @@ pub enum RecordSuccessfulLoginOutcome {
 /// bytewise ascending order. Every write is exact-tenant scoped. User creation,
 /// role replacement, and last-owner checks are atomic; concurrent operations
 /// cannot delete or demote every owner in a tenant.
+/// `find_credentials_by_username` and `get_details` each return one
+/// snapshot-consistent identity/role/permission aggregate; adapters must not
+/// combine a credential or principal generation with a different revision's
+/// authorization state.
 #[async_trait]
 pub trait UserRepository: Send + Sync {
     async fn list(

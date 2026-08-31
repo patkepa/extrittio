@@ -236,7 +236,11 @@ mod tests {
             )
             .await
             .expect_err("new rows must provide an authentication epoch");
-        assert!(missing_epoch.to_string().contains("users.auth_epoch is required"));
+        assert!(
+            missing_epoch
+                .to_string()
+                .contains("users.auth_epoch is required")
+        );
     }
 
     async fn scalar(connection: &Connection, sql: &str) -> i64 {

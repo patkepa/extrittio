@@ -987,6 +987,7 @@ mod tests {
         assert_eq!(authenticated.id, 7);
         assert_eq!(authenticated.tenant_id, tenant_id);
         assert_eq!(authenticated.role, "viewer");
+        assert_eq!(authenticated.auth_epoch.as_str(), "auth-epoch-7");
         let hasher_state = hasher.state.lock().unwrap();
         assert_eq!(hasher_state.verify_inputs.len(), 1);
         assert_eq!(hasher_state.verify_inputs[0].0, "plaintext-secret");
@@ -1026,7 +1027,7 @@ mod tests {
     }
 
     #[test]
-    fn session_resolution_checks_identity_activity_and_permission_version() {
+    fn session_resolution_checks_identity_activity_version_and_auth_epoch() {
         let tenant_id = tenant("tenant-a");
         let (application, repository, _, _) = application(&tenant_id);
 

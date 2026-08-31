@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -30,6 +31,13 @@ pub trait UserContractHarness: Send + Sync {
         user_id: i32,
         is_active: bool,
     ) -> Result<(), PersistenceError>;
+
+    /// Whether deleting the current maximum user ID is expected to make that
+    /// numeric ID available to the next insert. Turso exercises this SQLite
+    /// behavior so the contract cannot quietly rely on integer identity.
+    fn expects_deleted_user_id_reuse(&self) -> bool {
+        false
+    }
 }
 
 struct RoleFixtures {
@@ -42,12 +50,68 @@ struct RoleFixtures {
 
 pub async fn assert_contract(harness: &dyn UserContractHarness) {
     assert_crud_and_projection_semantics(harness).await;
+    assert_delete_and_recreate_changes_auth_epoch(harness).await;
     assert_concurrent_create_and_role_delete(harness).await;
     assert_concurrent_role_and_user_updates(harness).await;
     assert_inactive_owners_count(harness).await;
     assert_concurrent_owner_delete(harness).await;
     assert_concurrent_owner_removal(harness).await;
     assert_concurrent_owner_delete_and_removal(harness).await;
+}
+
+async fn assert_delete_and_recreate_changes_auth_epoch(harness: &dyn UserContractHarness) {
+    harness
+        .reset_users()
+        .await
+        .expect("reset user recreation fixture");
+    let users = harness.users();
+    let tenant = tenant_a();
+    let roles = seed_roles(harness, &tenant).await;
+    let original = create(
+        &*users,
+        &tenant,
+        "recreated-principal",
+        "original-hash",
+        Some(vec![roles.viewer.id]),
+    )
+    .await;
+    let original_id = original.user.id;
+    let original_epoch = original.user.auth_epoch.clone();
+    assert!(!original_epoch.as_str().is_empty());
+
+    assert_eq!(
+        users
+            .delete(&tenant, original_id)
+            .await
+            .expect("delete original principal"),
+        DeleteUserOutcome::Deleted
+    );
+    let replacement = create(
+        &*users,
+        &tenant,
+        "recreated-principal",
+        "replacement-hash",
+        Some(vec![roles.viewer.id]),
+    )
+    .await;
+
+    if harness.expects_deleted_user_id_reuse() {
+        assert_eq!(
+            replacement.user.id, original_id,
+            "this adapter fixture must exercise numeric user-ID reuse"
+        );
+    }
+    assert_ne!(
+        replacement.user.auth_epoch, original_epoch,
+        "a replacement principal must never inherit the deleted principal's authentication epoch"
+    );
+    let credentials = users
+        .find_credentials_by_username(&tenant, "recreated-principal")
+        .await
+        .expect("read replacement credentials")
+        .expect("replacement credentials exist");
+    assert_eq!(credentials.details, replacement);
+    assert_eq!(credentials.password_hash.as_str(), "replacement-hash");
 }
 
 async fn assert_inactive_owners_count(harness: &dyn UserContractHarness) {
@@ -215,6 +279,7 @@ async fn assert_crud_and_projection_semantics(harness: &dyn UserContractHarness)
     .await;
     let other_tenant = create(&*users, &tenant_b, "alpha-user", "hash-other-tenant", None).await;
 
+    let mut auth_epochs = HashSet::new();
     for details in [
         &upper,
         &alpha,
@@ -225,6 +290,11 @@ async fn assert_crud_and_projection_semantics(harness: &dyn UserContractHarness)
         &other_tenant,
     ] {
         assert_eq!(details.user.permission_version, 2);
+        assert!(!details.user.auth_epoch.as_str().is_empty());
+        assert!(
+            auth_epochs.insert(details.user.auth_epoch.as_str()),
+            "every persisted principal receives a unique authentication epoch"
+        );
         assert_microsecond(details.user.created_at);
     }
     assert_eq!(

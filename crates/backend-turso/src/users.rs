@@ -7,8 +7,8 @@ use chrono::{DateTime, Utc};
 use extrittio_backend_core::{
     ADMIN_ROLE, ChangePasswordOutcome, CreateUserOutcome, DeleteUserOutcome, EncodedPasswordHash,
     NewUser, OWNER_ROLE, PageRequest, PersistenceError, RecordSuccessfulLoginOutcome, Role,
-    SetUserRolesOutcome, TenantId, User, UserCredentials, UserDetails, UserPage, UserRepository,
-    UserAuthEpoch, VIEWER_ROLE,
+    SetUserRolesOutcome, TenantId, User, UserAuthEpoch, UserCredentials, UserDetails, UserPage,
+    UserRepository, VIEWER_ROLE,
 };
 use turso::{Connection, Row, params};
 use uuid::Uuid;
@@ -430,11 +430,10 @@ impl UserRepository for TursoUserRepository {
         drop(rows);
         let details = hydrate(&transaction, tenant, id).await?;
         transaction.commit().await.map_err(map_error)?;
-        Ok(details
-            .map(|details| UserCredentials {
-                details,
-                password_hash,
-            }))
+        Ok(details.map(|details| UserCredentials {
+            details,
+            password_hash,
+        }))
     }
 
     async fn get_details(

@@ -9,14 +9,14 @@ This document resolves the behavior choices that must be stable before code move
 
 | ADR | Decision | Primary owner |
 |---|---|---|
-| ADR-001 | Missing-tenant compatibility is restricted to legacy signed user JWTs | P1.2 |
+| ADR-001 | Missing-tenant compatibility is restricted to epoch-bound signed user JWTs | P1.2 |
 | ADR-002 | Request/access audit remains best effort and never invents a tenant | P1.2, P3.7 |
 | ADR-003 | A failed command publish returns 502 and retains the recorded dispatch attempt | P3.4 |
 | ADR-004 | Firmware upload/delete retains the current best-effort compensation order | P3.6 |
 | ADR-005 | Rule snapshots reload every 5 seconds by default, with a bounded healthy-state contract | P3.3 |
 | ADR-006 | Tenant zone lists use binary `name ASC, id ASC` order | P2.4 |
 | ADR-007 | Roles use system-first binary order, atomic permission invalidation, and one timestamp update per successful mutation | P3.1 |
-| ADR-008 | Users use exact-tenant atomic role/password semantics with injected host password hashing and clock ports | P3.1 |
+| ADR-008 | Users use exact-tenant atomic role/password semantics, durable authentication epochs, and snapshot-consistent security reads | P3.1 |
 
 ## ADR-001: Legacy missing-tenant mapping
 
@@ -35,10 +35,10 @@ Silently changing a malformed, explicitly supplied tenant into the default tenan
 
 ### Decision
 
-The host owns one compatibility mapper from validated user JWT claims to the non-optional core `TenantContext`:
+The host owns one compatibility mapper from validated user JWT claims to the non-optional core `TenantContext`. Authentication-epoch validation from ADR-008 happens before this tenant compatibility mapping:
 
 1. A present, valid tenant claim maps to that tenant.
-2. An absent tenant claim on an otherwise valid signed **user JWT** maps to `DEFAULT_TENANT_ID`.
+2. An absent tenant claim on an otherwise valid signed **user JWT** maps to `DEFAULT_TENANT_ID` only when that token also carries a non-empty `auth_epoch` that resolves to the persisted principal. A signed token with no `auth_epoch` is rejected; it does not enter this compatibility branch.
 3. A present but empty or invalid tenant claim is rejected as unauthorized; it never falls back.
 4. API keys, device identities, worker/system actors, repository calls, and arbitrary optional tenant inputs never use this fallback.
 5. Login with an omitted tenant continues to authenticate against the default tenant for HTTP compatibility. The token issued by a successful login contains an explicit tenant claim.
@@ -48,7 +48,8 @@ The compatibility mapper records a counter and a structured warning without logg
 
 ### Consequences
 
-- Old signed user tokens remain usable during a rolling upgrade.
+- Epoch-bound signed user tokens that omit only the tenant remain usable during the bounded missing-tenant compatibility window.
+- Tokens issued before `auth_epoch` was introduced are intentionally rejected once the security correction is deployed. This one-time logout is required to prevent a deleted principal's token from becoming valid for a replacement principal.
 - Malformed tenant claims fail closed instead of gaining default-tenant access.
 - Core identity types do not know about JWTs or `DEFAULT_TENANT_ID`.
 - Default-tenant bootstrap and default login selection remain valid product behavior but are separate from runtime tenant fallback.
@@ -56,14 +57,16 @@ The compatibility mapper records a counter and a structured warning without logg
 ### Compatibility and rollout
 
 - P1.2 introduces the mapper and routes authentication plus rate-limit identity through it.
-- Keep the missing-claim branch through mixed-version deployment and for at least one maximum token lifetime, currently 24 hours, after every token issuer writes tenant claims.
+- Keep the missing-tenant branch through mixed-version deployment and for at least one maximum token lifetime, currently 24 hours, after every token issuer writes tenant claims. This branch never relaxes the `auth_epoch` requirement.
+- Deploy the schema backfill before or atomically with epoch-aware token issuance and validation. After validation is enabled, all tokens without `auth_epoch` fail closed and users authenticate again to receive a current token.
 - Remove the branch in P6 only after no compatibility-hit metric has been observed for one full supported token lifetime. If external issuers still require it, retain it only through a separately approved, time-bounded compatibility policy.
 - Removing default-tenant substitution from audit and workers is an intentional tenant-isolation correction, not an API compatibility break.
 
 ### Required tests
 
 - A signed JWT with a valid tenant maps to that exact tenant.
-- A signed legacy JWT with no tenant maps to the default tenant and increments the compatibility metric.
+- A signed epoch-bound JWT with no tenant maps to the default tenant and increments the compatibility metric.
+- A correctly signed JWT with no `auth_epoch`, or with an empty or non-matching epoch, is unauthorized even when its tenant is absent.
 - Empty and whitespace-only present claims, plus every form rejected by the final `TenantId` parser, are rejected.
 - A missing/invalid tenant cannot query or mutate another tenant's records.
 - API-key, device, and system actor construction requires an explicit tenant or an explicitly system-scoped API.
