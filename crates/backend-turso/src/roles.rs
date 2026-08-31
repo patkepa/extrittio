@@ -184,7 +184,17 @@ impl RoleRepository for TursoRoleRepository {
             return Ok(UpdateRoleOutcome::SystemRole);
         }
 
-        let now = Utc::now().timestamp_micros();
+        let next_timestamp = current
+            .role
+            .updated_at
+            .timestamp_micros()
+            .checked_add(1)
+            .ok_or_else(|| {
+                PersistenceError::CorruptData(
+                    "roles.updated_at cannot advance beyond i64 microseconds".into(),
+                )
+            })?;
+        let now = Utc::now().timestamp_micros().max(next_timestamp);
         transaction
             .execute(
                 "UPDATE roles SET updated_at = ?3 WHERE tenant_id = ?1 AND id = ?2",

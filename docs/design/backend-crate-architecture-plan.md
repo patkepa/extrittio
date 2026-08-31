@@ -1,6 +1,6 @@
 # Backend Crate Architecture and Implementation Plan
 
-- **Status:** In progress — P0, the P2 zones walking skeleton, and the P3.1 roles/permissions slice are implemented
+- **Status:** In progress — P0, the P2 zones walking skeleton, and the P3.1 roles/permissions and users/passwords slices are implemented
 - **Scope:** Refactor the current backend into a modular monolith with explicit compile-time boundaries
 - **Primary packages:** `extrittio-backend-core`, `extrittio-backend-postgres`, `extrittio-backend-turso`, and `extrittio-backend`
 - **Migration rule:** Preserve externally observable behavior unless a work package explicitly says otherwise
@@ -23,9 +23,10 @@ This ledger describes the checked-in implementation, not the target state descri
 | P2.4 | Completed | Zone CRUD runs through the core application façade and both adapter implementations, and rule-zone snapshot loading uses the adapter-owned system port rather than a legacy host query. The shared contract covers tenant isolation, deterministic binary ordering, uniqueness, not-found, in-use deletion, and CRUD behavior; PostgreSQL includes duplicate preflight plus the canonical uniqueness index. |
 | P2.5 | Completed | Package rules are fatal and CI checks core, no-adapter host, PostgreSQL-only host, Turso-only host, both-adapter host, and the extracted packages directly. |
 | P3.1 roles/permissions | Completed | Core owns the permission catalog, role types, authorization/orchestration, and `RoleRepository`; both adapter-owned implementations pass a separate shared role contract. HTTP routes use `Application`, user hydration uses the core tenant-aware `Role`, and all legacy host role services, ports, and implementations are deleted. ADR-007 records ordering, conflict, invalidation, and timestamp semantics. |
-| P3.1 remaining; P3.2–P6 | Not started | Users/passwords are the next P3.1 sub-slice, followed by API keys/nonces, certificates/key protection, and bootstrap. Most handler orchestration, process-shell composition, compatibility bridges, and release cleanup remain. |
+| P3.1 users/passwords | Completed | Core owns user/password policy and orchestration, typed user/credential models, pagination, the password/clock outbound ports, and `UserRepository`. PostgreSQL and Turso own the implementations and share one user contract; HTTP login/session/user routes use `Application`, host Argon2 remains injected, and the legacy host user services, ports, and repositories are deleted. ADR-008 records the canonical behavior and PI-16 records the remaining embedded-NUL parity gap. |
+| P3.1 remaining; P3.2–P6 | Not started | API keys/nonces are the next P3.1 sub-slice, followed by certificates/key protection and bootstrap. Most handler orchestration, process-shell composition, compatibility bridges, and release cleanup remain. |
 
-The next checkpoint is the P3.1 users/passwords sub-slice. Continue removing broad compatibility access with each vertical slice; do not add a new handler-to-repository path.
+The next checkpoint is the P3.1 API-keys/nonces sub-slice. Continue removing broad compatibility access with each vertical slice; do not add a new handler-to-repository path.
 
 ## 1. Executive decision
 
@@ -1227,7 +1228,7 @@ The current `Persistence` aggregate is exhausted by this ledger:
 | `rules` | P3.3 | split tenant CRUD from system rule-snapshot loading |
 | `shadows` | P3.4 | compare-and-set/update operations; publication outbound |
 | `telemetry` | P3.5 | ingestion/query/retention semantics |
-| `users` | P3.1 | identity use cases |
+| `users` | P3.1 (completed) | core identity/password application façade and business port; adapter-owned PostgreSQL/Turso implementations; separate shared user contract; host-owned injected Argon2 and clock |
 | `zones` | P2.4 | pilot tenant CRUD; cross-tenant loading moves to rules |
 
 `BackendDescriptor` and its capabilities move to the host's `DatabaseRuntime`; they are not members of the new business `RepositorySet`.
@@ -1332,31 +1333,31 @@ The refactor is complete when:
 
 ## 26. Immediate next implementation stage
 
-Finish **P1/P2 boundary closure** before starting P3.1. The zones pilot has proved the dependency direction; the next work should remove the broad escape hatches that the remaining slices would otherwise copy.
+Continue **P3.1 identity/bootstrap one vertical slice at a time**, closing that slice's P1/P2 prerequisites as part of the same change. P1 and P2 remain partially open at the repository-wide level because their remaining work is distributed across unmigrated domains; they are not a flag-day gate in front of P3. The zones, roles/permissions, and users/passwords slices have established the repeatable path: prepare only the boundary and adapter foundations the slice needs, migrate both engines and callers, then remove that slice's escape hatch.
 
-### 26.1 Close the remaining P1 boundaries
+### 26.1 Apply the remaining P1 boundaries per slice
 
-1. Complete P1.1 by moving shared HTTP error/status mapping into a host transport module and removing `AppError`, Axum extractors, JWT claims, and HTTP DTOs from every domain-shaped module touched by the next slice. Add safe public mapping tests for each core `ApplicationError` variant.
-2. Finish identity entry points from P1.2: map API-key, device, worker, and explicit system actors to `TenantContext`; remove remaining accidental default-tenant substitutions; keep the missing-tenant legacy JWT fallback only in the documented compatibility mapper.
+1. For each touched domain, complete its P1.1 work by moving HTTP error/status mapping into the host transport boundary and keeping `AppError`, Axum extractors, JWT claims, and HTTP DTOs out of core. Add safe public mapping tests for any newly introduced `ApplicationError` behavior.
+2. Finish P1.2 at each identity entry point as it migrates: API-key, device, worker, and explicit system actors map to `TenantContext`; accidental default-tenant substitutions are removed; the missing-tenant legacy JWT fallback remains only in the documented compatibility mapper.
 3. Preserve the completed P1.3 split: new business ports enter `RepositorySet`, operational capabilities stay on `DatabaseRuntime`, schema migration remains separate from idempotent application bootstrap, and neither lifecycle errors nor engine handles may leak back into business ports.
 4. Complete P1.4 incrementally: derive narrow HTTP/messaging/worker/operational substates from the now-private `AppState`, and reduce the architecture verifier's tracked handler-to-repository access counts with every slice. Existing handlers may use temporary narrow accessors until their P3 slice, but no accessor may expose the repository bag and no allowlist cap may increase.
-5. Complete the P1.5 prerequisites needed by identity/bootstrap: adapter-owned row/schema types, explicit domain conversions, UTC precision rules, and pagination semantics. Keep Prost, Diesel, Turso, Axum, JWT, and environment access outside core.
+5. Complete only the P1.5 prerequisites needed by the active slice: adapter-owned row/schema types, explicit domain conversions, UTC precision rules, and pagination semantics. Keep Prost, Diesel, Turso, Axum, JWT, and environment access outside core.
 
-### 26.2 Close the P2 walking skeleton
+### 26.2 Apply P2 foundations without a second migration track
 
-1. Finish moving connection, executor, row-decoding, lifecycle, health, and maintenance foundations to their adapter owners. Keep exactly one shared pool/database handle and retain bridge exports only where an unmigrated repository still requires them.
-2. Complete core foundations with private `RepositorySet` construction, lifecycle-free business ports, pagination/time types, and only the outbound ports required by the next slice. Do not add placeholder abstractions for later domains.
-3. Re-run the zones contract against live PostgreSQL and temporary Turso, including duplicate-data migration preflight, rollback, binary collation/order, wrong-tenant behavior, and in-use deletion. Confirm that no legacy zone CRUD or snapshot-query path remains; keep the system rule-snapshot contract separate until P3.3.
+1. Move connection, executor, row-decoding, lifecycle, health, and maintenance foundations to their adapter owners when the active slice reaches them. Keep exactly one shared pool/database handle and retain bridge exports only while an unmigrated repository still uses them.
+2. Extend core's private `RepositorySet`, lifecycle-free business ports, pagination/time types, and outbound ports only for the active slice. Do not add placeholder abstractions for later domains.
+3. Preserve the completed zones, roles, and users contracts as regression gates while adding a separate shared contract for the active slice. Keep system rule-snapshot behavior separate until P3.3.
 4. Keep the CI matrix fatal for `core`, no-adapter/OpenAPI host, PostgreSQL-only host, Turso-only host, and `all-databases`; lint and test the three extracted packages directly, and run each shared adapter contract exactly once in its engine-specific job.
-5. Extend the completed P0 compatibility lock only where P3.1 inventory review finds an uncovered writer or decoder; in particular, retain the existing public-error, legacy-credential, encrypted-key, backup-manifest, and migration-snapshot fixtures unchanged while ownership moves.
+5. Extend the completed P0 compatibility lock only where the active inventory row exposes an uncovered writer or decoder; retain the existing public-error, legacy-credential, encrypted-key, backup-manifest, and migration-snapshot fixtures unchanged while ownership moves.
 
-The closure checkpoint passes when the broad runtime state no longer exposes repositories, business ports contain no lifecycle operation, both zone contracts pass, migrations run only from adapter-owned assets, and `cargo xtask architecture` plus the full feature matrix are green.
+For each migrated slice, the closure checkpoint passes when callers use `Application`, the legacy port and both legacy implementations for that slice are gone, both adapters pass its shared contract, lifecycle concerns remain outside its business port, architecture debt decreases, and the applicable feature matrix is green. Repository-wide P1/P2 status becomes complete only after the last dependent slice removes the remaining shared bridges and broad runtime escape hatches.
 
 ### 26.3 Continue P3.1: identity and bootstrap
 
-The roles/permissions sub-slice is complete. It established the core-owned permission catalog and role application/port, adapter-owned repositories, the independent shared role contract, host `Application` routing, and deletion of every legacy host role implementation. ADR-007 is the implementation authority for its resolved ordering, conflict, invalidation, timestamp, and compatibility behavior.
+The roles/permissions and users/passwords sub-slices are complete. They established core-owned authorization and identity policy, application façades and ports, adapter-owned repositories, independent shared contracts, host `Application` routing, injected password/clock implementations, and deletion of their legacy host implementations. ADR-007 is the authority for role behavior; ADR-008 is the authority for user/password behavior, with the embedded-NUL cross-engine question remaining explicit as PI-16.
 
-Continue one reviewable sub-slice at a time in this order: users/passwords, API keys/nonces, certificates/key protection, then idempotent bootstrap. For each remaining sub-slice:
+Continue one reviewable sub-slice at a time in this order: API keys/nonces, certificates/key protection, then idempotent bootstrap. For each remaining sub-slice:
 
 1. characterize tenant, authorization, conflict, ordering, and transaction behavior;
 2. move domain policy and use cases to core without transport or environment dependencies;

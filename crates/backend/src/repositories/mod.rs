@@ -26,5 +26,3 @@ pub mod server_metrics_repo;
 pub mod shadow_repo;
 #[path = "../domains/telemetry/telemetry_repo.rs"]
 pub mod telemetry_repo;
-#[path = "../domains/identity/user_repo.rs"]
-pub mod user_repo;

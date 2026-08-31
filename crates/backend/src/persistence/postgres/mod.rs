@@ -27,7 +27,6 @@ mod outbox;
 mod rules;
 mod shadows;
 mod telemetry;
-mod users;
 
 /// Shared PostgreSQL adapter object. It implements multiple domain ports while
 /// owning one executor/pool boundary.

@@ -40,5 +40,3 @@ pub mod server_metrics;
 pub mod shadow_service;
 #[path = "../domains/telemetry/telemetry_service.rs"]
 pub mod telemetry_service;
-#[path = "../domains/identity/user_service.rs"]
-pub mod user_service;

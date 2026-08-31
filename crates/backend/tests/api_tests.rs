@@ -110,9 +110,13 @@ fn setup_test_db() -> Pool<ConnectionManager<PgConnection>> {
     pool
 }
 
-async fn setup_app_with_context(
+async fn setup_app_with_context_and_state(
     ctx: extrittio_backend::auth::context::RequestContext,
-) -> (axum::Router, Pool<ConnectionManager<PgConnection>>) {
+) -> (
+    axum::Router,
+    Pool<ConnectionManager<PgConnection>>,
+    Arc<AppState>,
+) {
     extrittio_backend::init::install_crypto_provider();
     let db_pool = setup_test_db();
     let zenoh_session = zenoh::open(zenoh::Config::default())
@@ -147,9 +151,16 @@ async fn setup_app_with_context(
 
     let app = extrittio_backend::api::router(100 * 1024 * 1024, true)
         .layer(axum::Extension(ctx))
-        .with_state(state);
+        .with_state(state.clone());
 
-    (app, db_pool)
+    (app, db_pool, state)
+}
+
+async fn setup_app_with_context(
+    ctx: extrittio_backend::auth::context::RequestContext,
+) -> (axum::Router, Pool<ConnectionManager<PgConnection>>) {
+    let (app, pool, _state) = setup_app_with_context_and_state(ctx).await;
+    (app, pool)
 }
 
 async fn setup_app() -> axum::Router {
@@ -1333,6 +1344,159 @@ async fn test_create_user_defaults_to_viewer_role() {
             .iter()
             .any(|permission| permission == "users.manage")
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_login_cookie_token_me_and_session_invalidation() {
+    let _guard = TEST_DB_LOCK.lock().await;
+    let (app, pool, state) = setup_app_with_context_and_state(test_context()).await;
+    let password = "Secret123!456";
+
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/users")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "username": "login-user",
+                        "password": password,
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_response.status(), StatusCode::CREATED);
+    let created: Value = serde_json::from_slice(
+        &create_response
+            .into_body()
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes(),
+    )
+    .unwrap();
+    let user_id = i32::try_from(created["id"].as_i64().unwrap()).unwrap();
+
+    let login_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/login")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "username": "login-user",
+                        "password": password,
+                        "issue_token": true,
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(login_response.status(), StatusCode::OK);
+    let set_cookie = login_response
+        .headers()
+        .get(axum::http::header::SET_COOKIE)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    assert!(set_cookie.starts_with("extrittio_session="));
+    assert!(set_cookie.contains("; HttpOnly; SameSite=Strict; Max-Age=86400"));
+    assert!(!set_cookie.contains("; Secure"));
+    let login: Value = serde_json::from_slice(
+        &login_response
+            .into_body()
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes(),
+    )
+    .unwrap();
+    let token = login["token"].as_str().unwrap().to_string();
+    assert_eq!(login["user"]["id"], user_id);
+    assert_eq!(login["user"]["username"], "login-user");
+    assert_eq!(login["user"]["role"], "viewer");
+    assert_eq!(login["user"]["permission_version"], 2);
+
+    let claims = extrittio_backend::auth::validate_token(&token, "test-secret-key").unwrap();
+    assert_eq!(claims.sub, user_id);
+    assert_eq!(
+        claims.tenant_id.as_deref(),
+        Some(extrittio_backend::tenancy::DEFAULT_TENANT_ID)
+    );
+    assert_eq!(claims.permission_version, 2);
+
+    let authenticated_app = extrittio_backend::api::router(100 * 1024 * 1024, true)
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            extrittio_backend::middleware::auth_middleware,
+        ))
+        .with_state(state);
+    let me_with_bearer = authenticated_app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/auth/me")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(me_with_bearer.status(), StatusCode::OK);
+    let current: Value = serde_json::from_slice(
+        &me_with_bearer
+            .into_body()
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes(),
+    )
+    .unwrap();
+    assert_eq!(current, login["user"]);
+
+    let cookie_pair = set_cookie.split(';').next().unwrap();
+    let me_with_cookie = authenticated_app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/auth/me")
+                .header("cookie", cookie_pair)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(me_with_cookie.status(), StatusCode::OK);
+
+    diesel::sql_query(
+        "UPDATE users SET permission_version = permission_version + 1 \
+         WHERE tenant_id = $1 AND id = $2",
+    )
+    .bind::<diesel::sql_types::Text, _>(extrittio_backend::tenancy::DEFAULT_TENANT_ID)
+    .bind::<diesel::sql_types::Integer, _>(user_id)
+    .execute(&mut pool.get().unwrap())
+    .unwrap();
+
+    let invalidated = authenticated_app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/auth/me")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(invalidated.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

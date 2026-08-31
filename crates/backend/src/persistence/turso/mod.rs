@@ -22,7 +22,6 @@ mod row;
 mod rules;
 mod shadows;
 mod telemetry;
-mod users;
 
 use std::sync::Arc;
 
@@ -133,8 +132,6 @@ mod tests {
     use crate::domains::identity::certificate_types::{
         NewCaCertificateRecord, NewDeviceCertificateRecord, ReplaceCertificateOutcome,
     };
-    use crate::domains::identity::user_repository::UserRepository;
-    use crate::domains::identity::user_types::{CreateUserOutcome, CreateUserRecord};
     use crate::domains::logs::port::LogRepository;
     use crate::domains::operations::metrics_repository::MetricsRepository;
     use crate::domains::operations::metrics_types::NewAppMetricRecord;
@@ -148,6 +145,7 @@ mod tests {
     use crate::domains::telemetry::types::{TelemetryQuery, TelemetryWrite};
     use crate::persistence::{BootstrapOwner, BootstrapRepository, BuiltinDeviceType};
     use crate::tenancy::{DEFAULT_TENANT_ID, TenantId};
+    use extrittio_backend_core::{CreateUserOutcome, EncodedPasswordHash, NewUser, UserRepository};
 
     async fn adapter() -> (tempfile::TempDir, TursoAdapter) {
         let directory = tempfile::tempdir().unwrap();
@@ -615,17 +613,18 @@ mod tests {
             )
             .await
             .unwrap();
-        let created_user = UserRepository::create(
-            &adapter,
-            &tenant,
-            CreateUserRecord {
-                username: "viewer".into(),
-                password_hash: "viewer-hash".into(),
-                role_ids: None,
-            },
-        )
-        .await
-        .unwrap();
+        let users = crate::database::turso_users(&adapter.database);
+        let created_user = users
+            .create(
+                &tenant,
+                NewUser {
+                    username: "viewer".into(),
+                    password_hash: EncodedPasswordHash::new("viewer-hash"),
+                    role_ids: None,
+                },
+            )
+            .await
+            .unwrap();
         assert!(matches!(created_user, CreateUserOutcome::Created(_)));
         adapter
             .seed_builtin_device_types(

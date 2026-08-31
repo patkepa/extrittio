@@ -162,6 +162,7 @@ jobs:
         run: |
           cargo test -p extrittio-backend-adapter-tests --features postgres --test postgres_zones
           cargo test -p extrittio-backend-adapter-tests --features postgres --test postgres_roles
+          cargo test -p extrittio-backend-adapter-tests --features postgres --test postgres_users
       - name: Verify generated OpenAPI contract
         run: cargo run -p extrittio-backend --features openapi --bin openapi -- api/openapi.json
       - name: Check generated OpenAPI contract is committed
@@ -202,6 +203,7 @@ jobs:
           cargo test -p extrittio-backend --no-default-features --features turso --lib
           cargo test -p extrittio-backend-adapter-tests --features turso --test turso_zones
           cargo test -p extrittio-backend-adapter-tests --features turso --test turso_roles
+          cargo test -p extrittio-backend-adapter-tests --features turso --test turso_users
       - name: Build standalone Extrittio Edge executable
         run: |
           cargo build --profile "$EDGE_CARGO_PROFILE" -p extrittio --no-default-features --features edge

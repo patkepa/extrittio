@@ -6,9 +6,11 @@ use async_trait::async_trait;
 use extrittio_backend_core::{PersistenceError, RuleZoneSnapshotRepository, ZoneRepository};
 
 pub mod roles;
+pub mod users;
 pub mod zones;
 
 pub use roles::{RoleContractHarness, UserVersionFixture};
+pub use users::UserContractHarness;
 
 /// Test-only lifecycle used by shared semantic contract suites.
 #[async_trait]

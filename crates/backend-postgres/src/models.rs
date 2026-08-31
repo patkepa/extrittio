@@ -439,7 +439,7 @@ pub struct UpdateShadow {
 // Users
 // ---------------------------------------------------------------------------
 
-#[derive(Queryable, Selectable, Debug, Clone)]
+#[derive(Queryable, Selectable, Clone)]
 #[diesel(table_name = users)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct User {
@@ -454,7 +454,7 @@ pub struct User {
     pub last_login_at: Option<NaiveDateTime>,
 }
 
-#[derive(Insertable, Debug)]
+#[derive(Insertable)]
 #[diesel(table_name = users)]
 pub struct NewUser {
     pub tenant_id: String,

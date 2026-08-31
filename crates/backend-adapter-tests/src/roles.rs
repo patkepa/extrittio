@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use async_trait::async_trait;
 use extrittio_backend_core::{
@@ -148,6 +147,14 @@ pub async fn assert_contract(harness: &dyn RoleContractHarness) {
     );
     assert_eq!(
         repository
+            .list(&tenant_a)
+            .await
+            .expect("repeat stable role list"),
+        listed,
+        "unchanged role lists are stable"
+    );
+    assert_eq!(
+        repository
             .list(&tenant_b)
             .await
             .expect("list other tenant roles")
@@ -276,7 +283,6 @@ pub async fn assert_contract(harness: &dyn RoleContractHarness) {
         "a rolled-back permission replacement cannot invalidate credentials"
     );
 
-    advance_adapter_clock();
     let metadata_updated = expect_updated(
         repository
             .update(
@@ -302,7 +308,6 @@ pub async fn assert_contract(harness: &dyn RoleContractHarness) {
         "metadata-only updates do not invalidate credentials"
     );
 
-    advance_adapter_clock();
     let permissions_updated = expect_updated(
         repository
             .update(
@@ -336,7 +341,6 @@ pub async fn assert_contract(harness: &dyn RoleContractHarness) {
         "supplying permissions increments each assignee exactly once"
     );
 
-    advance_adapter_clock();
     let empty_updated = expect_updated(
         repository
             .update(
@@ -360,6 +364,29 @@ pub async fn assert_contract(harness: &dyn RoleContractHarness) {
             .expect("read version after empty update"),
         assigned.permission_version + 1,
         "an empty patch advances the role timestamp without invalidating credentials"
+    );
+    let repeated_empty_updated = expect_updated(
+        repository
+            .update(
+                &tenant_a,
+                custom_alpha.role.id,
+                RolePatch {
+                    name: None,
+                    description: None,
+                    permissions: None,
+                },
+            )
+            .await
+            .expect("immediately repeated empty role patch"),
+    );
+    assert!(repeated_empty_updated.role.updated_at > empty_updated.role.updated_at);
+    assert_microsecond_precision(&repeated_empty_updated);
+    assert_eq!(
+        harness
+            .permission_version(&assigned)
+            .await
+            .expect("read version after repeated empty update"),
+        assigned.permission_version + 1
     );
 
     let second_assignee = harness
@@ -400,6 +427,13 @@ pub async fn assert_contract(harness: &dyn RoleContractHarness) {
             .expect("list after delete")
             .iter()
             .all(|details| details.role.id != custom_zero.role.id)
+    );
+    assert_eq!(
+        repository
+            .delete(&tenant_a, custom_zero.role.id)
+            .await
+            .expect("retry unassigned role delete"),
+        DeleteRoleOutcome::NotFound
     );
 
     assert_concurrent_duplicate_create(repository.clone(), &tenant_a).await;
@@ -470,7 +504,6 @@ async fn assert_concurrent_permission_updates(
         .await
         .expect("read concurrent-update baseline version");
 
-    advance_adapter_clock();
     let left_repository = repository.clone();
     let right_repository = repository.clone();
     let left_tenant = tenant.clone();
@@ -600,8 +633,4 @@ fn assert_details_equal(actual: &RoleDetails, expected: &RoleDetails) {
     assert_eq!(actual.role.updated_at, expected.role.updated_at);
     assert_eq!(actual.permissions, expected.permissions);
     assert_eq!(actual.user_count, expected.user_count);
-}
-
-fn advance_adapter_clock() {
-    std::thread::sleep(Duration::from_millis(2));
 }

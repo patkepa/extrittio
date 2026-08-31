@@ -223,16 +223,10 @@ const APP_STATE_REPOSITORY_ACCESS_ALLOWANCES: &[AppStateRepositoryAccessAllowanc
     AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/fleets/fleets.rs", 4, 0),
     AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/identity/api_keys.rs", 3, 0),
     AppStateRepositoryAccessAllowance::new(
-        "crates/backend/src/domains/identity/auth_routes.rs",
-        2,
-        0,
-    ),
-    AppStateRepositoryAccessAllowance::new(
         "crates/backend/src/domains/identity/certificates.rs",
         4,
         0,
     ),
-    AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/identity/users.rs", 5, 0),
     AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/logs/logs.rs", 1, 0),
     AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/operations/outbox.rs", 3, 0),
     AppStateRepositoryAccessAllowance::new(
@@ -252,7 +246,7 @@ const APP_STATE_REPOSITORY_ACCESS_ALLOWANCES: &[AppStateRepositoryAccessAllowanc
         4,
         0,
     ),
-    AppStateRepositoryAccessAllowance::new("crates/backend/src/middleware.rs", 2, 0),
+    AppStateRepositoryAccessAllowance::new("crates/backend/src/middleware.rs", 1, 0),
 ];
 
 const APP_TURSO_ALLOWANCES: &[TokenAllowance] = &[TokenAllowance::new(

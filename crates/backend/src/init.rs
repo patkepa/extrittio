@@ -16,7 +16,7 @@ use crate::persistence::postgres::executor::PostgresPool;
 use crate::persistence::{
     BootstrapOwner, BuiltinDeviceType, DatabaseRuntime, RepositorySet, SeedOwnerOutcome,
 };
-use crate::services::{cert_service, user_service};
+use crate::services::cert_service;
 use extrittio_common::topics::{self, patterns};
 
 /// Installs the process-wide provider required by clients built with
@@ -138,7 +138,7 @@ pub async fn seed_persistence_owner(
         !username.is_empty(),
         "Bootstrap admin username must not be empty"
     );
-    user_service::validate_password(&password)
+    extrittio_backend_core::validate_password(&password)
         .map_err(|error| anyhow::anyhow!("Invalid bootstrap admin password: {error}"))?;
     anyhow::ensure!(
         password != "admin" && password != username,

@@ -16,34 +16,30 @@ use crate::error::map_error;
 use crate::row;
 use crate::{TursoConnectionHandles, TursoDatabase};
 
-const USER_COLUMNS: &str = "id, tenant_id, username, role, password_hash, created_at, \
-                           is_active, permission_version, last_login_at";
-const ROLE_COLUMNS: &str =
-    "id, tenant_id, name, description, is_system, created_at, updated_at";
+const USER_COLUMNS: &str = "id, tenant_id, username, role, created_at, is_active, \
+                           permission_version, last_login_at";
+const ROLE_COLUMNS: &str = "id, tenant_id, name, description, is_system, created_at, updated_at";
 
-fn decode_user(record: &Row) -> Result<(User, EncodedPasswordHash), PersistenceError> {
+fn decode_user(record: &Row) -> Result<User, PersistenceError> {
     let tenant_id: String = record.get(1).map_err(map_error)?;
-    Ok((
-        User {
-            id: row::i32(record.get::<i64>(0).map_err(map_error)?, "users.id")?,
-            tenant_id: TenantId::new(tenant_id)
-                .map_err(|error| PersistenceError::CorruptData(error.to_string()))?,
-            username: record.get(2).map_err(map_error)?,
-            role: record.get(3).map_err(map_error)?,
-            created_at: row::datetime(record.get(5).map_err(map_error)?)?,
-            is_active: record.get::<i64>(6).map_err(map_error)? != 0,
-            permission_version: row::i32(
-                record.get(7).map_err(map_error)?,
-                "users.permission_version",
-            )?,
-            last_login_at: record
-                .get::<Option<i64>>(8)
-                .map_err(map_error)?
-                .map(row::datetime)
-                .transpose()?,
-        },
-        EncodedPasswordHash::new(record.get(4).map_err(map_error)?),
-    ))
+    Ok(User {
+        id: row::i32(record.get::<i64>(0).map_err(map_error)?, "users.id")?,
+        tenant_id: TenantId::new(tenant_id)
+            .map_err(|error| PersistenceError::CorruptData(error.to_string()))?,
+        username: record.get(2).map_err(map_error)?,
+        role: record.get(3).map_err(map_error)?,
+        created_at: row::datetime(record.get(4).map_err(map_error)?)?,
+        is_active: record.get::<i64>(5).map_err(map_error)? != 0,
+        permission_version: row::i32(
+            record.get(6).map_err(map_error)?,
+            "users.permission_version",
+        )?,
+        last_login_at: record
+            .get::<Option<i64>>(7)
+            .map_err(map_error)?
+            .map(row::datetime)
+            .transpose()?,
+    })
 }
 
 fn decode_role(record: &Row) -> Result<Role, PersistenceError> {
@@ -64,7 +60,7 @@ async fn hydrate(
     connection: &Connection,
     tenant: &TenantId,
     user_id: i32,
-) -> Result<Option<(UserDetails, EncodedPasswordHash)>, PersistenceError> {
+) -> Result<Option<UserDetails>, PersistenceError> {
     let mut rows = connection
         .query(
             &format!("SELECT {USER_COLUMNS} FROM users WHERE tenant_id = ?1 AND id = ?2"),
@@ -75,17 +71,17 @@ async fn hydrate(
     let Some(user_row) = rows.next().await.map_err(map_error)? else {
         return Ok(None);
     };
-    let (user, password_hash) = decode_user(&user_row)?;
+    let user = decode_user(&user_row)?;
     drop(rows);
 
     let mut role_rows = connection
         .query(
-            &format!(
-                "SELECT {ROLE_COLUMNS} FROM user_roles ur \
-                 JOIN roles r ON r.id = ur.role_id AND r.tenant_id = ur.tenant_id \
-                 WHERE ur.tenant_id = ?1 AND ur.user_id = ?2 \
-                 ORDER BY r.name COLLATE BINARY ASC, r.id ASC"
-            ),
+            "SELECT r.id, r.tenant_id, r.name, r.description, r.is_system, \
+                    r.created_at, r.updated_at \
+             FROM user_roles ur \
+             JOIN roles r ON r.id = ur.role_id AND r.tenant_id = ur.tenant_id \
+             WHERE ur.tenant_id = ?1 AND ur.user_id = ?2 \
+             ORDER BY r.name COLLATE BINARY ASC, r.id ASC",
             params![tenant.as_str(), i64::from(user_id)],
         )
         .await
@@ -110,14 +106,11 @@ async fn hydrate(
     while let Some(permission) = permission_rows.next().await.map_err(map_error)? {
         permissions.push(permission.get(0).map_err(map_error)?);
     }
-    Ok(Some((
-        UserDetails {
-            user,
-            roles,
-            permissions,
-        },
-        password_hash,
-    )))
+    Ok(Some(UserDetails {
+        user,
+        roles,
+        permissions,
+    }))
 }
 
 async fn selected_roles(
@@ -183,12 +176,7 @@ async fn replace_roles(
             .execute(
                 "INSERT INTO user_roles (user_id, role_id, tenant_id, created_at) \
                  VALUES (?1, ?2, ?3, ?4)",
-                params![
-                    i64::from(user_id),
-                    i64::from(role.id),
-                    tenant.as_str(),
-                    now
-                ],
+                params![i64::from(user_id), i64::from(role.id), tenant.as_str(), now],
             )
             .await
             .map_err(map_error)?;
@@ -282,15 +270,12 @@ impl UserRepository for TursoUserRepository {
             .map_err(map_error)?;
         let mut ids = Vec::new();
         while let Some(record) = rows.next().await.map_err(map_error)? {
-            ids.push(row::i32(
-                record.get(0).map_err(map_error)?,
-                "users.id",
-            )?);
+            ids.push(row::i32(record.get(0).map_err(map_error)?, "users.id")?);
         }
         drop(rows);
         let mut records = Vec::with_capacity(ids.len());
         for id in ids {
-            if let Some((details, _)) = hydrate(&connection, tenant, id).await? {
+            if let Some(details) = hydrate(&connection, tenant, id).await? {
                 records.push(details);
             }
         }
@@ -327,8 +312,7 @@ impl UserRepository for TursoUserRepository {
         replace_roles(&transaction, tenant, user_id, &roles).await?;
         let result = hydrate(&transaction, tenant, user_id)
             .await?
-            .ok_or(PersistenceError::NotFound)?
-            .0;
+            .ok_or(PersistenceError::NotFound)?;
         transaction.commit().await.map_err(map_error)?;
         Ok(CreateUserOutcome::Created(result))
     }
@@ -414,8 +398,7 @@ impl UserRepository for TursoUserRepository {
         replace_roles(&transaction, tenant, user_id, &roles).await?;
         let result = hydrate(&transaction, tenant, user_id)
             .await?
-            .ok_or(PersistenceError::NotFound)?
-            .0;
+            .ok_or(PersistenceError::NotFound)?;
         transaction.commit().await.map_err(map_error)?;
         Ok(SetUserRolesOutcome::Updated(result))
     }
@@ -428,7 +411,7 @@ impl UserRepository for TursoUserRepository {
         let connection = self.handles.connect()?;
         let mut rows = connection
             .query(
-                "SELECT id FROM users WHERE tenant_id = ?1 AND username = ?2",
+                "SELECT id, password_hash FROM users WHERE tenant_id = ?1 AND username = ?2",
                 params![tenant.as_str(), username],
             )
             .await
@@ -437,10 +420,11 @@ impl UserRepository for TursoUserRepository {
             return Ok(None);
         };
         let id = row::i32(record.get(0).map_err(map_error)?, "users.id")?;
+        let password_hash = EncodedPasswordHash::new(record.get::<String>(1).map_err(map_error)?);
         drop(rows);
         Ok(hydrate(&connection, tenant, id)
             .await?
-            .map(|(details, password_hash)| UserCredentials {
+            .map(|details| UserCredentials {
                 details,
                 password_hash,
             }))
@@ -451,9 +435,7 @@ impl UserRepository for TursoUserRepository {
         tenant: &TenantId,
         user_id: i32,
     ) -> Result<Option<UserDetails>, PersistenceError> {
-        Ok(hydrate(&self.handles.connect()?, tenant, user_id)
-            .await?
-            .map(|value| value.0))
+        hydrate(&self.handles.connect()?, tenant, user_id).await
     }
 
     async fn record_successful_login(

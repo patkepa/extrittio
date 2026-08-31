@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use diesel::Connection;
 use diesel::PgConnection;
 use diesel::dsl::sql;
@@ -17,11 +17,25 @@ use extrittio_backend_core::{
 };
 
 use crate::error::map_diesel_error;
-use crate::models::{NewUser as NewUserRow, NewUserRole, Role as RoleRow, User as UserRow};
+use crate::models::{NewUser as NewUserRow, NewUserRole, Role as RoleRow};
 use crate::schema::{role_permissions, roles, user_roles, users};
 use crate::{PostgresExecutor, PostgresPool};
 
-fn into_user(row: &UserRow) -> QueryResult<User> {
+#[derive(Queryable, Selectable)]
+#[diesel(table_name = users)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+struct StoredUser {
+    id: i32,
+    tenant_id: String,
+    username: String,
+    role: String,
+    created_at: NaiveDateTime,
+    is_active: bool,
+    permission_version: i32,
+    last_login_at: Option<NaiveDateTime>,
+}
+
+fn into_user(row: &StoredUser) -> QueryResult<User> {
     Ok(User {
         id: row.id,
         tenant_id: TenantId::new(row.tenant_id.clone())
@@ -72,15 +86,16 @@ fn permissions_for_roles(
     if role_ids.is_empty() {
         return Ok(Vec::new());
     }
-    role_permissions::table
+    let mut permissions = role_permissions::table
         .filter(role_permissions::role_id.eq_any(role_ids))
         .select(role_permissions::permission)
-        .distinct()
         .order(sql::<Text>(r#"permission COLLATE "C""#).asc())
-        .load(connection)
+        .load(connection)?;
+    permissions.dedup();
+    Ok(permissions)
 }
 
-fn hydrate_user(connection: &mut PgConnection, row: UserRow) -> QueryResult<UserDetails> {
+fn hydrate_user(connection: &mut PgConnection, row: StoredUser) -> QueryResult<UserDetails> {
     let assigned = roles_for_user(connection, &row.tenant_id, row.id)?;
     let role_ids = assigned.iter().map(|role| role.id).collect::<Vec<_>>();
     let permissions = permissions_for_roles(connection, &role_ids)?;
@@ -111,10 +126,7 @@ fn lock_roles_by_ids(
         .filter(roles::tenant_id.eq(tenant_id))
         .filter(roles::id.eq_any(role_ids))
         .select(RoleRow::as_select())
-        .order((
-            sql::<Text>(r#"name COLLATE "C""#).asc(),
-            roles::id.asc(),
-        ))
+        .order((sql::<Text>(r#"name COLLATE "C""#).asc(), roles::id.asc()))
         .for_share()
         .load::<RoleRow>(connection)?;
     Ok((selected.len() == unique_count).then_some(selected))
@@ -148,7 +160,7 @@ fn replace_user_roles(
     tenant_id: &str,
     user_id: i32,
     selected_roles: &[RoleRow],
-) -> QueryResult<UserRow> {
+) -> QueryResult<StoredUser> {
     diesel::delete(
         user_roles::table
             .filter(user_roles::tenant_id.eq(tenant_id))
@@ -177,7 +189,7 @@ fn replace_user_roles(
         users::role.eq(primary_role_name(selected_roles)),
         users::permission_version.eq(users::permission_version + 1),
     ))
-    .returning(UserRow::as_returning())
+    .returning(StoredUser::as_returning())
     .get_result(connection)
 }
 
@@ -233,14 +245,14 @@ impl UserRepository for PostgresUserRepository {
                     .map_err(map_diesel_error)?;
                 let rows = users::table
                     .filter(users::tenant_id.eq(&tenant_id))
-                    .select(UserRow::as_select())
+                    .select(StoredUser::as_select())
                     .order((
                         sql::<Text>(r#"username COLLATE "C""#).asc(),
                         users::id.asc(),
                     ))
                     .limit(limit)
                     .offset(offset)
-                    .load::<UserRow>(connection)
+                    .load::<StoredUser>(connection)
                     .map_err(map_diesel_error)?;
                 let records = rows
                     .into_iter()
@@ -286,8 +298,8 @@ impl UserRepository for PostgresUserRepository {
                                 password_hash: user.password_hash.into_inner(),
                                 role: primary_role_name(&selected_roles).to_owned(),
                             })
-                            .returning(UserRow::as_returning())
-                            .get_result::<UserRow>(connection)?;
+                            .returning(StoredUser::as_returning())
+                            .get_result::<StoredUser>(connection)?;
                         let row =
                             replace_user_roles(connection, &tenant_id, row.id, &selected_roles)?;
                         hydrate_user(connection, row).map(CreateUserOutcome::Created)
@@ -340,9 +352,9 @@ impl UserRepository for PostgresUserRepository {
                         let user = users::table
                             .filter(users::tenant_id.eq(&tenant_id))
                             .filter(users::id.eq(user_id))
-                            .select(UserRow::as_select())
+                            .select(StoredUser::as_select())
                             .for_update()
-                            .first::<UserRow>(connection)
+                            .first::<StoredUser>(connection)
                             .optional()?;
                         if user.is_none() {
                             return Ok(DeleteUserOutcome::NotFound);
@@ -393,14 +405,13 @@ impl UserRepository for PostgresUserRepository {
                 connection
                     .transaction::<_, diesel::result::Error, _>(|connection| {
                         let owner_role_id = lock_owner_role(connection, &tenant_id)?;
-                        let user = users::table
+                        let user_exists = users::table
                             .filter(users::tenant_id.eq(&tenant_id))
                             .filter(users::id.eq(user_id))
-                            .select(UserRow::as_select())
-                            .for_update()
-                            .first::<UserRow>(connection)
+                            .select(users::id)
+                            .first::<i32>(connection)
                             .optional()?;
-                        if user.is_none() {
+                        if user_exists.is_none() {
                             return Ok(SetUserRolesOutcome::UserNotFound);
                         }
                         let Some(selected_roles) =
@@ -408,6 +419,16 @@ impl UserRepository for PostgresUserRepository {
                         else {
                             return Ok(SetUserRolesOutcome::RolesNotFound);
                         };
+                        let user = users::table
+                            .filter(users::tenant_id.eq(&tenant_id))
+                            .filter(users::id.eq(user_id))
+                            .select(StoredUser::as_select())
+                            .for_update()
+                            .first::<StoredUser>(connection)
+                            .optional()?;
+                        if user.is_none() {
+                            return Ok(SetUserRolesOutcome::UserNotFound);
+                        }
 
                         if let Some(owner_role_id) = owner_role_id {
                             let currently_owner = user_roles::table
@@ -417,9 +438,8 @@ impl UserRepository for PostgresUserRepository {
                                 .count()
                                 .get_result::<i64>(connection)?
                                 > 0;
-                            let remains_owner = selected_roles
-                                .iter()
-                                .any(|role| role.id == owner_role_id);
+                            let remains_owner =
+                                selected_roles.iter().any(|role| role.id == owner_role_id);
                             if currently_owner && !remains_owner {
                                 let owner_count = user_roles::table
                                     .filter(user_roles::tenant_id.eq(&tenant_id))
@@ -434,12 +454,8 @@ impl UserRepository for PostgresUserRepository {
                             }
                         }
 
-                        let row = replace_user_roles(
-                            connection,
-                            &tenant_id,
-                            user_id,
-                            &selected_roles,
-                        )?;
+                        let row =
+                            replace_user_roles(connection, &tenant_id, user_id, &selected_roles)?;
                         hydrate_user(connection, row).map(SetUserRolesOutcome::Updated)
                     })
                     .map_err(map_diesel_error)
@@ -459,12 +475,12 @@ impl UserRepository for PostgresUserRepository {
                 let row = users::table
                     .filter(users::tenant_id.eq(tenant_id))
                     .filter(users::username.eq(username))
-                    .select(UserRow::as_select())
-                    .first::<UserRow>(connection)
+                    .select((StoredUser::as_select(), users::password_hash))
+                    .first::<(StoredUser, String)>(connection)
                     .optional()
                     .map_err(map_diesel_error)?;
-                row.map(|row| {
-                    let password_hash = EncodedPasswordHash::new(row.password_hash.clone());
+                row.map(|(row, password_hash)| {
+                    let password_hash = EncodedPasswordHash::new(password_hash);
                     hydrate_user(connection, row).map(|details| UserCredentials {
                         details,
                         password_hash,
@@ -487,8 +503,8 @@ impl UserRepository for PostgresUserRepository {
                 let row = users::table
                     .filter(users::tenant_id.eq(tenant_id))
                     .filter(users::id.eq(user_id))
-                    .select(UserRow::as_select())
-                    .first::<UserRow>(connection)
+                    .select(StoredUser::as_select())
+                    .first::<StoredUser>(connection)
                     .optional()
                     .map_err(map_diesel_error)?;
                 row.map(|row| hydrate_user(connection, row))

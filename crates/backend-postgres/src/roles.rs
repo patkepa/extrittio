@@ -5,7 +5,7 @@ use diesel::Connection;
 use diesel::PgConnection;
 use diesel::dsl::sql;
 use diesel::prelude::*;
-use diesel::sql_types::Text;
+use diesel::sql_types::{Text, Timestamptz};
 use extrittio_backend_core::{
     DeleteRoleOutcome, NewRole, PersistenceError, Role, RoleDetails, RolePatch, RoleRepository,
     TenantId, UpdateRoleOutcome,
@@ -176,7 +176,9 @@ impl RoleRepository for PostgresRoleRepository {
                         .set((
                             roles::name.eq(name),
                             roles::description.eq(description),
-                            roles::updated_at.eq(diesel::dsl::now),
+                            roles::updated_at.eq(sql::<Timestamptz>(
+                                "GREATEST(now()::timestamp, updated_at + INTERVAL '1 microsecond')",
+                            )),
                         ))
                         .returning(RoleRow::as_returning())
                         .get_result::<RoleRow>(connection)?;

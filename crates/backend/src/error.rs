@@ -360,11 +360,9 @@ mod tests {
                 "Authentication error",
             ),
             (
-                AppError::Application(
-                    extrittio_backend_core::ApplicationError::Authentication(
-                        "secret verifier detail".into(),
-                    ),
-                ),
+                AppError::Application(extrittio_backend_core::ApplicationError::Authentication(
+                    "secret verifier detail".into(),
+                )),
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "authentication_error",
                 "Authentication error",

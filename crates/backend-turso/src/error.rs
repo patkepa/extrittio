@@ -31,24 +31,25 @@ pub(crate) fn map_open_error(error: turso::Error) -> PersistenceError {
 fn map_constraint(message: &str) -> PersistenceError {
     let normalized = message.to_ascii_lowercase();
     if normalized.contains("unique") || normalized.contains("primary key") {
-        let constraint =
-            if normalized.contains("roles.tenant_id") && normalized.contains("roles.name") {
-                "roles.tenant_name"
-            } else if normalized.contains("roles.id") {
-                "roles.id"
-            } else if normalized.contains("users.tenant_id")
-                && normalized.contains("users.username")
-            {
-                "users.tenant_username"
-            } else if normalized.contains("users.id") {
-                "users.id"
-            } else if normalized.contains("zones.tenant_id") && normalized.contains("zones.name") {
-                "zones.tenant_name"
-            } else if normalized.contains("zones.id") {
-                "zones.id"
-            } else {
-                "unique"
-            };
+        let constraint = if normalized.contains("roles.tenant_id")
+            && normalized.contains("roles.name")
+        {
+            "roles.tenant_name"
+        } else if normalized.contains("roles.id") {
+            "roles.id"
+        } else if (normalized.contains("users.tenant_id") && normalized.contains("users.username"))
+            || normalized.contains("users.(tenant_id, username)")
+        {
+            "users.tenant_username"
+        } else if normalized.contains("users.id") {
+            "users.id"
+        } else if normalized.contains("zones.tenant_id") && normalized.contains("zones.name") {
+            "zones.tenant_name"
+        } else if normalized.contains("zones.id") {
+            "zones.id"
+        } else {
+            "unique"
+        };
         PersistenceError::UniqueViolation {
             constraint: ConstraintName::new(constraint),
         }
@@ -87,6 +88,14 @@ mod tests {
         assert_eq!(
             unique_constraint("UNIQUE constraint failed: roles.id"),
             "roles.id"
+        );
+        assert_eq!(
+            unique_constraint("UNIQUE constraint failed: users.(tenant_id, username) (19)"),
+            "users.tenant_username"
+        );
+        assert_eq!(
+            unique_constraint("UNIQUE constraint failed: users.id (19)"),
+            "users.id"
         );
         assert_eq!(
             unique_constraint("UNIQUE constraint failed: zones.id"),

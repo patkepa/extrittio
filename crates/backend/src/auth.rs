@@ -74,10 +74,7 @@ pub struct Argon2PasswordHasher;
 
 #[async_trait]
 impl CorePasswordHasher for Argon2PasswordHasher {
-    async fn hash(
-        &self,
-        plaintext: String,
-    ) -> Result<EncodedPasswordHash, PasswordHasherError> {
+    async fn hash(&self, plaintext: String) -> Result<EncodedPasswordHash, PasswordHasherError> {
         tokio::task::spawn_blocking(move || {
             let plaintext = Zeroizing::new(plaintext);
             hash_password(&plaintext)

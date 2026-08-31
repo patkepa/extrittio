@@ -68,6 +68,7 @@ mod tests {
             semantic_constraint(Some("users_tenant_id_username_key")).as_str(),
             "users.tenant_username"
         );
+        assert_eq!(semantic_constraint(Some("users_pkey")).as_str(), "users.id");
         assert_eq!(
             semantic_constraint(Some("zones_tenant_id_fkey")).as_str(),
             "zones.tenant_id"

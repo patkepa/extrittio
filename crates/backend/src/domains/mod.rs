@@ -150,15 +150,10 @@ pub mod identity {
     pub mod certificate_repository;
     #[path = "certificate_types.rs"]
     pub mod certificate_types;
-    #[path = "user_repository.rs"]
-    pub mod user_repository;
-    #[path = "user_types.rs"]
-    pub mod user_types;
-
     pub use crate::api::{api_keys, auth_routes, certificates, roles, users};
     #[cfg(feature = "postgres")]
-    pub use crate::repositories::{api_key_repo, cert_repo, user_repo};
-    pub use crate::services::{api_key_service, cert_service, user_service};
+    pub use crate::repositories::{api_key_repo, cert_repo};
+    pub use crate::services::{api_key_service, cert_service};
 }
 
 pub mod logs {

@@ -16,6 +16,7 @@ This document resolves the behavior choices that must be stable before code move
 | ADR-005 | Rule snapshots reload every 5 seconds by default, with a bounded healthy-state contract | P3.3 |
 | ADR-006 | Tenant zone lists use binary `name ASC, id ASC` order | P2.4 |
 | ADR-007 | Roles use system-first binary order, atomic permission invalidation, and one timestamp update per successful mutation | P3.1 |
+| ADR-008 | Users use exact-tenant atomic role/password semantics with injected host password hashing and clock ports | P3.1 |
 
 ## ADR-001: Legacy missing-tenant mapping
 
@@ -402,6 +403,54 @@ No migration file changes are required: both shipped schemas already enforce ten
 - `updated_at` changes once for every successful metadata, permission-only, and empty update and retains microsecond precision.
 - System-role and in-use deletion outcomes and retry behavior.
 - Exact permission-catalog order and unchanged HTTP/OpenAPI compatibility.
+
+## ADR-008: Canonical user, credential, and password semantics
+
+- **Status:** Accepted as the P3.1 users/passwords implementation authority
+- **Owner work package:** P3.1 users/passwords
+
+### Context and evidence
+
+- The legacy user repository combined general user projections, credential material, role assignment, password changes, login bookkeeping, and the last-owner invariant behind one host-owned port.
+- Both adapters hydrated users through multiple statements, but their ordering and text behavior were not expressed by a shared contract. In particular, PostgreSQL rejects embedded NUL in `text` while Turso can accept it; this remaining input-parity question is tracked as PI-16 rather than hidden by the new port.
+- Password validation and Argon2 execution were host service functions. Moving orchestration to core required a stable password policy without moving concrete crypto, randomness, Tokio blocking work, or environment access into core.
+- Password changes and role replacement invalidate signed authorization state through `permission_version`. Last-owner deletion or demotion is a tenant security invariant that must remain correct under concurrent writers on both engines.
+
+### Decision
+
+The core `UserApplication` and `UserRepository` contract is:
+
+1. Every repository operation requires the exact tenant. A user or role owned by another tenant behaves as missing and no rejected operation mutates either tenant.
+2. User creation trims leading and trailing username whitespace once and rejects an empty result. Otherwise usernames remain exact and case-sensitive; authentication passes the supplied username through without trimming or case normalization. Exact usernames are unique per tenant and duplicate writes map through the stable `users.tenant_username` constraint. The same username may exist in another tenant.
+3. User pages sort by binary `username ASC, id ASC`. Hydrated assigned roles sort by binary `name ASC, id ASC` without the system-first grouping used by role-management lists. Effective permission keys are distinct and binary ascending. The compatibility primary-role projection chooses `owner`, then `admin`, then the first binary-sorted assigned role.
+4. `role_ids: None` selects the exact tenant's built-in `viewer` role. An explicit empty role list is invalid at the application boundary. Explicit IDs are sorted and deduplicated before persistence; a missing or cross-tenant ID returns the typed roles-not-found outcome without a partial user or assignment write.
+5. User creation, selected-role validation, assignments, the compatibility primary role, and the initial permission-version update are one transaction. A successful create is returned fully hydrated and has `permission_version == 2`, preserving the existing insert-then-assignment behavior.
+6. `set_roles` is a complete atomic replacement. Missing users, missing roles, and last-owner rejection have separate typed outcomes and roll back every assignment, primary-role, and version change. Every successful call increments `permission_version` exactly once, including an identical-value retry.
+7. Only the `owner` role has a last-member guard; a sole `admin` may be demoted. All owner assignments count, including inactive users. Delete and role replacement serialize around the tenant's owner state so concurrent delete/delete, demote/demote, or delete/demote operations cannot remove every owner. Rejected operations do not increment versions. A successful delete retry returns not found.
+8. Every successful password write replaces the encoded verifier and increments `permission_version` exactly once, including a retry with the same verifier. Missing and cross-tenant users return the typed not-found outcome and do not mutate state.
+9. Successful-login bookkeeping stores the caller-supplied UTC instant at microsecond precision, is last-write-wins, and never changes `permission_version`. After credentials have verified, a concurrent delete that makes this best-effort bookkeeping update return not found does not retroactively fail authentication.
+10. User list, credential lookup, and hydration remain multi-statement reads without a snapshot transaction. This preserves current behavior: a concurrent writer may make total/page/hydrated projections span revisions. The port does not promise snapshot consistency.
+11. Core password validation uses UTF-8 byte length of at least 12 and requires at least one ASCII lowercase character, ASCII uppercase character, ASCII digit, and character outside the ASCII alphanumeric set. Consequently ASCII punctuation, whitespace, and non-ASCII characters satisfy the symbol category. Existing validation order and public messages remain stable.
+12. Core receives a `PasswordHasher` and UTC `Clock` as outbound ports. The host implementation uses Argon2's existing default parameters, a fresh `OsRng` salt, PHC encoding, and blocking-task isolation. Plaintext request types deliberately lack `Debug`, `Clone`, and serialization; plaintext is zeroized after host hashing/verification; encoded hashes have redacted `Debug`, no serialization, and appear only at the credential-specific boundary.
+
+The contract does not select behavior for embedded NUL in usernames. PI-16 must decide whether core rejects it with a stable invalid-input error or both storage adapters are made to accept the same representation.
+
+### Consequences
+
+- HTTP routes, DTO fields, status codes, JWT claims, cookie behavior, validation messages, and OpenAPI schemas remain unchanged while orchestration moves through `Application`.
+- General user reads cannot expose an encoded password hash; authentication receives it only through `UserCredentials`.
+- PostgreSQL row locks and Turso's serialized writer implement the same owner invariant and atomic aggregate outcomes without a generic cross-engine transaction abstraction.
+- Exact login lookup intentionally differs from create-time trimming. A client that creates `" alice "` persists `"alice"` and must authenticate as `"alice"`.
+- Same-role and same-password retries intentionally invalidate previously issued authorization once per successful call; they are not version-idempotent.
+- Multi-statement read consistency and PI-16 remain explicit limitations, not accidental guarantees.
+
+### Implemented evidence and remaining proof
+
+- Core unit tests cover permission-before-validation ordering, create-time trim, empty-role rejection, role-ID normalization, the byte/ASCII password policy, stable error mappings, exact untrimmed login lookup, inactive/wrong/malformed credential rejection, injected clock use, and secret-safe encoded-hash debugging.
+- The shared user adapter contract covers exact tenant isolation, cross-tenant same-name users, binary ordering and pagination, stable repeated lists, default viewer and primary-role priority, distinct permission ordering, atomic missing-role rollback, stable duplicate mapping, repeated password and same-role version increments, delete retry, and concurrent create/role-delete plus all combinations of final-owner deletion/demotion.
+- Host tests verify a pre-existing PHC Argon2 verifier, malformed-verifier failure, password round trips, wrong-password failure, and distinct random salts for identical plaintext.
+- The owner-count queries deliberately omit an `is_active` filter, but the shared harness does not yet mutate a fixture to inactive and assert that it still protects the tenant. The login contract asserts one caller timestamp and no version bump, but does not yet perform two writes to demonstrate last-write-wins. Add those focused regression cases when extending the harness; do not describe them as current test coverage.
+- Embedded-NUL parity is intentionally untested until PI-16 selects a portable contract.
 
 ## Architecture exception and removal ledger
 

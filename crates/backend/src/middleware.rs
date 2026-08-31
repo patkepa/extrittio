@@ -16,10 +16,10 @@ use tracing::Instrument;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::auth::context::{MappedUserClaims, RequestContext, map_validated_user_claims};
+use crate::auth::policy::Permission;
 use crate::auth::validate_token;
 use crate::domains::audit::types::NewAuditEventRecord;
 use crate::error::AppError;
-use crate::services::user_service;
 use crate::state::AppState;
 
 #[derive(Debug, Clone)]
@@ -205,9 +205,24 @@ pub async fn auth_middleware(
         }
     };
     let claims = mapped_claims.claims().clone();
-    let ctx =
-        user_service::context_from_mapped_claims(state.persistence.users.as_ref(), mapped_claims)
-            .await?;
+    let user = state
+        .application()
+        .users()
+        .resolve_session(
+            mapped_claims.tenant_id(),
+            claims.sub,
+            claims.permission_version,
+        )
+        .await?;
+    let permissions = Permission::from_keys(&user.permissions);
+    let ctx = RequestContext::authenticated(
+        user.id,
+        user.username,
+        user.role,
+        user.tenant_id,
+        user.permissions,
+        permissions,
+    );
 
     request.extensions_mut().insert(ctx);
     request.extensions_mut().insert(claims);

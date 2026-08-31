@@ -13,12 +13,10 @@ default = []
 postgres = [
     "dep:diesel",
     "dep:extrittio-backend-postgres",
-    "dep:tokio",
 ]
 turso = [
     "dep:extrittio-backend-turso",
     "dep:tempfile",
-    "dep:tokio",
     "dep:turso",
 ]
 
@@ -31,7 +29,7 @@ extrittio-backend-postgres = { path = "../backend-postgres", optional = true }
 extrittio-backend-turso = { path = "../backend-turso", optional = true }
 serde_json = "1"
 tempfile = { version = "3", optional = true }
-tokio = { version = "1", features = ["macros", "rt-multi-thread"], optional = true }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 turso = { version = "=0.7.2", default-features = false, optional = true }
 
 [[test]]
@@ -45,6 +43,11 @@ path = "tests/postgres_roles.rs"
 required-features = ["postgres"]
 
 [[test]]
+name = "postgres_users"
+path = "tests/postgres_users.rs"
+required-features = ["postgres"]
+
+[[test]]
 name = "turso_zones"
 path = "tests/turso_zones.rs"
 required-features = ["turso"]
@@ -52,4 +55,9 @@ required-features = ["turso"]
 [[test]]
 name = "turso_roles"
 path = "tests/turso_roles.rs"
+required-features = ["turso"]
+
+[[test]]
+name = "turso_users"
+path = "tests/turso_users.rs"
 required-features = ["turso"]
