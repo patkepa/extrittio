@@ -4,6 +4,11 @@ This directory documents behavior that exists in the current repository. Large
 future roadmaps and one-off architecture reviews belong in issues or design
 proposals, not in the operational documentation.
 
+## Design proposals
+
+- [Backend crate architecture plan](design/backend-crate-architecture-plan.md)
+  — proposed modular-monolith crate boundaries and migration sequence.
+
 ## Architecture
 
 - [System overview](architecture/overview.md) — runtime shapes, request and
