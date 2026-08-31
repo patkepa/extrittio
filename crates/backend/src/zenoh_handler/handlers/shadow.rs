@@ -2,7 +2,7 @@ use prost::Message;
 use std::sync::Arc;
 use tracing::{info, warn};
 
-use crate::persistence::Persistence;
+use crate::persistence::RepositorySet;
 use crate::services::{device_catalog_service, shadow_service};
 use crate::state::ZenohMetrics;
 use crate::tenancy::DeviceIdentity;
@@ -10,7 +10,7 @@ use crate::tenancy::DeviceIdentity;
 use extrittio_common::extrittio::{ShadowGet, ShadowReport};
 
 async fn resolve_identity(
-    persistence: &Persistence,
+    persistence: &RepositorySet,
     message_type: &'static str,
     device_id: &str,
 ) -> Option<DeviceIdentity> {
@@ -30,7 +30,7 @@ async fn resolve_identity(
 /// Decode a `ShadowReport`, atomically merge reported state, and then update
 /// legacy OTA status bookkeeping until that write set moves to its own port.
 pub async fn handle_shadow_report(
-    persistence: &Persistence,
+    persistence: &RepositorySet,
     topic_device_id: &str,
     payload: &[u8],
 ) {
@@ -103,7 +103,7 @@ pub async fn handle_shadow_report(
 
 /// Decode a `ShadowGet` and publish the currently committed delta if non-empty.
 pub async fn handle_shadow_get(
-    persistence: &Persistence,
+    persistence: &RepositorySet,
     session: &Arc<zenoh::Session>,
     topic_device_id: &str,
     payload: &[u8],

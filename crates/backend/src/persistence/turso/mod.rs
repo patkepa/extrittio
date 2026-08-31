@@ -18,17 +18,14 @@ mod fleets;
 mod logs;
 mod metrics;
 mod outbox;
-mod roles;
 mod row;
 mod rules;
 mod shadows;
 mod telemetry;
-mod users;
-mod zones;
 
 use std::sync::Arc;
 
-use crate::persistence::{BackendDescriptor, Persistence, PersistencePorts};
+use crate::persistence::{DatabaseRuntime, RepositoryPorts, RepositorySet};
 
 pub use database::{LogicalArchiveInfo, TursoBackupInfo, TursoDatabase, TursoDatabaseInfo};
 
@@ -45,39 +42,49 @@ impl TursoAdapter {
 }
 
 #[must_use]
-pub fn create_persistence(database: Arc<TursoDatabase>) -> Persistence {
-    let path = database.path().to_path_buf();
+pub fn create_repositories(database: Arc<TursoDatabase>) -> RepositorySet {
+    build_repositories(database)
+}
+
+#[must_use]
+pub fn create_runtime(database: Arc<TursoDatabase>) -> DatabaseRuntime {
+    let repositories = build_repositories(database.clone());
+    DatabaseRuntime::turso(repositories, database)
+}
+
+fn build_repositories(database: Arc<TursoDatabase>) -> RepositorySet {
+    let (zones, rule_zone_snapshots) = crate::database::turso_zones(&database);
+    let roles = crate::database::turso_roles(&database);
+    let users = crate::database::turso_users(&database);
     let adapter = Arc::new(TursoAdapter::new(database));
-    Persistence::new(
-        BackendDescriptor::turso(path),
-        PersistencePorts {
-            activity: adapter.clone(),
-            analytics: adapter.clone(),
-            api_keys: adapter.clone(),
-            alerts: adapter.clone(),
-            audit: adapter.clone(),
-            bootstrap: adapter.clone(),
-            certificates: adapter.clone(),
-            commands: adapter.clone(),
-            configuration: adapter.clone(),
-            dashboard: adapter.clone(),
-            device_blueprints: adapter.clone(),
-            device_types: adapter.clone(),
-            devices: adapter.clone(),
-            events: adapter.clone(),
-            fleets: adapter.clone(),
-            firmware: adapter.clone(),
-            logs: adapter.clone(),
-            metrics: adapter.clone(),
-            outbox: adapter.clone(),
-            roles: adapter.clone(),
-            rules: adapter.clone(),
-            shadows: adapter.clone(),
-            telemetry: adapter.clone(),
-            users: adapter.clone(),
-            zones: adapter,
-        },
-    )
+    RepositorySet::new(RepositoryPorts {
+        activity: adapter.clone(),
+        analytics: adapter.clone(),
+        api_keys: adapter.clone(),
+        alerts: adapter.clone(),
+        audit: adapter.clone(),
+        bootstrap: adapter.clone(),
+        certificates: adapter.clone(),
+        commands: adapter.clone(),
+        configuration: adapter.clone(),
+        dashboard: adapter.clone(),
+        device_blueprints: adapter.clone(),
+        device_types: adapter.clone(),
+        devices: adapter.clone(),
+        events: adapter.clone(),
+        fleets: adapter.clone(),
+        firmware: adapter.clone(),
+        logs: adapter.clone(),
+        metrics: adapter.clone(),
+        outbox: adapter.clone(),
+        roles,
+        rule_zone_snapshots,
+        rules: adapter.clone(),
+        shadows: adapter.clone(),
+        telemetry: adapter.clone(),
+        users,
+        zones,
+    })
 }
 
 #[cfg(test)]
@@ -125,8 +132,6 @@ mod tests {
     use crate::domains::identity::certificate_types::{
         NewCaCertificateRecord, NewDeviceCertificateRecord, ReplaceCertificateOutcome,
     };
-    use crate::domains::identity::user_repository::UserRepository;
-    use crate::domains::identity::user_types::{CreateUserOutcome, CreateUserRecord};
     use crate::domains::logs::port::LogRepository;
     use crate::domains::operations::metrics_repository::MetricsRepository;
     use crate::domains::operations::metrics_types::NewAppMetricRecord;
@@ -140,6 +145,7 @@ mod tests {
     use crate::domains::telemetry::types::{TelemetryQuery, TelemetryWrite};
     use crate::persistence::{BootstrapOwner, BootstrapRepository, BuiltinDeviceType};
     use crate::tenancy::{DEFAULT_TENANT_ID, TenantId};
+    use extrittio_backend_core::{CreateUserOutcome, EncodedPasswordHash, NewUser, UserRepository};
 
     async fn adapter() -> (tempfile::TempDir, TursoAdapter) {
         let directory = tempfile::tempdir().unwrap();
@@ -607,17 +613,18 @@ mod tests {
             )
             .await
             .unwrap();
-        let created_user = UserRepository::create(
-            &adapter,
-            &tenant,
-            CreateUserRecord {
-                username: "viewer".into(),
-                password_hash: "viewer-hash".into(),
-                role_ids: None,
-            },
-        )
-        .await
-        .unwrap();
+        let users = crate::database::turso_users(&adapter.database);
+        let created_user = users
+            .create(
+                &tenant,
+                NewUser {
+                    username: "viewer".into(),
+                    password_hash: EncodedPasswordHash::new("viewer-hash"),
+                    role_ids: None,
+                },
+            )
+            .await
+            .unwrap();
         assert!(matches!(created_user, CreateUserOutcome::Created(_)));
         adapter
             .seed_builtin_device_types(

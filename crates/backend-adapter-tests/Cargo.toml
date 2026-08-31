@@ -1,0 +1,63 @@
+[package]
+name = "extrittio-backend-adapter-tests"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish = false
+
+[features]
+default = []
+postgres = [
+    "dep:diesel",
+    "dep:extrittio-backend-postgres",
+]
+turso = [
+    "dep:extrittio-backend-turso",
+    "dep:tempfile",
+    "dep:turso",
+]
+
+[dependencies]
+async-trait = "0.1"
+chrono = "0.4"
+extrittio-backend-core = { path = "../backend-core" }
+diesel = { version = "2.2", features = ["postgres", "r2d2"], optional = true }
+extrittio-backend-postgres = { path = "../backend-postgres", optional = true }
+extrittio-backend-turso = { path = "../backend-turso", optional = true }
+serde_json = "1"
+tempfile = { version = "3", optional = true }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+turso = { version = "=0.7.2", default-features = false, optional = true }
+
+[[test]]
+name = "postgres_zones"
+path = "tests/postgres_zones.rs"
+required-features = ["postgres"]
+
+[[test]]
+name = "postgres_roles"
+path = "tests/postgres_roles.rs"
+required-features = ["postgres"]
+
+[[test]]
+name = "postgres_users"
+path = "tests/postgres_users.rs"
+required-features = ["postgres"]
+
+[[test]]
+name = "turso_zones"
+path = "tests/turso_zones.rs"
+required-features = ["turso"]
+
+[[test]]
+name = "turso_roles"
+path = "tests/turso_roles.rs"
+required-features = ["turso"]
+
+[[test]]
+name = "turso_users"
+path = "tests/turso_users.rs"
+required-features = ["turso"]

@@ -1,14 +1,12 @@
 use async_trait::async_trait;
-use diesel::Connection;
 use diesel::prelude::*;
-use diesel_migrations::MigrationHarness;
 
 use crate::db::models::{
     NewDeviceType, NewServerConfigEntry, NewUser, NewUserRole, Role, ServerConfigEntry, User,
 };
 use crate::db::schema::{device_types, roles, server_config, user_roles, users};
 use crate::persistence::bootstrap::{
-    BootstrapOwner, BootstrapRepository, BuiltinDeviceType, DatabaseHealth, SeedOwnerOutcome,
+    BootstrapOwner, BootstrapRepository, BuiltinDeviceType, SeedOwnerOutcome,
 };
 use crate::persistence::error::PersistenceError;
 use crate::tenancy::TenantId;
@@ -16,41 +14,8 @@ use crate::tenancy::TenantId;
 use super::PostgresAdapter;
 use super::executor::map_diesel_error;
 
-#[derive(diesel::QueryableByName)]
-struct HealthRow {
-    #[diesel(sql_type = diesel::sql_types::Integer)]
-    value: i32,
-}
-
 #[async_trait]
 impl BootstrapRepository for PostgresAdapter {
-    async fn health(&self) -> Result<DatabaseHealth, PersistenceError> {
-        self.executor
-            .run(|connection| {
-                let row = diesel::sql_query("SELECT 1 AS value")
-                    .get_result::<HealthRow>(connection)
-                    .map_err(map_diesel_error)?;
-                if row.value != 1 {
-                    return Err(PersistenceError::CorruptData(
-                        "database health query returned an unexpected value".to_string(),
-                    ));
-                }
-                Ok(DatabaseHealth { reachable: true })
-            })
-            .await
-    }
-
-    async fn run_migrations(&self) -> Result<(), PersistenceError> {
-        self.executor
-            .run(|connection| {
-                connection
-                    .run_pending_migrations(crate::MIGRATIONS)
-                    .map(|_| ())
-                    .map_err(|error| PersistenceError::Migration(error.to_string()))
-            })
-            .await
-    }
-
     async fn seed_builtin_device_types(
         &self,
         tenant: &TenantId,
@@ -134,6 +99,7 @@ impl BootstrapRepository for PostgresAdapter {
                                 username: owner.username,
                                 password_hash: owner.password_hash,
                                 role: "owner".to_string(),
+                                auth_epoch: uuid::Uuid::new_v4().to_string(),
                             })
                             .returning(User::as_returning())
                             .get_result::<User>(connection)?;

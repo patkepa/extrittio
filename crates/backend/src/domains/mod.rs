@@ -150,19 +150,10 @@ pub mod identity {
     pub mod certificate_repository;
     #[path = "certificate_types.rs"]
     pub mod certificate_types;
-    #[path = "role_repository.rs"]
-    pub mod role_repository;
-    #[path = "role_types.rs"]
-    pub mod role_types;
-    #[path = "user_repository.rs"]
-    pub mod user_repository;
-    #[path = "user_types.rs"]
-    pub mod user_types;
-
     pub use crate::api::{api_keys, auth_routes, certificates, roles, users};
     #[cfg(feature = "postgres")]
-    pub use crate::repositories::{api_key_repo, cert_repo, role_repo, user_repo};
-    pub use crate::services::{api_key_service, cert_service, role_service, user_service};
+    pub use crate::repositories::{api_key_repo, cert_repo};
+    pub use crate::services::{api_key_service, cert_service};
 }
 
 pub mod logs {
@@ -230,13 +221,5 @@ pub mod telemetry {
 }
 
 pub mod zones {
-    #[path = "repository.rs"]
-    pub mod port;
-    #[path = "types.rs"]
-    pub mod types;
-
     pub use crate::api::zones as api;
-    #[cfg(feature = "postgres")]
-    pub use crate::repositories::zone_repo as repository;
-    pub use crate::services::zone_service as service;
 }

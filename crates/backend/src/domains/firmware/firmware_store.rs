@@ -10,7 +10,7 @@ use object_store::{ObjectStore, ObjectStoreExt, PutPayload};
 use uuid::Uuid;
 
 use crate::config::FirmwareStorageConfig;
-use crate::persistence::Persistence;
+use crate::persistence::RepositorySet;
 use crate::state::ReadinessRegistry;
 
 #[derive(Clone)]
@@ -147,7 +147,7 @@ impl FirmwareObjectStore {
 /// Incrementally move pre-object-storage BYTEA rows out of PostgreSQL. The key
 /// is deterministic so concurrent application replicas can safely converge on
 /// the same object and conditional database update.
-pub async fn run_legacy_blob_migrator(persistence: Persistence, store: FirmwareObjectStore) {
+pub async fn run_legacy_blob_migrator(persistence: RepositorySet, store: FirmwareObjectStore) {
     loop {
         let next_blob = persistence.firmware.next_legacy_blob().await;
 
@@ -246,6 +246,7 @@ fn safe_segment(value: &str, fallback: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::FirmwareObjectStore;
+    use uuid::Uuid;
 
     #[tokio::test]
     async fn round_trips_firmware_objects() {
@@ -257,5 +258,27 @@ mod tests {
         assert_eq!(store.get(&key).await.unwrap(), vec![1, 2, 3]);
         store.delete(&key).await.unwrap();
         assert!(store.get(&key).await.is_err());
+    }
+
+    #[test]
+    fn allocated_object_key_preserves_the_legacy_layout() {
+        let store = FirmwareObjectStore::in_memory();
+        let key = store.allocate_key("tenant/acme", "../device firmware.bin");
+        let segments = key.split('/').collect::<Vec<_>>();
+
+        assert_eq!(segments[0..3], ["tenants", "tenant_acme", "firmware"]);
+        assert!(Uuid::parse_str(segments[3]).is_ok());
+        assert_eq!(segments[4], "___device_firmware_bin");
+        assert_eq!(segments.len(), 5);
+    }
+
+    #[test]
+    fn migrated_blob_object_key_preserves_the_legacy_layout() {
+        let store = FirmwareObjectStore::in_memory();
+
+        assert_eq!(
+            store.legacy_key("tenant/acme", 42, "../device firmware.bin"),
+            "tenants/tenant_acme/firmware/legacy-42/___device_firmware_bin"
+        );
     }
 }

@@ -8,7 +8,7 @@ use crate::domains::firmware_store::FirmwareObjectStore;
 use crate::init;
 use crate::rate_limit::{ApiKeyRateLimiter, RateLimiter, parse_trusted_proxies};
 use crate::services;
-use crate::state::{AppState, MetricsAccumulator, ReadinessRegistry, ZenohMetrics};
+use crate::state::{AppState, AppStateInput, MetricsAccumulator, ReadinessRegistry, ZenohMetrics};
 
 /// Initialize infrastructure and shared application state.
 pub async fn initialize_state(
@@ -16,26 +16,27 @@ pub async fn initialize_state(
     thread_runtime: Option<Arc<extrittio_openthread_runtime::ThreadRuntime>>,
 ) -> anyhow::Result<Arc<AppState>> {
     init::install_crypto_provider();
-    let persistence = crate::persistence::factory::create(&config.database).await?;
+    let database = crate::persistence::factory::create(&config.database).await?;
+    let persistence = database.repositories().clone();
     info!(
-        backend = persistence.backend.kind.as_str(),
+        backend = database.descriptor().kind.as_str(),
         "Database opened"
     );
-    if persistence.backend.kind == crate::persistence::BackendKind::Turso {
-        let database = persistence
-            .backend
+    if database.descriptor().kind == crate::persistence::BackendKind::Turso {
+        let database_path_label = database
+            .descriptor()
             .local_file
             .as_deref()
             .and_then(std::path::Path::file_name)
             .and_then(|name| name.to_str())
             .unwrap_or("local database");
         info!(
-            database,
+            database = database_path_label,
             "Embedded Turso backend enabled: single-node Extrittio Edge deployment"
         );
     }
 
-    init::run_persistence_migrations(&persistence).await?;
+    init::run_database_migrations(&database).await?;
     if let crate::config::DatabaseConfig::Turso {
         database_path,
         size_warning_bytes,
@@ -64,10 +65,12 @@ pub async fn initialize_state(
         .await
         .context("Failed to load active device certificate IDs for Zenoh ACL")?;
 
-    let rule_cache =
-        services::rule_service::build_cache_with_repository(persistence.rules.as_ref())
-            .await
-            .context("Failed to build initial rule cache")?;
+    let rule_cache = services::rule_service::build_cache_with_repositories(
+        persistence.rules.as_ref(),
+        persistence.rule_zone_snapshots.as_ref(),
+    )
+    .await
+    .context("Failed to build initial rule cache")?;
     let rule_cache = Arc::new(RwLock::new(rule_cache));
 
     let http_client = reqwest::Client::builder()
@@ -102,8 +105,8 @@ pub async fn initialize_state(
 
     let zenoh_metrics = Arc::new(ZenohMetrics::new());
 
-    Ok(Arc::new(AppState {
-        persistence,
+    Ok(Arc::new(AppState::new(AppStateInput {
+        database,
         zenoh_session,
         zenoh_tls_enabled: config.zenoh_tls_enabled,
         zenoh_port: config.zenoh_tls_port,
@@ -122,5 +125,5 @@ pub async fn initialize_state(
         firmware_store,
         readiness: Arc::new(ReadinessRegistry::new(true, true)),
         thread_runtime,
-    }))
+    })))
 }

@@ -93,7 +93,8 @@ provisioned identity and can use Zenoh TLS/mTLS.
 
 PostgreSQL is the production server database. Turso is a local file owned by a
 single Edge process. Both adapters enforce tenant-scoped domain operations and
-apply their own migration sets from `crates/backend/migrations`.
+apply their own migration sets from `crates/backend-postgres/migrations` and
+`crates/backend-turso/migrations`.
 
 Firmware uses local object storage by default and can use S3-compatible storage
 in the production build. Database files, firmware objects, certificates, and

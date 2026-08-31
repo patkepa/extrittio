@@ -2,7 +2,7 @@ use prost::Message;
 use tracing::{info, warn};
 
 use crate::domains::telemetry::types::TelemetryWrite;
-use crate::persistence::Persistence;
+use crate::persistence::RepositorySet;
 use crate::rule_engine::cache::RuleCache;
 use crate::rule_engine::evaluate::{evaluate_geofence_for_tenant, evaluate_telemetry_for_tenant};
 use crate::rule_engine::types::TelemetryData;
@@ -15,7 +15,7 @@ const MAX_OPTIMISTIC_RETRIES: usize = 3;
 /// Decode and atomically persist telemetry, latest state, device projections,
 /// observed hosts, and resulting durable rule actions.
 pub async fn handle_telemetry(
-    persistence: &Persistence,
+    persistence: &RepositorySet,
     identity: &DeviceIdentity,
     topic_device_id: &str,
     payload: &[u8],

@@ -4,8 +4,7 @@ use turso::params;
 
 use crate::auth::policy::Permission;
 use crate::persistence::{
-    BootstrapOwner, BootstrapRepository, BuiltinDeviceType, DatabaseHealth, PersistenceError,
-    SeedOwnerOutcome,
+    BootstrapOwner, BootstrapRepository, BuiltinDeviceType, PersistenceError, SeedOwnerOutcome,
 };
 use crate::tenancy::TenantId;
 
@@ -13,18 +12,6 @@ use super::TursoAdapter;
 
 #[async_trait]
 impl BootstrapRepository for TursoAdapter {
-    async fn health(&self) -> Result<DatabaseHealth, PersistenceError> {
-        self.database.health().await
-    }
-
-    async fn run_migrations(&self) -> Result<(), PersistenceError> {
-        self.database.migrate().await
-    }
-
-    async fn maintenance_checkpoint(&self) -> Result<(), PersistenceError> {
-        self.database.checkpoint().await
-    }
-
     async fn seed_builtin_device_types(
         &self,
         tenant: &TenantId,
@@ -121,6 +108,7 @@ impl BootstrapRepository for TursoAdapter {
             return Ok(SeedOwnerOutcome::SkippedUsersExist);
         }
         let now = Utc::now().timestamp_micros();
+        let auth_epoch = uuid::Uuid::new_v4().to_string();
         transaction
             .execute(
                 "INSERT INTO roles (tenant_id, name, description, is_system, created_at, updated_at)
@@ -158,9 +146,15 @@ impl BootstrapRepository for TursoAdapter {
         transaction
             .execute(
                 "INSERT INTO users (tenant_id, username, password_hash, role, is_active,
-                                    permission_version, created_at)
-                 VALUES (?1, ?2, ?3, 'owner', 1, 2, ?4)",
-                params![tenant.as_str(), owner.username, owner.password_hash, now],
+                                    permission_version, auth_epoch, created_at)
+                 VALUES (?1, ?2, ?3, 'owner', 1, 2, ?4, ?5)",
+                params![
+                    tenant.as_str(),
+                    owner.username,
+                    owner.password_hash,
+                    auth_epoch,
+                    now
+                ],
             )
             .await
             .map_err(map_error)?;

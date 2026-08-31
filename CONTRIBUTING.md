@@ -61,8 +61,8 @@ Commit `api/openapi.json` and `apps/frontend/src/types/openapi.ts` together.
 
 - Every tenant-owned query, event, and foreign-key relationship must remain
   tenant-scoped.
-- Add PostgreSQL migrations under `crates/backend/migrations/postgres` and the
-  matching Turso migration under `crates/backend/migrations/turso` when a
+- Add PostgreSQL migrations under `crates/backend-postgres/migrations` and the
+  matching Turso migration under `crates/backend-turso/migrations` when a
   feature supports both backends.
 - Do not edit an already-applied migration. Regenerate Diesel schema output
   through the established migration workflow instead of hand-editing it.

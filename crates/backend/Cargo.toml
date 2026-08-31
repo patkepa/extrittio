@@ -9,11 +9,11 @@ homepage.workspace = true
 publish.workspace = true
 
 [features]
-default = ["postgres"]
+default = []
 production = ["postgres", "jemalloc", "s3", "otlp", "swagger-ui", "mdns"]
 jemalloc = ["dep:tikv-jemallocator"]
-postgres = ["dep:diesel", "dep:diesel_migrations"]
-turso = ["dep:turso"]
+postgres = ["dep:diesel", "dep:diesel_migrations", "dep:extrittio-backend-postgres"]
+turso = ["dep:turso", "dep:extrittio-backend-turso"]
 embedded-ui = ["dep:include_dir"]
 openapi = []
 swagger-ui = ["openapi", "dep:utoipa-swagger-ui"]
@@ -29,6 +29,9 @@ all-databases = ["postgres", "turso"]
 phase0-turso = ["turso"]
 
 [dependencies]
+extrittio-backend-core = { version = "0.1.0", path = "../backend-core" }
+extrittio-backend-postgres = { version = "0.1.0", path = "../backend-postgres", optional = true, features = ["migration-bridge"] }
+extrittio-backend-turso = { version = "0.1.0", path = "../backend-turso", optional = true, features = ["migration-bridge"] }
 extrittio-common = { version = "0.1.0", path = "../common" }
 extrittio-device-contract = { version = "0.1.0", path = "../device-contract" }
 extrittio-openthread-runtime = { version = "0.1.0", path = "../openthread-runtime" }

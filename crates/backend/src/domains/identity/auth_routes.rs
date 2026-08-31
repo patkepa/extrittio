@@ -5,19 +5,19 @@ use axum::{
     response::IntoResponse,
     routing::{get, post},
 };
+use extrittio_backend_core::Role;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
 
 use crate::auth::context::RequestContext;
-use crate::auth::create_token_with_scopes;
-use crate::domains::identity::role_types::RoleRecord;
+use crate::auth::{SessionTokenInput, create_token_with_scopes};
 use crate::error::AppError;
-use crate::services::user_service;
 use crate::state::AppState;
 use crate::tenancy::{DEFAULT_TENANT_ID, TenantId};
 
-#[derive(Debug, Deserialize, ToSchema)]
+/// Plaintext credentials intentionally have no `Debug` implementation.
+#[derive(Deserialize, ToSchema)]
 pub struct LoginRequest {
     pub username: String,
     pub password: String,
@@ -84,21 +84,22 @@ pub(crate) async fn login(
         .to_string();
     let tenant_id = TenantId::new(tenant_id).map_err(|e| AppError::BadRequest(e.to_string()))?;
 
-    let user = user_service::authenticate(
-        state.persistence.users.as_ref(),
-        &tenant_id,
-        &body.username,
-        &body.password,
-    )
-    .await?;
+    let user = state
+        .application()
+        .users()
+        .authenticate(&tenant_id, &body.username, body.password)
+        .await?;
 
     let token = create_token_with_scopes(
-        user.id,
-        &user.username,
-        &user.role,
-        &user.tenant_id,
-        user.permissions.clone(),
-        user.permission_version,
+        SessionTokenInput {
+            user_id: user.id,
+            username: &user.username,
+            role: &user.role,
+            tenant_id: user.tenant_id.as_str(),
+            scopes: user.permissions.clone(),
+            permission_version: user.permission_version,
+            auth_epoch: user.auth_epoch.as_str(),
+        },
         &jwt_secret,
     )
     .map_err(|e| AppError::Auth(e.to_string()))?;
@@ -169,7 +170,11 @@ pub(crate) async fn me(
     State(state): State<Arc<AppState>>,
     Extension(ctx): Extension<RequestContext>,
 ) -> Result<Json<UserResponse>, AppError> {
-    let user = user_service::current_user(&ctx, state.persistence.users.as_ref()).await?;
+    let user = state
+        .application()
+        .users()
+        .current_user(&ctx.tenant_context())
+        .await?;
 
     Ok(Json(user_response(
         user.id,
@@ -181,7 +186,7 @@ pub(crate) async fn me(
     )))
 }
 
-pub fn role_summary(role: RoleRecord) -> RoleSummary {
+pub fn role_summary(role: Role) -> RoleSummary {
     RoleSummary {
         id: role.id,
         name: role.name,
@@ -194,7 +199,7 @@ pub fn user_response(
     id: i32,
     username: String,
     role: String,
-    roles: Vec<RoleRecord>,
+    roles: Vec<Role>,
     permissions: Vec<String>,
     permission_version: i32,
 ) -> UserResponse {

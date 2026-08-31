@@ -6,7 +6,7 @@ use anyhow::{Context, Result, bail};
 use clap::ValueEnum;
 
 use crate::command::{command_in, output, run as run_command};
-use crate::{ios, protocol};
+use crate::{architecture, ios, protocol};
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, ValueEnum)]
 pub(crate) enum VerifyScope {
@@ -39,6 +39,7 @@ struct CommandSpec {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Step {
+    Architecture,
     Command(CommandSpec),
     OpenApiContract,
     FrontendApiTypes,
@@ -80,6 +81,7 @@ pub(crate) fn run(root: &Path, selection: Selection) -> Result<()> {
 
 fn run_step(root: &Path, step: Step) -> Result<()> {
     match step {
+        Step::Architecture => architecture::run(root),
         Step::Command(spec) => {
             let directory = match spec.directory {
                 WorkingDirectory::Root => root,
@@ -244,6 +246,10 @@ fn scopes_for_path(path: &Path) -> BTreeSet<VerifyScope> {
         scopes.insert(VerifyScope::Protocol);
     } else if path.starts_with("apps/extrittio/")
         || path.starts_with("crates/backend/")
+        || path.starts_with("crates/backend-core/")
+        || path.starts_with("crates/backend-postgres/")
+        || path.starts_with("crates/backend-turso/")
+        || path.starts_with("crates/backend-adapter-tests/")
         || path.starts_with("crates/device-contract/")
         || path.starts_with("crates/openthread-runtime/")
         || path.starts_with("crates/rule-engine/")
@@ -316,6 +322,7 @@ fn plan(scopes: &BTreeSet<VerifyScope>) -> Vec<Step> {
 impl Step {
     fn label(self) -> &'static str {
         match self {
+            Self::Architecture => "check backend architecture boundaries",
             Self::Command(spec) => spec.label,
             Self::OpenApiContract => "verify generated OpenAPI contract",
             Self::FrontendApiTypes => "verify generated frontend API types",
@@ -329,7 +336,8 @@ impl Step {
     }
 }
 
-const BACKEND_STEPS: [Step; 5] = [
+const BACKEND_STEPS: [Step; 6] = [
+    Step::Architecture,
     Step::Command(CommandSpec {
         label: "check Rust formatting",
         directory: WorkingDirectory::Root,

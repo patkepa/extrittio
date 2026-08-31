@@ -21,5 +21,4 @@ pub trait MetricsRepository: Send + Sync {
         &self,
         cutoff: NaiveDateTime,
     ) -> Result<(usize, usize), PersistenceError>;
-    fn connection_counts(&self) -> (i32, i32);
 }

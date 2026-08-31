@@ -1421,6 +1421,9 @@ dependencies = [
  "diesel",
  "diesel_migrations",
  "dotenvy",
+ "extrittio-backend-core",
+ "extrittio-backend-postgres",
+ "extrittio-backend-turso",
  "extrittio-common",
  "extrittio-device-contract",
  "extrittio-openthread-runtime",
@@ -1462,6 +1465,70 @@ dependencies = [
  "uuid",
  "zenoh",
  "zeroize",
+]
+
+[[package]]
+name = "extrittio-backend-adapter-tests"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "diesel",
+ "extrittio-backend-core",
+ "extrittio-backend-postgres",
+ "extrittio-backend-turso",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "turso",
+]
+
+[[package]]
+name = "extrittio-backend-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "futures",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
+name = "extrittio-backend-postgres"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "diesel",
+ "diesel_migrations",
+ "extrittio-backend-core",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "extrittio-backend-turso"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64",
+ "chrono",
+ "extrittio-backend-core",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "turso",
+ "uuid",
 ]
 
 [[package]]
@@ -6428,6 +6495,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "serde",
+ "serde_json",
  "tempfile",
 ]
 

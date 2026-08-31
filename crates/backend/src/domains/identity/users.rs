@@ -4,6 +4,7 @@ use axum::{
     http::StatusCode,
     routing::get,
 };
+use extrittio_backend_core::{CreateUser, PageRequest};
 use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -11,19 +12,20 @@ use utoipa::ToSchema;
 use crate::auth::context::RequestContext;
 use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse, PaginationParams};
-use crate::services::user_service;
 use crate::state::AppState;
 
 use super::auth_routes::{UserResponse, user_response};
 
-#[derive(Debug, Deserialize, ToSchema)]
+/// Plaintext credentials intentionally have no `Debug` implementation.
+#[derive(Deserialize, ToSchema)]
 pub struct CreateUserRequest {
     pub username: String,
     pub password: String,
     pub role_ids: Option<Vec<i32>>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+/// Plaintext credentials intentionally have no `Debug` implementation.
+#[derive(Deserialize, ToSchema)]
 pub struct ChangePasswordRequest {
     pub password: String,
 }
@@ -61,8 +63,14 @@ pub(crate) async fn list_users(
     Query(params): Query<PaginationParams>,
 ) -> Result<Json<PaginatedResponse<UserResponse>>, AppError> {
     let (limit, offset) = pagination::clamp(params.limit, params.offset);
+    let page = PageRequest::new(limit, offset)
+        .expect("HTTP pagination clamp always produces a valid page request");
 
-    let users = user_service::list(&ctx, state.persistence.users.as_ref(), limit, offset).await?;
+    let users = state
+        .application()
+        .users()
+        .list(&ctx.tenant_context(), page)
+        .await?;
     let data = users
         .records
         .into_iter()
@@ -100,14 +108,18 @@ pub(crate) async fn create_user(
     axum::Extension(ctx): axum::Extension<RequestContext>,
     Json(body): Json<CreateUserRequest>,
 ) -> Result<(StatusCode, Json<UserResponse>), AppError> {
-    let details = user_service::create(
-        &ctx,
-        state.persistence.users.as_ref(),
-        &body.username,
-        &body.password,
-        body.role_ids.as_deref(),
-    )
-    .await?;
+    let details = state
+        .application()
+        .users()
+        .create(
+            &ctx.tenant_context(),
+            CreateUser {
+                username: body.username,
+                password: body.password,
+                role_ids: body.role_ids,
+            },
+        )
+        .await?;
     let response = user_response(
         details.user.id,
         details.user.username,
@@ -137,7 +149,11 @@ pub(crate) async fn delete_user(
     axum::Extension(ctx): axum::Extension<RequestContext>,
     Path(id): Path<i32>,
 ) -> Result<StatusCode, AppError> {
-    user_service::delete(&ctx, state.persistence.users.as_ref(), id).await?;
+    state
+        .application()
+        .users()
+        .delete(&ctx.tenant_context(), id)
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -162,7 +178,10 @@ pub(crate) async fn change_password(
     Path(id): Path<i32>,
     Json(body): Json<ChangePasswordRequest>,
 ) -> Result<StatusCode, AppError> {
-    user_service::change_password(&ctx, state.persistence.users.as_ref(), id, &body.password)
+    state
+        .application()
+        .users()
+        .change_password(&ctx.tenant_context(), id, body.password)
         .await?;
 
     Ok(StatusCode::OK)
@@ -189,8 +208,11 @@ pub(crate) async fn set_roles(
     Path(id): Path<i32>,
     Json(body): Json<SetUserRolesRequest>,
 ) -> Result<Json<UserResponse>, AppError> {
-    let details =
-        user_service::set_roles(&ctx, state.persistence.users.as_ref(), id, &body.role_ids).await?;
+    let details = state
+        .application()
+        .users()
+        .set_roles(&ctx.tenant_context(), id, body.role_ids)
+        .await?;
     let response = user_response(
         details.user.id,
         details.user.username,

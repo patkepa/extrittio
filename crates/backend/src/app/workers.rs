@@ -24,7 +24,7 @@ struct WorkerExit {
 pub struct WorkerSupervisor {
     cancellation: CancellationToken,
     monitor: JoinHandle<anyhow::Result<()>>,
-    persistence: crate::persistence::Persistence,
+    database: crate::persistence::DatabaseRuntime,
 }
 
 impl WorkerSupervisor {
@@ -39,8 +39,7 @@ impl WorkerSupervisor {
             .monitor
             .await
             .map_err(|error| anyhow::anyhow!("worker supervisor task panicked: {error}"))?;
-        self.persistence
-            .bootstrap
+        self.database
             .maintenance_checkpoint()
             .await
             .map_err(|error| anyhow::anyhow!("database shutdown checkpoint failed: {error}"))?;
@@ -345,8 +344,13 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         },
     );
 
-    if !state.persistence.backend.capabilities.partitioned_telemetry {
-        let maintenance = state.persistence.clone();
+    if !state
+        .database
+        .descriptor()
+        .capabilities
+        .partitioned_telemetry
+    {
+        let maintenance = state.database.clone();
         spawn_worker(
             &mut workers,
             &cancellation,
@@ -358,7 +362,6 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
                 loop {
                     interval.tick().await;
                     maintenance
-                        .bootstrap
                         .maintenance_checkpoint()
                         .await
                         .map_err(|error| error.to_string())?;
@@ -405,7 +408,7 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
     WorkerSupervisor {
         cancellation,
         monitor,
-        persistence: state.persistence.clone(),
+        database: state.database.clone(),
     }
 }
 

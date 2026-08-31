@@ -257,16 +257,19 @@ impl AlertRepository for PostgresAdapter {
             .await
     }
 
-    async fn delete_resolved_before(
+    async fn delete_all_resolved_before(
         &self,
-        tenant: &TenantId,
         cutoff: NaiveDateTime,
     ) -> Result<usize, PersistenceError> {
-        let tenant_id = tenant.as_str().to_string();
         self.executor
             .run(move |connection| {
-                alert_repo::delete_resolved_older_than(connection, &tenant_id, cutoff)
-                    .map_err(map_diesel_error)
+                diesel::delete(
+                    alerts::table
+                        .filter(alerts::status.eq("resolved"))
+                        .filter(alerts::resolved_at.lt(cutoff)),
+                )
+                .execute(connection)
+                .map_err(map_diesel_error)
             })
             .await
     }

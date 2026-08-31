@@ -1,7 +1,7 @@
 use prost::Message;
 use tracing::{info, warn};
 
-use crate::persistence::Persistence;
+use crate::persistence::RepositorySet;
 use crate::rule_engine::cache::RuleCache;
 use crate::services::device_ingress_service;
 use crate::tenancy::DeviceIdentity;
@@ -11,7 +11,7 @@ use extrittio_common::extrittio::DeviceHeartbeat;
 /// Decode a heartbeat and commit device state, transition log, and resulting
 /// rule actions through one backend-neutral write set.
 pub async fn handle_heartbeat(
-    persistence: &Persistence,
+    persistence: &RepositorySet,
     resolved_identity: Option<DeviceIdentity>,
     topic_device_id: &str,
     payload: &[u8],

@@ -72,8 +72,7 @@ pub(crate) async fn ready(
     }
 
     let database_ready = state
-        .persistence
-        .bootstrap
+        .database
         .health()
         .await
         .is_ok_and(|health| health.reachable);

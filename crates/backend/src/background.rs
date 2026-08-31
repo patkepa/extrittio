@@ -5,10 +5,9 @@ use std::time::Duration;
 use chrono::Timelike;
 use tracing::{info, warn};
 
-use crate::persistence::Persistence;
+use crate::persistence::RepositorySet;
 use crate::rule_engine::cache::RuleCache;
 use crate::services::{command_service, device_ingress_service, log_service};
-use crate::tenancy::{DEFAULT_TENANT_ID, TenantId};
 
 /// Compute a backoff sleep duration based on consecutive failures.
 /// Doubles each failure from `base` up to `max`.
@@ -19,7 +18,7 @@ fn backoff_duration(base: Duration, consecutive_failures: u32, max: Duration) ->
 }
 
 pub async fn run_offline_checker(
-    persistence: Persistence,
+    persistence: RepositorySet,
     timeout_secs: u64,
     rule_cache: Arc<RwLock<RuleCache>>,
 ) {
@@ -74,7 +73,7 @@ pub async fn run_offline_checker(
     }
 }
 
-pub async fn run_command_timeout_checker(persistence: Persistence, timeout_secs: u64) {
+pub async fn run_command_timeout_checker(persistence: RepositorySet, timeout_secs: u64) {
     let base_interval = Duration::from_secs(30);
     let max_backoff = Duration::from_secs(300); // 5 minutes
     let mut consecutive_failures: u32 = 0;
@@ -122,7 +121,7 @@ pub async fn run_command_timeout_checker(persistence: Persistence, timeout_secs:
     }
 }
 
-pub async fn run_alert_retention(persistence: Persistence, retention_days: u64) {
+pub async fn run_alert_retention(persistence: RepositorySet, retention_days: u64) {
     let base_interval = Duration::from_secs(3600);
     let max_backoff = Duration::from_secs(7200); // 2 hours
     let mut consecutive_failures: u32 = 0;
@@ -140,10 +139,9 @@ pub async fn run_alert_retention(persistence: Persistence, retention_days: u64) 
             #[allow(clippy::cast_possible_wrap)]
             let cutoff =
                 chrono::Utc::now().naive_utc() - chrono::Duration::days(retention_days as i64);
-            let tenant = TenantId::new(DEFAULT_TENANT_ID).map_err(|error| error.to_string())?;
             let alert_count = persistence
                 .alerts
-                .delete_resolved_before(&tenant, cutoff)
+                .delete_all_resolved_before(cutoff)
                 .await
                 .map_err(|error| error.to_string())?;
 
@@ -190,7 +188,7 @@ pub async fn run_alert_retention(persistence: Persistence, retention_days: u64) 
     }
 }
 
-pub async fn run_log_retention(persistence: Persistence, retention_days: u64) {
+pub async fn run_log_retention(persistence: RepositorySet, retention_days: u64) {
     let base_interval = Duration::from_secs(3600);
     let max_backoff = Duration::from_secs(7200);
     let mut consecutive_failures: u32 = 0;
@@ -234,7 +232,7 @@ pub async fn run_log_retention(persistence: Persistence, retention_days: u64) {
     }
 }
 
-pub async fn run_telemetry_rollup_and_retention(persistence: Persistence, retention_days: u64) {
+pub async fn run_telemetry_rollup_and_retention(persistence: RepositorySet, retention_days: u64) {
     let base_interval = Duration::from_secs(3600);
     let max_backoff = Duration::from_secs(7200);
     let mut consecutive_failures: u32 = 0;

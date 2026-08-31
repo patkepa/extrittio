@@ -1,0 +1,64 @@
+[
+  {
+    "CreateAlert": {
+      "tenant_id": "tenant-a",
+      "rule_id": "rule-1",
+      "device_id": "device-1",
+      "severity": "warning",
+      "message": "Temperature exceeded threshold",
+      "triggered_value": "42.5"
+    }
+  },
+  {
+    "UpdateAlertValue": {
+      "tenant_id": "tenant-a",
+      "alert_id": "alert-1",
+      "triggered_value": "43.0"
+    }
+  },
+  {
+    "ResolveAlert": {
+      "tenant_id": "tenant-a",
+      "alert_id": "alert-1"
+    }
+  },
+  {
+    "SendWebhook": {
+      "tenant_id": "tenant-a",
+      "url": "https://hooks.example.test/rules",
+      "headers": {
+        "x-extrittio-event": "rule-fired"
+      },
+      "payload": {
+        "device_id": "device-1",
+        "value": 42.5
+      }
+    }
+  },
+  {
+    "SendCommand": {
+      "tenant_id": "tenant-a",
+      "device_id": "device-1",
+      "command": "set_fan",
+      "params": {
+        "enabled": true
+      }
+    }
+  },
+  {
+    "UpdateCooldown": {
+      "tenant_id": "tenant-a",
+      "rule_id": "rule-1",
+      "device_id": "device-1",
+      "fired_at": "2026-08-31T12:34:56.123456"
+    }
+  },
+  {
+    "UpdateZoneEntry": {
+      "tenant_id": "tenant-a",
+      "rule_id": "rule-2",
+      "device_id": "device-1",
+      "entered_at": null
+    }
+  }
+]

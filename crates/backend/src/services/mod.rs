@@ -32,8 +32,6 @@ pub mod fleet_service;
 pub mod log_service;
 #[path = "../domains/operations/metrics_middleware.rs"]
 pub mod metrics_middleware;
-#[path = "../domains/identity/role_service.rs"]
-pub mod role_service;
 #[path = "../domains/rules/rule_service.rs"]
 pub mod rule_service;
 #[path = "../domains/operations/server_metrics_service.rs"]
@@ -42,7 +40,3 @@ pub mod server_metrics;
 pub mod shadow_service;
 #[path = "../domains/telemetry/telemetry_service.rs"]
 pub mod telemetry_service;
-#[path = "../domains/identity/user_service.rs"]
-pub mod user_service;
-#[path = "../domains/zones/zone_service.rs"]
-pub mod zone_service;

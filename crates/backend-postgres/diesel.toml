@@ -1,0 +1,6 @@
+[migrations_directory]
+dir = "migrations"
+
+[print_schema]
+file = "src/schema.rs"
+patch_file = "src/schema.patch"

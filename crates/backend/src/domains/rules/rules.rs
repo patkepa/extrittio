@@ -155,7 +155,8 @@ fn to_rule_response(details: RuleDetails) -> Result<RuleResponse, AppError> {
 // ---------------------------------------------------------------------------
 
 async fn refresh_rule_cache(state: &AppState) {
-    match rule_service::build_cache_with_repository(state.persistence.rules.as_ref()).await {
+    let (rules, zone_snapshots) = state.rule_cache_repositories();
+    match rule_service::build_cache_with_repositories(rules, zone_snapshots).await {
         Ok(new_cache) => {
             if let Ok(mut guard) = state.rule_cache.write() {
                 *guard = new_cache;

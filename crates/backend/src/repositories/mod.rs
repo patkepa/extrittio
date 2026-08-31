@@ -16,8 +16,6 @@ pub mod device_type_repo;
 pub mod firmware_repo;
 #[path = "../domains/logs/log_repo.rs"]
 pub mod log_repo;
-#[path = "../domains/identity/role_repo.rs"]
-pub mod role_repo;
 #[path = "../domains/operations/rule_action_outbox_repo.rs"]
 pub mod rule_action_outbox_repo;
 #[path = "../domains/rules/rule_repo.rs"]
@@ -28,7 +26,3 @@ pub mod server_metrics_repo;
 pub mod shadow_repo;
 #[path = "../domains/telemetry/telemetry_repo.rs"]
 pub mod telemetry_repo;
-#[path = "../domains/identity/user_repo.rs"]
-pub mod user_repo;
-#[path = "../domains/zones/zone_repo.rs"]
-pub mod zone_repo;

@@ -44,8 +44,7 @@ fn runtime_version() -> String {
 )]
 pub(crate) async fn get_version(State(state): State<Arc<AppState>>) -> Json<SystemVersionResponse> {
     let database_status = if state
-        .persistence
-        .bootstrap
+        .database
         .health()
         .await
         .is_ok_and(|health| health.reachable)
@@ -56,7 +55,7 @@ pub(crate) async fn get_version(State(state): State<Arc<AppState>>) -> Json<Syst
     };
     let database = format!(
         "{}:{database_status}",
-        state.persistence.backend.kind.as_str()
+        state.database.descriptor().kind.as_str()
     );
 
     Json(SystemVersionResponse {

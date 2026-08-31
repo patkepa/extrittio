@@ -15,12 +15,12 @@ use tracing::Instrument;
 #[cfg(feature = "otlp")]
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
+use crate::auth::context::{MappedUserClaims, RequestContext, map_validated_user_claims};
+use crate::auth::policy::Permission;
 use crate::auth::validate_token;
 use crate::domains::audit::types::NewAuditEventRecord;
 use crate::error::AppError;
-use crate::services::user_service;
 use crate::state::AppState;
-use crate::tenancy::{DEFAULT_TENANT_ID, TenantId};
 
 #[derive(Debug, Clone)]
 pub struct RequestId(pub String);
@@ -94,10 +94,7 @@ pub async fn audit_middleware(
 
     let method = request.method().clone();
     let path = request.uri().path().to_string();
-    let context = request
-        .extensions()
-        .get::<crate::auth::context::RequestContext>()
-        .cloned();
+    let context = request.extensions().get::<RequestContext>().cloned();
     let request_id = request
         .extensions()
         .get::<RequestId>()
@@ -106,32 +103,35 @@ pub async fn audit_middleware(
     let response = next.run(request).await;
     let status = response.status();
 
-    let tenant_id = context
-        .as_ref()
-        .map(|ctx| ctx.tenant_id().clone())
-        .unwrap_or_else(|| {
-            TenantId::new(DEFAULT_TENANT_ID).expect("default tenant ID must be valid")
-        });
-    let actor_id = context.as_ref().map(|ctx| ctx.user_id.to_string());
-    let actor_type = if context.is_some() {
-        "user"
+    let outcome = if status.is_success() {
+        "success"
     } else {
-        "anonymous"
+        "failure"
     };
+    let Some((tenant_id, actor_id)) = authenticated_audit_subject(context.as_ref()) else {
+        tracing::info!(
+            event = "audit.unauthenticated_mutation",
+            %request_id,
+            method = %method,
+            path = %path,
+            status = status.as_u16(),
+            outcome,
+            resource_type = %resource_type,
+            resource_id = ?resource_id,
+            "unauthenticated mutation was not written to tenant audit storage"
+        );
+        return response;
+    };
+
     let action = format!("{}.{}", resource_type, method.as_str().to_ascii_lowercase());
     let event = NewAuditEventRecord {
         id: uuid::Uuid::new_v4().to_string(),
-        actor_type: actor_type.to_string(),
-        actor_id,
+        actor_type: "user".to_string(),
+        actor_id: Some(actor_id),
         action,
         resource_type,
         resource_id,
-        outcome: if status.is_success() {
-            "success"
-        } else {
-            "failure"
-        }
-        .to_string(),
+        outcome: outcome.to_string(),
         request_id,
         metadata: serde_json::json!({
             "method": method.as_str(),
@@ -140,13 +140,19 @@ pub async fn audit_middleware(
         }),
     };
     if let Err(error) =
-        crate::services::audit_service::record(state.persistence.audit.as_ref(), &tenant_id, event)
+        crate::services::audit_service::record(state.persistence.audit.as_ref(), tenant_id, event)
             .await
     {
         tracing::error!(%error, "failed to persist audit event");
     }
 
     response
+}
+
+fn authenticated_audit_subject(
+    context: Option<&RequestContext>,
+) -> Option<(&crate::tenancy::TenantId, String)> {
+    context.map(|context| (context.tenant_id(), context.user_id.to_string()))
 }
 
 fn audit_resource(path: &str) -> (String, Option<String>) {
@@ -185,12 +191,51 @@ pub async fn auth_middleware(
         return Err(AppError::Unauthorized);
     };
 
-    let claims = validate_token(&token, &state.jwt_secret).map_err(|error| {
-        tracing::warn!(path, %error, "security.authentication_rejected");
-        AppError::Unauthorized
-    })?;
-    let ctx =
-        user_service::context_from_claims(state.persistence.users.as_ref(), claims.clone()).await?;
+    let mapped_claims = match request.extensions().get::<MappedUserClaims>().cloned() {
+        Some(mapped_claims) => mapped_claims,
+        None => {
+            let claims = validate_token(&token, &state.jwt_secret).map_err(|error| {
+                tracing::warn!(path, %error, "security.authentication_rejected");
+                AppError::Unauthorized
+            })?;
+            map_validated_user_claims(claims).map_err(|error| {
+                tracing::warn!(path, %error, "security.authentication_rejected");
+                AppError::Unauthorized
+            })?
+        }
+    };
+    let claims = mapped_claims.claims().clone();
+    let auth_epoch = claims
+        .auth_epoch
+        .as_deref()
+        .filter(|value| !value.is_empty());
+    let Some(auth_epoch) = auth_epoch else {
+        tracing::warn!(
+            path,
+            user_id = claims.sub,
+            "security.authentication_epoch_missing"
+        );
+        return Err(AppError::Unauthorized);
+    };
+    let user = state
+        .application()
+        .users()
+        .resolve_session(
+            mapped_claims.tenant_id(),
+            claims.sub,
+            claims.permission_version,
+            auth_epoch,
+        )
+        .await?;
+    let permissions = Permission::from_keys(&user.permissions);
+    let ctx = RequestContext::authenticated(
+        user.id,
+        user.username,
+        user.role,
+        user.tenant_id,
+        user.permissions,
+        permissions,
+    );
 
     request.extensions_mut().insert(ctx);
     request.extensions_mut().insert(claims);
@@ -218,4 +263,38 @@ fn session_cookie(request: &Request) -> Option<String> {
                 (name == "extrittio_session").then(|| value.to_string())
             })
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::auth::Claims;
+
+    fn context(tenant_id: &str) -> RequestContext {
+        RequestContext::from_claims(Claims {
+            sub: 17,
+            username: "operator".to_string(),
+            role: "viewer".to_string(),
+            tenant_id: Some(tenant_id.to_string()),
+            scopes: vec!["devices:read".to_string()],
+            permission_version: 1,
+            auth_epoch: Some("test-auth-epoch".to_string()),
+            exp: usize::MAX,
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn unauthenticated_audit_has_no_tenant_storage_subject() {
+        assert!(authenticated_audit_subject(None).is_none());
+    }
+
+    #[test]
+    fn authenticated_audit_uses_the_mapped_tenant_and_actor() {
+        let context = context("tenant-a");
+        let (tenant, actor) = authenticated_audit_subject(Some(&context)).unwrap();
+
+        assert_eq!(tenant.as_str(), "tenant-a");
+        assert_eq!(actor, "17");
+    }
 }

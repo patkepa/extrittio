@@ -6,12 +6,12 @@ pub mod log;
 pub mod shadow;
 pub mod telemetry;
 
-use crate::persistence::Persistence;
+use crate::persistence::RepositorySet;
 use crate::services::device_catalog_service;
 use crate::tenancy::DeviceIdentity;
 
 pub(crate) async fn resolve_ingress_identity(
-    persistence: &Persistence,
+    persistence: &RepositorySet,
     message_type: &str,
     device_id: &str,
     warn_if_missing: bool,

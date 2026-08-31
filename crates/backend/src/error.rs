@@ -75,6 +75,9 @@ pub enum AppError {
     #[error("Persistence error: {0}")]
     Persistence(#[from] crate::persistence::PersistenceError),
 
+    #[error("Application error: {0}")]
+    Application(#[from] extrittio_backend_core::ApplicationError),
+
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
 
@@ -175,6 +178,79 @@ impl IntoResponse for AppError {
                     "Internal server error".to_string(),
                 )
             }
+            AppError::Application(extrittio_backend_core::ApplicationError::NotFound(message)) => {
+                (StatusCode::NOT_FOUND, "not_found", message.clone())
+            }
+            AppError::Application(extrittio_backend_core::ApplicationError::Conflict(message)) => {
+                (StatusCode::CONFLICT, "conflict", message.clone())
+            }
+            AppError::Application(extrittio_backend_core::ApplicationError::InvalidInput(
+                message,
+            )) => (StatusCode::BAD_REQUEST, "bad_request", message.clone()),
+            AppError::Application(extrittio_backend_core::ApplicationError::Unauthorized) => (
+                StatusCode::UNAUTHORIZED,
+                "unauthorized",
+                "Unauthorized".to_string(),
+            ),
+            AppError::Application(extrittio_backend_core::ApplicationError::Forbidden(message)) => {
+                (StatusCode::FORBIDDEN, "forbidden", message.clone())
+            }
+            AppError::Application(extrittio_backend_core::ApplicationError::Authentication(
+                error,
+            )) => {
+                tracing::error!(%error, "Password hashing failed");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "authentication_error",
+                    "Authentication error".to_string(),
+                )
+            }
+            AppError::Application(extrittio_backend_core::ApplicationError::Persistence(
+                extrittio_backend_core::PersistenceError::NotFound,
+            )) => (
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "Resource not found".to_string(),
+            ),
+            AppError::Application(extrittio_backend_core::ApplicationError::Persistence(
+                error @ (extrittio_backend_core::PersistenceError::UniqueViolation { .. }
+                | extrittio_backend_core::PersistenceError::ForeignKeyViolation { .. }
+                | extrittio_backend_core::PersistenceError::CheckViolation { .. }),
+            )) => {
+                tracing::warn!(error = %error, "Persistence constraint rejected a request");
+                (
+                    StatusCode::CONFLICT,
+                    "conflict",
+                    "The request conflicts with existing data".to_string(),
+                )
+            }
+            AppError::Application(extrittio_backend_core::ApplicationError::Persistence(
+                error @ (extrittio_backend_core::PersistenceError::Busy { .. }
+                | extrittio_backend_core::PersistenceError::Unavailable(_)),
+            )) => {
+                tracing::warn!(error = %error, "Persistence is temporarily unavailable");
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "service_unavailable",
+                    "Service temporarily unavailable".to_string(),
+                )
+            }
+            AppError::Application(extrittio_backend_core::ApplicationError::Persistence(error)) => {
+                tracing::error!(error = %error, "Persistence operation failed");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "database_error",
+                    "Internal server error".to_string(),
+                )
+            }
+            AppError::Application(extrittio_backend_core::ApplicationError::Internal(error)) => {
+                tracing::error!(%error, "Application operation failed");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "internal_error",
+                    "Internal server error".to_string(),
+                )
+            }
             AppError::Serialization(e) => {
                 tracing::error!("Serialization error: {e}");
                 (
@@ -209,5 +285,138 @@ impl IntoResponse for AppError {
             details: None,
         };
         (status, Json(body)).into_response()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::body::Body;
+    use axum::http::StatusCode;
+    use axum::response::IntoResponse;
+    use http_body_util::BodyExt;
+
+    use super::{AppError, scope_request_id};
+    use crate::persistence::{ConstraintName, PersistenceError};
+
+    async fn response_contract(error: AppError) -> (StatusCode, serde_json::Value) {
+        scope_request_id("request-fixture".to_string(), async move {
+            let response = error.into_response();
+            let status = response.status();
+            let body = response.into_body().collect().await.unwrap().to_bytes();
+            (status, serde_json::from_slice(&body).unwrap())
+        })
+        .await
+    }
+
+    #[tokio::test]
+    async fn public_error_contract_preserves_status_codes_and_safe_bodies() {
+        let cases = [
+            (
+                AppError::NotFound("missing device".into()),
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "missing device",
+            ),
+            (
+                AppError::Conflict("already exists".into()),
+                StatusCode::CONFLICT,
+                "conflict",
+                "already exists",
+            ),
+            (
+                AppError::BadRequest("invalid input".into()),
+                StatusCode::BAD_REQUEST,
+                "bad_request",
+                "invalid input",
+            ),
+            (
+                AppError::UnprocessableEntity("invalid state".into()),
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "unprocessable_entity",
+                "invalid state",
+            ),
+            (
+                AppError::Unauthorized,
+                StatusCode::UNAUTHORIZED,
+                "unauthorized",
+                "Unauthorized",
+            ),
+            (
+                AppError::Forbidden("missing permission".into()),
+                StatusCode::FORBIDDEN,
+                "forbidden",
+                "missing permission",
+            ),
+            (
+                AppError::TooManyRequests,
+                StatusCode::TOO_MANY_REQUESTS,
+                "too_many_requests",
+                "Too many requests",
+            ),
+            (
+                AppError::Auth("secret verifier detail".into()),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "authentication_error",
+                "Authentication error",
+            ),
+            (
+                AppError::Application(extrittio_backend_core::ApplicationError::Authentication(
+                    "secret verifier detail".into(),
+                )),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "authentication_error",
+                "Authentication error",
+            ),
+            (
+                AppError::Persistence(PersistenceError::Unavailable(
+                    "private connection detail".into(),
+                )),
+                StatusCode::SERVICE_UNAVAILABLE,
+                "service_unavailable",
+                "Service temporarily unavailable",
+            ),
+            (
+                AppError::Persistence(PersistenceError::UniqueViolation {
+                    constraint: ConstraintName::new("private_constraint"),
+                }),
+                StatusCode::CONFLICT,
+                "conflict",
+                "The request conflicts with existing data",
+            ),
+            (
+                AppError::Persistence(PersistenceError::Internal("private query detail".into())),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "database_error",
+                "Internal server error",
+            ),
+            (
+                AppError::Zenoh("private transport detail".into()),
+                StatusCode::BAD_GATEWAY,
+                "device_communication_error",
+                "Device communication failed",
+            ),
+            (
+                AppError::Internal("private implementation detail".into()),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal_error",
+                "Internal server error",
+            ),
+        ];
+
+        for (error, expected_status, expected_code, expected_message) in cases {
+            let (status, body) = response_contract(error).await;
+            assert_eq!(status, expected_status);
+            assert_eq!(body["code"], expected_code);
+            assert_eq!(body["message"], expected_message);
+            assert_eq!(body["error"], expected_message);
+            assert_eq!(body["request_id"], "request-fixture");
+            assert!(body.get("details").is_none());
+        }
+    }
+
+    #[test]
+    fn response_body_type_remains_sendable_through_axum() {
+        fn assert_body(_: Body) {}
+        assert_body(AppError::Unauthorized.into_response().into_body());
     }
 }

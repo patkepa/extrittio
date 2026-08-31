@@ -8,6 +8,7 @@ use diesel::r2d2::{ConnectionManager, Pool};
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
 use http_body_util::BodyExt;
 use prost::Message;
+use serde::Serialize;
 use serde_json::Value;
 use std::sync::Arc;
 use std::time::Duration;
@@ -15,14 +16,31 @@ use tower::ServiceExt;
 
 use extrittio_backend::api_key_util;
 use extrittio_backend::rate_limit::{ApiKeyRateLimiter, RateLimiter};
-use extrittio_backend::state::AppState;
+use extrittio_backend::state::{AppState, AppStateInput};
 
-const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations/postgres");
+const MIGRATIONS: EmbeddedMigrations = embed_migrations!("../backend-postgres/migrations");
 const DEFAULT_TEST_DATABASE_URL: &str =
     "postgres://extrittio:extrittio@127.0.0.1:5432/extrittio?connect_timeout=2";
 const TEST_BLUEPRINT_ID: &str = "test-default-blueprint";
 const TEST_BLUEPRINT_REVISION_ID: &str = "test-default-blueprint-r1";
 static TEST_DB_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+#[derive(Serialize)]
+struct LegacyClaimsWithoutAuthEpoch<'a> {
+    sub: i32,
+    username: &'a str,
+    role: &'a str,
+    tenant_id: &'a str,
+    scopes: Vec<String>,
+    permission_version: i32,
+    exp: usize,
+}
+
+#[derive(QueryableByName)]
+struct AuthEpochRow {
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    auth_epoch: String,
+}
 
 fn tenant_context(tenant_id: &str) -> extrittio_backend::auth::context::RequestContext {
     extrittio_backend::auth::context::RequestContext::from_claims(extrittio_backend::auth::Claims {
@@ -32,8 +50,10 @@ fn tenant_context(tenant_id: &str) -> extrittio_backend::auth::context::RequestC
         tenant_id: Some(tenant_id.to_string()),
         scopes: Vec::new(),
         permission_version: 1,
+        auth_epoch: Some("test-auth-epoch".to_string()),
         exp: 0,
     })
+    .expect("test claims contain a valid tenant")
 }
 
 fn test_context() -> extrittio_backend::auth::context::RequestContext {
@@ -48,8 +68,10 @@ fn scoped_context(scopes: &[&str]) -> extrittio_backend::auth::context::RequestC
         tenant_id: Some(extrittio_backend::tenancy::DEFAULT_TENANT_ID.to_string()),
         scopes: scopes.iter().map(|scope| (*scope).to_string()).collect(),
         permission_version: 1,
+        auth_epoch: Some("test-auth-epoch".to_string()),
         exp: 0,
     })
+    .expect("test claims contain a valid tenant")
 }
 
 fn setup_test_db() -> Pool<ConnectionManager<PgConnection>> {
@@ -108,17 +130,22 @@ fn setup_test_db() -> Pool<ConnectionManager<PgConnection>> {
     pool
 }
 
-async fn setup_app_with_context(
+async fn setup_app_with_context_and_state(
     ctx: extrittio_backend::auth::context::RequestContext,
-) -> (axum::Router, Pool<ConnectionManager<PgConnection>>) {
+) -> (
+    axum::Router,
+    Pool<ConnectionManager<PgConnection>>,
+    Arc<AppState>,
+) {
     extrittio_backend::init::install_crypto_provider();
     let db_pool = setup_test_db();
     let zenoh_session = zenoh::open(zenoh::Config::default())
         .await
         .expect("Failed to open test zenoh session");
+    let database = extrittio_backend::persistence::postgres::create_runtime(db_pool.clone());
 
-    let state = Arc::new(extrittio_backend::state::AppState {
-        persistence: extrittio_backend::persistence::postgres::create_persistence(db_pool.clone()),
+    let state = Arc::new(AppState::new(AppStateInput {
+        database,
         zenoh_session: Arc::new(zenoh_session),
         zenoh_tls_enabled: false,
         zenoh_port: 7447,
@@ -140,13 +167,20 @@ async fn setup_app_with_context(
         ),
         readiness: Arc::new(extrittio_backend::state::ReadinessRegistry::new(true, true)),
         thread_runtime: None,
-    });
+    }));
 
     let app = extrittio_backend::api::router(100 * 1024 * 1024, true)
         .layer(axum::Extension(ctx))
-        .with_state(state);
+        .with_state(state.clone());
 
-    (app, db_pool)
+    (app, db_pool, state)
+}
+
+async fn setup_app_with_context(
+    ctx: extrittio_backend::auth::context::RequestContext,
+) -> (axum::Router, Pool<ConnectionManager<PgConnection>>) {
+    let (app, pool, _state) = setup_app_with_context_and_state(ctx).await;
+    (app, pool)
 }
 
 async fn setup_app() -> axum::Router {
@@ -246,6 +280,121 @@ fn contract_blueprint_document() -> Value {
             }
         }
     })
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_role_http_contract_and_permission_catalog_order_are_preserved() {
+    let _guard = TEST_DB_LOCK.lock().await;
+    let (app, pool) = setup_app_with_context(test_context()).await;
+    diesel::delete(
+        extrittio_backend::db::schema::roles::table
+            .filter(extrittio_backend::db::schema::roles::is_system.eq(false)),
+    )
+    .execute(&mut pool.get().unwrap())
+    .unwrap();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/roles/permissions")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let permissions: Value = serde_json::from_slice(&body).unwrap();
+    let expected = [
+        "firmware.deploy",
+        "alerts.manage",
+        "device_blueprints.manage",
+        "device_types.manage",
+        "devices.manage",
+        "api_keys.manage",
+        "firmware.manage",
+        "fleets.manage",
+        "rules.manage",
+        "roles.manage",
+        "shadows.manage",
+        "users.manage",
+        "zones.manage",
+        "commands.read",
+        "alerts.read",
+        "device_blueprints.read",
+        "device_types.read",
+        "devices.read",
+        "fleets.read",
+        "firmware.read",
+        "logs.read",
+        "rules.read",
+        "roles.read",
+        "server_metrics.read",
+        "shadows.read",
+        "telemetry.read",
+        "users.read",
+        "zones.read",
+        "commands.send",
+    ];
+    assert_eq!(
+        permissions,
+        Value::Array(
+            expected
+                .iter()
+                .map(|key| serde_json::json!({ "key": key }))
+                .collect()
+        )
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/roles")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"name":"owner","description":null,"permissions":[]}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let error: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(error["code"], "bad_request");
+    assert_eq!(error["message"], "'owner' is reserved for a built-in role");
+    assert_eq!(error["error"], error["message"]);
+
+    let create = || {
+        Request::builder()
+            .method("POST")
+            .uri("/api/v1/roles")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                r#"{"name":"Support_Team","description":"Escalations","permissions":["devices.read","devices.read"]}"#,
+            ))
+            .unwrap()
+    };
+    let response = app.clone().oneshot(create()).await.unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let role: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(role["name"], "support_team");
+    assert_eq!(role["description"], "Escalations");
+    assert_eq!(role["is_system"], false);
+    assert_eq!(role["permissions"], serde_json::json!(["devices.read"]));
+    assert_eq!(role["user_count"], 0);
+
+    let response = app.oneshot(create()).await.unwrap();
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let error: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(error["code"], "conflict");
+    assert_eq!(error["message"], "Role name already exists");
+    assert_eq!(error["error"], error["message"]);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -476,7 +625,7 @@ async fn test_device_creation_materializes_and_assigns_contract() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
 
-    let persistence = extrittio_backend::persistence::postgres::create_persistence(pool.clone());
+    let persistence = extrittio_backend::persistence::postgres::create_repositories(pool.clone());
     let identity = extrittio_backend::tenancy::DeviceIdentity::new(
         extrittio_backend::tenancy::DEFAULT_TENANT_ID,
         device_id,
@@ -1218,6 +1367,240 @@ async fn test_create_user_defaults_to_viewer_role() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_login_cookie_token_me_and_session_invalidation() {
+    let _guard = TEST_DB_LOCK.lock().await;
+    let (app, pool, state) = setup_app_with_context_and_state(test_context()).await;
+    let password = "Secret123!456";
+
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/users")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "username": "login-user",
+                        "password": password,
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_response.status(), StatusCode::CREATED);
+    let created: Value = serde_json::from_slice(
+        &create_response
+            .into_body()
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes(),
+    )
+    .unwrap();
+    let user_id = i32::try_from(created["id"].as_i64().unwrap()).unwrap();
+
+    let login_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/login")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "username": "login-user",
+                        "password": password,
+                        "issue_token": true,
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(login_response.status(), StatusCode::OK);
+    let set_cookie = login_response
+        .headers()
+        .get(axum::http::header::SET_COOKIE)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    assert!(set_cookie.starts_with("extrittio_session="));
+    assert!(set_cookie.contains("; HttpOnly; SameSite=Strict; Max-Age=86400"));
+    assert!(!set_cookie.contains("; Secure"));
+    let login: Value = serde_json::from_slice(
+        &login_response
+            .into_body()
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes(),
+    )
+    .unwrap();
+    let token = login["token"].as_str().unwrap().to_string();
+    assert_eq!(login["user"]["id"], user_id);
+    assert_eq!(login["user"]["username"], "login-user");
+    assert_eq!(login["user"]["role"], "viewer");
+    assert_eq!(login["user"]["permission_version"], 2);
+
+    let claims = extrittio_backend::auth::validate_token(&token, "test-secret-key").unwrap();
+    assert_eq!(claims.sub, user_id);
+    let persisted_tenant = claims
+        .tenant_id
+        .as_deref()
+        .expect("new sessions carry an explicit tenant");
+    assert_eq!(persisted_tenant, "default");
+    assert_eq!(claims.permission_version, 2);
+    let issued_auth_epoch = claims
+        .auth_epoch
+        .as_deref()
+        .filter(|value| !value.is_empty())
+        .expect("new sessions carry a nonempty authentication epoch")
+        .to_string();
+    assert!(login["user"].get("auth_epoch").is_none());
+
+    let authenticated_app = extrittio_backend::api::router(100 * 1024 * 1024, true)
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            extrittio_backend::middleware::auth_middleware,
+        ))
+        .with_state(state);
+    let me_with_bearer = authenticated_app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/auth/me")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(me_with_bearer.status(), StatusCode::OK);
+    let current: Value = serde_json::from_slice(
+        &me_with_bearer
+            .into_body()
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes(),
+    )
+    .unwrap();
+    assert_eq!(current, login["user"]);
+
+    let cookie_pair = set_cookie.split(';').next().unwrap();
+    let me_with_cookie = authenticated_app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/auth/me")
+                .header("cookie", cookie_pair)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(me_with_cookie.status(), StatusCode::OK);
+
+    let legacy_token = jsonwebtoken::encode(
+        &jsonwebtoken::Header::default(),
+        &LegacyClaimsWithoutAuthEpoch {
+            sub: user_id,
+            username: "login-user",
+            role: "viewer",
+            tenant_id: persisted_tenant,
+            scopes: claims.scopes.clone(),
+            permission_version: 2,
+            exp: usize::try_from((chrono::Utc::now() + chrono::Duration::hours(1)).timestamp())
+                .unwrap(),
+        },
+        &jsonwebtoken::EncodingKey::from_secret(b"test-secret-key"),
+    )
+    .unwrap();
+    let legacy_rejected = authenticated_app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/auth/me")
+                .header("authorization", format!("Bearer {legacy_token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(legacy_rejected.status(), StatusCode::UNAUTHORIZED);
+
+    diesel::sql_query(
+        "UPDATE users SET permission_version = permission_version + 1 \
+         WHERE tenant_id = $1 AND id = $2",
+    )
+    .bind::<diesel::sql_types::Text, _>(persisted_tenant)
+    .bind::<diesel::sql_types::Integer, _>(user_id)
+    .execute(&mut pool.get().unwrap())
+    .unwrap();
+
+    let invalidated = authenticated_app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/auth/me")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(invalidated.status(), StatusCode::UNAUTHORIZED);
+
+    let replacement_password_hash = extrittio_backend::auth::hash_password(password).unwrap();
+    let mut connection = pool.get().unwrap();
+    diesel::sql_query("DELETE FROM users WHERE tenant_id = $1 AND id = $2")
+        .bind::<diesel::sql_types::Text, _>(persisted_tenant)
+        .bind::<diesel::sql_types::Integer, _>(user_id)
+        .execute(&mut connection)
+        .unwrap();
+    let replacement = diesel::sql_query(
+        "INSERT INTO users \
+             (id, tenant_id, username, password_hash, role, is_active, permission_version) \
+         VALUES ($2, $1, 'login-user', $3, 'viewer', TRUE, 2) \
+         RETURNING auth_epoch",
+    )
+    .bind::<diesel::sql_types::Text, _>(persisted_tenant)
+    .bind::<diesel::sql_types::Integer, _>(user_id)
+    .bind::<diesel::sql_types::Text, _>(replacement_password_hash)
+    .get_result::<AuthEpochRow>(&mut connection)
+    .unwrap();
+    assert_ne!(replacement.auth_epoch, issued_auth_epoch);
+    diesel::sql_query(
+        "INSERT INTO user_roles (user_id, role_id, tenant_id) \
+         SELECT $1, id, $2 FROM roles WHERE tenant_id = $2 AND name = 'viewer'",
+    )
+    .bind::<diesel::sql_types::Integer, _>(user_id)
+    .bind::<diesel::sql_types::Text, _>(persisted_tenant)
+    .execute(&mut connection)
+    .unwrap();
+    drop(connection);
+
+    let replacement_cannot_revive_deleted_session = authenticated_app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/auth/me")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        replacement_cannot_revive_deleted_session.status(),
+        StatusCode::UNAUTHORIZED
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_devices_are_scoped_to_request_tenant() {
     let _guard = TEST_DB_LOCK.lock().await;
     let (app, pool) = setup_app_with_context(test_context()).await;
@@ -1339,7 +1722,7 @@ async fn test_device_ingress_resolves_the_persisted_tenant_identity() {
     };
     let rule_cache =
         std::sync::RwLock::new(extrittio_backend::rule_engine::cache::RuleCache::default());
-    let persistence = extrittio_backend::persistence::postgres::create_persistence(pool.clone());
+    let persistence = extrittio_backend::persistence::postgres::create_repositories(pool.clone());
     let identity = persistence
         .devices
         .resolve_identity("tenant-b-ingress")
@@ -1721,9 +2104,10 @@ async fn test_ci_ingest_success() {
     let zenoh_session = zenoh::open(zenoh::Config::default())
         .await
         .expect("Failed to open test zenoh session");
+    let database = extrittio_backend::persistence::postgres::create_runtime(db_pool.clone());
 
-    let state = Arc::new(AppState {
-        persistence: extrittio_backend::persistence::postgres::create_persistence(db_pool.clone()),
+    let state = Arc::new(AppState::new(AppStateInput {
+        database,
         zenoh_session: Arc::new(zenoh_session),
         zenoh_tls_enabled: false,
         zenoh_port: 7447,
@@ -1745,7 +2129,7 @@ async fn test_ci_ingest_success() {
         ),
         readiness: Arc::new(extrittio_backend::state::ReadinessRegistry::new(true, true)),
         thread_runtime: None,
-    });
+    }));
 
     let app = extrittio_backend::api::router(100 * 1024 * 1024, true).with_state(state);
 

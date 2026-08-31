@@ -7,9 +7,6 @@
     clippy::too_many_lines
 )]
 
-#[cfg(not(any(feature = "postgres", feature = "turso")))]
-compile_error!("enable at least one database backend feature: `postgres` or `turso`");
-
 pub mod api;
 #[path = "domains/identity/api_key_util.rs"]
 pub mod api_key_util;
@@ -17,6 +14,7 @@ pub mod app;
 pub mod auth;
 pub mod background;
 pub mod config;
+mod database;
 #[cfg(feature = "postgres")]
 pub mod db;
 pub mod domains;
@@ -42,4 +40,4 @@ pub mod zenoh_handler;
 use diesel_migrations::{EmbeddedMigrations, embed_migrations};
 
 #[cfg(feature = "postgres")]
-pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations/postgres");
+pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("../backend-postgres/migrations");
