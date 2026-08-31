@@ -6,11 +6,15 @@ mutually authenticated TLS for the normal Extrittio device lifecycle.
 
 ## Build
 
-Create a west workspace with this repository checked out as `extrittio`, then
-install Zephyr's Python and toolchain prerequisites:
+Create a west workspace from this repository's nested manifest, then install
+Zephyr's Python and toolchain prerequisites:
 
 ```sh
-west init -l extrittio/clients/zephyr
+west init \
+  -m https://github.com/patkepa/extrittio.git \
+  --mf clients/zephyr/west.yml \
+  zephyr-workspace
+cd zephyr-workspace
 west update
 west zephyr-export
 west build --sysbuild -b nrf52840dk/nrf52840 extrittio/clients/zephyr
