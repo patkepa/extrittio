@@ -7,6 +7,7 @@ mod maintenance;
 mod migrations;
 pub mod roles;
 mod row;
+pub mod users;
 mod zones;
 
 pub use database::{TursoConnectionHandles, TursoDatabase};
@@ -14,6 +15,7 @@ pub use lifecycle::TursoLifecycleError;
 pub use maintenance::{LogicalArchiveInfo, TursoBackupInfo, TursoDatabaseInfo};
 pub use migrations::LATEST_SCHEMA_VERSION;
 pub use roles::TursoRoleRepository;
+pub use users::TursoUserRepository;
 pub use zones::TursoZoneRepository;
 
 /// Temporary compatibility exports for host repositories that still compile

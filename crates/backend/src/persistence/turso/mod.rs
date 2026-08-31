@@ -56,6 +56,7 @@ pub fn create_runtime(database: Arc<TursoDatabase>) -> DatabaseRuntime {
 fn build_repositories(database: Arc<TursoDatabase>) -> RepositorySet {
     let (zones, rule_zone_snapshots) = crate::database::turso_zones(&database);
     let roles = crate::database::turso_roles(&database);
+    let users = crate::database::turso_users(&database);
     let adapter = Arc::new(TursoAdapter::new(database));
     RepositorySet::new(RepositoryPorts {
         activity: adapter.clone(),
@@ -82,7 +83,7 @@ fn build_repositories(database: Arc<TursoDatabase>) -> RepositorySet {
         rules: adapter.clone(),
         shadows: adapter.clone(),
         telemetry: adapter.clone(),
-        users: adapter.clone(),
+        users,
         zones,
     })
 }

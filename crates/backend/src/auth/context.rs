@@ -170,8 +170,6 @@ impl RequestContext {
     /// identity accepted by extracted application use cases.
     #[must_use]
     pub fn tenant_context(&self) -> extrittio_backend_core::TenantContext {
-        let tenant_id = extrittio_backend_core::TenantId::new(self.tenant_id_str())
-            .expect("host tenant IDs satisfy the core tenant invariant");
         let actor = extrittio_backend_core::Actor::User {
             id: self.user_id,
             username: self.username.clone(),
@@ -181,7 +179,7 @@ impl RequestContext {
             self.permissions.iter().map(|permission| permission.key()),
         );
 
-        extrittio_backend_core::TenantContext::new(tenant_id, actor, permissions)
+        extrittio_backend_core::TenantContext::new(self.tenant_id.clone(), actor, permissions)
     }
 }
 

@@ -36,6 +36,12 @@ fn map_constraint(message: &str) -> PersistenceError {
                 "roles.tenant_name"
             } else if normalized.contains("roles.id") {
                 "roles.id"
+            } else if normalized.contains("users.tenant_id")
+                && normalized.contains("users.username")
+            {
+                "users.tenant_username"
+            } else if normalized.contains("users.id") {
+                "users.id"
             } else if normalized.contains("zones.tenant_id") && normalized.contains("zones.name") {
                 "zones.tenant_name"
             } else if normalized.contains("zones.id") {

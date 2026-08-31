@@ -8,7 +8,9 @@
 use std::sync::Arc;
 
 #[cfg(any(feature = "postgres", feature = "turso"))]
-use extrittio_backend_core::{RoleRepository, RuleZoneSnapshotRepository, ZoneRepository};
+use extrittio_backend_core::{
+    RoleRepository, RuleZoneSnapshotRepository, UserRepository, ZoneRepository,
+};
 
 #[cfg(feature = "postgres")]
 pub use extrittio_backend_postgres::{PostgresExecutor, PostgresPool, models, schema};
@@ -39,6 +41,13 @@ pub(crate) fn postgres_roles(
     Arc::new(extrittio_backend_postgres::PostgresRoleRepository::from_pool(pool.clone()))
 }
 
+#[cfg(feature = "postgres")]
+pub(crate) fn postgres_users(
+    pool: &crate::persistence::postgres::executor::PostgresPool,
+) -> Arc<dyn UserRepository> {
+    Arc::new(extrittio_backend_postgres::PostgresUserRepository::from_pool(pool.clone()))
+}
+
 #[cfg(feature = "turso")]
 pub(crate) fn turso_zones(
     database: &crate::persistence::turso::TursoDatabase,
@@ -54,6 +63,15 @@ pub(crate) fn turso_roles(
     database: &crate::persistence::turso::TursoDatabase,
 ) -> Arc<dyn RoleRepository> {
     Arc::new(extrittio_backend_turso::TursoRoleRepository::from_handles(
+        database.shared_handles(),
+    ))
+}
+
+#[cfg(feature = "turso")]
+pub(crate) fn turso_users(
+    database: &crate::persistence::turso::TursoDatabase,
+) -> Arc<dyn UserRepository> {
+    Arc::new(extrittio_backend_turso::TursoUserRepository::from_handles(
         database.shared_handles(),
     ))
 }

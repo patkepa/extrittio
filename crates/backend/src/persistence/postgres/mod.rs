@@ -59,6 +59,7 @@ pub fn create_runtime(pool: PostgresPool) -> DatabaseRuntime {
 fn build_repositories(pool: PostgresPool) -> RepositorySet {
     let (zones, rule_zone_snapshots) = crate::database::postgres_zones(&pool);
     let roles = crate::database::postgres_roles(&pool);
+    let users = crate::database::postgres_users(&pool);
     let adapter = Arc::new(PostgresAdapter::new(pool));
     RepositorySet::new(RepositoryPorts {
         activity: adapter.clone(),
@@ -85,7 +86,7 @@ fn build_repositories(pool: PostgresPool) -> RepositorySet {
         rules: adapter.clone(),
         shadows: adapter.clone(),
         telemetry: adapter.clone(),
-        users: adapter.clone(),
+        users,
         zones,
     })
 }

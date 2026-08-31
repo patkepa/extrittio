@@ -15,14 +15,15 @@ use crate::domains::firmware::port::FirmwareRepository;
 use crate::domains::fleets::repository::FleetRepository;
 use crate::domains::identity::api_key_repository::ApiKeyRepository;
 use crate::domains::identity::certificate_repository::CertificateRepository;
-use crate::domains::identity::user_repository::UserRepository;
 use crate::domains::logs::port::LogRepository;
 use crate::domains::operations::metrics_repository::MetricsRepository;
 use crate::domains::operations::outbox_repository::OutboxRepository;
 use crate::domains::rules::port::RuleRepository;
 use crate::domains::shadows::repository::ShadowRepository;
 use crate::domains::telemetry::port::TelemetryRepository;
-use extrittio_backend_core::{RoleRepository, RuleZoneSnapshotRepository, ZoneRepository};
+use extrittio_backend_core::{
+    RoleRepository, RuleZoneSnapshotRepository, UserRepository, ZoneRepository,
+};
 
 pub mod backend;
 pub mod bootstrap;

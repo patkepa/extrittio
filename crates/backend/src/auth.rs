@@ -2,8 +2,14 @@ use argon2::{
     Argon2,
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
+use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use extrittio_backend_core::{
+    Clock, EncodedPasswordHash, PasswordHasher as CorePasswordHasher, PasswordHasherError,
+};
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroizing;
 
 use crate::tenancy::DEFAULT_TENANT_ID;
 
@@ -58,6 +64,53 @@ pub fn verify_password(password: &str, hash: &str) -> bool {
     Argon2::default()
         .verify_password(password.as_bytes(), &parsed_hash)
         .is_ok()
+}
+
+/// Host implementation of the core password boundary. Argon2 work stays off
+/// Tokio worker threads, and owned plaintext is zeroized when the blocking
+/// task completes.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Argon2PasswordHasher;
+
+#[async_trait]
+impl CorePasswordHasher for Argon2PasswordHasher {
+    async fn hash(
+        &self,
+        plaintext: String,
+    ) -> Result<EncodedPasswordHash, PasswordHasherError> {
+        tokio::task::spawn_blocking(move || {
+            let plaintext = Zeroizing::new(plaintext);
+            hash_password(&plaintext)
+                .map(EncodedPasswordHash::new)
+                .map_err(|error| PasswordHasherError::new(error.to_string()))
+        })
+        .await
+        .map_err(|error| PasswordHasherError::new(format!("password task failed: {error}")))?
+    }
+
+    async fn verify(
+        &self,
+        plaintext: String,
+        password_hash: EncodedPasswordHash,
+    ) -> Result<bool, PasswordHasherError> {
+        tokio::task::spawn_blocking(move || {
+            let plaintext = Zeroizing::new(plaintext);
+            let password_hash = Zeroizing::new(password_hash.into_inner());
+            verify_password(&plaintext, &password_hash)
+        })
+        .await
+        .map_err(|error| PasswordHasherError::new(format!("password task failed: {error}")))
+    }
+}
+
+/// Production UTC clock supplied to core application use cases.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SystemClock;
+
+impl Clock for SystemClock {
+    fn now(&self) -> DateTime<Utc> {
+        Utc::now()
+    }
 }
 
 pub fn create_token(
@@ -205,5 +258,40 @@ mod tests {
         let claims = validate_token(&token, SECRET).unwrap();
 
         assert_eq!(claims.tenant_id.as_deref(), Some("default"));
+    }
+
+    #[test]
+    fn verifies_a_preexisting_phc_encoded_argon2_password() {
+        // Argon2's published PHC-format vector for the plaintext `password`.
+        // This locks the decoder path used by credentials stored before the
+        // crate extraction, independently of newly generated random salts.
+        let encoded = "$argon2id$v=19$m=65536,t=2,p=1$c29tZXNhbHQ$CTFhFdXPJO1aFaMaO6Mm5c8y7cJHAph8ArZWb2GRPPc";
+
+        assert!(verify_password("password", encoded));
+        assert!(!verify_password("not-password", encoded));
+        assert!(!verify_password("password", "not-a-phc-password-hash"));
+    }
+
+    #[tokio::test]
+    async fn host_password_port_round_trips_and_uses_unique_salts() {
+        let hasher = Argon2PasswordHasher;
+        let first = CorePasswordHasher::hash(&hasher, "Secret123!456".to_string())
+            .await
+            .unwrap();
+        let second = CorePasswordHasher::hash(&hasher, "Secret123!456".to_string())
+            .await
+            .unwrap();
+
+        assert_ne!(first, second);
+        assert!(
+            CorePasswordHasher::verify(&hasher, "Secret123!456".to_string(), first)
+                .await
+                .unwrap()
+        );
+        assert!(
+            !CorePasswordHasher::verify(&hasher, "Wrong123!456".to_string(), second)
+                .await
+                .unwrap()
+        );
     }
 }

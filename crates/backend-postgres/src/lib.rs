@@ -16,6 +16,7 @@ pub mod roles;
 pub mod schema;
 #[cfg(not(feature = "migration-bridge"))]
 mod schema;
+pub mod users;
 pub mod zones;
 
 mod error;
@@ -23,6 +24,7 @@ mod error;
 pub use executor::{PostgresExecutor, PostgresPool};
 pub use migrations::{MIGRATIONS, PostgresMigrationError, run_pending_migrations};
 pub use roles::PostgresRoleRepository;
+pub use users::PostgresUserRepository;
 pub use zones::PostgresZoneRepository;
 
 /// Adapter name used by the runtime composition root. The walking skeleton has

@@ -195,6 +195,16 @@ impl IntoResponse for AppError {
             AppError::Application(extrittio_backend_core::ApplicationError::Forbidden(message)) => {
                 (StatusCode::FORBIDDEN, "forbidden", message.clone())
             }
+            AppError::Application(extrittio_backend_core::ApplicationError::Authentication(
+                error,
+            )) => {
+                tracing::error!(%error, "Password hashing failed");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "authentication_error",
+                    "Authentication error".to_string(),
+                )
+            }
             AppError::Application(extrittio_backend_core::ApplicationError::Persistence(
                 extrittio_backend_core::PersistenceError::NotFound,
             )) => (
@@ -345,6 +355,16 @@ mod tests {
             ),
             (
                 AppError::Auth("secret verifier detail".into()),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "authentication_error",
+                "Authentication error",
+            ),
+            (
+                AppError::Application(
+                    extrittio_backend_core::ApplicationError::Authentication(
+                        "secret verifier detail".into(),
+                    ),
+                ),
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "authentication_error",
                 "Authentication error",

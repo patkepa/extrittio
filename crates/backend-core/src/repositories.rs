@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{RoleRepository, RuleZoneSnapshotRepository, ZoneRepository};
+use crate::{RoleRepository, RuleZoneSnapshotRepository, UserRepository, ZoneRepository};
 
 /// Named business-port dependencies used to construct a [`RepositorySet`].
 ///
@@ -9,6 +9,7 @@ use crate::{RoleRepository, RuleZoneSnapshotRepository, ZoneRepository};
 /// lifecycle capabilities intentionally do not belong here.
 pub struct RepositorySetInput {
     pub roles: Arc<dyn RoleRepository>,
+    pub users: Arc<dyn UserRepository>,
     pub zones: Arc<dyn ZoneRepository>,
     pub rule_zone_snapshots: Arc<dyn RuleZoneSnapshotRepository>,
 }
@@ -21,6 +22,7 @@ pub struct RepositorySetInput {
 #[derive(Clone)]
 pub struct RepositorySet {
     roles: Arc<dyn RoleRepository>,
+    users: Arc<dyn UserRepository>,
     zones: Arc<dyn ZoneRepository>,
     rule_zone_snapshots: Arc<dyn RuleZoneSnapshotRepository>,
 }
@@ -30,6 +32,7 @@ impl RepositorySet {
     pub fn new(input: RepositorySetInput) -> Self {
         Self {
             roles: input.roles,
+            users: input.users,
             zones: input.zones,
             rule_zone_snapshots: input.rule_zone_snapshots,
         }
@@ -38,6 +41,7 @@ impl RepositorySet {
     pub(crate) fn into_parts(self) -> RepositorySetParts {
         RepositorySetParts {
             roles: self.roles,
+            users: self.users,
             zones: self.zones,
             rule_zone_snapshots: self.rule_zone_snapshots,
         }
@@ -46,6 +50,7 @@ impl RepositorySet {
 
 pub(crate) struct RepositorySetParts {
     pub(crate) roles: Arc<dyn RoleRepository>,
+    pub(crate) users: Arc<dyn UserRepository>,
     pub(crate) zones: Arc<dyn ZoneRepository>,
     pub(crate) rule_zone_snapshots: Arc<dyn RuleZoneSnapshotRepository>,
 }
@@ -56,8 +61,11 @@ mod tests {
 
     use super::*;
     use crate::{
-        DeleteRoleOutcome, DeleteZoneOutcome, NewRole, NewZone, PersistenceError, RoleDetails,
-        RolePatch, TenantId, UpdateRoleOutcome, Zone, ZonePatch,
+        ChangePasswordOutcome, CreateUserOutcome, DeleteRoleOutcome, DeleteUserOutcome,
+        DeleteZoneOutcome, EncodedPasswordHash, NewRole, NewUser, NewZone, PageRequest,
+        PersistenceError, RecordSuccessfulLoginOutcome, RoleDetails, RolePatch,
+        SetUserRolesOutcome, TenantId, UpdateRoleOutcome, UserCredentials, UserDetails, UserPage,
+        Zone, ZonePatch,
     };
 
     struct FakeZoneRepository;
@@ -106,6 +114,8 @@ mod tests {
 
     struct FakeRoleRepository;
 
+    struct FakeUserRepository;
+
     #[async_trait]
     impl RoleRepository for FakeRoleRepository {
         async fn list(&self, _tenant: &TenantId) -> Result<Vec<RoleDetails>, PersistenceError> {
@@ -139,6 +149,76 @@ mod tests {
     }
 
     #[async_trait]
+    impl UserRepository for FakeUserRepository {
+        async fn list(
+            &self,
+            _tenant: &TenantId,
+            _page: PageRequest,
+        ) -> Result<UserPage, PersistenceError> {
+            Ok(UserPage::new(Vec::new(), 0))
+        }
+
+        async fn create(
+            &self,
+            _tenant: &TenantId,
+            _user: NewUser,
+        ) -> Result<CreateUserOutcome, PersistenceError> {
+            Err(PersistenceError::Internal("not used by this test".into()))
+        }
+
+        async fn change_password(
+            &self,
+            _tenant: &TenantId,
+            _user_id: i32,
+            _password_hash: EncodedPasswordHash,
+        ) -> Result<ChangePasswordOutcome, PersistenceError> {
+            Ok(ChangePasswordOutcome::NotFound)
+        }
+
+        async fn delete(
+            &self,
+            _tenant: &TenantId,
+            _user_id: i32,
+        ) -> Result<DeleteUserOutcome, PersistenceError> {
+            Ok(DeleteUserOutcome::NotFound)
+        }
+
+        async fn set_roles(
+            &self,
+            _tenant: &TenantId,
+            _user_id: i32,
+            _role_ids: Vec<i32>,
+        ) -> Result<SetUserRolesOutcome, PersistenceError> {
+            Ok(SetUserRolesOutcome::UserNotFound)
+        }
+
+        async fn find_credentials_by_username(
+            &self,
+            _tenant: &TenantId,
+            _username: &str,
+        ) -> Result<Option<UserCredentials>, PersistenceError> {
+            Ok(None)
+        }
+
+        async fn get_details(
+            &self,
+            _tenant: &TenantId,
+            _user_id: i32,
+        ) -> Result<Option<UserDetails>, PersistenceError> {
+            Ok(None)
+        }
+
+        async fn record_successful_login(
+            &self,
+            _tenant: &TenantId,
+            _user_id: i32,
+            _logged_in_at: chrono::DateTime<chrono::Utc>,
+        ) -> Result<RecordSuccessfulLoginOutcome, PersistenceError> {
+            Ok(RecordSuccessfulLoginOutcome::NotFound)
+        }
+    }
+
+    #[async_trait]
     impl RuleZoneSnapshotRepository for FakeRuleZoneSnapshotRepository {
         async fn list_for_rule_snapshot(&self) -> Result<Vec<Zone>, PersistenceError> {
             Ok(Vec::new())
@@ -150,9 +230,11 @@ mod tests {
         let zones = Arc::new(FakeZoneRepository);
         let rule_zone_snapshots = Arc::new(FakeRuleZoneSnapshotRepository);
         let roles = Arc::new(FakeRoleRepository);
+        let users = Arc::new(FakeUserRepository);
 
         let repositories = RepositorySet::new(RepositorySetInput {
             roles: roles.clone(),
+            users: users.clone(),
             zones: zones.clone(),
             rule_zone_snapshots: rule_zone_snapshots.clone(),
         });
@@ -161,6 +243,10 @@ mod tests {
         assert!(Arc::ptr_eq(
             &parts.roles,
             &(roles as Arc<dyn RoleRepository>)
+        ));
+        assert!(Arc::ptr_eq(
+            &parts.users,
+            &(users as Arc<dyn UserRepository>)
         ));
 
         assert!(Arc::ptr_eq(

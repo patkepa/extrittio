@@ -1,17 +1,45 @@
 mod roles;
+mod users;
 mod zones;
 
 use std::sync::Arc;
 
-use crate::{Permission, RepositorySet, RuleZoneSnapshotRepository, TenantContext};
+use crate::{
+    Clock, PasswordHasher, Permission, RepositorySet, RuleZoneSnapshotRepository, TenantContext,
+};
 
 pub use roles::{CreateRole, RoleApplication, RoleUpdate};
+pub use users::{
+    AuthenticatedUser, CreateUser, MIN_PASSWORD_LEN, UserApplication,
+    authenticated_user_from_details, primary_role_name, validate_password,
+};
 pub use zones::{CreateZone, ZoneApplication, ZoneUpdate};
+
+/// Named outbound dependencies used by application behavior.
+///
+/// Database lifecycle handles, transport clients, and runtime configuration
+/// intentionally do not belong here.
+#[derive(Clone)]
+pub struct ApplicationDependencies {
+    pub password_hasher: Arc<dyn PasswordHasher>,
+    pub clock: Arc<dyn Clock>,
+}
+
+impl ApplicationDependencies {
+    #[must_use]
+    pub fn new(password_hasher: Arc<dyn PasswordHasher>, clock: Arc<dyn Clock>) -> Self {
+        Self {
+            password_hasher,
+            clock,
+        }
+    }
+}
 
 /// Curated application façade passed to transports.
 #[derive(Clone)]
 pub struct Application {
     roles: RoleApplication,
+    users: UserApplication,
     zones: ZoneApplication,
     // Retained for the rules application slice. Keeping the port here ensures
     // `RepositorySet` is consumed by the application instead of becoming a
@@ -21,10 +49,15 @@ pub struct Application {
 
 impl Application {
     #[must_use]
-    pub fn new(repositories: RepositorySet) -> Self {
+    pub fn new(repositories: RepositorySet, dependencies: ApplicationDependencies) -> Self {
         let repositories = repositories.into_parts();
         Self {
             roles: RoleApplication::new(repositories.roles),
+            users: UserApplication::new(
+                repositories.users,
+                dependencies.password_hasher,
+                dependencies.clock,
+            ),
             zones: ZoneApplication::new(repositories.zones),
             _rule_zone_snapshots: repositories.rule_zone_snapshots,
         }
@@ -33,6 +66,11 @@ impl Application {
     #[must_use]
     pub fn roles(&self) -> &RoleApplication {
         &self.roles
+    }
+
+    #[must_use]
+    pub fn users(&self) -> &UserApplication {
+        &self.users
     }
 
     #[must_use]
@@ -61,9 +99,11 @@ mod tests {
 
     use super::*;
     use crate::{
-        DeleteRoleOutcome, DeleteZoneOutcome, NewRole, NewZone, PersistenceError,
-        RepositorySetInput, RoleDetails, RolePatch, RoleRepository, TenantId, UpdateRoleOutcome,
-        Zone, ZonePatch, ZoneRepository,
+        ChangePasswordOutcome, CreateUserOutcome, DeleteRoleOutcome, DeleteUserOutcome,
+        DeleteZoneOutcome, EncodedPasswordHash, NewRole, NewUser, NewZone, PageRequest,
+        PasswordHasherError, PersistenceError, RecordSuccessfulLoginOutcome, RepositorySetInput,
+        RoleDetails, RolePatch, RoleRepository, SetUserRolesOutcome, TenantId, UpdateRoleOutcome,
+        UserCredentials, UserDetails, UserPage, UserRepository, Zone, ZonePatch, ZoneRepository,
     };
 
     struct FakeRepositories;
@@ -147,19 +187,122 @@ mod tests {
         }
     }
 
+    #[async_trait]
+    impl UserRepository for FakeRepositories {
+        async fn list(
+            &self,
+            _tenant: &TenantId,
+            _page: PageRequest,
+        ) -> Result<UserPage, PersistenceError> {
+            Ok(UserPage::new(Vec::new(), 0))
+        }
+
+        async fn create(
+            &self,
+            _tenant: &TenantId,
+            _user: NewUser,
+        ) -> Result<CreateUserOutcome, PersistenceError> {
+            Err(PersistenceError::Internal("not used by this test".into()))
+        }
+
+        async fn change_password(
+            &self,
+            _tenant: &TenantId,
+            _user_id: i32,
+            _password_hash: EncodedPasswordHash,
+        ) -> Result<ChangePasswordOutcome, PersistenceError> {
+            Ok(ChangePasswordOutcome::NotFound)
+        }
+
+        async fn delete(
+            &self,
+            _tenant: &TenantId,
+            _user_id: i32,
+        ) -> Result<DeleteUserOutcome, PersistenceError> {
+            Ok(DeleteUserOutcome::NotFound)
+        }
+
+        async fn set_roles(
+            &self,
+            _tenant: &TenantId,
+            _user_id: i32,
+            _role_ids: Vec<i32>,
+        ) -> Result<SetUserRolesOutcome, PersistenceError> {
+            Ok(SetUserRolesOutcome::UserNotFound)
+        }
+
+        async fn find_credentials_by_username(
+            &self,
+            _tenant: &TenantId,
+            _username: &str,
+        ) -> Result<Option<UserCredentials>, PersistenceError> {
+            Ok(None)
+        }
+
+        async fn get_details(
+            &self,
+            _tenant: &TenantId,
+            _user_id: i32,
+        ) -> Result<Option<UserDetails>, PersistenceError> {
+            Ok(None)
+        }
+
+        async fn record_successful_login(
+            &self,
+            _tenant: &TenantId,
+            _user_id: i32,
+            _logged_in_at: chrono::DateTime<chrono::Utc>,
+        ) -> Result<RecordSuccessfulLoginOutcome, PersistenceError> {
+            Ok(RecordSuccessfulLoginOutcome::NotFound)
+        }
+    }
+
+    struct FakePasswordHasher;
+
+    #[async_trait]
+    impl PasswordHasher for FakePasswordHasher {
+        async fn hash(
+            &self,
+            _plaintext: String,
+        ) -> Result<EncodedPasswordHash, PasswordHasherError> {
+            Ok(EncodedPasswordHash::new("unused"))
+        }
+
+        async fn verify(
+            &self,
+            _plaintext: String,
+            _password_hash: EncodedPasswordHash,
+        ) -> Result<bool, PasswordHasherError> {
+            Ok(false)
+        }
+    }
+
+    struct FakeClock;
+
+    impl Clock for FakeClock {
+        fn now(&self) -> chrono::DateTime<chrono::Utc> {
+            chrono::DateTime::UNIX_EPOCH
+        }
+    }
+
     #[test]
     fn application_consumes_and_retains_the_complete_repository_set() {
         let repository = Arc::new(FakeRepositories);
-        let application = Application::new(RepositorySet::new(RepositorySetInput {
-            roles: repository.clone(),
-            zones: repository.clone(),
-            rule_zone_snapshots: repository.clone(),
-        }));
+        let application = Application::new(
+            RepositorySet::new(RepositorySetInput {
+                roles: repository.clone(),
+                users: repository.clone(),
+                zones: repository.clone(),
+                rule_zone_snapshots: repository.clone(),
+            }),
+            ApplicationDependencies::new(Arc::new(FakePasswordHasher), Arc::new(FakeClock)),
+        );
 
         // The caller, zone façade, and retained snapshot port each hold one
         // reference. No database runtime or lifecycle handle is required.
-        assert_eq!(Arc::strong_count(&repository), 4);
+        assert_eq!(Arc::strong_count(&repository), 5);
         let _roles = application.roles();
+        let _users = application.users();
         let _zones = application.zones();
     }
 }

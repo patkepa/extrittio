@@ -196,14 +196,20 @@ impl AppState {
     #[must_use]
     pub fn new(input: AppStateInput) -> Self {
         let persistence = input.database.repositories().clone();
-        let application =
-            extrittio_backend_core::Application::new(extrittio_backend_core::RepositorySet::new(
+        let application = extrittio_backend_core::Application::new(
+            extrittio_backend_core::RepositorySet::new(
                 extrittio_backend_core::RepositorySetInput {
                     roles: persistence.roles.clone(),
+                    users: persistence.users.clone(),
                     zones: persistence.zones.clone(),
                     rule_zone_snapshots: persistence.rule_zone_snapshots.clone(),
                 },
-            ));
+            ),
+            extrittio_backend_core::ApplicationDependencies::new(
+                Arc::new(crate::auth::Argon2PasswordHasher),
+                Arc::new(crate::auth::SystemClock),
+            ),
+        );
 
         Self {
             application,

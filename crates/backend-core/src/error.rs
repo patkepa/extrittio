@@ -55,6 +55,10 @@ pub enum ApplicationError {
     Unauthorized,
     #[error("{0}")]
     Forbidden(String),
+    /// Failure to generate a password verifier. The host maps this to its
+    /// existing safe `authentication_error` response category.
+    #[error("{0}")]
+    Authentication(String),
     #[error(transparent)]
     Persistence(#[from] PersistenceError),
     #[error("{0}")]
