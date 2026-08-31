@@ -11,7 +11,7 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 use crate::auth::context::RequestContext;
-use crate::auth::create_token_with_scopes;
+use crate::auth::{SessionTokenInput, create_token_with_scopes};
 use crate::error::AppError;
 use crate::state::AppState;
 use crate::tenancy::{DEFAULT_TENANT_ID, TenantId};
@@ -91,13 +91,15 @@ pub(crate) async fn login(
         .await?;
 
     let token = create_token_with_scopes(
-        user.id,
-        &user.username,
-        &user.role,
-        user.tenant_id.as_str(),
-        user.permissions.clone(),
-        user.permission_version,
-        user.auth_epoch.as_str(),
+        SessionTokenInput {
+            user_id: user.id,
+            username: &user.username,
+            role: &user.role,
+            tenant_id: user.tenant_id.as_str(),
+            scopes: user.permissions.clone(),
+            permission_version: user.permission_version,
+            auth_epoch: user.auth_epoch.as_str(),
+        },
         &jwt_secret,
     )
     .map_err(|e| AppError::Auth(e.to_string()))?;

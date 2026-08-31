@@ -380,13 +380,15 @@ mod tests {
 
     fn token(tenant_id: &str) -> String {
         crate::auth::create_token_with_scopes(
-            23,
-            "operator",
-            "viewer",
-            tenant_id,
-            vec!["devices:read".to_string()],
-            1,
-            "test-auth-epoch",
+            crate::auth::SessionTokenInput {
+                user_id: 23,
+                username: "operator",
+                role: "viewer",
+                tenant_id,
+                scopes: vec!["devices:read".to_string()],
+                permission_version: 1,
+                auth_epoch: "test-auth-epoch",
+            },
             JWT_SECRET,
         )
         .unwrap()
@@ -439,7 +441,7 @@ mod tests {
             JWT_SECRET,
         );
 
-        assert_eq!(key, "user:tenant-a:23:test-auth-epoch");
+        assert_eq!(key, "user:tenant-a:23");
     }
 
     #[test]
@@ -452,7 +454,7 @@ mod tests {
             JWT_SECRET,
         );
 
-        assert_eq!(key, "user:tenant-a:23");
+        assert_eq!(key, "user:tenant-a:23:test-auth-epoch");
         assert!(request.extensions().get::<MappedUserClaims>().is_some());
     }
 
@@ -467,6 +469,35 @@ mod tests {
         );
 
         assert_eq!(key, "ip:203.0.113.6");
+        assert!(request.extensions().get::<MappedUserClaims>().is_none());
+    }
+
+    #[test]
+    fn signed_legacy_token_without_auth_epoch_uses_ip_identity() {
+        let token = jsonwebtoken::encode(
+            &jsonwebtoken::Header::default(),
+            &Claims {
+                sub: 23,
+                username: "deleted-user".to_string(),
+                role: "viewer".to_string(),
+                tenant_id: Some("tenant-a".to_string()),
+                scopes: vec!["devices:read".to_string()],
+                permission_version: 1,
+                auth_epoch: None,
+                exp: usize::MAX,
+            },
+            &jsonwebtoken::EncodingKey::from_secret(JWT_SECRET.as_bytes()),
+        )
+        .unwrap();
+        let mut request = request_with_token(&token);
+
+        let key = general_rate_limit_key(
+            &mut request,
+            IpAddr::V4(Ipv4Addr::new(203, 0, 113, 8)),
+            JWT_SECRET,
+        );
+
+        assert_eq!(key, "ip:203.0.113.8");
         assert!(request.extensions().get::<MappedUserClaims>().is_none());
     }
 

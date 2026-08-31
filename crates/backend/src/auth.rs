@@ -123,25 +123,31 @@ pub fn create_token(
     secret: &str,
 ) -> Result<String, jsonwebtoken::errors::Error> {
     create_token_with_scopes(
-        user_id,
-        username,
-        role,
-        DEFAULT_TENANT_ID,
-        Vec::new(),
-        default_permission_version(),
-        auth_epoch,
+        SessionTokenInput {
+            user_id,
+            username,
+            role,
+            tenant_id: DEFAULT_TENANT_ID,
+            scopes: Vec::new(),
+            permission_version: default_permission_version(),
+            auth_epoch,
+        },
         secret,
     )
 }
 
+pub struct SessionTokenInput<'a> {
+    pub user_id: i32,
+    pub username: &'a str,
+    pub role: &'a str,
+    pub tenant_id: &'a str,
+    pub scopes: Vec<String>,
+    pub permission_version: i32,
+    pub auth_epoch: &'a str,
+}
+
 pub fn create_token_with_scopes(
-    user_id: i32,
-    username: &str,
-    role: &str,
-    tenant_id: &str,
-    scopes: Vec<String>,
-    permission_version: i32,
-    auth_epoch: &str,
+    input: SessionTokenInput<'_>,
     secret: &str,
 ) -> Result<String, jsonwebtoken::errors::Error> {
     #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
@@ -151,13 +157,13 @@ pub fn create_token_with_scopes(
         .timestamp() as usize;
 
     let claims = Claims {
-        sub: user_id,
-        username: username.to_string(),
-        role: role.to_string(),
-        tenant_id: Some(tenant_id.to_string()),
-        scopes,
-        permission_version,
-        auth_epoch: Some(auth_epoch.to_string()),
+        sub: input.user_id,
+        username: input.username.to_string(),
+        role: input.role.to_string(),
+        tenant_id: Some(input.tenant_id.to_string()),
+        scopes: input.scopes,
+        permission_version: input.permission_version,
+        auth_epoch: Some(input.auth_epoch.to_string()),
         exp: expiration,
     };
 

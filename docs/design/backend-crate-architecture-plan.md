@@ -1,6 +1,6 @@
 # Backend Crate Architecture and Implementation Plan
 
-- **Status:** In progress — P0, the P2 zones walking skeleton, and the P3.1 roles/permissions and users/passwords slices are implemented
+- **Status:** In progress — P0, the P2 zones walking skeleton, and the P3.1 roles/permissions slice are implemented; users/passwords is closing an authentication security correction
 - **Scope:** Refactor the current backend into a modular monolith with explicit compile-time boundaries
 - **Primary packages:** `extrittio-backend-core`, `extrittio-backend-postgres`, `extrittio-backend-turso`, and `extrittio-backend`
 - **Migration rule:** Preserve externally observable behavior unless a work package explicitly says otherwise
@@ -23,10 +23,10 @@ This ledger describes the checked-in implementation, not the target state descri
 | P2.4 | Completed | Zone CRUD runs through the core application façade and both adapter implementations, and rule-zone snapshot loading uses the adapter-owned system port rather than a legacy host query. The shared contract covers tenant isolation, deterministic binary ordering, uniqueness, not-found, in-use deletion, and CRUD behavior; PostgreSQL includes duplicate preflight plus the canonical uniqueness index. |
 | P2.5 | Completed | Package rules are fatal and CI checks core, no-adapter host, PostgreSQL-only host, Turso-only host, both-adapter host, and the extracted packages directly. |
 | P3.1 roles/permissions | Completed | Core owns the permission catalog, role types, authorization/orchestration, and `RoleRepository`; both adapter-owned implementations pass a separate shared role contract. HTTP routes use `Application`, user hydration uses the core tenant-aware `Role`, and all legacy host role services, ports, and implementations are deleted. ADR-007 records ordering, conflict, invalidation, and timestamp semantics. |
-| P3.1 users/passwords | Completed | Core owns user/password policy and orchestration, typed user/credential models, pagination, the password/clock outbound ports, and `UserRepository`. PostgreSQL and Turso own the implementations and share one user contract; HTTP login/session/user routes use `Application`, host Argon2 remains injected, and the legacy host user services, ports, and repositories are deleted. ADR-008 records the canonical behavior and PI-16 records the remaining embedded-NUL parity gap. |
-| P3.1 remaining; P3.2–P6 | Not started | API keys/nonces are the next P3.1 sub-slice, followed by certificates/key protection and bootstrap. Most handler orchestration, process-shell composition, compatibility bridges, and release cleanup remain. |
+| P3.1 users/passwords | Security closure in progress | The crate/port migration is complete: core owns user/password policy and orchestration, PostgreSQL and Turso own the repositories, HTTP routes use `Application`, and the legacy host user stack is deleted. Before this slice returns to completed, ADR-008's security correction must be closed: persist a fresh random `auth_epoch` per principal, bind JWTs to tenant + user ID + permission version + epoch, reject pre-epoch JWTs once, use snapshot-consistent credential/session reads, and prove same-ID/same-version delete/recreate cannot revive a session. PI-16 remains the separate embedded-NUL parity gap. |
+| P3.1 remaining; P3.2–P6 | Not started | After the users security closure, API keys/nonces are the next P3.1 sub-slice, followed by certificates/key protection and bootstrap. Most handler orchestration, process-shell composition, compatibility bridges, and release cleanup remain. |
 
-The next checkpoint is the P3.1 API-keys/nonces sub-slice. Continue removing broad compatibility access with each vertical slice; do not add a new handler-to-repository path.
+The immediate checkpoint is closure of the users/passwords authentication-epoch correction and its migration/contract/integration proof. The next new sub-slice is P3.1 API keys/nonces. Continue removing broad compatibility access with each vertical slice; do not add a new handler-to-repository path.
 
 ## 1. Executive decision
 
@@ -381,7 +381,9 @@ The precise fields may evolve, but these invariants are mandatory:
 
 - tenant scope is non-optional for tenant-scoped use cases;
 - `PermissionSet` cannot be freely constructed by a handler;
-- legacy tokens without an explicit tenant are mapped at the host compatibility boundary, not inside core or a repository;
+- user JWTs are bound to the durable persisted principal by tenant, numeric user ID, `permission_version`, and a random opaque `auth_epoch`; core session resolution requires all four to match an active user;
+- a missing, empty, or mismatched `auth_epoch` fails closed. Rejecting all pre-epoch JWTs once is an approved security correction, and the epoch is not exposed by public user DTOs;
+- epoch-bound tokens without an explicit tenant are mapped at the host compatibility boundary, not inside core or a repository. The missing-tenant compatibility branch never bypasses epoch validation;
 - device and system execution paths use explicit identities rather than pretending to be a user;
 - authorization returns an application/domain error, never an Axum response error.
 
@@ -399,7 +401,8 @@ Every migrated domain slice must include:
 - missing permission;
 - wrong tenant;
 - absent/deleted actor where applicable;
-- legacy-token compatibility if the route currently supports it;
+- legacy-token compatibility if the route currently supports it, subject to the mandatory user `auth_epoch` binding;
+- for user sessions, missing/empty/mismatched epoch rejection and delete/recreate non-revival even when numeric ID and permission version match;
 - device/system context behavior for non-HTTP entry points.
 
 ## 10. Business persistence contract
@@ -1165,7 +1168,7 @@ The following are frozen unless a separate migration is approved:
 
 - HTTP paths, methods, JSON field names, status codes, pagination defaults, and documented errors;
 - OpenAPI operation/schema identity where clients depend on it;
-- JWT/API-key claim interpretation, including explicitly documented legacy fallback;
+- JWT/API-key claim interpretation, including the explicitly documented missing-tenant fallback, except for ADR-008's approved addition of `auth_epoch` and one-time rejection of JWTs that lack it;
 - device topics and binary/JSON wire encodings;
 - persisted identifiers, enums, timestamps, and outbox payloads;
 - PostgreSQL and Turso migration order and upgrade behavior;
@@ -1333,7 +1336,7 @@ The refactor is complete when:
 
 ## 26. Immediate next implementation stage
 
-Continue **P3.1 identity/bootstrap one vertical slice at a time**, closing that slice's P1/P2 prerequisites as part of the same change. P1 and P2 remain partially open at the repository-wide level because their remaining work is distributed across unmigrated domains; they are not a flag-day gate in front of P3. The zones, roles/permissions, and users/passwords slices have established the repeatable path: prepare only the boundary and adapter foundations the slice needs, migrate both engines and callers, then remove that slice's escape hatch.
+Continue **P3.1 identity/bootstrap one vertical slice at a time**, closing that slice's P1/P2 prerequisites as part of the same change. P1 and P2 remain partially open at the repository-wide level because their remaining work is distributed across unmigrated domains; they are not a flag-day gate in front of P3. Zones and roles/permissions, plus the structural users/passwords extraction, established the repeatable path: prepare only the boundary and adapter foundations the slice needs, migrate both engines and callers, then remove that slice's escape hatch. Close the users authentication-epoch correction before opening the next identity slice.
 
 ### 26.1 Apply the remaining P1 boundaries per slice
 
@@ -1347,7 +1350,7 @@ Continue **P3.1 identity/bootstrap one vertical slice at a time**, closing that 
 
 1. Move connection, executor, row-decoding, lifecycle, health, and maintenance foundations to their adapter owners when the active slice reaches them. Keep exactly one shared pool/database handle and retain bridge exports only while an unmigrated repository still uses them.
 2. Extend core's private `RepositorySet`, lifecycle-free business ports, pagination/time types, and outbound ports only for the active slice. Do not add placeholder abstractions for later domains.
-3. Preserve the completed zones, roles, and users contracts as regression gates while adding a separate shared contract for the active slice. Keep system rule-snapshot behavior separate until P3.3.
+3. Preserve the completed zones and roles contracts and close the users authentication-epoch additions as regression gates before adding a separate shared contract for the next slice. Keep system rule-snapshot behavior separate until P3.3.
 4. Keep the CI matrix fatal for `core`, no-adapter/OpenAPI host, PostgreSQL-only host, Turso-only host, and `all-databases`; lint and test the three extracted packages directly, and run each shared adapter contract exactly once in its engine-specific job.
 5. Extend the completed P0 compatibility lock only where the active inventory row exposes an uncovered writer or decoder; retain the existing public-error, legacy-credential, encrypted-key, backup-manifest, and migration-snapshot fixtures unchanged while ownership moves.
 
@@ -1355,9 +1358,18 @@ For each migrated slice, the closure checkpoint passes when callers use `Applica
 
 ### 26.3 Continue P3.1: identity and bootstrap
 
-The roles/permissions and users/passwords sub-slices are complete. They established core-owned authorization and identity policy, application façades and ports, adapter-owned repositories, independent shared contracts, host `Application` routing, injected password/clock implementations, and deletion of their legacy host implementations. ADR-007 is the authority for role behavior; ADR-008 is the authority for user/password behavior, with the embedded-NUL cross-engine question remaining explicit as PI-16.
+The roles/permissions sub-slice is complete, and the users/passwords crate/port extraction is complete. Users/passwords remains in security closure while ADR-008's authentication-epoch and security-snapshot correction is implemented and proved; the embedded-NUL cross-engine question remains explicit as PI-16.
 
-Continue one reviewable sub-slice at a time in this order: API keys/nonces, certificates/key protection, then idempotent bootstrap. For each remaining sub-slice:
+Close users/passwords before opening the next sub-slice:
+
+1. add adapter-owned forward migrations that backfill a distinct non-empty random `auth_epoch` for every existing PostgreSQL and Turso user and enforce one for every new principal;
+2. carry the opaque epoch through core credential/session identity without exposing it in public user JSON or OpenAPI;
+3. issue every new user JWT with `auth_epoch`, resolve sessions only on an exact active `(tenant_id, user_id, permission_version, auth_epoch)` match, and deliberately reject all signed JWTs that omit the epoch;
+4. hydrate `find_credentials_by_username` and `get_details` from one database snapshot on each adapter, while leaving ordinary paginated user-list snapshots explicitly relaxed;
+5. prove migration/backfill behavior, unique epochs on create/recreate, Turso deleted-maximum-ID reuse, core epoch mismatch rejection, and host login/cookie/Bearer middleware behavior including pre-epoch logout and same-ID/same-version replacement non-revival; and
+6. rerun the users contract on both adapters, previous-snapshot migration checks, focused host integration coverage, and the applicable feature/lint/architecture matrix before restoring the slice status to completed.
+
+After that closure, continue one reviewable sub-slice at a time in this order: API keys/nonces, certificates/key protection, then idempotent bootstrap. For each remaining sub-slice:
 
 1. characterize tenant, authorization, conflict, ordering, and transaction behavior;
 2. move domain policy and use cases to core without transport or environment dependencies;
