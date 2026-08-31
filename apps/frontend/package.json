@@ -9,7 +9,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "typecheck": "tsc --noEmit",
+    "bundle": "vite build",
+    "build": "npm run typecheck && npm run bundle",
     "preview": "vite preview",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",

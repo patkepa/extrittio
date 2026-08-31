@@ -120,6 +120,7 @@ jobs:
 
   turso-edge:
     name: Turso Edge (${{ matrix.arch }})
+    needs: frontend
     runs-on: ${{ matrix.runner }}
     env:
       EDGE_CARGO_PROFILE: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'ci-release' }}
@@ -132,25 +133,20 @@ jobs:
             runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Download frontend assets
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: apps/frontend/dist
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
           toolchain: ${{ env.RUST_VERSION }}
           components: clippy
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: apps/frontend/package-lock.json
-          registry-url: https://npm.pkg.github.com
-          scope: "@extrittio"
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           cache-on-failure: true
       - name: Install build dependencies
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler libssl-dev
-      - name: Build frontend for embedding
-        working-directory: apps/frontend
-        run: npm ci && npm run build
       - name: Verify Turso adapter
         run: |
           cargo clippy -p extrittio --no-default-features --features turso --all-targets -- -D warnings
@@ -227,6 +223,13 @@ jobs:
         run: git diff --exit-code -- apps/frontend/src/types/openapi.ts
       - name: TypeScript check & build
         run: npm run build
+      - name: Upload frontend assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: apps/frontend/dist
+          if-no-files-found: error
+          retention-days: 1
 
   docker:
     name: Docker Image
@@ -250,4 +253,3 @@ jobs:
     with:
       platforms: ${{ startsWith(github.ref, 'refs/tags/v') && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
       cargo-profile: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'ci-release' }}
-

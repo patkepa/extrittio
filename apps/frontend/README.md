@@ -34,6 +34,9 @@ Vite serves `http://localhost:5173` and proxies `/api` to
 ## Commands
 
 ```bash
+npm run dev            # Start Vite with hot module replacement
+npm run typecheck      # Type-check without creating a bundle
+npm run bundle         # Create a production bundle without type-checking
 npm run build          # Type-check and create the production bundle
 npm run lint           # Run ESLint
 npm run lint:fix       # Apply ESLint fixes

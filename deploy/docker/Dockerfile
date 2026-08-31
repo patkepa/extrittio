@@ -104,8 +104,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
         cp "target/$CARGO_PROFILE/extrittio" /app/bin/extrittio; \
     fi
 
-# Stage 2: Build the frontend assets served by the backend process
-FROM docker.io/library/node:22-bookworm-slim@sha256:f32b81066cde10a75dbac96646099533316d94bac4150c55da1636e1f0ffdc46 AS frontend-builder
+# Stage 2: Build architecture-independent frontend assets on the native build platform.
+FROM --platform=$BUILDPLATFORM docker.io/library/node:22-bookworm-slim@sha256:f32b81066cde10a75dbac96646099533316d94bac4150c55da1636e1f0ffdc46 AS frontend-builder
 
 WORKDIR /frontend
 
