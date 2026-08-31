@@ -13,6 +13,12 @@ proposals, not in the operational documentation.
 - [Analytics](architecture/analytics.md) — the implemented explorer, query
   semantics, and enforced limits.
 
+## Design proposals
+
+- [Extrittio Gateway architecture](design/extrittio-gateway-architecture-plan.md)
+  — proposed standalone protocol gateway, northbound contract, driver model,
+  security boundaries, and phased delivery plan.
+
 ## Deployment and operations
 
 - [Docker production deployment](deployment/docker.md) — the PostgreSQL,
