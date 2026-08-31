@@ -1,0 +1,8 @@
+{
+  "format": "enc:v1:<base64-no-pad-nonce>:<base64-no-pad-aes-256-gcm-ciphertext-and-tag>",
+  "key_derivation": "sha256(utf8(secret))",
+  "secret": "compatibility-fixture-secret",
+  "nonce_hex": "000102030405060708090a0b",
+  "plaintext": "-----BEGIN PRIVATE KEY-----\nfixture-private-key-material\n-----END PRIVATE KEY-----\n",
+  "stored": "enc:v1:AAECAwQFBgcICQoL:T6rrrnfDEMxzLB6RPMvj04FsERzdFrboJVWXhKLWXk3VDQoVuOFh66ATooC2Kkj4Et77mj02Aa2mrjZuuxf4UZ9NQGWeBraNLPwFNndjlZ4UUqx0VwtLJBrKy1ebckT74qmU"
+}

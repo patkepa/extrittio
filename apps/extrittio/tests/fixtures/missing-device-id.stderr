@@ -1,0 +1,6 @@
+error: the following required arguments were not provided:
+  <ID>
+
+Usage: extrittio devices get <ID>
+
+For more information, try '--help'.

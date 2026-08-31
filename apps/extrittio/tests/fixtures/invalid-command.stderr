@@ -1,0 +1,7 @@
+error: unrecognized subcommand 'definitely-not-a-command'
+
+  tip: a similar subcommand exists: 'init'
+
+Usage: extrittio [OPTIONS] [COMMAND]
+
+For more information, try '--help'.
