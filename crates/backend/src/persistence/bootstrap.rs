@@ -4,13 +4,6 @@ use crate::tenancy::TenantId;
 
 use super::error::PersistenceError;
 
-/// Backend health is deliberately small at this stage. Migration head and
-/// backend-specific diagnostics are added as boot migrates into this port.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DatabaseHealth {
-    pub reachable: bool,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuiltinDeviceType {
     pub name: String,
@@ -32,15 +25,7 @@ pub enum SeedOwnerOutcome {
 
 #[async_trait]
 pub trait BootstrapRepository: Send + Sync {
-    async fn health(&self) -> Result<DatabaseHealth, PersistenceError>;
-
-    async fn run_migrations(&self) -> Result<(), PersistenceError>;
-
-    /// Flush backend-local durability state. Remote/server databases may no-op.
-    async fn maintenance_checkpoint(&self) -> Result<(), PersistenceError> {
-        Ok(())
-    }
-
+    /// Seed idempotent application data after schema lifecycle work completes.
     async fn seed_builtin_device_types(
         &self,
         tenant: &TenantId,

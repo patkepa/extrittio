@@ -3,7 +3,7 @@ use std::sync::RwLock;
 use std::sync::atomic::Ordering;
 use tracing::{info, warn};
 
-use crate::persistence::Persistence;
+use crate::persistence::RepositorySet;
 use crate::rule_engine::cache::RuleCache;
 use crate::state::ZenohMetrics;
 
@@ -17,7 +17,7 @@ use super::handlers;
 /// handler in the current task. All loop indefinitely, receiving messages and
 /// dispatching them to the appropriate handler function.
 ///
-/// Persistence calls use backend-neutral async ports. The PostgreSQL adapter
+/// Repository calls use backend-neutral async ports. The PostgreSQL adapter
 /// owns its blocking boundary internally.
 ///
 /// # Errors
@@ -25,7 +25,7 @@ use super::handlers;
 /// Returns an error if any Zenoh subscriber declaration fails.
 pub async fn run_subscriber(
     session: Arc<zenoh::Session>,
-    persistence: Persistence,
+    persistence: RepositorySet,
     zenoh_metrics: Arc<ZenohMetrics>,
     rule_cache: Arc<RwLock<RuleCache>>,
     max_payload_size_bytes: usize,

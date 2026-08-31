@@ -230,13 +230,7 @@ pub mod telemetry {
 }
 
 pub mod zones {
-    #[path = "repository.rs"]
-    pub mod port;
-    #[path = "types.rs"]
-    pub mod types;
-
     pub use crate::api::zones as api;
     #[cfg(feature = "postgres")]
-    pub use crate::repositories::zone_repo as repository;
-    pub use crate::services::zone_service as service;
+    pub use crate::repositories::zone_repo as legacy_rule_snapshot_repository;
 }

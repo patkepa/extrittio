@@ -4,8 +4,7 @@ use turso::params;
 
 use crate::auth::policy::Permission;
 use crate::persistence::{
-    BootstrapOwner, BootstrapRepository, BuiltinDeviceType, DatabaseHealth, PersistenceError,
-    SeedOwnerOutcome,
+    BootstrapOwner, BootstrapRepository, BuiltinDeviceType, PersistenceError, SeedOwnerOutcome,
 };
 use crate::tenancy::TenantId;
 
@@ -13,18 +12,6 @@ use super::TursoAdapter;
 
 #[async_trait]
 impl BootstrapRepository for TursoAdapter {
-    async fn health(&self) -> Result<DatabaseHealth, PersistenceError> {
-        self.database.health().await
-    }
-
-    async fn run_migrations(&self) -> Result<(), PersistenceError> {
-        self.database.migrate().await
-    }
-
-    async fn maintenance_checkpoint(&self) -> Result<(), PersistenceError> {
-        self.database.checkpoint().await
-    }
-
     async fn seed_builtin_device_types(
         &self,
         tenant: &TenantId,

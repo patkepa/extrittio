@@ -1,3 +1,4 @@
+mod architecture;
 mod command;
 mod doctor;
 mod edge;
@@ -23,6 +24,8 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Task {
+    /// Validate backend crate boundaries and deployment dependency closures.
+    Architecture,
     /// Check whether repository development prerequisites are installed.
     Doctor,
     /// Run repository verification checks.
@@ -260,6 +263,7 @@ enum ProtocolTask {
 fn main() -> Result<()> {
     let root = repository_root()?;
     match Cli::parse().command {
+        Task::Architecture => architecture::run(&root),
         Task::Doctor => doctor::run(&root),
         Task::Verify(args) => {
             if args.changed && args.scope.is_some() {

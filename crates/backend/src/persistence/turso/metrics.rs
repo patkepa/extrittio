@@ -151,7 +151,4 @@ impl MetricsRepository for TursoAdapter {
         tx.commit().await.map_err(row::error)?;
         Ok((system, app))
     }
-    fn connection_counts(&self) -> (i32, i32) {
-        (1, 0)
-    }
 }

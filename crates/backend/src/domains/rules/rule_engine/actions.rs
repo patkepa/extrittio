@@ -6,6 +6,7 @@ use opentelemetry::global;
 #[cfg(feature = "otlp")]
 use opentelemetry::propagation::Injector;
 use prost::Message;
+#[cfg(any(feature = "postgres", feature = "turso"))]
 use sha2::{Digest, Sha256};
 use tokio::time::sleep;
 use tracing::{Instrument, info, warn};
@@ -18,8 +19,10 @@ use crate::domains::alerts::types::{
     AlertTransition, AlertTransitionOutcome, CooldownRecord, NewAlertRecord,
 };
 use crate::domains::commands::types::NewCommandRecord;
-use crate::domains::operations::outbox_types::{NewOutboxEventRecord, OutboxEventRecord};
-use crate::persistence::Persistence;
+#[cfg(any(feature = "postgres", feature = "turso"))]
+use crate::domains::operations::outbox_types::NewOutboxEventRecord;
+use crate::domains::operations::outbox_types::OutboxEventRecord;
+use crate::persistence::RepositorySet;
 use crate::state::ZenohMetrics;
 use crate::tenancy::TenantId;
 
@@ -31,6 +34,7 @@ pub struct OutboxWorkerConfig {
     pub lease_timeout: Duration,
 }
 
+#[cfg(any(feature = "postgres", feature = "turso"))]
 pub(crate) fn outbox_event_for_action(
     action: &PendingAction,
 ) -> Result<NewOutboxEventRecord, serde_json::Error> {
@@ -46,7 +50,7 @@ pub(crate) fn outbox_event_for_action(
 }
 
 pub async fn run_rule_action_outbox_worker(
-    persistence: Persistence,
+    persistence: RepositorySet,
     rule_cache: Arc<RwLock<RuleCache>>,
     http_client: reqwest::Client,
     zenoh_session: Arc<zenoh::Session>,
@@ -122,7 +126,7 @@ pub async fn run_rule_action_outbox_worker(
 async fn process_outbox_event(
     event: OutboxEventRecord,
     worker_id: &str,
-    persistence: &Persistence,
+    persistence: &RepositorySet,
     rule_cache: &Arc<RwLock<RuleCache>>,
     http_client: &reqwest::Client,
     zenoh_session: &Arc<zenoh::Session>,
@@ -171,7 +175,7 @@ async fn process_outbox_event(
 
 pub async fn execute_action(
     action: PendingAction,
-    persistence: &Persistence,
+    persistence: &RepositorySet,
     rule_cache: &Arc<RwLock<RuleCache>>,
     _http_client: &reqwest::Client,
     zenoh_session: &Arc<zenoh::Session>,
@@ -454,6 +458,7 @@ impl Injector for HeaderInjector<'_> {
     }
 }
 
+#[cfg(any(feature = "postgres", feature = "turso"))]
 fn tenant_id_for_action(action: &PendingAction) -> &str {
     match action {
         PendingAction::CreateAlert { tenant_id, .. }
@@ -466,6 +471,7 @@ fn tenant_id_for_action(action: &PendingAction) -> &str {
     }
 }
 
+#[cfg(any(feature = "postgres", feature = "turso"))]
 fn event_type_for_action(action: &PendingAction) -> &'static str {
     match action {
         PendingAction::CreateAlert { .. } => "rule.create_alert",
@@ -478,6 +484,7 @@ fn event_type_for_action(action: &PendingAction) -> &'static str {
     }
 }
 
+#[cfg(any(feature = "postgres", feature = "turso"))]
 fn aggregate_type_for_action(action: &PendingAction) -> &'static str {
     match action {
         PendingAction::CreateAlert { .. }
@@ -490,6 +497,7 @@ fn aggregate_type_for_action(action: &PendingAction) -> &'static str {
     }
 }
 
+#[cfg(any(feature = "postgres", feature = "turso"))]
 fn aggregate_id_for_action(action: &PendingAction) -> String {
     match action {
         PendingAction::CreateAlert {
@@ -510,6 +518,7 @@ fn aggregate_id_for_action(action: &PendingAction) -> String {
     }
 }
 
+#[cfg(any(feature = "postgres", feature = "turso"))]
 fn idempotency_key_for_action(action: &PendingAction) -> String {
     match action {
         PendingAction::CreateAlert {
@@ -552,6 +561,7 @@ fn idempotency_key_for_action(action: &PendingAction) -> String {
     }
 }
 
+#[cfg(any(feature = "postgres", feature = "turso"))]
 fn stable_json_hash<T>(value: &T) -> String
 where
     T: serde::Serialize,
@@ -560,6 +570,7 @@ where
     stable_hash(&bytes)
 }
 
+#[cfg(any(feature = "postgres", feature = "turso"))]
 fn stable_hash(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     format!("{digest:x}")

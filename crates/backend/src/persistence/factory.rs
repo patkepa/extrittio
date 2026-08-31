@@ -1,16 +1,16 @@
 use crate::config::DatabaseConfig;
 
-use super::Persistence;
+use super::DatabaseRuntime;
 
 /// Construct exactly the configured database adapter. This function never
 /// falls back to a different engine after an open or configuration failure.
-pub async fn create(config: &DatabaseConfig) -> anyhow::Result<Persistence> {
+pub async fn create(config: &DatabaseConfig) -> anyhow::Result<DatabaseRuntime> {
     match config {
         DatabaseConfig::Postgres { url, pool_size } => {
             #[cfg(feature = "postgres")]
             {
                 let pool = crate::init::create_db_pool(url, *pool_size)?;
-                Ok(super::postgres::create_persistence(pool))
+                Ok(super::postgres::create_runtime(pool))
             }
             #[cfg(not(feature = "postgres"))]
             {
@@ -31,7 +31,7 @@ pub async fn create(config: &DatabaseConfig) -> anyhow::Result<Persistence> {
                 let database =
                     super::turso::TursoDatabase::open(data_dir, database_path, *busy_timeout)
                         .await?;
-                Ok(super::turso::create_persistence(database))
+                Ok(super::turso::create_runtime(database))
             }
             #[cfg(not(feature = "turso"))]
             {

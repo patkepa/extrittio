@@ -17,7 +17,7 @@ use extrittio_backend::api_key_util;
 use extrittio_backend::rate_limit::{ApiKeyRateLimiter, RateLimiter};
 use extrittio_backend::state::AppState;
 
-const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations/postgres");
+const MIGRATIONS: EmbeddedMigrations = embed_migrations!("../backend-postgres/migrations");
 const DEFAULT_TEST_DATABASE_URL: &str =
     "postgres://extrittio:extrittio@127.0.0.1:5432/extrittio?connect_timeout=2";
 const TEST_BLUEPRINT_ID: &str = "test-default-blueprint";
@@ -34,6 +34,7 @@ fn tenant_context(tenant_id: &str) -> extrittio_backend::auth::context::RequestC
         permission_version: 1,
         exp: 0,
     })
+    .expect("test claims contain a valid tenant")
 }
 
 fn test_context() -> extrittio_backend::auth::context::RequestContext {
@@ -50,6 +51,7 @@ fn scoped_context(scopes: &[&str]) -> extrittio_backend::auth::context::RequestC
         permission_version: 1,
         exp: 0,
     })
+    .expect("test claims contain a valid tenant")
 }
 
 fn setup_test_db() -> Pool<ConnectionManager<PgConnection>> {
@@ -116,9 +118,12 @@ async fn setup_app_with_context(
     let zenoh_session = zenoh::open(zenoh::Config::default())
         .await
         .expect("Failed to open test zenoh session");
+    let database = extrittio_backend::persistence::postgres::create_runtime(db_pool.clone());
+    let persistence = database.repositories().clone();
 
     let state = Arc::new(extrittio_backend::state::AppState {
-        persistence: extrittio_backend::persistence::postgres::create_persistence(db_pool.clone()),
+        persistence,
+        database,
         zenoh_session: Arc::new(zenoh_session),
         zenoh_tls_enabled: false,
         zenoh_port: 7447,
@@ -476,7 +481,7 @@ async fn test_device_creation_materializes_and_assigns_contract() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
 
-    let persistence = extrittio_backend::persistence::postgres::create_persistence(pool.clone());
+    let persistence = extrittio_backend::persistence::postgres::create_repositories(pool.clone());
     let identity = extrittio_backend::tenancy::DeviceIdentity::new(
         extrittio_backend::tenancy::DEFAULT_TENANT_ID,
         device_id,
@@ -1339,7 +1344,7 @@ async fn test_device_ingress_resolves_the_persisted_tenant_identity() {
     };
     let rule_cache =
         std::sync::RwLock::new(extrittio_backend::rule_engine::cache::RuleCache::default());
-    let persistence = extrittio_backend::persistence::postgres::create_persistence(pool.clone());
+    let persistence = extrittio_backend::persistence::postgres::create_repositories(pool.clone());
     let identity = persistence
         .devices
         .resolve_identity("tenant-b-ingress")
@@ -1721,9 +1726,12 @@ async fn test_ci_ingest_success() {
     let zenoh_session = zenoh::open(zenoh::Config::default())
         .await
         .expect("Failed to open test zenoh session");
+    let database = extrittio_backend::persistence::postgres::create_runtime(db_pool.clone());
+    let persistence = database.repositories().clone();
 
     let state = Arc::new(AppState {
-        persistence: extrittio_backend::persistence::postgres::create_persistence(db_pool.clone()),
+        persistence,
+        database,
         zenoh_session: Arc::new(zenoh_session),
         zenoh_tls_enabled: false,
         zenoh_port: 7447,

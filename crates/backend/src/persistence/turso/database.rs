@@ -10,19 +10,21 @@ use tokio::sync::Mutex;
 use tokio::sync::MutexGuard;
 use turso::{Builder, Connection, Database};
 
-use crate::persistence::{DatabaseHealth, PersistenceError};
+use crate::persistence::{DatabaseHealth, LifecycleError, PersistenceError};
 
-const BASELINE: &str = include_str!("../../../migrations/turso/0001_baseline.sql");
+const BASELINE: &str = include_str!("../../../../backend-turso/migrations/0001_baseline.sql");
 const DEVICE_BLUEPRINTS: &str =
-    include_str!("../../../migrations/turso/0002_device_blueprints.sql");
-const DEVICE_CONTRACTS: &str = include_str!("../../../migrations/turso/0003_device_contracts.sql");
-const DEVICE_EVENTS: &str = include_str!("../../../migrations/turso/0004_device_events.sql");
+    include_str!("../../../../backend-turso/migrations/0002_device_blueprints.sql");
+const DEVICE_CONTRACTS: &str =
+    include_str!("../../../../backend-turso/migrations/0003_device_contracts.sql");
+const DEVICE_EVENTS: &str =
+    include_str!("../../../../backend-turso/migrations/0004_device_events.sql");
 const RULE_BLUEPRINT_TARGETS: &str =
-    include_str!("../../../migrations/turso/0005_rule_blueprint_targets.sql");
+    include_str!("../../../../backend-turso/migrations/0005_rule_blueprint_targets.sql");
 const FIRMWARE_BLUEPRINT_TARGETS: &str =
-    include_str!("../../../migrations/turso/0006_firmware_blueprint_targets.sql");
+    include_str!("../../../../backend-turso/migrations/0006_firmware_blueprint_targets.sql");
 const REMOVE_RETIRED_DEVICE_FEATURE: &str =
-    include_str!("../../../migrations/turso/0007_remove_retired_device_feature.sql");
+    include_str!("../../../../backend-turso/migrations/0007_remove_retired_device_feature.sql");
 const MIGRATIONS: &[(i64, &str)] = &[
     (1, BASELINE),
     (2, DEVICE_BLUEPRINTS),
@@ -37,7 +39,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
 /// supported single-process deployment model; writes share one connection.
 pub struct TursoDatabase {
     database: Arc<Database>,
-    writer: Mutex<Connection>,
+    writer: Arc<Mutex<Connection>>,
     _process_lock: File,
     path: PathBuf,
 }
@@ -138,35 +140,38 @@ impl TursoDatabase {
         data_dir: &Path,
         path: &Path,
         busy_timeout: Duration,
-    ) -> Result<Arc<Self>, PersistenceError> {
+    ) -> Result<Arc<Self>, LifecycleError> {
         std::fs::create_dir_all(data_dir).map_err(|error| {
-            PersistenceError::Unavailable(format!("cannot create data directory: {error}"))
+            LifecycleError::Unavailable(format!("cannot create data directory: {error}"))
         })?;
-        let process_lock = open_process_lock(data_dir)?;
+        let process_lock = open_process_lock(data_dir)
+            .map_err(|error| LifecycleError::Unavailable(error.to_string()))?;
         let path_text = path.to_str().ok_or_else(|| {
-            PersistenceError::Unavailable("Turso database path is not valid UTF-8".to_string())
+            LifecycleError::Unavailable("Turso database path is not valid UTF-8".to_string())
         })?;
         let database = Arc::new(
             Builder::new_local(path_text)
                 .build()
                 .await
-                .map_err(map_unavailable)?,
+                .map_err(map_lifecycle_unavailable)?,
         );
-        let writer = database.connect().map_err(map_unavailable)?;
-        writer.busy_timeout(busy_timeout).map_err(map_unavailable)?;
+        let writer = database.connect().map_err(map_lifecycle_unavailable)?;
+        writer
+            .busy_timeout(busy_timeout)
+            .map_err(map_lifecycle_unavailable)?;
         writer
             .execute_batch("PRAGMA foreign_keys = ON; PRAGMA synchronous = FULL;")
             .await
-            .map_err(map_unavailable)?;
+            .map_err(map_lifecycle_unavailable)?;
         Ok(Arc::new(Self {
             database,
-            writer: Mutex::new(writer),
+            writer: Arc::new(Mutex::new(writer)),
             _process_lock: process_lock,
             path: path.to_path_buf(),
         }))
     }
 
-    pub async fn migrate(&self) -> Result<(), PersistenceError> {
+    pub async fn migrate(&self) -> Result<(), LifecycleError> {
         let mut writer = self.writer.lock().await;
         writer
             .execute_batch(
@@ -197,7 +202,7 @@ impl TursoDatabase {
             drop(rows);
             if let Some(applied_checksum) = applied_checksum {
                 if applied_checksum != checksum {
-                    return Err(PersistenceError::Migration(format!(
+                    return Err(LifecycleError::Migration(format!(
                         "Turso migration {version} checksum mismatch: expected {checksum}, found {applied_checksum}"
                     )));
                 }
@@ -220,11 +225,11 @@ impl TursoDatabase {
         Ok(())
     }
 
-    pub async fn health(&self) -> Result<DatabaseHealth, PersistenceError> {
-        let connection = self.database.connect().map_err(map_unavailable)?;
+    pub async fn health(&self) -> Result<DatabaseHealth, LifecycleError> {
+        let connection = self.database.connect().map_err(map_lifecycle_unavailable)?;
         scalar_i64(&connection, "SELECT 1")
             .await
-            .map_err(map_unavailable)?;
+            .map_err(map_lifecycle_unavailable)?;
         Ok(DatabaseHealth { reachable: true })
     }
 
@@ -244,9 +249,11 @@ impl TursoDatabase {
         Ok(())
     }
 
-    pub async fn checkpoint(&self) -> Result<(), PersistenceError> {
+    pub async fn checkpoint(&self) -> Result<(), LifecycleError> {
         let writer = self.writer.lock().await;
-        consume_checkpoint(&writer).await
+        consume_checkpoint(&writer)
+            .await
+            .map_err(map_lifecycle_unavailable)
     }
 
     pub async fn info(&self) -> Result<TursoDatabaseInfo, PersistenceError> {
@@ -286,7 +293,7 @@ impl TursoDatabase {
                 .map_err(|error| PersistenceError::Unavailable(error.to_string()))?;
         }
         let writer = self.writer.lock().await;
-        consume_checkpoint(&writer).await?;
+        consume_checkpoint(&writer).await.map_err(map_unavailable)?;
         let temporary = destination.with_extension(format!("tmp-{}", uuid::Uuid::new_v4()));
         std::fs::copy(&self.path, &temporary)
             .map_err(|error| PersistenceError::Unavailable(error.to_string()))?;
@@ -302,13 +309,7 @@ impl TursoDatabase {
             .map_err(|error| PersistenceError::Unavailable(error.to_string()))?;
         std::fs::write(
             manifest_path(destination),
-            format!(
-                "{sha256}  {}\n",
-                destination
-                    .file_name()
-                    .and_then(|value| value.to_str())
-                    .unwrap_or("backup.db")
-            ),
+            manifest_contents(&sha256, destination),
         )
         .map_err(|error| PersistenceError::Unavailable(error.to_string()))?;
         drop(writer);
@@ -359,7 +360,8 @@ impl TursoDatabase {
         let verified = Self::verify_backup(backup_path).await?;
         std::fs::create_dir_all(data_dir)
             .map_err(|error| PersistenceError::Unavailable(error.to_string()))?;
-        let _lock = open_process_lock(data_dir)?;
+        let _lock = open_process_lock(data_dir)
+            .map_err(|error| PersistenceError::Unavailable(error.to_string()))?;
         if database_path.exists() && !force {
             return Err(PersistenceError::Unavailable(format!(
                 "database already exists: {}; pass --force to preserve and replace it",
@@ -556,13 +558,20 @@ impl TursoDatabase {
         self.writer.lock().await
     }
 
+    /// Returns clones of the exact engine and serialized writer owned by this
+    /// runtime so extracted adapters do not open a second database connection.
+    #[must_use]
+    pub(crate) fn shared_handles(&self) -> (Arc<Database>, Arc<Mutex<Connection>>) {
+        (self.database.clone(), self.writer.clone())
+    }
+
     #[must_use]
     pub fn path(&self) -> &Path {
         &self.path
     }
 }
 
-fn open_process_lock(data_dir: &Path) -> Result<File, PersistenceError> {
+fn open_process_lock(data_dir: &Path) -> std::io::Result<File> {
     OpenOptions::new()
         .create(true)
         .read(true)
@@ -574,9 +583,10 @@ fn open_process_lock(data_dir: &Path) -> Result<File, PersistenceError> {
             Ok(file)
         })
         .map_err(|error| {
-            PersistenceError::Unavailable(format!(
-                "data directory is already in use or cannot be locked: {error}"
-            ))
+            std::io::Error::new(
+                error.kind(),
+                format!("data directory is already in use or cannot be locked: {error}"),
+            )
         })
 }
 
@@ -594,17 +604,24 @@ fn sidecar_path(path: &Path, suffix: &str) -> PathBuf {
     PathBuf::from(format!("{}{suffix}", path.display()))
 }
 
-async fn consume_checkpoint(connection: &Connection) -> Result<(), PersistenceError> {
+async fn consume_checkpoint(connection: &Connection) -> Result<(), turso::Error> {
     let mut rows = connection
         .query("PRAGMA wal_checkpoint(TRUNCATE)", ())
-        .await
-        .map_err(map_unavailable)?;
-    while rows.next().await.map_err(map_unavailable)?.is_some() {}
+        .await?;
+    while rows.next().await?.is_some() {}
     Ok(())
 }
 
 fn manifest_path(path: &Path) -> PathBuf {
     PathBuf::from(format!("{}.sha256", path.display()))
+}
+
+fn manifest_contents(sha256: &str, backup_path: &Path) -> String {
+    let backup_filename = backup_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("backup.db");
+    format!("{sha256}  {backup_filename}\n")
 }
 
 fn checksum(path: &Path) -> Result<(String, u64), PersistenceError> {
@@ -692,8 +709,12 @@ fn map_unavailable(error: turso::Error) -> PersistenceError {
     PersistenceError::Unavailable(error.to_string())
 }
 
-fn map_migration(error: turso::Error) -> PersistenceError {
-    PersistenceError::Migration(error.to_string())
+fn map_lifecycle_unavailable(error: turso::Error) -> LifecycleError {
+    LifecycleError::Unavailable(error.to_string())
+}
+
+fn map_migration(error: turso::Error) -> LifecycleError {
+    LifecycleError::Migration(error.to_string())
 }
 
 #[cfg(test)]
@@ -823,8 +844,19 @@ mod tests {
             .unwrap();
         assert!(matches!(
             database.migrate().await,
-            Err(PersistenceError::Migration(message)) if message.contains("checksum mismatch")
+            Err(LifecycleError::Migration(message)) if message.contains("checksum mismatch")
         ));
+    }
+
+    #[test]
+    fn backup_manifest_wire_format_is_stable() {
+        assert_eq!(
+            manifest_contents(
+                "0123456789abcdef",
+                Path::new("/var/backups/extrittio-2026-08-31.db")
+            ),
+            "0123456789abcdef  extrittio-2026-08-31.db\n"
+        );
     }
 
     #[tokio::test]
@@ -836,7 +868,7 @@ mod tests {
             .unwrap();
         assert!(matches!(
             TursoDatabase::open(directory.path(), &path, Duration::from_secs(1)).await,
-            Err(PersistenceError::Unavailable(message)) if message.contains("already in use")
+            Err(LifecycleError::Unavailable(message)) if message.contains("already in use")
         ));
     }
 }

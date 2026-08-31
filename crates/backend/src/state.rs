@@ -136,7 +136,8 @@ impl Default for MetricsAccumulator {
 }
 
 pub struct AppState {
-    pub persistence: crate::persistence::Persistence,
+    pub persistence: crate::persistence::RepositorySet,
+    pub database: crate::persistence::DatabaseRuntime,
     pub zenoh_session: Arc<zenoh::Session>,
     pub zenoh_tls_enabled: bool,
     pub zenoh_port: u16,
@@ -157,6 +158,15 @@ pub struct AppState {
     /// Host-local Thread runtime. It can rediscover an RCP connected after
     /// Extrittio Edge has started.
     pub thread_runtime: Option<Arc<extrittio_openthread_runtime::ThreadRuntime>>,
+}
+
+impl AppState {
+    /// Curated application boundary for transport handlers. More use cases are
+    /// added here as their vertical slices leave the legacy persistence host.
+    #[must_use]
+    pub fn application(&self) -> extrittio_backend_core::Application {
+        extrittio_backend_core::Application::new(self.persistence.zones.clone())
+    }
 }
 
 use std::collections::BTreeMap;

@@ -193,15 +193,14 @@ impl AlertRepository for TursoAdapter {
         }
         tx.commit().await.map_err(row::error)
     }
-    async fn delete_resolved_before(
+    async fn delete_all_resolved_before(
         &self,
-        t: &TenantId,
         cutoff: NaiveDateTime,
     ) -> Result<usize, PersistenceError> {
         let w = self.database.writer().await;
         w.execute(
-            "DELETE FROM alerts WHERE tenant_id=?1 AND status='resolved' AND resolved_at<?2",
-            params![t.as_str(), cutoff.and_utc().timestamp_micros()],
+            "DELETE FROM alerts WHERE status='resolved' AND resolved_at<?1",
+            params![cutoff.and_utc().timestamp_micros()],
         )
         .await
         .map(|n| n as usize)

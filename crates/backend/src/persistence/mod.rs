@@ -23,7 +23,7 @@ use crate::domains::operations::outbox_repository::OutboxRepository;
 use crate::domains::rules::port::RuleRepository;
 use crate::domains::shadows::repository::ShadowRepository;
 use crate::domains::telemetry::port::TelemetryRepository;
-use crate::domains::zones::port::ZoneRepository;
+use extrittio_backend_core::ZoneRepository;
 
 pub mod backend;
 pub mod bootstrap;
@@ -31,21 +31,20 @@ pub mod error;
 pub mod factory;
 #[cfg(feature = "postgres")]
 pub mod postgres;
+pub mod runtime;
 #[cfg(feature = "turso")]
 pub mod turso;
 
 pub use backend::{BackendCapabilities, BackendDescriptor, BackendKind};
-pub use bootstrap::{
-    BootstrapOwner, BootstrapRepository, BuiltinDeviceType, DatabaseHealth, SeedOwnerOutcome,
-};
+pub use bootstrap::{BootstrapOwner, BootstrapRepository, BuiltinDeviceType, SeedOwnerOutcome};
 pub use error::{ConstraintName, PersistenceError};
+pub use runtime::{DatabaseHealth, DatabaseRuntime, LifecycleError};
 
 /// Cloneable collection of backend-neutral persistence ports owned by
 /// `AppState`. Additional domain ports are added as their PostgreSQL code is
 /// extracted.
 #[derive(Clone)]
-pub struct Persistence {
-    pub backend: BackendDescriptor,
+pub struct RepositorySet {
     pub activity: Arc<dyn ActivityRepository>,
     pub analytics: Arc<dyn AnalyticsRepository>,
     pub api_keys: Arc<dyn ApiKeyRepository>,
@@ -73,7 +72,7 @@ pub struct Persistence {
     pub zones: Arc<dyn ZoneRepository>,
 }
 
-pub struct PersistencePorts {
+pub struct RepositoryPorts {
     pub activity: Arc<dyn ActivityRepository>,
     pub analytics: Arc<dyn AnalyticsRepository>,
     pub api_keys: Arc<dyn ApiKeyRepository>,
@@ -101,11 +100,10 @@ pub struct PersistencePorts {
     pub zones: Arc<dyn ZoneRepository>,
 }
 
-impl Persistence {
+impl RepositorySet {
     #[must_use]
-    pub fn new(backend: BackendDescriptor, ports: PersistencePorts) -> Self {
+    pub fn new(ports: RepositoryPorts) -> Self {
         Self {
-            backend,
             activity: ports.activity,
             analytics: ports.analytics,
             api_keys: ports.api_keys,

@@ -16,26 +16,27 @@ pub async fn initialize_state(
     thread_runtime: Option<Arc<extrittio_openthread_runtime::ThreadRuntime>>,
 ) -> anyhow::Result<Arc<AppState>> {
     init::install_crypto_provider();
-    let persistence = crate::persistence::factory::create(&config.database).await?;
+    let database = crate::persistence::factory::create(&config.database).await?;
+    let persistence = database.repositories().clone();
     info!(
-        backend = persistence.backend.kind.as_str(),
+        backend = database.descriptor().kind.as_str(),
         "Database opened"
     );
-    if persistence.backend.kind == crate::persistence::BackendKind::Turso {
-        let database = persistence
-            .backend
+    if database.descriptor().kind == crate::persistence::BackendKind::Turso {
+        let database_path_label = database
+            .descriptor()
             .local_file
             .as_deref()
             .and_then(std::path::Path::file_name)
             .and_then(|name| name.to_str())
             .unwrap_or("local database");
         info!(
-            database,
+            database = database_path_label,
             "Embedded Turso backend enabled: single-node Extrittio Edge deployment"
         );
     }
 
-    init::run_persistence_migrations(&persistence).await?;
+    init::run_database_migrations(&database).await?;
     if let crate::config::DatabaseConfig::Turso {
         database_path,
         size_warning_bytes,
@@ -104,6 +105,7 @@ pub async fn initialize_state(
 
     Ok(Arc::new(AppState {
         persistence,
+        database,
         zenoh_session,
         zenoh_tls_enabled: config.zenoh_tls_enabled,
         zenoh_port: config.zenoh_tls_port,

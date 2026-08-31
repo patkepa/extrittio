@@ -13,7 +13,9 @@ use crate::auth;
 use crate::domains::identity::certificate_types::NewCaCertificateRecord;
 #[cfg(feature = "postgres")]
 use crate::persistence::postgres::executor::PostgresPool;
-use crate::persistence::{BootstrapOwner, BuiltinDeviceType, Persistence, SeedOwnerOutcome};
+use crate::persistence::{
+    BootstrapOwner, BuiltinDeviceType, DatabaseRuntime, RepositorySet, SeedOwnerOutcome,
+};
 use crate::services::{cert_service, user_service};
 use extrittio_common::topics::{self, patterns};
 
@@ -46,14 +48,14 @@ fn env_bool(key: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Run backend-specific migrations through the persistence facade.
-pub async fn run_persistence_migrations(persistence: &Persistence) -> anyhow::Result<()> {
-    persistence.bootstrap.run_migrations().await?;
+/// Run backend-specific migrations through the database lifecycle façade.
+pub async fn run_database_migrations(database: &DatabaseRuntime) -> anyhow::Result<()> {
+    database.run_migrations().await?;
     info!("Database migrations completed successfully");
     Ok(())
 }
 
-pub async fn seed_persistence_device_types(persistence: &Persistence) -> anyhow::Result<()> {
+pub async fn seed_persistence_device_types(persistence: &RepositorySet) -> anyhow::Result<()> {
     let tenant = crate::tenancy::TenantId::new(crate::tenancy::DEFAULT_TENANT_ID)
         .expect("default tenant id is valid");
     let records = [
@@ -75,7 +77,7 @@ pub async fn seed_persistence_device_types(persistence: &Persistence) -> anyhow:
     Ok(())
 }
 
-pub async fn init_persistence_jwt_secret(persistence: &Persistence) -> anyhow::Result<String> {
+pub async fn init_persistence_jwt_secret(persistence: &RepositorySet) -> anyhow::Result<String> {
     if let Some(secret) = std::env::var("JWT_SECRET")
         .ok()
         .map(|value| value.trim().to_string())
@@ -100,7 +102,7 @@ pub async fn init_persistence_jwt_secret(persistence: &Persistence) -> anyhow::R
         .map_err(Into::into)
 }
 
-pub async fn seed_persistence_admin_user(persistence: &Persistence) -> anyhow::Result<()> {
+pub async fn seed_persistence_admin_user(persistence: &RepositorySet) -> anyhow::Result<()> {
     if persistence.bootstrap.users_exist().await? {
         return Ok(());
     }
@@ -127,7 +129,7 @@ pub async fn seed_persistence_admin_user(persistence: &Persistence) -> anyhow::R
 }
 
 pub async fn seed_persistence_owner(
-    persistence: &Persistence,
+    persistence: &RepositorySet,
     username: String,
     password: String,
 ) -> anyhow::Result<SeedOwnerOutcome> {
@@ -150,7 +152,7 @@ pub async fn seed_persistence_owner(
 /// The well-known `admin` / `admin` pair is accepted only here. Any override
 /// still goes through the normal production password validation.
 pub async fn seed_persistence_local_owner(
-    persistence: &Persistence,
+    persistence: &RepositorySet,
     username: String,
     password: String,
 ) -> anyhow::Result<SeedOwnerOutcome> {
@@ -162,7 +164,7 @@ pub async fn seed_persistence_local_owner(
 }
 
 async fn seed_persistence_owner_unchecked(
-    persistence: &Persistence,
+    persistence: &RepositorySet,
     username: String,
     password: String,
 ) -> anyhow::Result<SeedOwnerOutcome> {
@@ -185,7 +187,7 @@ async fn seed_persistence_owner_unchecked(
         .map_err(Into::into)
 }
 
-pub async fn init_persistence_ca_certificate(persistence: &Persistence) -> anyhow::Result<()> {
+pub async fn init_persistence_ca_certificate(persistence: &RepositorySet) -> anyhow::Result<()> {
     if persistence.certificates.get_ca().await?.is_some() {
         return Ok(());
     }
@@ -205,7 +207,7 @@ pub async fn init_persistence_ca_certificate(persistence: &Persistence) -> anyho
 }
 
 pub async fn write_persistence_tls_certs(
-    persistence: &Persistence,
+    persistence: &RepositorySet,
     certs_dir: &str,
 ) -> anyhow::Result<()> {
     let ca = persistence

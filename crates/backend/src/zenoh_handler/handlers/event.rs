@@ -8,7 +8,7 @@ use serde_json::Value;
 use tracing::{info, warn};
 
 use crate::domains::events::types::{DeviceMetricSample, MetricValue, RecordDeviceEvent};
-use crate::persistence::Persistence;
+use crate::persistence::RepositorySet;
 use crate::rule_engine::cache::RuleCache;
 use crate::rule_engine::evaluate::evaluate_telemetry_for_tenant;
 use crate::rule_engine::types::TelemetryData;
@@ -27,7 +27,7 @@ struct DeviceEventEnvelope {
 /// Validate a universal JSON event against the assigned materialized contract,
 /// extract declared typed metrics, and persist both atomically.
 pub async fn handle_event(
-    persistence: &Persistence,
+    persistence: &RepositorySet,
     identity: &DeviceIdentity,
     route_key: &str,
     bytes: &[u8],

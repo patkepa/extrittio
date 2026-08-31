@@ -79,11 +79,12 @@ pub(crate) async fn run_edge(args: RunArgs) -> Result<()> {
         config.serve_ui = true;
         config.ui_dir = None;
 
-        let persistence = extrittio_backend::persistence::factory::create(&config.database).await?;
-        backend_init::run_persistence_migrations(&persistence).await?;
+        let database = extrittio_backend::persistence::factory::create(&config.database).await?;
+        backend_init::run_database_migrations(&database).await?;
+        let persistence = database.repositories();
         if !persistence.bootstrap.users_exist().await? {
             backend_init::seed_persistence_local_owner(
-                &persistence,
+                persistence,
                 args.admin_username.clone(),
                 args.admin_password.clone(),
             )
@@ -94,7 +95,7 @@ pub(crate) async fn run_edge(args: RunArgs) -> Result<()> {
             eprintln!("  Change this password after signing in.");
             eprintln!();
         }
-        drop(persistence);
+        drop(database);
 
         if args.thread_seed_default_dataset
             && let Some(runtime) = thread_runtime.as_ref()
@@ -200,8 +201,8 @@ pub(crate) async fn migrate(args: DatabaseArgs, output_format: OutputFormat) -> 
         telemetry_retention_days: None,
     })?;
 
-    let persistence = extrittio_backend::persistence::factory::create(&config.database).await?;
-    backend_init::run_persistence_migrations(&persistence).await?;
+    let database = extrittio_backend::persistence::factory::create(&config.database).await?;
+    backend_init::run_database_migrations(&database).await?;
 
     let result = ServiceCommandResult {
         status: "ok",
@@ -222,13 +223,14 @@ pub(crate) async fn init(args: InitArgs, output_format: OutputFormat) -> Result<
         config.certs_dir = certs_dir;
     }
     config.validate()?;
-    let persistence = extrittio_backend::persistence::factory::create(&config.database).await?;
-    backend_init::run_persistence_migrations(&persistence).await?;
-    backend_init::seed_persistence_device_types(&persistence).await?;
-    backend_init::init_persistence_jwt_secret(&persistence).await?;
-    backend_init::seed_persistence_admin_user(&persistence).await?;
-    backend_init::init_persistence_ca_certificate(&persistence).await?;
-    backend_init::write_persistence_tls_certs(&persistence, &config.certs_dir).await?;
+    let database = extrittio_backend::persistence::factory::create(&config.database).await?;
+    backend_init::run_database_migrations(&database).await?;
+    let persistence = database.repositories();
+    backend_init::seed_persistence_device_types(persistence).await?;
+    backend_init::init_persistence_jwt_secret(persistence).await?;
+    backend_init::seed_persistence_admin_user(persistence).await?;
+    backend_init::init_persistence_ca_certificate(persistence).await?;
+    backend_init::write_persistence_tls_certs(persistence, &config.certs_dir).await?;
 
     let result = InitCommandResult {
         status: "ok",

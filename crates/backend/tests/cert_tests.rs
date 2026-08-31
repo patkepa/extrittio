@@ -19,9 +19,10 @@ use extrittio_backend::domains::identity::certificate_types::{
 use extrittio_backend::repositories::cert_repo;
 use extrittio_backend::services::cert_service;
 
-const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations/postgres");
+const MIGRATIONS: EmbeddedMigrations = embed_migrations!("../backend-postgres/migrations");
 const DEFAULT_TEST_DATABASE_URL: &str =
     "postgres://extrittio:extrittio@127.0.0.1:5432/extrittio?connect_timeout=2";
+const TEST_TENANT_ID: &str = extrittio_backend::tenancy::DEFAULT_TENANT_ID;
 const TEST_BLUEPRINT_ID: &str = "cert-test-blueprint";
 const TEST_BLUEPRINT_REVISION_ID: &str = "cert-test-blueprint-r1";
 static TEST_DB_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
@@ -48,11 +49,12 @@ fn test_context() -> extrittio_backend::auth::context::RequestContext {
         sub: 1,
         username: "admin".to_string(),
         role: "admin".to_string(),
-        tenant_id: Some(extrittio_backend::tenancy::DEFAULT_TENANT_ID.to_string()),
+        tenant_id: Some(TEST_TENANT_ID.to_string()),
         scopes: Vec::new(),
         permission_version: 1,
         exp: 0,
     })
+    .expect("test claims contain a valid tenant")
 }
 
 fn setup_test_db() -> Pool<ConnectionManager<PgConnection>> {
@@ -134,9 +136,12 @@ async fn setup_app_with_ca() -> (axum::Router, Pool<ConnectionManager<PgConnecti
         let ca = cert_service::generate_ca_certificate().unwrap();
         insert_generated_ca(&mut conn, ca);
     }
+    let database = extrittio_backend::persistence::postgres::create_runtime(db_pool.clone());
+    let persistence = database.repositories().clone();
 
     let state = Arc::new(extrittio_backend::state::AppState {
-        persistence: extrittio_backend::persistence::postgres::create_persistence(db_pool.clone()),
+        persistence,
+        database,
         zenoh_session: Arc::new(zenoh_session),
         zenoh_tls_enabled: false,
         zenoh_port: 7447,
@@ -203,7 +208,9 @@ fn test_generate_device_certificate() {
 
     // Generate device cert
     let device_id = "test-device-001";
-    let device_cert = cert_service::generate_device_certificate(device_id, &ca).unwrap();
+    let device_cert =
+        cert_service::generate_device_certificate_for_tenant(TEST_TENANT_ID, device_id, &ca)
+            .unwrap();
 
     assert_eq!(device_cert.device_id, device_id);
     assert!(
@@ -248,8 +255,12 @@ fn test_different_devices_get_different_certs() {
     let new_ca = cert_service::generate_ca_certificate().unwrap();
     let ca = insert_generated_ca(&mut conn, new_ca);
 
-    let cert1 = cert_service::generate_device_certificate("device-aaa", &ca).unwrap();
-    let cert2 = cert_service::generate_device_certificate("device-bbb", &ca).unwrap();
+    let cert1 =
+        cert_service::generate_device_certificate_for_tenant(TEST_TENANT_ID, "device-aaa", &ca)
+            .unwrap();
+    let cert2 =
+        cert_service::generate_device_certificate_for_tenant(TEST_TENANT_ID, "device-bbb", &ca)
+            .unwrap();
 
     // Different devices should get different keys and certs
     assert_ne!(cert1.private_key_pem, cert2.private_key_pem);
@@ -332,7 +343,7 @@ fn test_device_certificate_crud() {
             created_at: chrono::Utc::now(),
         }),
     };
-    let persistence = postgres::create_persistence(pool.clone());
+    let persistence = postgres::create_repositories(pool.clone());
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         device_catalog_service::create(
             &ctx,
@@ -346,9 +357,10 @@ fn test_device_certificate_crud() {
     let mut conn = pool.get().unwrap();
 
     // Device cert was auto-generated on device creation
-    let cert = cert_repo::get_device_certificate(&mut conn, "dev-cert-test")
-        .unwrap()
-        .expect("Device cert should have been auto-generated");
+    let cert =
+        cert_repo::get_device_certificate_for_tenant(&mut conn, TEST_TENANT_ID, "dev-cert-test")
+            .unwrap()
+            .expect("Device cert should have been auto-generated");
     assert_eq!(cert.device_id, "dev-cert-test");
     assert!(!cert.private_key_pem.is_empty());
     assert!(
@@ -357,17 +369,25 @@ fn test_device_certificate_crud() {
     );
 
     // Clear private key
-    cert_repo::clear_device_private_key(&mut conn, cert.id).unwrap();
-    let after_clear = cert_repo::get_device_certificate(&mut conn, "dev-cert-test")
-        .unwrap()
-        .unwrap();
+    cert_repo::clear_device_private_key_for_tenant(&mut conn, TEST_TENANT_ID, cert.id).unwrap();
+    let after_clear =
+        cert_repo::get_device_certificate_for_tenant(&mut conn, TEST_TENANT_ID, "dev-cert-test")
+            .unwrap()
+            .unwrap();
     assert!(after_clear.private_key_pem.is_empty());
 
     // Delete device certificates
-    let deleted = cert_repo::delete_device_certificates(&mut conn, "dev-cert-test").unwrap();
+    let deleted = cert_repo::delete_device_certificates_for_tenant(
+        &mut conn,
+        TEST_TENANT_ID,
+        "dev-cert-test",
+    )
+    .unwrap();
     assert_eq!(deleted, 1);
 
-    let gone = cert_repo::get_device_certificate(&mut conn, "dev-cert-test").unwrap();
+    let gone =
+        cert_repo::get_device_certificate_for_tenant(&mut conn, TEST_TENANT_ID, "dev-cert-test")
+            .unwrap();
     assert!(gone.is_none());
 }
 

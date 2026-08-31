@@ -3,6 +3,10 @@ resolver = "2"
 members = [
     "apps/extrittio",
     "crates/backend",
+    "crates/backend-adapter-tests",
+    "crates/backend-core",
+    "crates/backend-postgres",
+    "crates/backend-turso",
     "crates/common",
     "crates/device-contract",
     "crates/openthread-runtime",

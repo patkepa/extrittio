@@ -1,7 +1,7 @@
 use prost::Message;
 use tracing::{info, warn};
 
-use crate::persistence::Persistence;
+use crate::persistence::RepositorySet;
 use crate::services::log_service;
 use crate::tenancy::DeviceIdentity;
 
@@ -11,7 +11,7 @@ use extrittio_common::extrittio::DeviceLog;
 ///
 /// Logs and drops messages from unregistered devices or malformed payloads.
 pub async fn handle_device_log(
-    persistence: &Persistence,
+    persistence: &RepositorySet,
     identity: &DeviceIdentity,
     topic_device_id: &str,
     payload: &[u8],

@@ -16,7 +16,6 @@ use crate::domains::identity::certificate_types::{
     ReplaceCertificateOutcome, StoredPrivateKeyRecord,
 };
 use crate::error::AppError;
-use crate::tenancy::DEFAULT_TENANT_ID;
 
 const ENCRYPTED_KEY_PREFIX: &str = "enc:v1:";
 const KEY_ENCRYPTION_SECRET_ENV: &str = "EXTRITTIO_KEY_ENCRYPTION_SECRET";
@@ -51,15 +50,6 @@ pub fn generate_ca_certificate() -> Result<NewCaCertificateRecord, AppError> {
         private_key_pem: protect_private_key(&key_pair.serialize_pem())?,
         certificate_pem: ca_cert.pem(),
     })
-}
-
-/// Generate a device certificate signed by the CA (Ed25519, 1-year validity).
-/// CN is set to the device ID.
-pub fn generate_device_certificate(
-    device_id: &str,
-    ca: &CaCertificateRecord,
-) -> Result<NewDeviceCertificateRecord, AppError> {
-    generate_device_certificate_for_tenant(DEFAULT_TENANT_ID, device_id, ca)
 }
 
 /// Generate a tenant-owned device certificate signed by the CA.
@@ -344,7 +334,15 @@ fn protect_private_key(private_key_pem: &str) -> Result<String, AppError> {
         .fill(&mut nonce_bytes)
         .map_err(|_| AppError::Internal("Failed to generate private-key nonce".into()))?;
 
-    let key_bytes = key_encryption_key(&secret);
+    protect_private_key_with_secret_and_nonce(private_key_pem, &secret, nonce_bytes)
+}
+
+fn protect_private_key_with_secret_and_nonce(
+    private_key_pem: &str,
+    secret: &str,
+    nonce_bytes: [u8; 12],
+) -> Result<String, AppError> {
+    let key_bytes = key_encryption_key(secret);
     let key =
         LessSafeKey::new(UnboundKey::new(&AES_256_GCM, &key_bytes).map_err(|_| {
             AppError::Internal("Failed to create private-key encryption key".into())
@@ -376,6 +374,14 @@ fn unprotect_private_key(stored_value: &str) -> Result<String, AppError> {
         )));
     };
 
+    unprotect_private_key_with_secret(stored_value, &secret)
+}
+
+fn unprotect_private_key_with_secret(stored_value: &str, secret: &str) -> Result<String, AppError> {
+    if !is_protected_private_key(stored_value) {
+        return Ok(stored_value.to_string());
+    }
+
     let encrypted = stored_value.trim_start_matches(ENCRYPTED_KEY_PREFIX);
     let (nonce, ciphertext) = encrypted
         .split_once(':')
@@ -390,7 +396,7 @@ fn unprotect_private_key(stored_value: &str) -> Result<String, AppError> {
         .decode(ciphertext)
         .map_err(|_| AppError::Internal("Invalid private-key ciphertext encoding".into()))?;
 
-    let key_bytes = key_encryption_key(&secret);
+    let key_bytes = key_encryption_key(secret);
     let key =
         LessSafeKey::new(UnboundKey::new(&AES_256_GCM, &key_bytes).map_err(|_| {
             AppError::Internal("Failed to create private-key encryption key".into())
@@ -409,4 +415,47 @@ fn unprotect_private_key(stored_value: &str) -> Result<String, AppError> {
 
 fn key_encryption_key(secret: &str) -> [u8; 32] {
     Sha256::digest(secret.as_bytes()).into()
+}
+
+#[cfg(test)]
+mod compatibility_tests {
+    use super::*;
+
+    const ENCRYPTED_PRIVATE_KEY_V1: &str =
+        include_str!("../../../tests/fixtures/encrypted-private-key-v1.json");
+
+    #[test]
+    fn encrypted_private_key_v1_fixture_remains_readable_and_writable() {
+        let fixture: serde_json::Value = serde_json::from_str(ENCRYPTED_PRIVATE_KEY_V1).unwrap();
+        let secret = fixture["secret"].as_str().unwrap();
+        let plaintext = fixture["plaintext"].as_str().unwrap();
+        let stored = fixture["stored"].as_str().unwrap();
+        let nonce: [u8; 12] = fixture["nonce_hex"]
+            .as_str()
+            .unwrap()
+            .as_bytes()
+            .chunks_exact(2)
+            .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+
+        assert_eq!(
+            unprotect_private_key_with_secret(stored, secret).unwrap(),
+            plaintext
+        );
+        assert_eq!(
+            protect_private_key_with_secret_and_nonce(plaintext, secret, nonce).unwrap(),
+            stored
+        );
+    }
+
+    #[test]
+    fn legacy_plaintext_private_key_remains_readable() {
+        let plaintext = "-----BEGIN PRIVATE KEY-----\nlegacy\n-----END PRIVATE KEY-----\n";
+        assert_eq!(
+            unprotect_private_key_with_secret(plaintext, "unused").unwrap(),
+            plaintext
+        );
+    }
 }

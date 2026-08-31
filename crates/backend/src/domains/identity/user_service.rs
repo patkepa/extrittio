@@ -1,5 +1,4 @@
-use crate::auth::Claims;
-use crate::auth::context::RequestContext;
+use crate::auth::context::{MappedUserClaims, RequestContext};
 use crate::auth::policy::{self, Permission};
 use crate::auth::{hash_password, verify_password};
 use crate::domains::identity::role_types::RoleRecord;
@@ -129,29 +128,39 @@ pub async fn authenticate(
     Ok(authenticated_user_from_details(credentials.details))
 }
 
-pub async fn context_from_claims(
+pub(crate) async fn context_from_mapped_claims(
     repository: &dyn UserRepository,
-    claims: Claims,
+    mapped_claims: MappedUserClaims,
 ) -> Result<RequestContext, AppError> {
-    let base_context = RequestContext::from_claims(claims.clone());
+    let claims = mapped_claims.claims();
     let details = repository
-        .get_details(base_context.tenant_id(), claims.sub)
+        .get_details(mapped_claims.tenant_id(), claims.sub)
         .await?
         .ok_or(AppError::Unauthorized)?;
+    if details.user.id != claims.sub || details.user.tenant_id != mapped_claims.tenant_id().as_str()
+    {
+        tracing::error!(
+            user_id = claims.sub,
+            tenant_id = %mapped_claims.tenant_id(),
+            "security.user_identity_scope_mismatch"
+        );
+        return Err(AppError::Unauthorized);
+    }
     if !details.user.is_active || details.user.permission_version != claims.permission_version {
         return Err(AppError::Unauthorized);
     }
 
     let authenticated = authenticated_user_from_details(details);
     let permissions = Permission::from_keys(&authenticated.permissions);
-    Ok(RequestContext {
-        user_id: authenticated.id,
-        username: authenticated.username,
-        role: authenticated.role,
-        tenant_id: base_context.tenant_id,
-        scopes: authenticated.permissions,
+    let (_, tenant_id) = mapped_claims.into_parts();
+    Ok(RequestContext::authenticated(
+        authenticated.id,
+        authenticated.username,
+        authenticated.role,
+        tenant_id,
+        authenticated.permissions,
         permissions,
-    })
+    ))
 }
 
 pub async fn set_roles(

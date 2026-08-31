@@ -1,14 +1,14 @@
 use extrittio_device_contract::{CompiledContractDocument, PayloadEncoding, RouteDirection};
 use tracing::warn;
 
-use crate::persistence::Persistence;
+use crate::persistence::RepositorySet;
 use crate::rule_engine::cache::RuleCache;
 use crate::tenancy::DeviceIdentity;
 
 /// Dispatch an arbitrary device address by matching it against the device's
 /// materialized contract. Addresses absent from the contract are ignored.
 pub async fn handle_contract_ingress(
-    persistence: &Persistence,
+    persistence: &RepositorySet,
     identity: &DeviceIdentity,
     topic: &str,
     payload: &[u8],

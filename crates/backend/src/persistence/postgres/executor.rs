@@ -33,15 +33,6 @@ impl PostgresExecutor {
         .await
         .map_err(|error| PersistenceError::Internal(format!("database task failed: {error}")))?
     }
-
-    #[must_use]
-    pub fn connection_counts(&self) -> (i32, i32) {
-        let state = self.pool.state();
-        (
-            state.connections as i32 - state.idle_connections as i32,
-            state.idle_connections as i32,
-        )
-    }
 }
 
 pub fn map_diesel_error(error: diesel::result::Error) -> PersistenceError {

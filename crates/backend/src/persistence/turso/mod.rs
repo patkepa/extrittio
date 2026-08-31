@@ -24,11 +24,10 @@ mod rules;
 mod shadows;
 mod telemetry;
 mod users;
-mod zones;
 
 use std::sync::Arc;
 
-use crate::persistence::{BackendDescriptor, Persistence, PersistencePorts};
+use crate::persistence::{DatabaseRuntime, RepositoryPorts, RepositorySet};
 
 pub use database::{LogicalArchiveInfo, TursoBackupInfo, TursoDatabase, TursoDatabaseInfo};
 
@@ -45,39 +44,46 @@ impl TursoAdapter {
 }
 
 #[must_use]
-pub fn create_persistence(database: Arc<TursoDatabase>) -> Persistence {
-    let path = database.path().to_path_buf();
+pub fn create_repositories(database: Arc<TursoDatabase>) -> RepositorySet {
+    build_repositories(database)
+}
+
+#[must_use]
+pub fn create_runtime(database: Arc<TursoDatabase>) -> DatabaseRuntime {
+    let repositories = build_repositories(database.clone());
+    DatabaseRuntime::turso(repositories, database)
+}
+
+fn build_repositories(database: Arc<TursoDatabase>) -> RepositorySet {
+    let zones = crate::database::turso_zones(&database);
     let adapter = Arc::new(TursoAdapter::new(database));
-    Persistence::new(
-        BackendDescriptor::turso(path),
-        PersistencePorts {
-            activity: adapter.clone(),
-            analytics: adapter.clone(),
-            api_keys: adapter.clone(),
-            alerts: adapter.clone(),
-            audit: adapter.clone(),
-            bootstrap: adapter.clone(),
-            certificates: adapter.clone(),
-            commands: adapter.clone(),
-            configuration: adapter.clone(),
-            dashboard: adapter.clone(),
-            device_blueprints: adapter.clone(),
-            device_types: adapter.clone(),
-            devices: adapter.clone(),
-            events: adapter.clone(),
-            fleets: adapter.clone(),
-            firmware: adapter.clone(),
-            logs: adapter.clone(),
-            metrics: adapter.clone(),
-            outbox: adapter.clone(),
-            roles: adapter.clone(),
-            rules: adapter.clone(),
-            shadows: adapter.clone(),
-            telemetry: adapter.clone(),
-            users: adapter.clone(),
-            zones: adapter,
-        },
-    )
+    RepositorySet::new(RepositoryPorts {
+        activity: adapter.clone(),
+        analytics: adapter.clone(),
+        api_keys: adapter.clone(),
+        alerts: adapter.clone(),
+        audit: adapter.clone(),
+        bootstrap: adapter.clone(),
+        certificates: adapter.clone(),
+        commands: adapter.clone(),
+        configuration: adapter.clone(),
+        dashboard: adapter.clone(),
+        device_blueprints: adapter.clone(),
+        device_types: adapter.clone(),
+        devices: adapter.clone(),
+        events: adapter.clone(),
+        fleets: adapter.clone(),
+        firmware: adapter.clone(),
+        logs: adapter.clone(),
+        metrics: adapter.clone(),
+        outbox: adapter.clone(),
+        roles: adapter.clone(),
+        rules: adapter.clone(),
+        shadows: adapter.clone(),
+        telemetry: adapter.clone(),
+        users: adapter.clone(),
+        zones,
+    })
 }
 
 #[cfg(test)]

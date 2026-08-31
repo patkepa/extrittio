@@ -53,9 +53,11 @@ pub trait AlertRepository: Send + Sync {
         &self,
         cooldowns: Vec<CooldownRecord>,
     ) -> Result<(), PersistenceError>;
-    async fn delete_resolved_before(
+    /// System-scoped retention operation. Unlike tenant-facing alert CRUD,
+    /// retention must cover every tenant and must never fabricate a default
+    /// tenant identity.
+    async fn delete_all_resolved_before(
         &self,
-        tenant: &TenantId,
         cutoff: NaiveDateTime,
     ) -> Result<usize, PersistenceError>;
 }

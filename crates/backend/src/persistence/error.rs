@@ -44,9 +44,6 @@ pub enum PersistenceError {
     #[error("database is unavailable: {0}")]
     Unavailable(String),
 
-    #[error("database migration failed: {0}")]
-    Migration(String),
-
     #[error("database returned corrupt data: {0}")]
     CorruptData(String),
 

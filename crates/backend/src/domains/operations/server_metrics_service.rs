@@ -13,10 +13,10 @@ use crate::domains::operations::metrics_types::{
     MetricsHistory, MetricsSnapshot, NewAppMetricRecord, NewSystemMetricRecord,
 };
 use crate::error::AppError;
-use crate::persistence::Persistence;
+use crate::persistence::RepositorySet;
 use crate::state::AppState;
 
-pub async fn run_system_metrics_collector(persistence: Persistence, interval_secs: u64) {
+pub async fn run_system_metrics_collector(persistence: RepositorySet, interval_secs: u64) {
     let interval_secs = interval_secs.max(1);
     info!(
         "System metrics collector started ({}s interval)",
@@ -115,7 +115,7 @@ pub async fn run_app_metrics_flusher(state: Arc<AppState>, interval_secs: u64) {
             state.metrics_accumulator.drain();
         let zenoh_in = state.zenoh_metrics.messages_in.swap(0, Ordering::Relaxed);
         let zenoh_out = state.zenoh_metrics.messages_out.swap(0, Ordering::Relaxed);
-        let (db_pool_active, db_pool_idle) = state.persistence.metrics.connection_counts();
+        let (db_pool_active, db_pool_idle) = state.database.connection_counts();
         let avg_latency_ms = if request_count > 0 {
             (latency_sum_micros as f64 / request_count as f64 / 1000.0) as f32
         } else {
@@ -142,7 +142,7 @@ pub async fn run_app_metrics_flusher(state: Arc<AppState>, interval_secs: u64) {
     }
 }
 
-pub async fn run_metrics_retention(persistence: Persistence, retention_hours: u64) {
+pub async fn run_metrics_retention(persistence: RepositorySet, retention_hours: u64) {
     let retention_hours = retention_hours.max(1);
     info!("Metrics retention started ({}h retention)", retention_hours);
     let mut tick = interval(Duration::from_secs(3600));

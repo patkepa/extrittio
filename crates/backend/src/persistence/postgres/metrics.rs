@@ -190,8 +190,4 @@ impl MetricsRepository for PostgresAdapter {
             })
             .await
     }
-
-    fn connection_counts(&self) -> (i32, i32) {
-        self.executor.connection_counts()
-    }
 }

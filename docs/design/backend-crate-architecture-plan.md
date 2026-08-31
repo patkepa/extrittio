@@ -833,7 +833,7 @@ Use a simple tenant-scoped domain such as zones as the walking skeleton:
 7. delete the old repository paths for the slice;
 8. prove tenant isolation, stable ordering, in-use conflict, not-found behavior, and geometry error mapping.
 
-Repository inspection found that PostgreSQL currently sorts zones by `created_at DESC`, while Turso sorts by `name, id`. P0 records both existing behaviors and the ordering ADR. In P2.4, make `name ASC, id ASC` the canonical list contract as an explicit compatibility-noted correction: it is deterministic and matches other catalog-style lists. Change both implementations in the pilot slice, add the shared canonical contract test, and update the characterized API expectation with an approved migration note.
+Repository inspection found that PostgreSQL sorted zones by `created_at DESC`, while Turso sorted by `name, id`. ADR-006 makes `name ASC, id ASC` the canonical list contract as an explicit compatibility-noted correction: it is deterministic and matches other catalog-style lists. The same ADR resolves the schema mismatch in favor of per-tenant binary name uniqueness, preserving Turso's shipped invariant; PostgreSQL adds a duplicate-data preflight and unique index. Both implementations and the shared contract suite must change together.
 
 If zones reveal an unsuitable generic abstraction, fix the core contract before moving the next slice.
 

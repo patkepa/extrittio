@@ -1,7 +1,7 @@
 use prost::Message;
 use tracing::{info, warn};
 
-use crate::persistence::Persistence;
+use crate::persistence::RepositorySet;
 use crate::services::command_service;
 use crate::tenancy::DeviceIdentity;
 
@@ -10,7 +10,7 @@ use extrittio_common::extrittio::DeviceCommandResponse;
 /// Decode a `DeviceCommandResponse` protobuf message and update the corresponding
 /// command record's status and response payload.
 pub async fn handle_command_response(
-    persistence: &Persistence,
+    persistence: &RepositorySet,
     identity: &DeviceIdentity,
     topic_device_id: &str,
     payload: &[u8],

@@ -102,6 +102,7 @@ mod tests {
             permission_version: 1,
             exp: 0,
         })
+        .expect("test claims contain a valid tenant")
     }
 
     fn create_record(name: &str) -> CreateApiKeyRecord {

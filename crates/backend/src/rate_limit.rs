@@ -8,6 +8,7 @@ use axum::response::{IntoResponse, Response};
 use dashmap::DashMap;
 use std::sync::Arc;
 
+use crate::auth::context::{MappedUserClaims, RequestContext, map_validated_user_claims};
 use crate::state::AppState;
 
 const MAX_RATE_LIMIT_KEYS: usize = 100_000;
@@ -263,7 +264,7 @@ pub async fn run_cleanup_worker(state: Arc<AppState>) {
 
 pub async fn rate_limit_middleware(
     State(state): State<Arc<AppState>>,
-    request: Request,
+    mut request: Request,
     next: Next,
 ) -> Response {
     let path = request.uri().path();
@@ -279,17 +280,8 @@ pub async fn rate_limit_middleware(
     let (limiter, key) = if path == "/api/v1/auth/login" {
         (&state.login_rate_limiter, format!("ip:{ip}"))
     } else {
-        let identity = request_token(&request)
-            .and_then(|token| crate::auth::validate_token(&token, &state.jwt_secret).ok())
-            .map(|claims| {
-                format!(
-                    "user:{}:{}",
-                    claims.tenant_id.as_deref().unwrap_or("default"),
-                    claims.sub
-                )
-            })
-            .unwrap_or_else(|| format!("ip:{ip}"));
-        (&state.api_rate_limiter, identity)
+        let key = general_rate_limit_key(&mut request, ip, &state.jwt_secret);
+        (&state.api_rate_limiter, key)
     };
 
     if limiter.check(&key) {
@@ -297,6 +289,35 @@ pub async fn rate_limit_middleware(
     } else {
         crate::error::AppError::TooManyRequests.into_response()
     }
+}
+
+fn general_rate_limit_key(request: &mut Request, ip: IpAddr, jwt_secret: &str) -> String {
+    if let Some(context) = request.extensions().get::<RequestContext>() {
+        return format!("user:{}:{}", context.tenant_id_str(), context.user_id);
+    }
+
+    if let Some(mapped_claims) = request.extensions().get::<MappedUserClaims>() {
+        return format!(
+            "user:{}:{}",
+            mapped_claims.tenant_id(),
+            mapped_claims.claims().sub
+        );
+    }
+
+    let Some(mapped_claims) = request_token(request)
+        .and_then(|token| crate::auth::validate_token(&token, jwt_secret).ok())
+        .and_then(|claims| map_validated_user_claims(claims).ok())
+    else {
+        return format!("ip:{ip}");
+    };
+
+    let key = format!(
+        "user:{}:{}",
+        mapped_claims.tenant_id(),
+        mapped_claims.claims().sub
+    );
+    request.extensions_mut().insert(mapped_claims);
+    key
 }
 
 fn request_token(request: &Request) -> Option<String> {
@@ -324,7 +345,35 @@ fn request_token(request: &Request) -> Option<String> {
 mod tests {
     use std::net::{IpAddr, Ipv4Addr};
 
-    use super::{TrustedProxy, cidr_contains_v4};
+    use axum::body::Body;
+    use axum::extract::Request;
+
+    use crate::auth::Claims;
+    use crate::auth::context::{MappedUserClaims, RequestContext};
+
+    use super::{TrustedProxy, cidr_contains_v4, general_rate_limit_key};
+
+    const JWT_SECRET: &str = "test-rate-limit-secret-with-enough-entropy";
+
+    fn request_with_token(token: &str) -> Request {
+        Request::builder()
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap()
+    }
+
+    fn token(tenant_id: &str) -> String {
+        crate::auth::create_token_with_scopes(
+            23,
+            "operator",
+            "viewer",
+            tenant_id,
+            vec!["devices:read".to_string()],
+            1,
+            JWT_SECRET,
+        )
+        .unwrap()
+    }
 
     #[test]
     fn cidr_matching_handles_ipv4_ranges() {
@@ -349,5 +398,70 @@ mod tests {
         let cidr = TrustedProxy::parse("172.30.0.0/24").expect("valid cidr");
         assert!(cidr.contains(IpAddr::V4(Ipv4Addr::new(172, 30, 0, 200))));
         assert!(!cidr.contains(IpAddr::V4(Ipv4Addr::new(172, 30, 1, 1))));
+    }
+
+    #[test]
+    fn mapped_request_context_is_the_preferred_rate_limit_identity() {
+        let mut request = Request::builder().body(Body::empty()).unwrap();
+        let context = RequestContext::from_claims(Claims {
+            sub: 23,
+            username: "operator".to_string(),
+            role: "viewer".to_string(),
+            tenant_id: Some("tenant-a".to_string()),
+            scopes: vec!["devices:read".to_string()],
+            permission_version: 1,
+            exp: usize::MAX,
+        })
+        .unwrap();
+        request.extensions_mut().insert(context);
+
+        let key = general_rate_limit_key(
+            &mut request,
+            IpAddr::V4(Ipv4Addr::new(203, 0, 113, 4)),
+            JWT_SECRET,
+        );
+
+        assert_eq!(key, "user:tenant-a:23");
+    }
+
+    #[test]
+    fn signed_token_uses_the_single_mapped_identity_and_caches_it_for_auth() {
+        let mut request = request_with_token(&token("tenant-a"));
+
+        let key = general_rate_limit_key(
+            &mut request,
+            IpAddr::V4(Ipv4Addr::new(203, 0, 113, 5)),
+            JWT_SECRET,
+        );
+
+        assert_eq!(key, "user:tenant-a:23");
+        assert!(request.extensions().get::<MappedUserClaims>().is_some());
+    }
+
+    #[test]
+    fn present_invalid_tenant_claim_uses_ip_instead_of_default_tenant() {
+        let mut request = request_with_token(&token(" \t"));
+
+        let key = general_rate_limit_key(
+            &mut request,
+            IpAddr::V4(Ipv4Addr::new(203, 0, 113, 6)),
+            JWT_SECRET,
+        );
+
+        assert_eq!(key, "ip:203.0.113.6");
+        assert!(request.extensions().get::<MappedUserClaims>().is_none());
+    }
+
+    #[test]
+    fn request_without_a_valid_mapped_identity_uses_ip() {
+        let mut request = Request::builder().body(Body::empty()).unwrap();
+
+        let key = general_rate_limit_key(
+            &mut request,
+            IpAddr::V4(Ipv4Addr::new(203, 0, 113, 7)),
+            JWT_SECRET,
+        );
+
+        assert_eq!(key, "ip:203.0.113.7");
     }
 }

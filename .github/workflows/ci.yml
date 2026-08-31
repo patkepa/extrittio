@@ -61,6 +61,19 @@ jobs:
           components: rustfmt
       - run: cargo fmt --all -- --check
 
+  backend-architecture:
+    name: Backend Architecture
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          cache-on-failure: true
+      - run: cargo xtask architecture
+
   backend-clippy:
     name: Backend Clippy
     runs-on: ubuntu-latest
@@ -77,6 +90,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler libpq-dev libssl-dev
+      - name: Verify backend package matrix
+        run: |
+          cargo check -p extrittio-backend-core
+          cargo check -p extrittio-backend --no-default-features --features openapi
+          cargo check -p extrittio-backend --no-default-features --features postgres
+          cargo check -p extrittio-backend --no-default-features --features turso
+          cargo clippy -p extrittio-backend-adapter-tests --all-features --all-targets -- -D warnings
       - run: cargo clippy --workspace --exclude extrittio-macos --all-targets -- -D warnings
 
   backend-test:
@@ -113,6 +133,8 @@ jobs:
       - name: Check PostgreSQL
         run: pg_isready -h 127.0.0.1 -p 5432 -U extrittio -d extrittio
       - run: cargo test --workspace --exclude extrittio-macos --features extrittio-backend/openapi
+      - name: Verify PostgreSQL adapter contract
+        run: cargo test -p extrittio-backend-adapter-tests --features postgres --test postgres_zones
       - name: Verify generated OpenAPI contract
         run: cargo run -p extrittio-backend --features openapi --bin openapi -- api/openapi.json
       - name: Check generated OpenAPI contract is committed
@@ -151,6 +173,7 @@ jobs:
         run: |
           cargo clippy -p extrittio --no-default-features --features turso --all-targets -- -D warnings
           cargo test -p extrittio-backend --no-default-features --features turso --lib
+          cargo test -p extrittio-backend-adapter-tests --features turso --test turso_zones
       - name: Build standalone Extrittio Edge executable
         run: |
           cargo build --profile "$EDGE_CARGO_PROFILE" -p extrittio --no-default-features --features edge
@@ -236,6 +259,7 @@ jobs:
     needs:
       - dependency-audit
       - dependency-policy
+      - backend-architecture
       - backend-fmt
       - backend-clippy
       - backend-test
