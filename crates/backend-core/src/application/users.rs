@@ -30,6 +30,7 @@ pub struct AuthenticatedUser {
     pub roles: Vec<Role>,
     pub permissions: Vec<String>,
     pub permission_version: i32,
+    pub auth_epoch: crate::UserAuthEpoch,
 }
 
 #[derive(Clone)]
@@ -220,6 +221,7 @@ impl UserApplication {
         tenant: &TenantId,
         user_id: i32,
         permission_version: i32,
+        auth_epoch: &str,
     ) -> Result<AuthenticatedUser, ApplicationError> {
         let details = self
             .repository
@@ -229,6 +231,7 @@ impl UserApplication {
         if !matches_identity(&details, tenant, user_id)
             || !details.user.is_active
             || details.user.permission_version != permission_version
+            || details.user.auth_epoch.as_str() != auth_epoch
         {
             return Err(ApplicationError::Unauthorized);
         }
@@ -280,6 +283,7 @@ pub fn authenticated_user_from_details(details: UserDetails) -> AuthenticatedUse
         roles: details.roles,
         permissions: details.permissions,
         permission_version: details.user.permission_version,
+        auth_epoch: details.user.auth_epoch,
     }
 }
 
@@ -589,6 +593,7 @@ mod tests {
                 created_at: Utc.timestamp_opt(1_700_000_000, 0).unwrap(),
                 is_active: active,
                 permission_version: 4,
+                auth_epoch: crate::UserAuthEpoch::new("auth-epoch-7"),
                 last_login_at: None,
             },
             roles,
@@ -1026,26 +1031,44 @@ mod tests {
         let (application, repository, _, _) = application(&tenant_id);
 
         repository.state.lock().unwrap().details = None;
-        assert_unauthorized(block_on(application.resolve_session(&tenant_id, 7, 4)).unwrap_err());
+        assert_unauthorized(
+            block_on(application.resolve_session(&tenant_id, 7, 4, "auth-epoch-7")).unwrap_err(),
+        );
 
         repository.state.lock().unwrap().details = Some(details(&tenant_id, false, Vec::new()));
-        assert_unauthorized(block_on(application.resolve_session(&tenant_id, 7, 4)).unwrap_err());
+        assert_unauthorized(
+            block_on(application.resolve_session(&tenant_id, 7, 4, "auth-epoch-7")).unwrap_err(),
+        );
 
         repository.state.lock().unwrap().details = Some(details(&tenant_id, true, Vec::new()));
-        assert_unauthorized(block_on(application.resolve_session(&tenant_id, 7, 3)).unwrap_err());
+        assert_unauthorized(
+            block_on(application.resolve_session(&tenant_id, 7, 3, "auth-epoch-7")).unwrap_err(),
+        );
+
+        // A replacement principal with the same tenant, numeric ID, username,
+        // and permission version must not revive the deleted user's session.
+        assert_unauthorized(
+            block_on(application.resolve_session(&tenant_id, 7, 4, "deleted-user-epoch"))
+                .unwrap_err(),
+        );
 
         repository.state.lock().unwrap().details =
             Some(details(&tenant("other-tenant"), true, Vec::new()));
-        assert_unauthorized(block_on(application.resolve_session(&tenant_id, 7, 4)).unwrap_err());
+        assert_unauthorized(
+            block_on(application.resolve_session(&tenant_id, 7, 4, "auth-epoch-7")).unwrap_err(),
+        );
 
         let mut wrong_id = details(&tenant_id, true, Vec::new());
         wrong_id.user.id = 8;
         repository.state.lock().unwrap().details = Some(wrong_id);
-        assert_unauthorized(block_on(application.resolve_session(&tenant_id, 7, 4)).unwrap_err());
+        assert_unauthorized(
+            block_on(application.resolve_session(&tenant_id, 7, 4, "auth-epoch-7")).unwrap_err(),
+        );
 
         let expected = details(&tenant_id, true, vec![role(&tenant_id, 1, ADMIN_ROLE)]);
         repository.state.lock().unwrap().details = Some(expected);
-        let resolved = block_on(application.resolve_session(&tenant_id, 7, 4)).unwrap();
+        let resolved =
+            block_on(application.resolve_session(&tenant_id, 7, 4, "auth-epoch-7")).unwrap();
         assert_eq!(resolved.role, ADMIN_ROLE);
     }
 

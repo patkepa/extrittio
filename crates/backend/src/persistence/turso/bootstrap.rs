@@ -108,6 +108,7 @@ impl BootstrapRepository for TursoAdapter {
             return Ok(SeedOwnerOutcome::SkippedUsersExist);
         }
         let now = Utc::now().timestamp_micros();
+        let auth_epoch = uuid::Uuid::new_v4().to_string();
         transaction
             .execute(
                 "INSERT INTO roles (tenant_id, name, description, is_system, created_at, updated_at)
@@ -145,9 +146,15 @@ impl BootstrapRepository for TursoAdapter {
         transaction
             .execute(
                 "INSERT INTO users (tenant_id, username, password_hash, role, is_active,
-                                    permission_version, created_at)
-                 VALUES (?1, ?2, ?3, 'owner', 1, 2, ?4)",
-                params![tenant.as_str(), owner.username, owner.password_hash, now],
+                                    permission_version, auth_epoch, created_at)
+                 VALUES (?1, ?2, ?3, 'owner', 1, 2, ?4, ?5)",
+                params![
+                    tenant.as_str(),
+                    owner.username,
+                    owner.password_hash,
+                    auth_epoch,
+                    now
+                ],
             )
             .await
             .map_err(map_error)?;

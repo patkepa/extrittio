@@ -205,6 +205,15 @@ pub async fn auth_middleware(
         }
     };
     let claims = mapped_claims.claims().clone();
+    let auth_epoch = claims.auth_epoch.as_deref().filter(|value| !value.is_empty());
+    let Some(auth_epoch) = auth_epoch else {
+        tracing::warn!(
+            path,
+            user_id = claims.sub,
+            "security.authentication_epoch_missing"
+        );
+        return Err(AppError::Unauthorized);
+    };
     let user = state
         .application()
         .users()
@@ -212,6 +221,7 @@ pub async fn auth_middleware(
             mapped_claims.tenant_id(),
             claims.sub,
             claims.permission_version,
+            auth_epoch,
         )
         .await?;
     let permissions = Permission::from_keys(&user.permissions);
@@ -265,6 +275,7 @@ mod tests {
             tenant_id: Some(tenant_id.to_string()),
             scopes: vec!["devices:read".to_string()],
             permission_version: 1,
+            auth_epoch: Some("test-auth-epoch".to_string()),
             exp: usize::MAX,
         })
         .unwrap()

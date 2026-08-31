@@ -297,8 +297,16 @@ fn general_rate_limit_key(request: &mut Request, ip: IpAddr, jwt_secret: &str) -
     }
 
     if let Some(mapped_claims) = request.extensions().get::<MappedUserClaims>() {
+        let Some(auth_epoch) = mapped_claims
+            .claims()
+            .auth_epoch
+            .as_deref()
+            .filter(|value| !value.is_empty())
+        else {
+            return format!("ip:{ip}");
+        };
         return format!(
-            "user:{}:{}",
+            "user:{}:{}:{auth_epoch}",
             mapped_claims.tenant_id(),
             mapped_claims.claims().sub
         );
@@ -310,9 +318,17 @@ fn general_rate_limit_key(request: &mut Request, ip: IpAddr, jwt_secret: &str) -
     else {
         return format!("ip:{ip}");
     };
+    let Some(auth_epoch) = mapped_claims
+        .claims()
+        .auth_epoch
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    else {
+        return format!("ip:{ip}");
+    };
 
     let key = format!(
-        "user:{}:{}",
+        "user:{}:{}:{auth_epoch}",
         mapped_claims.tenant_id(),
         mapped_claims.claims().sub
     );
@@ -370,6 +386,7 @@ mod tests {
             tenant_id,
             vec!["devices:read".to_string()],
             1,
+            "test-auth-epoch",
             JWT_SECRET,
         )
         .unwrap()
@@ -410,6 +427,7 @@ mod tests {
             tenant_id: Some("tenant-a".to_string()),
             scopes: vec!["devices:read".to_string()],
             permission_version: 1,
+            auth_epoch: Some("test-auth-epoch".to_string()),
             exp: usize::MAX,
         })
         .unwrap();
@@ -421,7 +439,7 @@ mod tests {
             JWT_SECRET,
         );
 
-        assert_eq!(key, "user:tenant-a:23");
+        assert_eq!(key, "user:tenant-a:23:test-auth-epoch");
     }
 
     #[test]

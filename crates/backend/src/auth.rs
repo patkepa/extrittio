@@ -31,6 +31,11 @@ pub struct Claims {
     pub scopes: Vec<String>,
     #[serde(default = "default_permission_version")]
     pub permission_version: i32,
+    /// Opaque persisted principal generation. Tokens issued before this claim
+    /// was introduced still decode, but authentication middleware rejects
+    /// them so a deleted numeric user ID can never be revived after reuse.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth_epoch: Option<String>,
     pub exp: usize,
 }
 
@@ -114,6 +119,7 @@ pub fn create_token(
     user_id: i32,
     username: &str,
     role: &str,
+    auth_epoch: &str,
     secret: &str,
 ) -> Result<String, jsonwebtoken::errors::Error> {
     create_token_with_scopes(
@@ -123,6 +129,7 @@ pub fn create_token(
         DEFAULT_TENANT_ID,
         Vec::new(),
         default_permission_version(),
+        auth_epoch,
         secret,
     )
 }
@@ -134,6 +141,7 @@ pub fn create_token_with_scopes(
     tenant_id: &str,
     scopes: Vec<String>,
     permission_version: i32,
+    auth_epoch: &str,
     secret: &str,
 ) -> Result<String, jsonwebtoken::errors::Error> {
     #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
@@ -149,6 +157,7 @@ pub fn create_token_with_scopes(
         tenant_id: Some(tenant_id.to_string()),
         scopes,
         permission_version,
+        auth_epoch: Some(auth_epoch.to_string()),
         exp: expiration,
     };
 
@@ -182,6 +191,7 @@ mod tests {
         role: &'a str,
         scopes: Vec<String>,
         permission_version: i32,
+        auth_epoch: &'a str,
         exp: usize,
     }
 
@@ -193,6 +203,7 @@ mod tests {
         tenant_id: Option<String>,
         scopes: Vec<String>,
         permission_version: i32,
+        auth_epoch: &'a str,
         exp: usize,
     }
 
@@ -210,6 +221,7 @@ mod tests {
                 role: "viewer",
                 scopes: Vec::new(),
                 permission_version: 1,
+                auth_epoch: "test-auth-epoch",
                 exp: expiration(),
             },
             &EncodingKey::from_secret(SECRET.as_bytes()),
@@ -235,6 +247,7 @@ mod tests {
                 tenant_id: None,
                 scopes: Vec::new(),
                 permission_version: 1,
+                auth_epoch: "test-auth-epoch",
                 exp: expiration(),
             },
             &EncodingKey::from_secret(SECRET.as_bytes()),
@@ -251,10 +264,11 @@ mod tests {
 
     #[test]
     fn default_login_compatibility_token_contains_an_explicit_tenant() {
-        let token = create_token(1, "owner", "owner", SECRET).unwrap();
+        let token = create_token(1, "owner", "owner", "test-auth-epoch", SECRET).unwrap();
         let claims = validate_token(&token, SECRET).unwrap();
 
         assert_eq!(claims.tenant_id.as_deref(), Some("default"));
+        assert_eq!(claims.auth_epoch.as_deref(), Some("test-auth-epoch"));
     }
 
     #[test]

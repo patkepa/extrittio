@@ -28,7 +28,7 @@ pub use roles::{
 pub use users::{
     ChangePasswordOutcome, CreateUserOutcome, DeleteUserOutcome, EncodedPasswordHash, NewUser,
     RecordSuccessfulLoginOutcome, SetUserRolesOutcome, User, UserCredentials, UserDetails,
-    UserPage, UserRepository,
+    UserAuthEpoch, UserPage, UserRepository,
 };
 pub use zones::{
     DeleteZoneOutcome, NewZone, RuleZoneSnapshotRepository, Zone, ZonePatch, ZoneRepository,

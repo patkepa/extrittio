@@ -97,6 +97,7 @@ pub(crate) async fn login(
         user.tenant_id.as_str(),
         user.permissions.clone(),
         user.permission_version,
+        user.auth_epoch.as_str(),
         &jwt_secret,
     )
     .map_err(|e| AppError::Auth(e.to_string()))?;

@@ -1510,6 +1510,7 @@ dependencies = [
  "sha2",
  "thiserror",
  "tokio",
+ "uuid",
 ]
 
 [[package]]

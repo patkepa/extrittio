@@ -195,6 +195,7 @@ mod tests {
             tenant_id: tenant_id.map(str::to_string),
             scopes: vec!["devices:read".to_string()],
             permission_version: 1,
+            auth_epoch: Some("test-auth-epoch".to_string()),
             exp: usize::MAX,
         }
     }

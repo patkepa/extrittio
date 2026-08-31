@@ -452,6 +452,7 @@ pub struct User {
     pub is_active: bool,
     pub permission_version: i32,
     pub last_login_at: Option<NaiveDateTime>,
+    pub auth_epoch: String,
 }
 
 #[derive(Insertable)]
@@ -461,6 +462,7 @@ pub struct NewUser {
     pub username: String,
     pub password_hash: String,
     pub role: String,
+    pub auth_epoch: String,
 }
 
 // ---------------------------------------------------------------------------

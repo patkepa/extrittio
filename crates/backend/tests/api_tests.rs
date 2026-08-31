@@ -32,6 +32,7 @@ fn tenant_context(tenant_id: &str) -> extrittio_backend::auth::context::RequestC
         tenant_id: Some(tenant_id.to_string()),
         scopes: Vec::new(),
         permission_version: 1,
+        auth_epoch: Some("test-auth-epoch".to_string()),
         exp: 0,
     })
     .expect("test claims contain a valid tenant")
@@ -49,6 +50,7 @@ fn scoped_context(scopes: &[&str]) -> extrittio_backend::auth::context::RequestC
         tenant_id: Some(extrittio_backend::tenancy::DEFAULT_TENANT_ID.to_string()),
         scopes: scopes.iter().map(|scope| (*scope).to_string()).collect(),
         permission_version: 1,
+        auth_epoch: Some("test-auth-epoch".to_string()),
         exp: 0,
     })
     .expect("test claims contain a valid tenant")

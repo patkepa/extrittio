@@ -8,16 +8,17 @@ use extrittio_backend_core::{
     ADMIN_ROLE, ChangePasswordOutcome, CreateUserOutcome, DeleteUserOutcome, EncodedPasswordHash,
     NewUser, OWNER_ROLE, PageRequest, PersistenceError, RecordSuccessfulLoginOutcome, Role,
     SetUserRolesOutcome, TenantId, User, UserCredentials, UserDetails, UserPage, UserRepository,
-    VIEWER_ROLE,
+    UserAuthEpoch, VIEWER_ROLE,
 };
 use turso::{Connection, Row, params};
+use uuid::Uuid;
 
 use crate::error::map_error;
 use crate::row;
 use crate::{TursoConnectionHandles, TursoDatabase};
 
 const USER_COLUMNS: &str = "id, tenant_id, username, role, created_at, is_active, \
-                           permission_version, last_login_at";
+                           permission_version, auth_epoch, last_login_at";
 const ROLE_COLUMNS: &str = "id, tenant_id, name, description, is_system, created_at, updated_at";
 
 fn decode_user(record: &Row) -> Result<User, PersistenceError> {
@@ -34,8 +35,9 @@ fn decode_user(record: &Row) -> Result<User, PersistenceError> {
             record.get(6).map_err(map_error)?,
             "users.permission_version",
         )?,
+        auth_epoch: UserAuthEpoch::new(record.get::<String>(7).map_err(map_error)?),
         last_login_at: record
-            .get::<Option<i64>>(7)
+            .get::<Option<i64>>(8)
             .map_err(map_error)?
             .map(row::datetime)
             .transpose()?,
@@ -296,14 +298,15 @@ impl UserRepository for TursoUserRepository {
         transaction
             .execute(
                 "INSERT INTO users (tenant_id, username, password_hash, role, \
-                                    is_active, permission_version, created_at) \
-                 VALUES (?1, ?2, ?3, ?4, 1, 1, ?5)",
+                                    is_active, permission_version, created_at, auth_epoch) \
+                 VALUES (?1, ?2, ?3, ?4, 1, 1, ?5, ?6)",
                 params![
                     tenant.as_str(),
                     user.username,
                     user.password_hash.into_inner(),
                     primary_role(&roles),
-                    Utc::now().timestamp_micros()
+                    Utc::now().timestamp_micros(),
+                    Uuid::new_v4().to_string()
                 ],
             )
             .await
@@ -408,8 +411,9 @@ impl UserRepository for TursoUserRepository {
         tenant: &TenantId,
         username: &str,
     ) -> Result<Option<UserCredentials>, PersistenceError> {
-        let connection = self.handles.connect()?;
-        let mut rows = connection
+        let mut connection = self.handles.connect()?;
+        let transaction = connection.transaction().await.map_err(map_error)?;
+        let mut rows = transaction
             .query(
                 "SELECT id, password_hash FROM users WHERE tenant_id = ?1 AND username = ?2",
                 params![tenant.as_str(), username],
@@ -417,13 +421,16 @@ impl UserRepository for TursoUserRepository {
             .await
             .map_err(map_error)?;
         let Some(record) = rows.next().await.map_err(map_error)? else {
+            drop(rows);
+            transaction.commit().await.map_err(map_error)?;
             return Ok(None);
         };
         let id = row::i32(record.get(0).map_err(map_error)?, "users.id")?;
         let password_hash = EncodedPasswordHash::new(record.get::<String>(1).map_err(map_error)?);
         drop(rows);
-        Ok(hydrate(&connection, tenant, id)
-            .await?
+        let details = hydrate(&transaction, tenant, id).await?;
+        transaction.commit().await.map_err(map_error)?;
+        Ok(details
             .map(|details| UserCredentials {
                 details,
                 password_hash,
@@ -435,7 +442,11 @@ impl UserRepository for TursoUserRepository {
         tenant: &TenantId,
         user_id: i32,
     ) -> Result<Option<UserDetails>, PersistenceError> {
-        hydrate(&self.handles.connect()?, tenant, user_id).await
+        let mut connection = self.handles.connect()?;
+        let transaction = connection.transaction().await.map_err(map_error)?;
+        let details = hydrate(&transaction, tenant, user_id).await?;
+        transaction.commit().await.map_err(map_error)?;
+        Ok(details)
     }
 
     async fn record_successful_login(

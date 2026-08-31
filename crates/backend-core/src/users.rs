@@ -39,6 +39,32 @@ impl fmt::Debug for EncodedPasswordHash {
     }
 }
 
+/// Durable, opaque identity generation for a persisted user principal.
+///
+/// Numeric user IDs are not sufficient session identities because some
+/// storage engines may reuse a deleted ID. JWTs bind to this value as well as
+/// the numeric ID and permission version so deleting and recreating a user can
+/// never revive an older session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserAuthEpoch(String);
+
+impl UserAuthEpoch {
+    #[must_use]
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    #[must_use]
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct User {
     pub id: i32,
@@ -50,6 +76,7 @@ pub struct User {
     pub created_at: DateTime<Utc>,
     pub is_active: bool,
     pub permission_version: i32,
+    pub auth_epoch: UserAuthEpoch,
     pub last_login_at: Option<DateTime<Utc>>,
 }
 

@@ -100,6 +100,7 @@ mod tests {
             tenant_id: Some(tenant_id.to_string()),
             scopes: Vec::new(),
             permission_version: 1,
+            auth_epoch: Some("test-auth-epoch".to_string()),
             exp: 0,
         })
         .expect("test claims contain a valid tenant")

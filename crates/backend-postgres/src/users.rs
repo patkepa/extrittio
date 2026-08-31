@@ -13,8 +13,9 @@ use extrittio_backend_core::{
     ADMIN_ROLE, ChangePasswordOutcome, CreateUserOutcome, DeleteUserOutcome, EncodedPasswordHash,
     NewUser, OWNER_ROLE, PageRequest, PersistenceError, RecordSuccessfulLoginOutcome, Role,
     SetUserRolesOutcome, TenantId, User, UserCredentials, UserDetails, UserPage, UserRepository,
-    VIEWER_ROLE,
+    UserAuthEpoch, VIEWER_ROLE,
 };
+use uuid::Uuid;
 
 use crate::error::map_diesel_error;
 use crate::models::{NewUser as NewUserRow, NewUserRole, Role as RoleRow};
@@ -33,6 +34,7 @@ struct StoredUser {
     is_active: bool,
     permission_version: i32,
     last_login_at: Option<NaiveDateTime>,
+    auth_epoch: String,
 }
 
 fn into_user(row: &StoredUser) -> QueryResult<User> {
@@ -45,6 +47,7 @@ fn into_user(row: &StoredUser) -> QueryResult<User> {
         created_at: row.created_at.and_utc(),
         is_active: row.is_active,
         permission_version: row.permission_version,
+        auth_epoch: UserAuthEpoch::new(row.auth_epoch.clone()),
         last_login_at: row.last_login_at.map(|timestamp| timestamp.and_utc()),
     })
 }
@@ -297,6 +300,7 @@ impl UserRepository for PostgresUserRepository {
                                 username: user.username,
                                 password_hash: user.password_hash.into_inner(),
                                 role: primary_role_name(&selected_roles).to_owned(),
+                                auth_epoch: Uuid::new_v4().to_string(),
                             })
                             .returning(StoredUser::as_returning())
                             .get_result::<StoredUser>(connection)?;
@@ -472,22 +476,27 @@ impl UserRepository for PostgresUserRepository {
         let username = username.to_owned();
         self.executor
             .run(move |connection| {
-                let row = users::table
-                    .filter(users::tenant_id.eq(tenant_id))
-                    .filter(users::username.eq(username))
-                    .select((StoredUser::as_select(), users::password_hash))
-                    .first::<(StoredUser, String)>(connection)
-                    .optional()
-                    .map_err(map_diesel_error)?;
-                row.map(|(row, password_hash)| {
-                    let password_hash = EncodedPasswordHash::new(password_hash);
-                    hydrate_user(connection, row).map(|details| UserCredentials {
-                        details,
-                        password_hash,
+                connection
+                    .build_transaction()
+                    .repeatable_read()
+                    .read_only()
+                    .run(|connection| {
+                        let row = users::table
+                            .filter(users::tenant_id.eq(tenant_id))
+                            .filter(users::username.eq(username))
+                            .select((StoredUser::as_select(), users::password_hash))
+                            .first::<(StoredUser, String)>(connection)
+                            .optional()?;
+                        row.map(|(row, password_hash)| {
+                            let password_hash = EncodedPasswordHash::new(password_hash);
+                            hydrate_user(connection, row).map(|details| UserCredentials {
+                                details,
+                                password_hash,
+                            })
+                        })
+                        .transpose()
                     })
-                })
-                .transpose()
-                .map_err(map_diesel_error)
+                    .map_err(map_diesel_error)
             })
             .await
     }
@@ -500,15 +509,20 @@ impl UserRepository for PostgresUserRepository {
         let tenant_id = tenant.as_str().to_owned();
         self.executor
             .run(move |connection| {
-                let row = users::table
-                    .filter(users::tenant_id.eq(tenant_id))
-                    .filter(users::id.eq(user_id))
-                    .select(StoredUser::as_select())
-                    .first::<StoredUser>(connection)
-                    .optional()
-                    .map_err(map_diesel_error)?;
-                row.map(|row| hydrate_user(connection, row))
-                    .transpose()
+                connection
+                    .build_transaction()
+                    .repeatable_read()
+                    .read_only()
+                    .run(|connection| {
+                        users::table
+                            .filter(users::tenant_id.eq(tenant_id))
+                            .filter(users::id.eq(user_id))
+                            .select(StoredUser::as_select())
+                            .first::<StoredUser>(connection)
+                            .optional()?
+                            .map(|row| hydrate_user(connection, row))
+                            .transpose()
+                    })
                     .map_err(map_diesel_error)
             })
             .await

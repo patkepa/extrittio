@@ -12,8 +12,9 @@ const FIRMWARE_BLUEPRINT_TARGETS: &str =
     include_str!("../migrations/0006_firmware_blueprint_targets.sql");
 const REMOVE_RETIRED_DEVICE_FEATURE: &str =
     include_str!("../migrations/0007_remove_retired_device_feature.sql");
+const USER_AUTH_EPOCH: &str = include_str!("../migrations/0008_user_auth_epoch.sql");
 
-pub const LATEST_SCHEMA_VERSION: i64 = 7;
+pub const LATEST_SCHEMA_VERSION: i64 = 8;
 
 const MIGRATIONS: &[(i64, &str)] = &[
     (1, BASELINE),
@@ -23,6 +24,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (5, RULE_BLUEPRINT_TARGETS),
     (6, FIRMWARE_BLUEPRINT_TARGETS),
     (7, REMOVE_RETIRED_DEVICE_FEATURE),
+    (8, USER_AUTH_EPOCH),
 ];
 
 pub(crate) async fn run(writer: &mut Connection) -> Result<(), TursoLifecycleError> {
@@ -171,7 +173,12 @@ mod tests {
                     (id, tenant_id, analyzer_device_id, host_key, label, status,
                      first_seen_at, last_seen_at, created_at, updated_at)
                  VALUES
-                    (1, 'default', 'device-a', 'host-a', 'Host A', 'online', 1, 1, 1, 1);",
+                    (1, 'default', 'device-a', 'host-a', 'Host A', 'online', 1, 1, 1, 1);
+                 INSERT INTO users
+                    (tenant_id, username, password_hash, role, created_at)
+                 VALUES
+                    ('default', 'legacy-user-a', 'hash-a', 'viewer', 1),
+                    ('default', 'legacy-user-b', 'hash-b', 'viewer', 1);",
             )
             .await
             .unwrap();
@@ -184,7 +191,7 @@ mod tests {
                 "SELECT max(version) FROM _extrittio_migrations"
             )
             .await,
-            7
+            8
         );
         assert_eq!(
             scalar(
@@ -210,6 +217,26 @@ mod tests {
             .await,
             0
         );
+        assert_eq!(
+            scalar(
+                &connection,
+                "SELECT count(DISTINCT auth_epoch) FROM users \
+                 WHERE username IN ('legacy-user-a', 'legacy-user-b') \
+                   AND auth_epoch IS NOT NULL AND auth_epoch <> ''"
+            )
+            .await,
+            2,
+            "the append-only migration backfills a distinct epoch per existing user"
+        );
+        let missing_epoch = connection
+            .execute(
+                "INSERT INTO users (tenant_id, username, password_hash, role, created_at) \
+                 VALUES ('default', 'missing-epoch', 'hash', 'viewer', 1)",
+                (),
+            )
+            .await
+            .expect_err("new rows must provide an authentication epoch");
+        assert!(missing_epoch.to_string().contains("users.auth_epoch is required"));
     }
 
     async fn scalar(connection: &Connection, sql: &str) -> i64 {

@@ -602,6 +602,7 @@ diesel::table! {
         is_active -> Bool,
         permission_version -> Int4,
         last_login_at -> Nullable<Timestamptz>,
+        auth_epoch -> Text,
     }
 }
 

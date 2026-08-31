@@ -46,9 +46,9 @@ mod tests {
             .map(|migration| migration.name().version().to_string())
             .collect::<Vec<_>>();
 
-        assert_eq!(versions.len(), 25);
+        assert_eq!(versions.len(), 26);
         assert_eq!(versions.first().map(String::as_str), Some("00000000000000"));
-        assert_eq!(versions.last().map(String::as_str), Some("20260831000000"));
+        assert_eq!(versions.last().map(String::as_str), Some("20260831010000"));
     }
 
     #[test]

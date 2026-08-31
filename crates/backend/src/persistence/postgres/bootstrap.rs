@@ -99,6 +99,7 @@ impl BootstrapRepository for PostgresAdapter {
                                 username: owner.username,
                                 password_hash: owner.password_hash,
                                 role: "owner".to_string(),
+                                auth_epoch: uuid::Uuid::new_v4().to_string(),
                             })
                             .returning(User::as_returning())
                             .get_result::<User>(connection)?;
