@@ -480,14 +480,18 @@ impl ThreadRuntime {
     }
 
     fn status_from_controller(&self, controller: &dyn ThreadControl) -> Result<ThreadStatus> {
-        let mut status = controller.status()?;
+        let status = controller.status()?;
         #[cfg(target_os = "macos")]
-        if status.addresses.is_empty()
-            && let Some(prefix) = status.mesh_local_prefix.as_deref()
-            && let Ok(address) = crate::discovery::macos_mesh_local_ipv6_address(prefix)
-        {
-            status.addresses.push(address.to_string());
-        }
+        let status = {
+            let mut status = status;
+            if status.addresses.is_empty()
+                && let Some(prefix) = status.mesh_local_prefix.as_deref()
+                && let Ok(address) = crate::discovery::macos_mesh_local_ipv6_address(prefix)
+            {
+                status.addresses.push(address.to_string());
+            }
+            status
+        };
         Ok(status)
     }
 
