@@ -1833,6 +1833,7 @@ export interface components {
             created_at: string;
             fingerprint: string;
         };
+        /** @description Plaintext credentials intentionally have no `Debug` implementation. */
         ChangePasswordRequest: {
             password: string;
         };
@@ -1928,6 +1929,7 @@ export interface components {
             network_name: string;
             pan_id?: string | null;
         };
+        /** @description Plaintext credentials intentionally have no `Debug` implementation. */
         CreateUserRequest: {
             password: string;
             role_ids?: number[] | null;
@@ -2171,6 +2173,7 @@ export interface components {
             level: string;
             message: string;
         };
+        /** @description Plaintext credentials intentionally have no `Debug` implementation. */
         LoginRequest: {
             /**
              * @description Return a bearer token for non-browser clients. Browser clients should
@@ -4560,6 +4563,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Shadow management permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Shadow not found */
             404: {
                 headers: {
@@ -4594,6 +4604,13 @@ export interface operations {
                     "application/json": components["schemas"]["ShadowResponse"];
                 };
             };
+            /** @description Shadow management permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Device not found */
             404: {
                 headers: {
@@ -4627,6 +4644,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ShadowResponse"];
                 };
+            };
+            /** @description Shadow management permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Device not found */
             404: {
