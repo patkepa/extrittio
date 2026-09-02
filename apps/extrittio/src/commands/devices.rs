@@ -61,6 +61,7 @@ pub(super) async fn create_device(
             Some(json!({
                 "name": args.name,
                 "device_type_id": device_type_id,
+                "blueprint_revision_id": args.blueprint_revision_id,
                 "fleet_id": args.fleet_id,
                 "firmware": args.firmware,
             })),

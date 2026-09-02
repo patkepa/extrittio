@@ -59,6 +59,7 @@ async fn upload_firmware(
         .context("failed to build firmware file part")?;
     let mut form = multipart::Form::new()
         .text("device_type_id", args.device_type_id.to_string())
+        .text("blueprint_revision_id", args.blueprint_revision_id)
         .part("file", file_part);
 
     if let Some(version) = args.version {
