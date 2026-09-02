@@ -448,7 +448,7 @@ fn compile_configuration(
     configuration: &crate::model::ConfigurationDefinition,
     context: &CompileContext,
 ) -> Result<CompiledConfiguration, ContractError> {
-    let mut desired = defaults_from_schema(&configuration.schema);
+    let mut desired = defaults_from_schema(&configuration.schema).unwrap_or(Value::Null);
     if !configuration.defaults.is_null() {
         merge_value(&mut desired, &configuration.defaults);
     }
@@ -466,26 +466,23 @@ fn compile_configuration(
     })
 }
 
-fn defaults_from_schema(schema: &Value) -> Value {
-    let Some(schema) = schema.as_object() else {
-        return Value::Null;
-    };
-    if let Some(default) = schema.get("default") {
-        return default.clone();
+fn defaults_from_schema(schema: &Value) -> Option<Value> {
+    let schema = schema.as_object()?;
+    if schema.contains_key("default") {
+        return schema.get("default").cloned();
     }
     if schema.get("type").and_then(Value::as_str) == Some("object") {
         let mut defaults = Map::new();
         if let Some(properties) = schema.get("properties").and_then(Value::as_object) {
             for (key, child_schema) in properties {
-                let child = defaults_from_schema(child_schema);
-                if !child.is_null() {
+                if let Some(child) = defaults_from_schema(child_schema) {
                     defaults.insert(key.clone(), child);
                 }
             }
         }
-        return Value::Object(defaults);
+        return Some(Value::Object(defaults));
     }
-    Value::Null
+    None
 }
 
 fn merge_value(target: &mut Value, overlay: &Value) {
@@ -588,6 +585,68 @@ mod tests {
         let mut context = context();
         context.configuration_layers = vec![json!({"sample_interval_seconds": 2})];
         let error = BlueprintCompiler::compile(&fixture(), &context).unwrap_err();
+        assert!(matches!(error, ContractError::InvalidInstance(_, _)));
+    }
+
+    #[test]
+    fn preserves_required_optional_and_nested_explicit_null_defaults() {
+        let mut blueprint = fixture().into_inner();
+        blueprint.spec.configuration.as_mut().unwrap().schema = json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["required_null", "nested"],
+            "properties": {
+                "required_null": {"type": "null", "default": null},
+                "optional_null": {"type": "null", "default": null},
+                "absent_null": {"type": "null"},
+                "nested": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["value"],
+                    "properties": {
+                        "value": {"type": "null", "default": null}
+                    }
+                }
+            }
+        });
+        let blueprint = validate_blueprint(blueprint).unwrap();
+        let mut context = context();
+        context.configuration_layers.clear();
+
+        let desired = BlueprintCompiler::compile(&blueprint, &context)
+            .unwrap()
+            .document
+            .configuration
+            .unwrap()
+            .desired;
+
+        assert_eq!(
+            desired,
+            json!({
+                "required_null": null,
+                "optional_null": null,
+                "nested": {"value": null}
+            })
+        );
+    }
+
+    #[test]
+    fn does_not_materialize_an_absent_null_default() {
+        let mut blueprint = fixture().into_inner();
+        blueprint.spec.configuration.as_mut().unwrap().schema = json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["required_null"],
+            "properties": {
+                "required_null": {"type": "null"}
+            }
+        });
+        let blueprint = validate_blueprint(blueprint).unwrap();
+        let mut context = context();
+        context.configuration_layers.clear();
+
+        let error = BlueprintCompiler::compile(&blueprint, &context).unwrap_err();
+
         assert!(matches!(error, ContractError::InvalidInstance(_, _)));
     }
 }

@@ -103,6 +103,8 @@ mod tests {
     use crate::domains::analytics::types::{
         AnalyticsMetric, AnalyticsMetricSelector, AnalyticsQuery, AnalyticsScope,
     };
+    use crate::domains::audit::port::AuditRepository;
+    use crate::domains::audit::types::NewAuditEventRecord;
     use crate::domains::commands::port::CommandRepository;
     use crate::domains::commands::types::NewCommandRecord;
     use crate::domains::configuration::repository::DeviceConfigRepository;
@@ -186,6 +188,73 @@ mod tests {
                 }]
             }
         })
+    }
+
+    #[tokio::test]
+    async fn activity_totals_remain_stable_beyond_the_final_page() {
+        let (_directory, adapter) = adapter().await;
+        let tenant = TenantId::new(DEFAULT_TENANT_ID).unwrap();
+        for index in 1..=2 {
+            AuditRepository::record(
+                &adapter,
+                &tenant,
+                NewAuditEventRecord {
+                    id: format!("audit-{index}"),
+                    actor_type: "user".into(),
+                    actor_id: Some("owner".into()),
+                    action: "device.read".into(),
+                    resource_type: "device".into(),
+                    resource_id: Some(format!("device-{index}")),
+                    outcome: "success".into(),
+                    request_id: format!("request-{index}"),
+                    metadata: json!({}),
+                },
+            )
+            .await
+            .unwrap();
+        }
+
+        for (offset, expected_len, expected_total) in [(1, 1, 2), (2, 0, 2), (3, 0, 2)] {
+            let page = ActivityRepository::list(
+                &adapter,
+                &tenant,
+                ActivityQuery {
+                    source: Some("audit".into()),
+                    severity: None,
+                    category: None,
+                    device_id: None,
+                    search: None,
+                    since: None,
+                    until: None,
+                    limit: 1,
+                    offset,
+                },
+            )
+            .await
+            .unwrap();
+            assert_eq!(page.data.len(), expected_len);
+            assert_eq!(page.total, expected_total);
+        }
+
+        let empty = ActivityRepository::list(
+            &adapter,
+            &tenant,
+            ActivityQuery {
+                source: Some("alert".into()),
+                severity: None,
+                category: None,
+                device_id: None,
+                search: None,
+                since: None,
+                until: None,
+                limit: 1,
+                offset: 2,
+            },
+        )
+        .await
+        .unwrap();
+        assert!(empty.data.is_empty());
+        assert_eq!(empty.total, 0);
     }
 
     #[tokio::test]

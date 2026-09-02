@@ -190,13 +190,13 @@ impl ActivityRepository for TursoAdapter {
                 ACTIVITY_QUERY,
                 params![
                     tenant.as_str(),
-                    query.source,
-                    query.severity,
-                    query.category,
-                    query.device_id,
+                    query.source.clone(),
+                    query.severity.clone(),
+                    query.category.clone(),
+                    query.device_id.clone(),
                     query.since.map(|value| value.and_utc().timestamp_micros()),
                     query.until.map(|value| value.and_utc().timestamp_micros()),
-                    search,
+                    search.clone(),
                     query.limit,
                     query.offset
                 ],
@@ -225,6 +225,29 @@ impl ActivityRepository for TursoAdapter {
                     .map_err(|error| PersistenceError::Internal(error.to_string()))?,
                 occurred_at: row::datetime(record.get(12).map_err(row::error)?)?.naive_utc(),
             });
+        }
+        if data.is_empty() && query.offset > 0 {
+            let mut first_page = connection
+                .query(
+                    ACTIVITY_QUERY,
+                    params![
+                        tenant.as_str(),
+                        query.source,
+                        query.severity,
+                        query.category,
+                        query.device_id,
+                        query.since.map(|value| value.and_utc().timestamp_micros()),
+                        query.until.map(|value| value.and_utc().timestamp_micros()),
+                        search,
+                        1_i64,
+                        0_i64
+                    ],
+                )
+                .await
+                .map_err(row::error)?;
+            if let Some(record) = first_page.next().await.map_err(row::error)? {
+                total = record.get(13).map_err(row::error)?;
+            }
         }
         Ok(ActivityEventPage { data, total })
     }
