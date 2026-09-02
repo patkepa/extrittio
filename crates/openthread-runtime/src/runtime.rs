@@ -480,7 +480,10 @@ impl ThreadRuntime {
     }
 
     fn status_from_controller(&self, controller: &dyn ThreadControl) -> Result<ThreadStatus> {
+        #[cfg(target_os = "macos")]
         let mut status = controller.status()?;
+        #[cfg(not(target_os = "macos"))]
+        let status = controller.status()?;
         #[cfg(target_os = "macos")]
         if status.addresses.is_empty()
             && let Some(prefix) = status.mesh_local_prefix.as_deref()

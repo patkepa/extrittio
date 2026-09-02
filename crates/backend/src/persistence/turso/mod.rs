@@ -146,7 +146,7 @@ mod tests {
     use crate::domains::telemetry::port::TelemetryRepository;
     use crate::domains::telemetry::types::{TelemetryQuery, TelemetryWrite};
     use crate::persistence::{BootstrapOwner, BootstrapRepository, BuiltinDeviceType};
-    use crate::tenancy::{DEFAULT_TENANT_ID, TenantId};
+    use crate::tenancy::{DEFAULT_TENANT_ID as TEST_TENANT_ID, TenantId};
     use extrittio_backend_core::{CreateUserOutcome, EncodedPasswordHash, NewUser, UserRepository};
 
     async fn adapter() -> (tempfile::TempDir, TursoAdapter) {
@@ -193,7 +193,7 @@ mod tests {
     #[tokio::test]
     async fn activity_totals_remain_stable_beyond_the_final_page() {
         let (_directory, adapter) = adapter().await;
-        let tenant = TenantId::new(DEFAULT_TENANT_ID).unwrap();
+        let tenant = TenantId::new(TEST_TENANT_ID).unwrap();
         for index in 1..=2 {
             AuditRepository::record(
                 &adapter,
@@ -260,7 +260,7 @@ mod tests {
     #[tokio::test]
     async fn device_blueprint_draft_and_revision_round_trip() {
         let (_directory, adapter) = adapter().await;
-        let tenant = TenantId::new(DEFAULT_TENANT_ID).unwrap();
+        let tenant = TenantId::new(TEST_TENANT_ID).unwrap();
         let now = Utc::now();
         let (created, draft) = DeviceBlueprintRepository::create(
             &adapter,
@@ -522,7 +522,7 @@ mod tests {
     #[tokio::test]
     async fn analytics_catalogs_and_queries_blueprint_metrics() {
         let (_directory, adapter) = adapter().await;
-        let tenant = TenantId::new(DEFAULT_TENANT_ID).unwrap();
+        let tenant = TenantId::new(TEST_TENANT_ID).unwrap();
         let published_at = Utc::now();
         let (blueprint, draft) = DeviceBlueprintRepository::create(
             &adapter,
@@ -671,7 +671,7 @@ mod tests {
     #[tokio::test]
     async fn identity_and_catalog_foundation_round_trip() {
         let (_directory, adapter) = adapter().await;
-        let tenant = TenantId::new(DEFAULT_TENANT_ID).unwrap();
+        let tenant = TenantId::new(TEST_TENANT_ID).unwrap();
         adapter
             .seed_owner_if_empty(
                 &tenant,
