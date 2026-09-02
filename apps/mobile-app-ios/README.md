@@ -2,6 +2,12 @@
 
 Native SwiftUI companion app for the Extrittio IoT Hub. It provides permission-aware dashboards, a device map, device management, telemetry, commands, alerts, rules, firmware management, administration, and a disposable offline cache for self-hosted deployments.
 
+The proposed watchOS companion is documented in the
+[product design](../../docs/design/watch-app-product-design.md) and
+[architecture plan](../../docs/design/watch-app-architecture-plan.md). Those
+documents describe future work; the current generated project contains only
+the iOS app and pairing widget targets.
+
 ## Requirements
 
 - Xcode 26.x with the iOS 26 SDK

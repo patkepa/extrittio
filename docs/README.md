@@ -8,6 +8,12 @@ proposals, not in the operational documentation.
 
 - [Backend crate architecture plan](design/backend-crate-architecture-plan.md)
   — proposed modular-monolith crate boundaries and migration sequence.
+- [Apple Watch app product design](design/watch-app-product-design.md) — the
+  proposed operator experience, scope, flows, complications, and accessibility
+  contract.
+- [Apple Watch app architecture plan](design/watch-app-architecture-plan.md) —
+  the proposed hybrid watch/iPhone/backend topology, watch-scoped
+  authentication, package boundaries, and delivery sequence.
 
 ## Architecture
 
