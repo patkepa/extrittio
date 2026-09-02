@@ -13,8 +13,10 @@ const FIRMWARE_BLUEPRINT_TARGETS: &str =
 const REMOVE_RETIRED_DEVICE_FEATURE: &str =
     include_str!("../migrations/0007_remove_retired_device_feature.sql");
 const USER_AUTH_EPOCH: &str = include_str!("../migrations/0008_user_auth_epoch.sql");
+const RULE_ACTION_OUTBOX_ACTIVE_IDEMPOTENCY: &str =
+    include_str!("../migrations/0009_rule_action_outbox_active_idempotency.sql");
 
-pub const LATEST_SCHEMA_VERSION: i64 = 8;
+pub const LATEST_SCHEMA_VERSION: i64 = 9;
 
 const MIGRATIONS: &[(i64, &str)] = &[
     (1, BASELINE),
@@ -25,6 +27,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (6, FIRMWARE_BLUEPRINT_TARGETS),
     (7, REMOVE_RETIRED_DEVICE_FEATURE),
     (8, USER_AUTH_EPOCH),
+    (9, RULE_ACTION_OUTBOX_ACTIVE_IDEMPOTENCY),
 ];
 
 pub(crate) async fn run(writer: &mut Connection) -> Result<(), TursoLifecycleError> {
@@ -178,7 +181,15 @@ mod tests {
                     (tenant_id, username, password_hash, role, created_at)
                  VALUES
                     ('default', 'legacy-user-a', 'hash-a', 'viewer', 1),
-                    ('default', 'legacy-user-b', 'hash-b', 'viewer', 1);",
+                    ('default', 'legacy-user-b', 'hash-b', 'viewer', 1);
+                 INSERT INTO rule_action_outbox
+                    (id, tenant_id, event_type, aggregate_type, aggregate_id,
+                     idempotency_key, payload, status, attempts, max_attempts,
+                     available_at, created_at, updated_at)
+                 VALUES
+                    ('completed-action', 'default', 'rule.send_command', 'command',
+                     'device-a:reboot', 'send-command:device-a:reboot:hash', '{}',
+                     'succeeded', 1, 10, 1, 1, 1);",
             )
             .await
             .unwrap();
@@ -191,7 +202,7 @@ mod tests {
                 "SELECT max(version) FROM _extrittio_migrations"
             )
             .await,
-            8
+            9
         );
         assert_eq!(
             scalar(
@@ -201,6 +212,44 @@ mod tests {
             .await,
             1
         );
+        assert_eq!(
+            scalar(
+                &connection,
+                "SELECT count(*) FROM rule_action_outbox WHERE id = 'completed-action'"
+            )
+            .await,
+            1,
+            "the table rebuild must preserve completed outbox history"
+        );
+        connection
+            .execute(
+                "INSERT INTO rule_action_outbox
+                    (id, tenant_id, event_type, aggregate_type, aggregate_id,
+                     idempotency_key, payload, status, attempts, max_attempts,
+                     available_at, created_at, updated_at)
+                 VALUES
+                    ('recurring-action', 'default', 'rule.send_command', 'command',
+                     'device-a:reboot', 'send-command:device-a:reboot:hash', '{}',
+                     'pending', 0, 10, 2, 2, 2)",
+                (),
+            )
+            .await
+            .expect("completed work must not block a recurring action");
+        let active_duplicate = connection
+            .execute(
+                "INSERT INTO rule_action_outbox
+                    (id, tenant_id, event_type, aggregate_type, aggregate_id,
+                     idempotency_key, payload, status, attempts, max_attempts,
+                     available_at, created_at, updated_at)
+                 VALUES
+                    ('duplicate-retry', 'default', 'rule.send_command', 'command',
+                     'device-a:reboot', 'send-command:device-a:reboot:hash', '{}',
+                     'pending', 0, 10, 3, 3, 3)",
+                (),
+            )
+            .await
+            .expect_err("an active retry must remain idempotent");
+        assert!(active_duplicate.to_string().contains("UNIQUE constraint"));
         assert_eq!(
             scalar(
                 &connection,
@@ -240,6 +289,15 @@ mod tests {
             missing_epoch
                 .to_string()
                 .contains("users.auth_epoch is required")
+        );
+        assert_eq!(
+            scalar(
+                &connection,
+                "SELECT count(*) FROM sqlite_master WHERE type = 'index' \
+                 AND name = 'rule_action_outbox_idempotency_active'"
+            )
+            .await,
+            1
         );
     }
 

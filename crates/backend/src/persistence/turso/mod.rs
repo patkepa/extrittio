@@ -1021,24 +1021,52 @@ mod tests {
                 .app
                 .is_some()
         );
-        super::devices::enqueue(
-            &adapter.database.connect().unwrap(),
-            &[crate::rule_engine::types::PendingAction::SendCommand {
-                tenant_id: tenant.as_str().into(),
-                device_id: "device-1".into(),
-                command: "reboot".into(),
-                params: json!({}),
-            }],
-        )
-        .await
-        .unwrap();
+        let recurring_action = crate::rule_engine::types::PendingAction::SendCommand {
+            tenant_id: tenant.as_str().into(),
+            device_id: "device-1".into(),
+            command: "reboot".into(),
+            params: json!({}),
+        };
+        let outbox_connection = adapter.database.connect().unwrap();
+        assert_eq!(
+            super::devices::enqueue(&outbox_connection, &[recurring_action.clone()])
+                .await
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            super::devices::enqueue(&outbox_connection, &[recurring_action.clone()])
+                .await
+                .unwrap(),
+            0,
+            "retrying an active occurrence must remain idempotent"
+        );
         let claimed =
             OutboxRepository::claim_batch(&adapter, "worker-1", 10, Duration::from_secs(30))
                 .await
                 .unwrap();
         assert_eq!(claimed.len(), 1);
+        let first_occurrence_id = claimed[0].id.clone();
         assert!(
             OutboxRepository::mark_succeeded(&adapter, &claimed[0].id, "worker-1")
+                .await
+                .unwrap()
+        );
+        assert_eq!(
+            super::devices::enqueue(&outbox_connection, &[recurring_action])
+                .await
+                .unwrap(),
+            1,
+            "a completed occurrence must not suppress a later recurrence"
+        );
+        let recurrence =
+            OutboxRepository::claim_batch(&adapter, "worker-2", 10, Duration::from_secs(30))
+                .await
+                .unwrap();
+        assert_eq!(recurrence.len(), 1);
+        assert_ne!(recurrence[0].id, first_occurrence_id);
+        assert!(
+            OutboxRepository::mark_succeeded(&adapter, &recurrence[0].id, "worker-2")
                 .await
                 .unwrap()
         );
