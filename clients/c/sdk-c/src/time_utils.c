@@ -1,4 +1,5 @@
 #include "extrittio/time_utils.h"
+#include <stddef.h>
 #include <sys/time.h>
 
 int64_t extrittio_now_millis(void) {
