@@ -52,6 +52,7 @@ fn device_telemetry_v1_wire_bytes_remain_compatible() {
             speed: 6.5,
             altitude: 7.5,
             heading: 8.5,
+            has_location: false,
         },
     );
 }

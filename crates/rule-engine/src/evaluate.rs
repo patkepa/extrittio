@@ -19,20 +19,20 @@ use super::types::{CachedCondition, PendingAction, StatusChange, TelemetryData, 
 /// Returns `None` for unknown field names.
 pub fn get_field_value(field: &str, data: &TelemetryData) -> Option<f64> {
     data.metrics.get(field).copied().or_else(|| {
-        compile_telemetry_field(field).map(|field| get_telemetry_field_value(field, data))
+        compile_telemetry_field(field).and_then(|field| get_telemetry_field_value(field, data))
     })
 }
 
-fn get_telemetry_field_value(field: TelemetryField, data: &TelemetryData) -> f64 {
+fn get_telemetry_field_value(field: TelemetryField, data: &TelemetryData) -> Option<f64> {
     match field {
-        TelemetryField::Temperature => data.temperature as f64,
-        TelemetryField::Humidity => data.humidity as f64,
-        TelemetryField::BatteryLevel => data.battery_level as f64,
+        TelemetryField::Temperature => Some(data.temperature as f64),
+        TelemetryField::Humidity => Some(data.humidity as f64),
+        TelemetryField::BatteryLevel => Some(data.battery_level as f64),
         TelemetryField::Latitude => data.latitude,
         TelemetryField::Longitude => data.longitude,
-        TelemetryField::Speed => data.speed as f64,
-        TelemetryField::Altitude => data.altitude as f64,
-        TelemetryField::Heading => data.heading as f64,
+        TelemetryField::Speed => Some(data.speed as f64),
+        TelemetryField::Altitude => Some(data.altitude as f64),
+        TelemetryField::Heading => Some(data.heading as f64),
     }
 }
 
@@ -561,8 +561,14 @@ pub fn evaluate_geofence_for_tenant(
     data: &TelemetryData,
     cache: &RuleCache,
 ) -> Vec<PendingAction> {
-    // Skip evaluation if no location data provided.
-    if data.latitude == 0.0 && data.longitude == 0.0 {
+    let (Some(latitude), Some(longitude)) = (data.latitude, data.longitude) else {
+        return Vec::new();
+    };
+    if !latitude.is_finite()
+        || !longitude.is_finite()
+        || !(-90.0..=90.0).contains(&latitude)
+        || !(-180.0..=180.0).contains(&longitude)
+    {
         return Vec::new();
     }
 
@@ -591,7 +597,7 @@ pub fn evaluate_geofence_for_tenant(
             if let Some(ref zid) = c.zone_id
                 && let Some(zone) = cache.zones.get(zid)
             {
-                return point_in_zone(data.latitude, data.longitude, &zone.geometry);
+                return point_in_zone(latitude, longitude, &zone.geometry);
             }
             false
         });
@@ -627,7 +633,7 @@ pub fn evaluate_geofence_for_tenant(
                     actions.push(PendingAction::UpdateAlertValue {
                         tenant_id: rule.tenant_id.clone(),
                         alert_id: alert_id.clone(),
-                        triggered_value: format!("{},{}", data.latitude, data.longitude),
+                        triggered_value: format!("{latitude},{longitude}"),
                     });
                 }
             } else {
@@ -662,7 +668,7 @@ pub fn evaluate_geofence_for_tenant(
                                 .unwrap_or("unknown zone");
                             let message = format!(
                                 "device entered zone '{}' at {:.6},{:.6}",
-                                zone_name, data.latitude, data.longitude
+                                zone_name, latitude, longitude
                             );
                             actions.push(PendingAction::CreateAlert {
                                 tenant_id: rule.tenant_id.clone(),
@@ -670,10 +676,7 @@ pub fn evaluate_geofence_for_tenant(
                                 device_id: device_id.to_string(),
                                 severity,
                                 message,
-                                triggered_value: Some(format!(
-                                    "{},{}",
-                                    data.latitude, data.longitude
-                                )),
+                                triggered_value: Some(format!("{},{}", latitude, longitude)),
                             });
                         }
                         RuleActionKind::Webhook => {
@@ -694,8 +697,8 @@ pub fn evaluate_geofence_for_tenant(
                                     "id": device_id,
                                 },
                                 "location": {
-                                    "latitude": data.latitude,
-                                    "longitude": data.longitude,
+                                    "latitude": latitude,
+                                    "longitude": longitude,
                                 },
                             });
                             let mut headers = std::collections::HashMap::new();
@@ -773,7 +776,9 @@ mod tests {
 
     use super::*;
     use crate::cache::RuleCache;
-    use crate::types::{CachedAction, CachedCondition, CachedRule, StatusChange, TelemetryData};
+    use crate::types::{
+        CachedAction, CachedCondition, CachedRule, CachedZone, StatusChange, TelemetryData,
+    };
 
     const DEFAULT_TENANT_ID: &str = "default";
 
@@ -786,8 +791,8 @@ mod tests {
             temperature,
             humidity,
             battery_level,
-            latitude: 0.0,
-            longitude: 0.0,
+            latitude: None,
+            longitude: None,
             speed: 0.0,
             altitude: 0.0,
             heading: 0.0,
@@ -854,6 +859,38 @@ mod tests {
 
     fn empty_cache() -> RuleCache {
         RuleCache::default()
+    }
+
+    fn origin_geofence_cache(radius_meters: f64) -> RuleCache {
+        let mut cache = empty_cache();
+        cache.zones.insert(
+            "origin".to_string(),
+            CachedZone {
+                id: "origin".to_string(),
+                name: "Origin".to_string(),
+                geometry: ZoneGeometry::Circle {
+                    center_lat: 0.0,
+                    center_lon: 0.0,
+                    radius_meters,
+                },
+            },
+        );
+        let mut condition = make_condition("latitude", "gte", "0");
+        condition.zone_id = Some("origin".to_string());
+        cache.insert_rule(make_rule(
+            "origin-geofence",
+            "geofence",
+            "global",
+            None,
+            0,
+            vec![condition],
+            vec![make_alert_action("warning")],
+        ));
+        cache
+    }
+
+    fn evaluate_geofence(data: &TelemetryData, cache: &RuleCache) -> Vec<PendingAction> {
+        evaluate_geofence_for_tenant(DEFAULT_TENANT_ID, "dev1", 1, None, None, data, cache)
     }
 
     fn is_in_cooldown(
@@ -1766,5 +1803,57 @@ mod tests {
             actions.is_empty(),
             "evaluate_status_change should ignore telemetry rules"
         );
+    }
+
+    #[test]
+    fn geofence_accepts_zero_coordinate_axes_and_origin() {
+        let cache = origin_geofence_cache(100.0);
+
+        for (latitude, longitude) in [(0.0, 0.0), (0.0005, 0.0), (0.0, 0.0005)] {
+            let mut data = make_telemetry(20.0, 50.0, 90.0);
+            data.latitude = Some(latitude);
+            data.longitude = Some(longitude);
+
+            let actions = evaluate_geofence(&data, &cache);
+            assert!(
+                actions
+                    .iter()
+                    .any(|action| matches!(action, PendingAction::CreateAlert { .. })),
+                "expected ({latitude}, {longitude}) to be inside the origin geofence"
+            );
+        }
+    }
+
+    #[test]
+    fn geofence_respects_boundary_near_zero_coordinates() {
+        let cache = origin_geofence_cache(100.0);
+        let mut inside = make_telemetry(20.0, 50.0, 90.0);
+        inside.latitude = Some(0.0);
+        inside.longitude = Some(0.00089);
+        assert!(!evaluate_geofence(&inside, &cache).is_empty());
+
+        let mut outside = inside.clone();
+        outside.longitude = Some(0.00091);
+        assert!(evaluate_geofence(&outside, &cache).is_empty());
+    }
+
+    #[test]
+    fn geofence_skips_missing_or_invalid_coordinates() {
+        let cache = origin_geofence_cache(100.0);
+        let cases = [
+            (None, None),
+            (Some(0.0), None),
+            (None, Some(0.0)),
+            (Some(f64::NAN), Some(0.0)),
+            (Some(91.0), Some(0.0)),
+            (Some(0.0), Some(181.0)),
+        ];
+
+        for (latitude, longitude) in cases {
+            let mut data = make_telemetry(20.0, 50.0, 90.0);
+            data.latitude = latitude;
+            data.longitude = longitude;
+            assert!(evaluate_geofence(&data, &cache).is_empty());
+        }
     }
 }

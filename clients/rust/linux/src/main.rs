@@ -77,6 +77,7 @@ impl TelemetrySource for SimulatedTelemetry {
             speed: 0.0,
             altitude: 0.0,
             heading: 0.0,
+            has_location: false,
         }
     }
 

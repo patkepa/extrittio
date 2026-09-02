@@ -37,13 +37,16 @@ pub async fn handle_telemetry(
     } else {
         serde_json::to_value(&telemetry.metadata).ok()
     };
-    let has_location = telemetry.latitude != 0.0 || telemetry.longitude != 0.0;
+    // Preserve locations from pre-presence-flag clients while allowing updated
+    // clients to report the valid coordinate (0, 0).
+    let has_location =
+        telemetry.has_location || telemetry.latitude != 0.0 || telemetry.longitude != 0.0;
     let data = TelemetryData {
         temperature: telemetry.temperature,
         humidity: telemetry.humidity,
         battery_level: telemetry.battery_level,
-        latitude: telemetry.latitude,
-        longitude: telemetry.longitude,
+        latitude: has_location.then_some(telemetry.latitude),
+        longitude: has_location.then_some(telemetry.longitude),
         speed: telemetry.speed,
         altitude: telemetry.altitude,
         heading: telemetry.heading,

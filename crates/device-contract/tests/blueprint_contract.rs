@@ -10,6 +10,13 @@ fn fixture() -> DeviceBlueprint {
     serde_yaml::from_str(include_str!("fixtures/cold-room.yaml")).unwrap()
 }
 
+fn starter_fixture() -> DeviceBlueprint {
+    serde_json::from_str(include_str!(
+        "../../../apps/frontend/src/pages/settings/starter-device-blueprint.json"
+    ))
+    .unwrap()
+}
+
 #[test]
 fn blueprint_fixture_validates_and_compiles() {
     let blueprint = validate_blueprint(fixture()).unwrap();
@@ -58,5 +65,34 @@ fn reports_all_structural_validation_errors() {
         issues
             .iter()
             .any(|issue| issue.path == "/spec/routes/0/transport")
+    );
+}
+
+#[test]
+fn frontend_starter_blueprint_validates_and_compiles() {
+    let blueprint = validate_blueprint(starter_fixture()).unwrap();
+    let context = CompileContext {
+        contract_id: "dc_starter".to_string(),
+        tenant_id: "tenant-a".to_string(),
+        device_id: "starter-device".to_string(),
+        blueprint_revision_id: "dbr_starter".to_string(),
+        blueprint_revision: 1,
+        transport_bindings: BTreeMap::from([(
+            "site_bus".to_string(),
+            ResolvedTransport {
+                protocol: TransportProtocol::Zenoh,
+                endpoint: "tcp/hub.internal:7447".to_string(),
+                server_ca_pem: None,
+                credential_ref: Some("device-certificate".to_string()),
+            },
+        )]),
+        configuration_layers: Vec::new(),
+    };
+
+    let contract = BlueprintCompiler::compile(&blueprint, &context).unwrap();
+
+    assert_eq!(
+        contract.document.presentation.unwrap().summary[0].metric,
+        "environment./temperature"
     );
 }

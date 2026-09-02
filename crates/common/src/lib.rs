@@ -33,6 +33,7 @@ mod tests {
             speed: 12.5,
             altitude: 103.4,
             heading: 180.0,
+            has_location: true,
         };
 
         let bytes = telemetry.encode_to_vec();
@@ -43,6 +44,7 @@ mod tests {
         assert_eq!(decoded.metadata.get("location").unwrap(), "room-a");
         assert!((decoded.latitude - 52.2297).abs() < f64::EPSILON);
         assert!((decoded.longitude - 21.0122).abs() < f64::EPSILON);
+        assert!(decoded.has_location);
         assert!((decoded.speed - 12.5).abs() < f32::EPSILON);
         assert!((decoded.altitude - 103.4).abs() < f32::EPSILON);
         assert!((decoded.heading - 180.0).abs() < f32::EPSILON);

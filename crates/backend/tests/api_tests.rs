@@ -1719,6 +1719,7 @@ async fn test_device_ingress_resolves_the_persisted_tenant_identity() {
         speed: 0.0,
         altitude: 0.0,
         heading: 0.0,
+        has_location: false,
     };
     let rule_cache =
         std::sync::RwLock::new(extrittio_backend::rule_engine::cache::RuleCache::default());

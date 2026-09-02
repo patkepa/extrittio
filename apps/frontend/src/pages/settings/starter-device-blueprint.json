@@ -1,0 +1,93 @@
+{
+  "apiVersion": "extrittio.io/v1alpha1",
+  "kind": "DeviceBlueprint",
+  "metadata": {
+    "key": "temperature-sensor",
+    "name": "Temperature Sensor",
+    "description": "Reports ambient temperature.",
+    "icon": "temperature",
+    "color": "#8ABBFF"
+  },
+  "spec": {
+    "runtime": {
+      "minimumContractApi": 1,
+      "heartbeat": { "interval": "30s", "offlineAfter": "95s" },
+      "limits": {
+        "maxMessageBytes": 8192,
+        "maxMessagesPerMinute": 120,
+        "maxMetricCardinality": 128
+      }
+    },
+    "transports": [{ "key": "primary", "binding": "site_bus", "protocol": "zenoh" }],
+    "schemas": [
+      {
+        "key": "reading@1",
+        "format": "json_schema",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "temperature": { "type": "number" },
+            "humidity": { "type": "number" },
+            "batteryLevel": { "type": "number" }
+          },
+          "required": ["temperature", "humidity", "batteryLevel"],
+          "additionalProperties": false
+        }
+      }
+    ],
+    "routes": [
+      {
+        "key": "readings",
+        "transport": "primary",
+        "direction": "device_to_cloud",
+        "address": "extrittio/devices/{device.id}/events/readings",
+        "messageSchema": "reading@1",
+        "encoding": "json"
+      }
+    ],
+    "streams": [
+      {
+        "key": "environment",
+        "route": "readings",
+        "fields": [
+          {
+            "path": "/temperature",
+            "type": "float64",
+            "label": "Temperature",
+            "unit": "°C",
+            "semantic": "temperature",
+            "index": true,
+            "aggregates": ["min", "max", "avg"],
+            "presentation": { "chart": "line", "precision": 1 }
+          },
+          {
+            "path": "/humidity",
+            "type": "float64",
+            "label": "Humidity",
+            "unit": "%",
+            "semantic": "humidity",
+            "index": true,
+            "aggregates": ["min", "max", "avg"],
+            "presentation": { "chart": "line", "precision": 1 }
+          },
+          {
+            "path": "/batteryLevel",
+            "type": "float64",
+            "label": "Battery",
+            "unit": "%",
+            "semantic": "battery",
+            "index": true,
+            "aggregates": ["min", "max", "avg"],
+            "presentation": { "chart": "line", "precision": 1 }
+          }
+        ]
+      }
+    ],
+    "commands": [],
+    "relationships": [],
+    "presentation": {
+      "summary": [{ "metric": "environment./temperature" }],
+      "tabs": ["overview", "telemetry", "configuration", "commands", "firmware"]
+    }
+  }
+}
