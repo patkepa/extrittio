@@ -250,6 +250,7 @@ fn main() {
             speed: 0.0,
             altitude: 0.0,
             heading: 0.0,
+            has_location: false,
         };
 
         let payload = telemetry.encode_to_vec();

@@ -13,6 +13,7 @@ message DeviceTelemetry {
     float speed = 9;
     float altitude = 10;
     float heading = 11;
+    bool has_location = 12;
 }
 
 message DeviceHeartbeat {

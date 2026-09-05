@@ -375,6 +375,10 @@ pub(crate) struct CreateDeviceArgs {
     #[arg(short, long)]
     pub(crate) name: String,
 
+    /// Published immutable blueprint revision assigned to the device.
+    #[arg(long, value_parser = parse_non_empty_string)]
+    pub(crate) blueprint_revision_id: String,
+
     #[arg(long)]
     pub(crate) device_type_id: Option<i32>,
 
@@ -450,6 +454,9 @@ pub(crate) struct ListFirmwareArgs {
 pub(crate) struct UploadFirmwareArgs {
     #[arg(long)]
     pub(crate) device_type_id: i32,
+    /// Published immutable blueprint revision associated with the firmware.
+    #[arg(long, value_parser = parse_non_empty_string)]
+    pub(crate) blueprint_revision_id: String,
     #[arg(long)]
     pub(crate) version: Option<String>,
     #[arg(long)]
@@ -639,4 +646,13 @@ pub(crate) struct ProvisionArgs {
     /// Keep generated NVS CSV and binary files for inspection.
     #[arg(long)]
     pub(crate) keep_nvs_artifacts: bool,
+}
+
+fn parse_non_empty_string(value: &str) -> Result<String, String> {
+    let value = value.trim();
+    if value.is_empty() {
+        Err("value cannot be blank".to_string())
+    } else {
+        Ok(value.to_string())
+    }
 }

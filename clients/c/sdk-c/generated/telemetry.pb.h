@@ -22,6 +22,7 @@ typedef struct _extrittio_DeviceTelemetry {
     float speed;
     float altitude;
     float heading;
+    bool has_location;
 } extrittio_DeviceTelemetry;
 
 typedef struct _extrittio_DeviceTelemetry_MetadataEntry {
@@ -87,7 +88,7 @@ extern "C" {
 #endif
 
 /* Initializer values for message structs */
-#define extrittio_DeviceTelemetry_init_default   {"", 0, 0, 0, 0, {{NULL}, NULL}, 0, 0, 0, 0, 0}
+#define extrittio_DeviceTelemetry_init_default   {"", 0, 0, 0, 0, {{NULL}, NULL}, 0, 0, 0, 0, 0, 0}
 #define extrittio_DeviceTelemetry_MetadataEntry_init_default {{{NULL}, NULL}, {{NULL}, NULL}}
 #define extrittio_DeviceHeartbeat_init_default   {"", 0, "", "", 0}
 #define extrittio_DeviceCommand_init_default     {"", 0, {extrittio_DeviceCommand_ParamsEntry_init_default, extrittio_DeviceCommand_ParamsEntry_init_default, extrittio_DeviceCommand_ParamsEntry_init_default, extrittio_DeviceCommand_ParamsEntry_init_default, extrittio_DeviceCommand_ParamsEntry_init_default, extrittio_DeviceCommand_ParamsEntry_init_default, extrittio_DeviceCommand_ParamsEntry_init_default, extrittio_DeviceCommand_ParamsEntry_init_default, extrittio_DeviceCommand_ParamsEntry_init_default, extrittio_DeviceCommand_ParamsEntry_init_default, extrittio_DeviceCommand_ParamsEntry_init_default, extrittio_DeviceCommand_ParamsEntry_init_default, extrittio_DeviceCommand_ParamsEntry_init_default, extrittio_DeviceCommand_ParamsEntry_init_default, extrittio_DeviceCommand_ParamsEntry_init_default, extrittio_DeviceCommand_ParamsEntry_init_default}, ""}
@@ -97,7 +98,7 @@ extern "C" {
 #define extrittio_ShadowDelta_init_default       {"", "", 0}
 #define extrittio_ShadowGet_init_default         {""}
 #define extrittio_DeviceLog_init_default         {"", 0, "", ""}
-#define extrittio_DeviceTelemetry_init_zero      {"", 0, 0, 0, 0, {{NULL}, NULL}, 0, 0, 0, 0, 0}
+#define extrittio_DeviceTelemetry_init_zero      {"", 0, 0, 0, 0, {{NULL}, NULL}, 0, 0, 0, 0, 0, 0}
 #define extrittio_DeviceTelemetry_MetadataEntry_init_zero {{{NULL}, NULL}, {{NULL}, NULL}}
 #define extrittio_DeviceHeartbeat_init_zero      {"", 0, "", "", 0}
 #define extrittio_DeviceCommand_init_zero        {"", 0, {extrittio_DeviceCommand_ParamsEntry_init_zero, extrittio_DeviceCommand_ParamsEntry_init_zero, extrittio_DeviceCommand_ParamsEntry_init_zero, extrittio_DeviceCommand_ParamsEntry_init_zero, extrittio_DeviceCommand_ParamsEntry_init_zero, extrittio_DeviceCommand_ParamsEntry_init_zero, extrittio_DeviceCommand_ParamsEntry_init_zero, extrittio_DeviceCommand_ParamsEntry_init_zero, extrittio_DeviceCommand_ParamsEntry_init_zero, extrittio_DeviceCommand_ParamsEntry_init_zero, extrittio_DeviceCommand_ParamsEntry_init_zero, extrittio_DeviceCommand_ParamsEntry_init_zero, extrittio_DeviceCommand_ParamsEntry_init_zero, extrittio_DeviceCommand_ParamsEntry_init_zero, extrittio_DeviceCommand_ParamsEntry_init_zero, extrittio_DeviceCommand_ParamsEntry_init_zero}, ""}
@@ -120,6 +121,7 @@ extern "C" {
 #define extrittio_DeviceTelemetry_speed_tag      9
 #define extrittio_DeviceTelemetry_altitude_tag   10
 #define extrittio_DeviceTelemetry_heading_tag    11
+#define extrittio_DeviceTelemetry_has_location_tag 12
 #define extrittio_DeviceTelemetry_MetadataEntry_key_tag 1
 #define extrittio_DeviceTelemetry_MetadataEntry_value_tag 2
 #define extrittio_DeviceHeartbeat_device_id_tag  1
@@ -162,7 +164,8 @@ X(a, STATIC,   SINGULAR, DOUBLE,   latitude,          7) \
 X(a, STATIC,   SINGULAR, DOUBLE,   longitude,         8) \
 X(a, STATIC,   SINGULAR, FLOAT,    speed,             9) \
 X(a, STATIC,   SINGULAR, FLOAT,    altitude,         10) \
-X(a, STATIC,   SINGULAR, FLOAT,    heading,          11)
+X(a, STATIC,   SINGULAR, FLOAT,    heading,          11) \
+X(a, STATIC,   SINGULAR, BOOL,     has_location,     12)
 #define extrittio_DeviceTelemetry_CALLBACK pb_default_field_callback
 #define extrittio_DeviceTelemetry_DEFAULT NULL
 #define extrittio_DeviceTelemetry_metadata_MSGTYPE extrittio_DeviceTelemetry_MetadataEntry

@@ -103,6 +103,8 @@ mod tests {
     use crate::domains::analytics::types::{
         AnalyticsMetric, AnalyticsMetricSelector, AnalyticsQuery, AnalyticsScope,
     };
+    use crate::domains::audit::port::AuditRepository;
+    use crate::domains::audit::types::NewAuditEventRecord;
     use crate::domains::commands::port::CommandRepository;
     use crate::domains::commands::types::NewCommandRecord;
     use crate::domains::configuration::repository::DeviceConfigRepository;
@@ -144,7 +146,7 @@ mod tests {
     use crate::domains::telemetry::port::TelemetryRepository;
     use crate::domains::telemetry::types::{TelemetryQuery, TelemetryWrite};
     use crate::persistence::{BootstrapOwner, BootstrapRepository, BuiltinDeviceType};
-    use crate::tenancy::{DEFAULT_TENANT_ID, TenantId};
+    use crate::tenancy::{DEFAULT_TENANT_ID as TEST_TENANT_ID, TenantId};
     use extrittio_backend_core::{CreateUserOutcome, EncodedPasswordHash, NewUser, UserRepository};
 
     async fn adapter() -> (tempfile::TempDir, TursoAdapter) {
@@ -189,9 +191,76 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn activity_totals_remain_stable_beyond_the_final_page() {
+        let (_directory, adapter) = adapter().await;
+        let tenant = TenantId::new(TEST_TENANT_ID).unwrap();
+        for index in 1..=2 {
+            AuditRepository::record(
+                &adapter,
+                &tenant,
+                NewAuditEventRecord {
+                    id: format!("audit-{index}"),
+                    actor_type: "user".into(),
+                    actor_id: Some("owner".into()),
+                    action: "device.read".into(),
+                    resource_type: "device".into(),
+                    resource_id: Some(format!("device-{index}")),
+                    outcome: "success".into(),
+                    request_id: format!("request-{index}"),
+                    metadata: json!({}),
+                },
+            )
+            .await
+            .unwrap();
+        }
+
+        for (offset, expected_len, expected_total) in [(1, 1, 2), (2, 0, 2), (3, 0, 2)] {
+            let page = ActivityRepository::list(
+                &adapter,
+                &tenant,
+                ActivityQuery {
+                    source: Some("audit".into()),
+                    severity: None,
+                    category: None,
+                    device_id: None,
+                    search: None,
+                    since: None,
+                    until: None,
+                    limit: 1,
+                    offset,
+                },
+            )
+            .await
+            .unwrap();
+            assert_eq!(page.data.len(), expected_len);
+            assert_eq!(page.total, expected_total);
+        }
+
+        let empty = ActivityRepository::list(
+            &adapter,
+            &tenant,
+            ActivityQuery {
+                source: Some("alert".into()),
+                severity: None,
+                category: None,
+                device_id: None,
+                search: None,
+                since: None,
+                until: None,
+                limit: 1,
+                offset: 2,
+            },
+        )
+        .await
+        .unwrap();
+        assert!(empty.data.is_empty());
+        assert_eq!(empty.total, 0);
+    }
+
+    #[tokio::test]
     async fn device_blueprint_draft_and_revision_round_trip() {
         let (_directory, adapter) = adapter().await;
-        let tenant = TenantId::new(DEFAULT_TENANT_ID).unwrap();
+        let tenant = TenantId::new(TEST_TENANT_ID).unwrap();
         let now = Utc::now();
         let (created, draft) = DeviceBlueprintRepository::create(
             &adapter,
@@ -453,7 +522,7 @@ mod tests {
     #[tokio::test]
     async fn analytics_catalogs_and_queries_blueprint_metrics() {
         let (_directory, adapter) = adapter().await;
-        let tenant = TenantId::new(DEFAULT_TENANT_ID).unwrap();
+        let tenant = TenantId::new(TEST_TENANT_ID).unwrap();
         let published_at = Utc::now();
         let (blueprint, draft) = DeviceBlueprintRepository::create(
             &adapter,
@@ -602,7 +671,7 @@ mod tests {
     #[tokio::test]
     async fn identity_and_catalog_foundation_round_trip() {
         let (_directory, adapter) = adapter().await;
-        let tenant = TenantId::new(DEFAULT_TENANT_ID).unwrap();
+        let tenant = TenantId::new(TEST_TENANT_ID).unwrap();
         adapter
             .seed_owner_if_empty(
                 &tenant,
@@ -952,24 +1021,52 @@ mod tests {
                 .app
                 .is_some()
         );
-        super::devices::enqueue(
-            &adapter.database.connect().unwrap(),
-            &[crate::rule_engine::types::PendingAction::SendCommand {
-                tenant_id: tenant.as_str().into(),
-                device_id: "device-1".into(),
-                command: "reboot".into(),
-                params: json!({}),
-            }],
-        )
-        .await
-        .unwrap();
+        let recurring_action = crate::rule_engine::types::PendingAction::SendCommand {
+            tenant_id: tenant.as_str().into(),
+            device_id: "device-1".into(),
+            command: "reboot".into(),
+            params: json!({}),
+        };
+        let outbox_connection = adapter.database.connect().unwrap();
+        assert_eq!(
+            super::devices::enqueue(&outbox_connection, &[recurring_action.clone()])
+                .await
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            super::devices::enqueue(&outbox_connection, &[recurring_action.clone()])
+                .await
+                .unwrap(),
+            0,
+            "retrying an active occurrence must remain idempotent"
+        );
         let claimed =
             OutboxRepository::claim_batch(&adapter, "worker-1", 10, Duration::from_secs(30))
                 .await
                 .unwrap();
         assert_eq!(claimed.len(), 1);
+        let first_occurrence_id = claimed[0].id.clone();
         assert!(
             OutboxRepository::mark_succeeded(&adapter, &claimed[0].id, "worker-1")
+                .await
+                .unwrap()
+        );
+        assert_eq!(
+            super::devices::enqueue(&outbox_connection, &[recurring_action])
+                .await
+                .unwrap(),
+            1,
+            "a completed occurrence must not suppress a later recurrence"
+        );
+        let recurrence =
+            OutboxRepository::claim_batch(&adapter, "worker-2", 10, Duration::from_secs(30))
+                .await
+                .unwrap();
+        assert_eq!(recurrence.len(), 1);
+        assert_ne!(recurrence[0].id, first_occurrence_id);
+        assert!(
+            OutboxRepository::mark_succeeded(&adapter, &recurrence[0].id, "worker-2")
                 .await
                 .unwrap()
         );

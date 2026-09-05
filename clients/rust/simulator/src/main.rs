@@ -399,6 +399,7 @@ async fn publish_telemetry(
             0.0
         },
         heading: if has_location { device.heading } else { 0.0 },
+        has_location,
     };
 
     session

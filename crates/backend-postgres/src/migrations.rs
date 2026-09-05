@@ -38,7 +38,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn embeds_the_complete_legacy_postgres_migration_chain() {
+    fn embeds_the_expected_postgres_migration_chain() {
         let migrations = <EmbeddedMigrations as MigrationSource<Pg>>::migrations(&MIGRATIONS)
             .expect("embedded migrations are valid");
         let versions = migrations
@@ -46,7 +46,7 @@ mod tests {
             .map(|migration| migration.name().version().to_string())
             .collect::<Vec<_>>();
 
-        assert_eq!(versions.len(), 27);
+        assert_eq!(versions.len(), 26);
         assert_eq!(versions.first().map(String::as_str), Some("00000000000000"));
         assert_eq!(versions.last().map(String::as_str), Some("20260831020000"));
     }

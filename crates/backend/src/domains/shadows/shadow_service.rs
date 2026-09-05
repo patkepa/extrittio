@@ -43,7 +43,7 @@ pub async fn update_desired(
     patch: &serde_json::Map<String, Value>,
     zenoh_metrics: &ZenohMetrics,
 ) -> Result<ShadowRecord, AppError> {
-    policy::require(ctx, Permission::ManageShadows)?;
+    authorize_shadow_mutation(ctx)?;
 
     let shadow = repository
         .update_desired(
@@ -72,12 +72,15 @@ pub async fn update_reported(
     device_id: &str,
     patch: &serde_json::Map<String, Value>,
 ) -> Result<ShadowRecord, AppError> {
-    // This preserves the endpoint's prior effective permission while ensuring
-    // authorization happens before the state mutation.
-    policy::require(ctx, Permission::ReadShadows)?;
+    // This user-facing repair endpoint is privileged. Normal device reports
+    // enter through authenticated device transport and the tenant-scoped
+    // `update_reported_for_tenant` path below.
+    authorize_shadow_mutation(ctx)?;
     update_reported_for_tenant(repository, ctx.tenant_id(), device_id, patch).await
 }
 
+/// Apply a report from a device identity that was authenticated and
+/// tenant-bound by the transport ingress layer.
 pub async fn update_reported_for_tenant(
     repository: &dyn ShadowRepository,
     tenant: &TenantId,
@@ -95,7 +98,7 @@ pub async fn delete_shadow(
     repository: &dyn ShadowRepository,
     device_id: &str,
 ) -> Result<(), AppError> {
-    policy::require(ctx, Permission::ManageShadows)?;
+    authorize_shadow_mutation(ctx)?;
     let reset = repository
         .reset(ctx.tenant_id(), device_id, chrono::Utc::now())
         .await?;
@@ -106,6 +109,10 @@ pub async fn delete_shadow(
             "Shadow for device '{device_id}' not found"
         )))
     }
+}
+
+fn authorize_shadow_mutation(ctx: &RequestContext) -> Result<(), AppError> {
+    policy::require(ctx, Permission::ManageShadows)
 }
 
 /// Publish a ShadowDelta via Zenoh if the delta is non-empty.
@@ -265,13 +272,13 @@ mod tests {
         }
     }
 
-    fn context(role: &str, tenant_id: &str) -> RequestContext {
+    fn context(role: &str, tenant_id: &str, scopes: &[&str]) -> RequestContext {
         RequestContext::from_claims(Claims {
             sub: 1,
             username: "operator".to_string(),
             role: role.to_string(),
             tenant_id: Some(tenant_id.to_string()),
-            scopes: Vec::new(),
+            scopes: scopes.iter().map(|scope| (*scope).to_string()).collect(),
             permission_version: 1,
             auth_epoch: Some("test-auth-epoch".to_string()),
             exp: 0,
@@ -282,7 +289,7 @@ mod tests {
     #[tokio::test]
     async fn passes_tenant_identity_to_reads_reports_and_resets() {
         let repository = RecordingRepository::default();
-        let context = context("admin", "tenant-a");
+        let context = context("admin", "tenant-a", &[]);
         let patch = Map::default();
 
         get_shadow(&context, &repository, "device-1").await.unwrap();
@@ -309,20 +316,46 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn reported_update_authorizes_before_persistence() {
-        let repository = RecordingRepository::default();
-        let patch = Map::default();
+    async fn reported_update_requires_manage_permission_before_persistence() {
+        for role in ["viewer", "custom-read-only"] {
+            let repository = RecordingRepository::default();
+            let error = update_reported(
+                &context(role, "tenant-a", &["shadows.read"]),
+                &repository,
+                "device-1",
+                &Map::default(),
+            )
+            .await
+            .unwrap_err();
 
-        let error = update_reported(
-            &context("viewer", "tenant-a"),
-            &repository,
-            "device-1",
-            &patch,
-        )
-        .await
-        .unwrap_err();
+            assert!(matches!(error, AppError::Forbidden(_)));
+            assert!(repository.calls.lock().unwrap().is_empty());
+        }
 
-        assert!(matches!(error, AppError::Forbidden(_)));
-        assert!(repository.calls.lock().unwrap().is_empty());
+        for role in ["owner", "admin", "operator"] {
+            let repository = RecordingRepository::default();
+            update_reported(
+                &context(role, "tenant-a", &["shadows.manage"]),
+                &repository,
+                "device-1",
+                &Map::default(),
+            )
+            .await
+            .unwrap();
+            assert_eq!(repository.calls.lock().unwrap().len(), 1);
+        }
+    }
+
+    #[test]
+    fn every_user_shadow_mutation_requires_manage_permission() {
+        for role in ["viewer", "custom-read-only"] {
+            let error = authorize_shadow_mutation(&context(role, "tenant-a", &["shadows.read"]))
+                .unwrap_err();
+            assert!(matches!(error, AppError::Forbidden(_)));
+        }
+
+        for role in ["owner", "admin", "operator"] {
+            authorize_shadow_mutation(&context(role, "tenant-a", &["shadows.manage"])).unwrap();
+        }
     }
 }

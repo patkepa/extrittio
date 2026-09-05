@@ -1719,6 +1719,7 @@ async fn test_device_ingress_resolves_the_persisted_tenant_identity() {
         speed: 0.0,
         altitude: 0.0,
         heading: 0.0,
+        has_location: false,
     };
     let rule_cache =
         std::sync::RwLock::new(extrittio_backend::rule_engine::cache::RuleCache::default());
@@ -2099,6 +2100,7 @@ async fn test_ci_ingest_invalid_key() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_ci_ingest_success() {
     let _guard = TEST_DB_LOCK.lock().await;
+    extrittio_backend::init::install_crypto_provider();
     // Setup with shared db_pool so we can insert API key directly
     let db_pool = setup_test_db();
     let zenoh_session = zenoh::open(zenoh::Config::default())
@@ -2134,7 +2136,7 @@ async fn test_ci_ingest_success() {
     let app = extrittio_backend::api::router(100 * 1024 * 1024, true).with_state(state);
 
     // Insert a test API key directly into the DB
-    let test_key = "test-api-key";
+    let test_key = "extr_test-api-key";
     let key_hash = api_key_util::hash_api_key(test_key);
     let key_prefix = api_key_util::key_prefix(test_key);
 

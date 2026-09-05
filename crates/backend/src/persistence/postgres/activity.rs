@@ -225,19 +225,39 @@ impl ActivityRepository for PostgresAdapter {
         self.executor
             .run(move |connection| {
                 let rows = diesel::sql_query(ACTIVITY_QUERY)
-                    .bind::<Text, _>(tenant_id)
-                    .bind::<Nullable<Text>, _>(query.source)
-                    .bind::<Nullable<Text>, _>(query.severity)
-                    .bind::<Nullable<Text>, _>(query.category)
-                    .bind::<Nullable<Text>, _>(query.device_id)
+                    .bind::<Text, _>(tenant_id.clone())
+                    .bind::<Nullable<Text>, _>(query.source.clone())
+                    .bind::<Nullable<Text>, _>(query.severity.clone())
+                    .bind::<Nullable<Text>, _>(query.category.clone())
+                    .bind::<Nullable<Text>, _>(query.device_id.clone())
                     .bind::<Nullable<Timestamptz>, _>(query.since)
                     .bind::<Nullable<Timestamptz>, _>(query.until)
-                    .bind::<Nullable<Text>, _>(search)
+                    .bind::<Nullable<Text>, _>(search.clone())
                     .bind::<BigInt, _>(query.limit)
                     .bind::<BigInt, _>(query.offset)
                     .load::<ActivityRow>(connection)
                     .map_err(map_diesel_error)?;
-                let total = rows.first().map_or(0, |row| row.total_count);
+                let total = if let Some(row) = rows.first() {
+                    row.total_count
+                } else if query.offset > 0 {
+                    diesel::sql_query(ACTIVITY_QUERY)
+                        .bind::<Text, _>(tenant_id)
+                        .bind::<Nullable<Text>, _>(query.source)
+                        .bind::<Nullable<Text>, _>(query.severity)
+                        .bind::<Nullable<Text>, _>(query.category)
+                        .bind::<Nullable<Text>, _>(query.device_id)
+                        .bind::<Nullable<Timestamptz>, _>(query.since)
+                        .bind::<Nullable<Timestamptz>, _>(query.until)
+                        .bind::<Nullable<Text>, _>(search)
+                        .bind::<BigInt, _>(1_i64)
+                        .bind::<BigInt, _>(0_i64)
+                        .load::<ActivityRow>(connection)
+                        .map_err(map_diesel_error)?
+                        .first()
+                        .map_or(0, |row| row.total_count)
+                } else {
+                    0
+                };
                 let data = rows
                     .into_iter()
                     .map(|row| ActivityEventRecord {

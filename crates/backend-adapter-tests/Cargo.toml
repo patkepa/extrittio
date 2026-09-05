@@ -23,10 +23,10 @@ turso = [
 [dependencies]
 async-trait = "0.1"
 chrono = "0.4"
-extrittio-backend-core = { path = "../backend-core" }
+extrittio-backend-core = { version = "0.1.0", path = "../backend-core" }
 diesel = { version = "2.2", features = ["postgres", "r2d2"], optional = true }
-extrittio-backend-postgres = { path = "../backend-postgres", optional = true }
-extrittio-backend-turso = { path = "../backend-turso", optional = true }
+extrittio-backend-postgres = { version = "0.1.0", path = "../backend-postgres", optional = true }
+extrittio-backend-turso = { version = "0.1.0", path = "../backend-turso", optional = true }
 serde_json = "1"
 tempfile = { version = "3", optional = true }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

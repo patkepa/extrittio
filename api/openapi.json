@@ -2794,6 +2794,9 @@
           "204": {
             "description": "Shadow reset"
           },
+          "403": {
+            "description": "Shadow management permission required"
+          },
           "404": {
             "description": "Shadow not found"
           }
@@ -2847,6 +2850,9 @@
               }
             }
           },
+          "403": {
+            "description": "Shadow management permission required"
+          },
           "404": {
             "description": "Device not found"
           }
@@ -2899,6 +2905,9 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Shadow management permission required"
           },
           "404": {
             "description": "Device not found"
@@ -6491,6 +6500,7 @@
       },
       "ChangePasswordRequest": {
         "type": "object",
+        "description": "Plaintext credentials intentionally have no `Debug` implementation.",
         "required": [
           "password"
         ],
@@ -6865,6 +6875,7 @@
       },
       "CreateUserRequest": {
         "type": "object",
+        "description": "Plaintext credentials intentionally have no `Debug` implementation.",
         "required": [
           "username",
           "password"
@@ -7775,6 +7786,7 @@
       },
       "LoginRequest": {
         "type": "object",
+        "description": "Plaintext credentials intentionally have no `Debug` implementation.",
         "required": [
           "username",
           "password"

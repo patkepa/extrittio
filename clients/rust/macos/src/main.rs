@@ -376,6 +376,7 @@ async fn run_async(cfg: config::Config, device_id: String) {
                     speed: loc.map_or(0.0, |l| l.speed),
                     altitude: loc.map_or(0.0, |l| l.altitude),
                     heading: loc.map_or(0.0, |l| l.heading),
+                    has_location: loc.is_some(),
                 };
 
                 let payload = telemetry.encode_to_vec();

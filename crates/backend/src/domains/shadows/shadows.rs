@@ -110,6 +110,7 @@ pub(crate) async fn get_shadow(
     request_body = Object,
     responses(
         (status = 200, description = "Shadow updated", body = ShadowResponse),
+        (status = 403, description = "Shadow management permission required"),
         (status = 404, description = "Device not found"),
     ),
 )]
@@ -143,6 +144,7 @@ pub(crate) async fn update_desired(
     request_body = Object,
     responses(
         (status = 200, description = "Shadow updated", body = ShadowResponse),
+        (status = 403, description = "Shadow management permission required"),
         (status = 404, description = "Device not found"),
     ),
 )]
@@ -169,6 +171,7 @@ pub(crate) async fn update_reported(
     params(("id" = String, Path, description = "Device ID")),
     responses(
         (status = 204, description = "Shadow reset"),
+        (status = 403, description = "Shadow management permission required"),
         (status = 404, description = "Shadow not found"),
     ),
 )]

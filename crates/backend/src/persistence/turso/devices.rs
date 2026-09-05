@@ -132,7 +132,7 @@ pub(super) async fn enqueue(
              (id, tenant_id, event_type, aggregate_type, aggregate_id, idempotency_key,
               payload, status, attempts, max_attempts, available_at, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'pending', 0, 10, ?8, ?8, ?8)
-             ON CONFLICT (tenant_id, idempotency_key) DO NOTHING",
+             ON CONFLICT DO NOTHING",
                 params![
                     event.id,
                     event.tenant_id,

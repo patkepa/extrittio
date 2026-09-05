@@ -582,7 +582,7 @@ export function RuleDialog() {
                   <InputGroup
                     value={cond.field}
                     onChange={(e) => updateCondition(i, 'field', e.target.value)}
-                    placeholder="Metric key, e.g. environment.temperature"
+                    placeholder="Metric key, e.g. environment./temperature"
                     style={{ flex: 1 }}
                   />
                 )}
