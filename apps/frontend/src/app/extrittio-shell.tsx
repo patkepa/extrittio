@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { CommandPalette } from '../components/command-palette/command-palette';
 import { projects } from '../data/sidebar-data';
 import { hasPermission } from '../auth/permissions';
-import { useAlertSummary } from '../features/alerts';
+import { useAlertSummary } from '../features/alerts/queries/use-alerts';
 import { useDashboardStats } from '../hooks/use-dashboard';
 import { useDevice } from '../hooks/use-devices';
 import { WorkspaceShell } from '@patkepa/kantzen-ui/app-shell';
