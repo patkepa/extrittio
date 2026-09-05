@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Spinner, Callout, Icon, H4 } from '@blueprintjs/core';
 import { useDevices, useBulkChangeFleet } from '../hooks/use-devices';
 import { useFleets } from '../hooks/use-fleets';
-import { useAlerts } from '../features/alerts';
+import { useAlerts } from '../features/alerts/queries/use-alerts';
 import { useDeviceTypes } from '../hooks/use-device-types';
 import { hasPermission } from '../auth/permissions';
 import { buildForceGraphData } from '../components/fleet-graph/build-force-graph-data';

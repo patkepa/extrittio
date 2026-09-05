@@ -1,6 +1,10 @@
 import { useMemo } from 'react';
 import { HTMLTable, Tag, Icon, Button, Spinner, Callout, H4 } from '@blueprintjs/core';
-import { useAlerts, useAcknowledgeAlert, useResolveAlert } from '../../features/alerts';
+import {
+  useAcknowledgeAlert,
+  useAlerts,
+  useResolveAlert,
+} from '../../features/alerts/queries/use-alerts';
 import { showSuccessToast, showErrorToast } from '../../utils/toaster';
 import type { Alert } from '../../types/alerts';
 
