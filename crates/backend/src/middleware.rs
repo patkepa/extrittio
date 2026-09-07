@@ -25,6 +25,14 @@ use crate::state::AppState;
 #[derive(Debug, Clone)]
 pub struct RequestId(pub String);
 
+pub(crate) fn redacted_request_uri(uri: &axum::http::Uri) -> String {
+    if uri.path().starts_with("/api/v1/ota-downloads/") {
+        "/api/v1/ota-downloads/[redacted]".into()
+    } else {
+        uri.to_string()
+    }
+}
+
 pub async fn request_id_middleware(mut request: Request, next: Next) -> Response {
     let request_id = request
         .headers()
@@ -47,7 +55,7 @@ pub async fn request_id_middleware(mut request: Request, next: Next) -> Response
         "http_request",
         request_id = %request_id,
         method = %request.method(),
-        uri = %request.uri(),
+        uri = %redacted_request_uri(request.uri()),
     );
     #[cfg(feature = "otlp")]
     {
@@ -93,7 +101,11 @@ pub async fn audit_middleware(
     }
 
     let method = request.method().clone();
-    let path = request.uri().path().to_string();
+    let path = if request.uri().path().starts_with("/api/v1/ota-downloads/") {
+        redacted_request_uri(request.uri())
+    } else {
+        request.uri().path().to_string()
+    };
     let context = request.extensions().get::<RequestContext>().cloned();
     let request_id = request
         .extensions()
@@ -177,6 +189,8 @@ pub async fn auth_middleware(
         || path == "/health"
         || path == "/ready"
         || path == "/api/v1/firmware-updates/ci"
+        // This route validates a purpose-specific, expiring firmware grant itself.
+        || path.starts_with("/api/v1/ota-downloads/")
     {
         return Ok(next.run(request).await);
     }

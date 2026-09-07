@@ -114,6 +114,7 @@ pub mod device_types {
 }
 
 pub mod firmware {
+    pub mod download;
     #[path = "repository.rs"]
     pub mod port;
     #[path = "types.rs"]

@@ -139,11 +139,26 @@ pub async fn trigger_ota_with_repository(
     device_id: &str,
     firmware_update_id: i32,
     public_url: &str,
+    download_secret: &str,
     zenoh_metrics: &ZenohMetrics,
 ) -> Result<(), AppError> {
     policy::require(ctx, Permission::DeployFirmware)?;
+    let token = crate::domains::firmware::download::issue(
+        ctx.tenant_id(),
+        firmware_update_id,
+        download_secret,
+    )?;
+    let download_url = format!(
+        "{}/api/v1/ota-downloads/{token}",
+        public_url.trim_end_matches('/')
+    );
     let outcome = repository
-        .trigger_ota(ctx.tenant_id(), device_id, firmware_update_id, public_url)
+        .trigger_ota(
+            ctx.tenant_id(),
+            device_id,
+            firmware_update_id,
+            &download_url,
+        )
         .await?;
     let (delta, version) = match outcome {
         TriggerOtaOutcome::DeviceNotFound => {

@@ -517,11 +517,7 @@ impl FirmwareRepository for TursoAdapter {
         let url = if raw_url.starts_with("https://") {
             raw_url
         } else {
-            format!(
-                "{}/{}",
-                public_url.trim_end_matches('/'),
-                raw_url.trim_start_matches('/')
-            )
+            public_url.to_string()
         };
         let mut ota = serde_json::json!({fields::FIRMWARE_VERSION:version,fields::FIRMWARE_URL:url,fields::FIRMWARE_UPDATE_ID:id});
         if let Some(v) = hash {

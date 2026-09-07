@@ -609,6 +609,7 @@ pub(crate) async fn trigger_ota(
         &id,
         body.firmware_update_id,
         &state.public_url,
+        &state.jwt_secret,
         &state.zenoh_metrics,
     )
     .await?;
@@ -759,6 +760,7 @@ pub(crate) async fn bulk_trigger_ota(
             device_id,
             firmware_update_id,
             &state.public_url,
+            &state.jwt_secret,
             &state.zenoh_metrics,
         )
         .await;

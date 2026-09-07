@@ -574,11 +574,7 @@ impl FirmwareRepository for PostgresAdapter {
                         let firmware_url = if firmware.url.starts_with("https://") {
                             firmware.url.clone()
                         } else {
-                            format!(
-                                "{}/{}",
-                                public_url.trim_end_matches('/'),
-                                firmware.url.trim_start_matches('/')
-                            )
+                            public_url.clone()
                         };
                         let mut ota = serde_json::json!({
                             fields::FIRMWARE_VERSION: firmware.version,

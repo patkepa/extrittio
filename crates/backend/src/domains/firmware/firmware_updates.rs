@@ -154,6 +154,7 @@ impl From<GlobalOtaDeploymentRecord> for GlobalOtaDeploymentResponse {
 
 pub fn router(max_firmware_size: usize) -> Router<Arc<AppState>> {
     Router::new()
+        .route("/api/v1/ota-downloads/{token}", get(download_for_device))
         .route("/api/v1/ota-deployments", get(list_all_ota_deployments))
         .route(
             "/api/v1/firmware-updates",
@@ -482,6 +483,29 @@ pub(crate) async fn download_firmware_blob(
         firmware_service::get_blob_with_repository(&ctx, state.persistence.firmware.as_ref(), id)
             .await?;
 
+    serve_blob(&state, id, blob).await
+}
+
+async fn download_for_device(
+    State(state): State<Arc<AppState>>,
+    Path(token): Path<String>,
+) -> Result<Response, AppError> {
+    let grant = crate::domains::firmware::download::verify(&token, &state.jwt_secret)?;
+    let tenant = crate::tenancy::TenantId::new(grant.tenant).map_err(|_| AppError::Unauthorized)?;
+    let blob = state
+        .persistence
+        .firmware
+        .get_blob(&tenant, grant.firmware_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Firmware not found".into()))?;
+    serve_blob(&state, grant.firmware_id, blob).await
+}
+
+async fn serve_blob(
+    state: &AppState,
+    id: i32,
+    blob: crate::domains::firmware::types::FirmwareBlobRecord,
+) -> Result<Response, AppError> {
     let data = match (blob.data, blob.storage_key.as_deref()) {
         (Some(data), _) => data,
         (None, Some(storage_key)) => {
@@ -532,6 +556,7 @@ pub(crate) async fn download_firmware_blob(
     let content_disposition = format!("attachment; filename=\"{}\"", safe_filename);
 
     Ok(Response::builder()
+        .header(header::CACHE_CONTROL, "private, no-store")
         .header(header::CONTENT_TYPE, "application/octet-stream")
         .header(header::CONTENT_DISPOSITION, content_disposition)
         .header(header::CONTENT_LENGTH, blob.size.to_string())

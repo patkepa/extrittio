@@ -16,7 +16,7 @@ use axum::{
 };
 use tokio_util::sync::CancellationToken;
 use tower_http::cors::{Any, CorsLayer};
-use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
+use tower_http::trace::{DefaultOnResponse, TraceLayer};
 use tracing::{Level, info, warn};
 
 use crate::config::AppConfig;
@@ -45,7 +45,8 @@ pub async fn serve(
         .allow_headers(Any);
 
     let trace_layer = TraceLayer::new_for_http()
-        .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
+        .make_span_with(|request: &Request| tracing::info_span!("http",
+            method = %request.method(), uri = %crate::middleware::redacted_request_uri(request.uri())))
         .on_response(DefaultOnResponse::new().level(Level::INFO));
 
     let app = api::router(config.max_firmware_size_bytes, config.enable_api_docs)
