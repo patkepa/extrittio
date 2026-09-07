@@ -106,7 +106,7 @@ pub async fn run_native_client<T: TelemetrySource>(
     mut telemetry_source: T,
     embedded_slot: &[u8],
 ) {
-    let _installed_version =
+    let installed_version =
         extrittio_sdk::native_ota::boot(&std::env::current_exe().expect("executable path"))
             .expect("OTA journal");
     let provisioned_contract = match config.contract_path.as_deref() {
@@ -231,7 +231,9 @@ pub async fn run_native_client<T: TelemetrySource>(
     let reported_state: Arc<Mutex<serde_json::Map<String, serde_json::Value>>> =
         Arc::new(Mutex::new(serde_json::Map::new()));
 
-    let firmware_version: Arc<Mutex<String>> = Arc::new(Mutex::new("v1.0.0".to_string()));
+    let firmware_version: Arc<Mutex<String>> = Arc::new(Mutex::new(
+        installed_version.unwrap_or_else(|| format!("v{}", env!("CARGO_PKG_VERSION"))),
+    ));
 
     let ota_in_progress: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
 
