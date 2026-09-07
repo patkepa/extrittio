@@ -82,9 +82,17 @@ Coordinate the firmware extraction with its P3.6 slice and the device identity
 work with P3.1. Land small prerequisite ports where needed; do not wait for the
 entire refactor or add new HTTP-handler-to-repository exceptions.
 
+Refinement: introduce `extrittio-ota` at `crates/ota` for the pure OTA decision
+engine. This is a focused extension of the four-crate backend architecture,
+analogous to `extrittio-rule-engine`, not a move to one crate per domain. The
+engine ships in the same application binary; it is not a new service, database,
+worker deployment, or independently versioned SaaS component. Record this extension
+in the architecture ADR and enforcement rules when implementing it.
+
 | Owner | Proposed responsibility |
 | --- | --- |
-| `extrittio-backend-core` | Release/campaign/attempt types, compatibility policy, authorization, state transitions, retry and wave decisions, narrow repository ports |
+| `extrittio-ota` — new | Pure campaign/attempt states, compatibility rules, transition validation, retry/deadline decisions, deterministic wave allocation and health gates |
+| `extrittio-backend-core` | Authorized release/campaign application workflows, tenant/device inventory coordination, repository and outbound ports, persistence-facing contracts and engine integration |
 | `extrittio-backend-postgres` | SQL, migrations, atomic admission, worker claims, fencing, indexed reads and production concurrency |
 | `extrittio-backend-turso` | Same business operations using bounded serialized writes and adapter-owned migrations |
 | `extrittio-backend` | HTTP and Zenoh translation, device authentication, supervised workers, object-store/CDN integration, cryptographic service adapters, telemetry |
@@ -93,11 +101,78 @@ entire refactor or add new HTTP-handler-to-repository exceptions.
 | Web, CLI and iOS | Operator workflows through the public application API |
 | CI/release tooling | Build once, record provenance, sign approved metadata and publish immutable artifacts |
 
-Proposed modules include `backend-core/src/firmware/`,
-`backend-core/src/ota/`, application façades for each, and adapter-owned firmware
-and OTA modules. Choose final filenames with the existing refactor conventions.
+Proposed modules include `ota/src/{attempt,campaign,compatibility,retry,wave}.rs`,
+`backend-core/src/firmware/`, `backend-core/src/ota/`, application façades for
+each, and adapter-owned firmware and OTA modules. Core's OTA module coordinates
+use cases; it does not maintain a second implementation of the engine's rules.
+Choose final filenames with the existing refactor conventions.
 Do not introduce another generic repository collection, generic workflow engine,
 or a broker just to implement OTA.
+
+### 3.1 Dependency and contract boundaries
+
+The new production dependency edge is:
+
+`extrittio-backend-core` → `extrittio-ota`
+
+Keep the existing host-to-core and adapter-to-core edges. Host workers call core
+application methods, not the engine directly. Adapters consume core-owned
+contracts; core may selectively re-export engine value types and narrow policy
+functions needed by those contracts. No adapter-to-engine dependency is needed.
+The engine must not depend on core, either database adapter, the host, or a device
+SDK. Do not move shared authentication types into the engine to resolve a cycle.
+
+Keep the engine's dependencies small: typed identifiers, errors, serialization
+and time values only as needed. No Tokio/runtime, HTTP, SQL, Zenoh, object-store,
+cryptographic service, filesystem, process environment, wall-clock reads or global
+randomness. CI must check both direct dependencies and their production closure;
+do not permit a runtime through a seemingly harmless shared crate or feature.
+
+Engine inputs are explicit typed snapshots: attempt/campaign state, immutable
+policy version, verified compatibility facts, health aggregates with freshness,
+current time and persisted seed or supplied jitter. Outputs are typed decisions
+such as reject, defer-until, propose-transition, retry-after, hold-wave or
+promote-wave, with stable reason codes and evidence references. The same inputs
+and policy version must produce the same decision. No timers, spawned work or
+external side effects occur in the engine.
+
+Use bounded per-attempt inputs and per-wave aggregates; do not load a whole fleet
+into memory for every decision. Campaign snapshot construction may process bounded
+batches, but its deterministic allocation must preserve the frozen membership and
+rounding rules in section 6. Version persisted policies/decision evidence and
+define explicit compatibility or migration for active campaigns when engine
+semantics change; a server upgrade must not silently reinterpret approved policy.
+
+Release storage records and tenant/actor context stay in core. Engine state types
+are not HTTP DTOs, SQL rows or device wire messages. Keep explicit mappings at
+those boundaries and freeze their existing compatibility fixtures. Device SDKs
+retain their own verification and installer state machines; they do not depend on
+the server campaign engine. Share protocol fixtures and suitably constrained
+contract types, not server orchestration code. Engine eligibility is not a
+substitute for local signature verification and pre-activation checks.
+
+### 3.2 Decisions versus durable authority
+
+An engine decision is a proposal, not authorization to install. Core authenticates
+and authorizes the caller and invokes a narrow business operation such as
+`admit_attempt`. Within that operation, the adapter reads/locks authoritative
+state and checks campaign revision, device slot, release eligibility and quota
+availability. Where mutable facts affect policy, it evaluates the same pure rule
+through the core contract against that transactional snapshot. It commits the
+validated transition, reservation, audit and delivery intent together.
+
+A decision computed from an earlier snapshot must carry expected revisions and
+be rejected/recomputed after conflicting changes. Neither a worker nor an adapter
+may implement an alternative set of rollout rules. SQL still enforces uniqueness,
+tenant references, fencing and atomicity; pure policy tests cannot establish those
+guarantees. Keep these operations explicit rather than introducing a generic
+transaction callback or giving the engine a database connection.
+
+This split permits deterministic state-machine simulation without booting the
+backend. Fleet capacity still depends on the durable scheduler, database,
+authorization topology and delivery path, not the crate boundary itself.
+
+### 3.3 Runtime orchestration
 
 Use a dedicated OTA work table initially. Reuse proven outbox patterns and worker
 supervision, but do not insert OTA actions into the rule-action outbox without a
@@ -138,8 +213,9 @@ evidence, not an authority for server scheduling.
 | `ota_campaigns` | Tenant/ID, lifecycle, release set, selector, immutable policy version, target snapshot digest, creator/approver, schedule, next evaluation, optimistic version, aggregate freshness |
 | `ota_campaign_waves` | Tenant/campaign/wave index, cumulative boundary, frozen seed, gate policy, current gate outcome and timestamps |
 | `ota_campaign_targets` | Tenant/campaign/device unique, selected artifact, frozen eligibility evidence, wave, current target outcome, attempt count, next eligible time |
-| `ota_attempts` | Tenant/ID, target, ordinal, artifact/manifest digest, prior installed digest, observed execution phase, orchestration disposition, last sequence, deadlines, error code, reservation/permit fields |
+| `ota_attempts` | Tenant/ID, campaign/device/target references, ordinal, artifact/manifest digest, prior installed digest, observed execution phase, orchestration disposition, last sequence, deadlines, error code, reservation/permit fields |
 | `device_ota_slots` | One row per tenant/device; current attempt, monotonic fencing generation, last assignment; admission uses a compare-and-swap/row lock |
+| `ota_admission_buckets` | Global/tenant/campaign/site scope, token or window budget, outstanding reservation count, version and refill time; budget updates and attempt reservation commit together |
 | `ota_attempt_events` | Tenant/attempt/event ID unique, sequence, phase, bytes, error, health evidence, device/receipt timestamps; deduplicated retained history |
 | `ota_work_items` | Tenant/ID, type, aggregate ID/version, unique deduplication key, availability, lease owner/generation/expiry, delivery count, bounded error |
 | `ota_idempotency_keys` | Tenant/actor/operation/key unique, canonical request hash, resource/result, retention deadline |
@@ -596,6 +672,9 @@ primitives already exist; its purpose is to track completion of this plan.
   identity, terminal cleanup and trigger/report race behavior.
 - [ ] Write ADRs for protocol v2, IDs/legacy mapping, execution versus orchestration
   state, lock order, signing profile, trusted time and native recovery ownership.
+- [ ] Record the focused OTA engine exception to the backend crate plan: dependency
+  direction, type ownership, transactional revalidation and persisted policy
+  compatibility. Define forbidden dependency/import checks before extraction.
 - [ ] Inventory deployed client versions, provisioning modes, boards, flash layouts,
   data migration constraints and rollback capability; mark unknowns explicitly.
 - [ ] Define reproducible load/HIL fixtures and the M1/M2/M3 acceptance matrix.
@@ -605,21 +684,31 @@ and recovery prototypes demonstrate feasibility on at least one native and one
 MCU target. User-authentication security closure is a prerequisite for production
 rollout, not something OTA can bypass.
 
-### P1 — Extract firmware ownership and retain evidence
+### P1 — Extract firmware ownership, seed the engine and retain evidence
 
-- [ ] Move firmware/OTA types and complete transactional operations behind core
-  application façades and adapter-owned implementations. Remove replaced host
-  repositories/bridges as each operation moves.
+- [ ] Move firmware application workflows and complete transactional operations
+  behind core façades and adapter-owned implementations. Preserve existing API
+  and wire mappings; do not move the host firmware directory wholesale.
+- [ ] Introduce `crates/ota` with the first real pure compatibility/transition slice
+  and its deterministic tests. Core depends on it; remove replaced rule logic
+  and host repositories/bridges as each operation moves. Do not scaffold empty
+  campaign abstractions or duplicate policy in core pending P5.
+- [ ] Extend `tools/xtask/src/architecture.rs`, affected-package detection and CI
+  for the engine: allowed edges, forbidden imports and transitive dependencies,
+  standalone engine checks/tests and existing no-adapter/core/adapter build checks.
 - [ ] Add release/artifact/capability tables and legacy ID links through additive
   migrations. Adopt archive semantics; remove destructive cascade paths to history.
-- [ ] Version compatibility policy; implement pure eligibility and typed error codes.
+- [ ] Version compatibility policy; implement pure eligibility and typed error
+  codes in the engine, with core-owned inventory and protocol mappings.
 - [ ] Route generic shadow repair/reset through rules that preserve active OTA
   ownership or explicitly cancel safely; no accidental deletion of pending work.
 - [ ] Add shared adapter contracts for isolation, idempotency, compatibility,
   archiving, concurrent trigger/report and lossless history.
 
-Exit: both engines preserve the same business invariants and the architecture
-verifier passes. Old APIs still work against the extracted application boundary.
+Exit: both database adapters preserve the same business invariants and the
+architecture verifier passes. The OTA engine tests run without a backend, database
+or async runtime; there is one implementation of each extracted policy. Old APIs
+still work against the extracted application boundary.
 
 ### P2 — Immutable signed releases and device trust
 
@@ -668,6 +757,9 @@ creating a second installation attempt.
 
 ### P5 — Durable campaigns and scheduling
 
+- [ ] Extend the engine with campaign/attempt decisions, explicit time inputs and
+  versioned outcomes. Add core application workflows and narrow atomic contracts;
+  reject stale decisions and test transactional policy revalidation in both adapters.
 - [ ] Add campaign/target/wave/attempt/device-slot/work/event/audit/idempotency tables
   and indexes. Implement snapshot preview and digest-bound approval.
 - [ ] Implement atomic admission, cluster-wide quota reservations and safe legacy
@@ -683,8 +775,9 @@ Two tenants and multiple workers share capacity correctly.
 
 ### P6 — Wave safety and operator controls
 
-- [ ] Implement deterministic waves, freshness-aware health gates, soak, automatic
-  pause/abort, and historical decision evidence.
+- [ ] Implement deterministic waves, freshness-aware health gates, soak and
+  automatic pause/abort decisions in the engine; core/adapters persist and apply
+  them with historical decision evidence and revision checks.
 - [ ] Add maintenance windows/time zones/DST behavior, safe start permits, explicit
   retry policies and separate deadline classes.
 - [ ] Implement pause/resume/cancel and draft recovery campaigns with correct
@@ -771,8 +864,9 @@ historical migration files to change installed databases.
 | Test family | Required cases |
 | --- | --- |
 | Pure policy | Every allowed/forbidden transition; compatibility; wave rounding/denominators; retry budget; deadlines; stale health; time-zone/DST boundaries |
+| Engine boundary | Standalone tests without runtime/DB; deterministic replay; forbidden dependency closure; active-policy version compatibility; unchanged wire/row mappings |
 | Adapter contract | Tenant isolation, composite FKs, retained history, unique target/attempt IDs, atomic audit/outbox/state, idempotency mismatch, deterministic cursors |
-| Concurrency | Two campaigns target one device; report versus admission; cancel versus permit; worker lease expiry/reclaim; stale worker completes late; quota race; archive versus activation |
+| Concurrency | Two campaigns target one device; report versus admission; cancel versus permit; worker lease expiry/reclaim; stale worker completes late; quota race; archive versus activation; engine proposal invalidated before commit |
 | Protocol | Mixed v1/v2; duplicate/out-of-order reports; restart sequence persistence; unknown fields/versions; truncated/oversized payloads; reconnect without a hint; lost acknowledgement |
 | Security | Wrong signer/product/device/tenant; tampered hash/size/manifest; stale root; revoked key; downgrade/freeze/replay; invalid time; certificate rotation/revocation; forged ingress identity |
 | Download | Range honored/ignored; changed validator; expired URL during reconnect; full disk; slow reader; false length; object-store failure; corrupted cache and metadata |
@@ -863,6 +957,11 @@ roughly six to ten months or more. Re-estimate after P0 prototypes and the first
 hardware qualification; reduce supported platform scope if a shorter launch is
 required rather than omitting recovery or rollout safety.
 
+The engine boundary work is included in P1, with its campaign implementation in
+P5/P6; it is not an additional product or parallel rewrite. Re-estimate P1 if
+isolating the first real policy slice reveals broader coupling. No throughput or
+delivery-time improvement is assumed merely from adding a crate.
+
 M4 candidates, each with its own acceptance criteria:
 
 - Binary deltas: exact source digest, bounded reconstruction resources, final full
@@ -877,7 +976,9 @@ M4 candidates, each with its own acceptance criteria:
   verification according to actual customer requirements.
 
 The first implementation PR should be P0's baseline and missing PostgreSQL
-attempt-concurrency tests, followed by the core firmware application/adapter slice.
+attempt-concurrency tests, followed by the core firmware application/adapter slice
+and the first tested pure policy extraction into `extrittio-ota`. Land dependency
+checks with that crate, then extend it alongside durable campaign implementation.
 Do not begin by raising the 500-device bulk limit or adding percentage controls to
 the existing synchronous loop; those changes would not establish the required
 durable admission and recovery behavior.

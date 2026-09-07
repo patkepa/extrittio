@@ -61,6 +61,24 @@ The principal architectural rule is:
 
 > Transports and adapters translate; the application layer decides; the database enforces durable invariants.
 
+### Planned OTA engine extension
+
+The [fleet OTA implementation plan](fleet-ota-implementation-plan.md#3-architecture-and-ownership)
+refines future OTA ownership with a pure `extrittio-ota` engine at `crates/ota`,
+consumed by `extrittio-backend-core`, analogous to `extrittio-rule-engine`. This
+is a targeted extension, not an implemented crate or a change to the four backend
+infrastructure/application packages. It does not introduce a separate service or
+a general one-crate-per-domain policy.
+
+Campaign/attempt policy and deterministic decisions belong in that engine;
+authorization, use cases and business ports remain in core, SQL/atomic writes in
+the database adapters, and workers/transports/integrations in the host. Adapters
+continue to depend on core contracts, not directly on the engine. The engine has
+no reverse backend dependency or IO/runtime responsibilities. Its implementation
+must update the dependency graph, expected core dependencies and architecture/CI
+checks together. P3.6's existing firmware extraction and compatibility obligations
+remain in force; do not move backend-coupled firmware code wholesale into the engine.
+
 ## 2. Why the current backend needs this split
 
 Repository inspection found several boundaries that are currently implicit:
