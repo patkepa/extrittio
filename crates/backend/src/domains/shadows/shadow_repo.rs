@@ -31,6 +31,19 @@ pub fn find_shadow_optional(
         .optional()
 }
 
+pub fn lock_shadow(
+    conn: &mut PgConnection,
+    tenant_id: &str,
+    device_id: &str,
+) -> Result<DeviceShadow, diesel::result::Error> {
+    device_shadows::table
+        .filter(device_shadows::tenant_id.eq(tenant_id))
+        .filter(device_shadows::device_id.eq(device_id))
+        .select(DeviceShadow::as_select())
+        .for_update()
+        .first(conn)
+}
+
 pub fn insert_shadow(
     conn: &mut PgConnection,
     new_shadow: &NewDeviceShadow,

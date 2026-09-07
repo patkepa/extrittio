@@ -113,7 +113,7 @@ fn update_desired_shadow(
 ) -> Result<(serde_json::Value, i32), AppError> {
     use extrittio_common::shadow::{compute_delta, merge_json};
 
-    let shadow = shadow_repo::find_shadow(connection, tenant_id, device_id)?;
+    let shadow = shadow_repo::lock_shadow(connection, tenant_id, device_id)?;
     let desired = if shadow.desired.is_object() {
         shadow.desired
     } else {
