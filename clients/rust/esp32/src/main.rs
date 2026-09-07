@@ -1,4 +1,5 @@
 use std::sync::{Arc, Mutex};
+mod ota_boot;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -51,6 +52,7 @@ fn main() {
     let peripherals = Peripherals::take().expect("Failed to take peripherals");
     let sysloop = EspSystemEventLoop::take().expect("Failed to take event loop");
     let nvs = EspDefaultNvsPartition::take().expect("Failed to take NVS partition");
+    ota_boot::init(nvs.clone());
 
     // ── WiFi ────────────────────────────────────────────────────────
     let mut wifi = BlockingWifi::wrap(
@@ -103,19 +105,9 @@ fn main() {
     // Shared state
     let reported_state: Arc<Mutex<serde_json::Map<String, serde_json::Value>>> =
         Arc::new(Mutex::new(serde_json::Map::new()));
-    let firmware_version: Arc<Mutex<String>> = Arc::new(Mutex::new(FIRMWARE_VERSION.to_string()));
-
-    // ── Request pending shadow delta on startup ──────────────────────
-    let shadow_get = ShadowGet {
-        device_id: DEVICE_ID.to_string(),
-    };
-    match session
-        .put(&shadow_get_topic, shadow_get.encode_to_vec())
-        .wait()
-    {
-        Ok(_) => info!("Shadow get request sent to '{shadow_get_topic}'"),
-        Err(e) => log::warn!("Failed to send shadow get request: {e}"),
-    }
+    let firmware_version: Arc<Mutex<String>> = Arc::new(Mutex::new(
+        ota_boot::installed_version().unwrap_or_else(|| FIRMWARE_VERSION.to_string()),
+    ));
 
     // ── Shadow subscriber thread ─────────────────────────────────────
     let shadow_session = session.clone();
@@ -129,6 +121,29 @@ fn main() {
             .expect("Failed to declare shadow delta subscriber");
 
         info!("Shadow subscriber listening on '{shadow_delta_topic}'");
+        thread::sleep(Duration::from_secs(30));
+        match ota_boot::confirm() {
+            Ok(Some(status)) => {
+                shadow_reported
+                    .lock()
+                    .unwrap()
+                    .insert(ota_fields::SHADOW_KEY.into(), status);
+                send_shadow_report(&shadow_session, &shadow_report_key, &shadow_reported, 0);
+            }
+            Ok(None) => {}
+            Err(error) => log::error!("OTA boot confirmation failed: {error}"),
+        }
+        // ── Request pending shadow delta on startup ──────────────────────
+        let shadow_get = ShadowGet {
+            device_id: DEVICE_ID.to_string(),
+        };
+        match shadow_session
+            .put(&shadow_get_topic, shadow_get.encode_to_vec())
+            .wait()
+        {
+            Ok(_) => info!("Shadow get request sent to '{shadow_get_topic}'"),
+            Err(e) => log::warn!("Failed to send shadow get request: {e}"),
+        }
 
         loop {
             match subscriber.recv() {
@@ -137,8 +152,8 @@ fn main() {
                     match ShadowDelta::decode(payload.as_ref()) {
                         Ok(delta) => {
                             info!(
-                                "Shadow delta received: version={}, delta_json={}",
-                                delta.version, delta.delta_json
+                                "Shadow delta received: version={}",
+                                delta.version
                             );
 
                             // Parse delta JSON and merge into reported state
@@ -308,10 +323,17 @@ fn report_ota_status(
     version: i64,
     fw_version: &str,
     fw_update_id: Option<i64>,
+    deployment_id: i64,
     status: &str,
     error: Option<&str>,
 ) {
-    let ota_obj = extrittio_sdk::ota::build_status_json(status, fw_version, fw_update_id, error);
+    let ota_obj = extrittio_sdk::ota::build_status_json(
+        status,
+        fw_version,
+        fw_update_id,
+        deployment_id,
+        error,
+    );
 
     {
         let mut state = reported_state.lock().unwrap();
@@ -342,29 +364,29 @@ fn handle_ota(
     let fw_version = parsed.firmware_version;
     let fw_url = parsed.firmware_url;
     let fw_update_id = parsed.firmware_update_id;
+    let deployment_id = parsed.deployment_id;
     let expected_sha256 = parsed.sha256;
 
-    // Check if we're already running the requested version
-    {
-        let current = firmware_version.lock().unwrap();
-        if *current == format!("v{fw_version}") {
-            info!("OTA: already running v{}, skipping", fw_version);
-            report_ota_status(
-                reported_state,
-                session,
-                report_topic,
-                shadow_version,
-                &fw_version,
-                fw_update_id,
-                "success",
-                None,
-            );
-            return;
-        }
+    if ota_boot::same_attempt(deployment_id) {
+        return;
+    }
+    if !ota_boot::healthy() {
+        report_ota_status(
+            reported_state,
+            session,
+            report_topic,
+            shadow_version,
+            &fw_version,
+            fw_update_id,
+            deployment_id,
+            "failed",
+            Some("Startup health check is not complete"),
+        );
+        return;
     }
 
     // -- Report "downloading" --
-    info!("OTA: downloading firmware v{} from {}", fw_version, fw_url);
+    info!("OTA: downloading firmware v{}", fw_version);
     report_ota_status(
         reported_state,
         session,
@@ -372,6 +394,7 @@ fn handle_ota(
         shadow_version,
         &fw_version,
         fw_update_id,
+        deployment_id,
         "downloading",
         None,
     );
@@ -389,6 +412,7 @@ fn handle_ota(
                 shadow_version,
                 &fw_version,
                 fw_update_id,
+                deployment_id,
                 "failed",
                 Some(&err),
             );
@@ -396,6 +420,23 @@ fn handle_ota(
         }
     };
 
+    let target_slot = match ota.get_update_slot() {
+        Ok(slot) => slot.label.to_string(),
+        Err(error) => {
+            report_ota_status(
+                reported_state,
+                session,
+                report_topic,
+                shadow_version,
+                &fw_version,
+                fw_update_id,
+                deployment_id,
+                "failed",
+                Some(&error.to_string()),
+            );
+            return;
+        }
+    };
     let mut ota_update = match ota.initiate_update() {
         Ok(u) => u,
         Err(e) => {
@@ -408,6 +449,7 @@ fn handle_ota(
                 shadow_version,
                 &fw_version,
                 fw_update_id,
+                deployment_id,
                 "failed",
                 Some(&err),
             );
@@ -435,6 +477,7 @@ fn handle_ota(
                 shadow_version,
                 &fw_version,
                 fw_update_id,
+                deployment_id,
                 "failed",
                 Some(&err),
             );
@@ -458,6 +501,7 @@ fn handle_ota(
                 shadow_version,
                 &fw_version,
                 fw_update_id,
+                deployment_id,
                 "failed",
                 Some(&err),
             );
@@ -478,6 +522,7 @@ fn handle_ota(
                 shadow_version,
                 &fw_version,
                 fw_update_id,
+                deployment_id,
                 "failed",
                 Some(&err),
             );
@@ -497,6 +542,7 @@ fn handle_ota(
             shadow_version,
             &fw_version,
             fw_update_id,
+            deployment_id,
             "failed",
             Some(&err),
         );
@@ -525,6 +571,7 @@ fn handle_ota(
                         shadow_version,
                         &fw_version,
                         fw_update_id,
+                        deployment_id,
                         "failed",
                         Some(&err),
                     );
@@ -543,6 +590,7 @@ fn handle_ota(
                     shadow_version,
                     &fw_version,
                     fw_update_id,
+                    deployment_id,
                     "failed",
                     Some(&err),
                 );
@@ -565,6 +613,7 @@ fn handle_ota(
             shadow_version,
             &fw_version,
             fw_update_id,
+            deployment_id,
             "verifying",
             None,
         );
@@ -581,6 +630,7 @@ fn handle_ota(
                 shadow_version,
                 &fw_version,
                 fw_update_id,
+                deployment_id,
                 "failed",
                 Some(&err),
             );
@@ -597,9 +647,26 @@ fn handle_ota(
         shadow_version,
         &fw_version,
         fw_update_id,
+        deployment_id,
         "installing",
         None,
     );
+
+    if let Err(error) = ota_boot::stage(&ota_payload, &target_slot) {
+        let _ = ota_update.abort();
+        report_ota_status(
+            reported_state,
+            session,
+            report_topic,
+            shadow_version,
+            &fw_version,
+            fw_update_id,
+            deployment_id,
+            "failed",
+            Some(&error.to_string()),
+        );
+        return;
+    }
 
     // Complete OTA — marks the new partition as bootable
     if let Err(e) = ota_update.complete() {
@@ -612,20 +679,13 @@ fn handle_ota(
             shadow_version,
             &fw_version,
             fw_update_id,
+            deployment_id,
             "failed",
             Some(&err),
         );
         return;
     }
 
-    // Update in-memory firmware version so the version guard works if
-    // another delta arrives before the reboot completes.
-    {
-        let mut fw = firmware_version.lock().unwrap();
-        *fw = format!("v{fw_version}");
-    }
-
-    // Report "success" BEFORE rebooting
     report_ota_status(
         reported_state,
         session,
@@ -633,7 +693,8 @@ fn handle_ota(
         shadow_version,
         &fw_version,
         fw_update_id,
-        "success",
+        deployment_id,
+        "rebooting",
         None,
     );
     info!("OTA: firmware v{} installed, rebooting...", fw_version);

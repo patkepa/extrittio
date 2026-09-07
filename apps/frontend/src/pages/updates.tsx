@@ -45,6 +45,8 @@ function progressForStatus(status: string): number {
       return 0.65;
     case 'installing':
       return 0.82;
+    case 'rebooting':
+      return 0.92;
     case 'success':
       return 1;
     case 'failed':

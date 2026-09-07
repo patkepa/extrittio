@@ -390,14 +390,44 @@ impl FirmwareRepository for TursoAdapter {
         i: &DeviceIdentity,
         u: OtaStatusUpdate,
     ) -> Result<bool, PersistenceError> {
-        let w = self.database.writer().await;
-        let mut rs=w.query("SELECT id FROM ota_deployments WHERE tenant_id=?1 AND device_id=?2 AND status NOT IN ('success','failed') AND (?3 IS NULL OR firmware_update_id=?3) ORDER BY initiated_at DESC,id DESC LIMIT 1",params![i.tenant_id_str(),i.device_id(),u.firmware_update_id]).await.map_err(row::error)?;
+        let mut w = self.database.writer().await;
+        let tx = w.transaction().await.map_err(row::error)?;
+        let mut rs=tx.query("SELECT id,status,firmware_update_id FROM ota_deployments WHERE tenant_id=?1 AND device_id=?2 AND id=?3",params![i.tenant_id_str(),i.device_id(),u.deployment_id]).await.map_err(row::error)?;
         let Some(r) = rs.next().await.map_err(row::error)? else {
+            drop(rs);
+            tx.rollback().await.map_err(row::error)?;
             return Ok(false);
         };
         let id: i64 = r.get(0).map_err(row::error)?;
+        let status: String = r.get(1).map_err(row::error)?;
+        let firmware_id: i64 = r.get(2).map_err(row::error)?;
         drop(rs);
-        w.execute("UPDATE ota_deployments SET status=?3,error_message=?4,completed_at=?5 WHERE tenant_id=?1 AND id=?2",params![i.tenant_id_str(),id,u.status,u.error_message,u.completed_at.map(|v|v.and_utc().timestamp_micros())]).await.map(|n|n==1).map_err(row::error)
+        if u.firmware_update_id.map(i64::from) != Some(firmware_id)
+            || !crate::domains::firmware::types::ota_transition_allowed(&status, &u.status)
+        {
+            tx.rollback().await.map_err(row::error)?;
+            return Ok(false);
+        }
+        let terminal = extrittio_common::ota::status::is_terminal(&u.status);
+        tx.execute("UPDATE ota_deployments SET status=?3,error_message=?4,completed_at=?5 WHERE tenant_id=?1 AND id=?2",params![i.tenant_id_str(),id,u.status,u.error_message,u.completed_at.map(|v|v.and_utc().timestamp_micros())]).await.map_err(row::error)?;
+        if terminal {
+            let mut rows = tx.query("SELECT desired,reported FROM device_shadows WHERE tenant_id=?1 AND device_id=?2", params![i.tenant_id_str(),i.device_id()]).await.map_err(row::error)?;
+            if let Some(r) = rows.next().await.map_err(row::error)? {
+                let mut desired: serde_json::Value =
+                    serde_json::from_str(&r.get::<String>(0).map_err(row::error)?)
+                        .map_err(|e| PersistenceError::CorruptData(e.to_string()))?;
+                let reported: serde_json::Value =
+                    serde_json::from_str(&r.get::<String>(1).map_err(row::error)?)
+                        .map_err(|e| PersistenceError::CorruptData(e.to_string()))?;
+                if desired["ota"]["deployment_id"].as_i64() == Some(id) {
+                    desired.as_object_mut().unwrap().remove("ota");
+                    let delta = extrittio_common::shadow::compute_delta(&desired, &reported);
+                    tx.execute("UPDATE device_shadows SET desired=?3,delta=?4,version=version+1,updated_at=?5 WHERE tenant_id=?1 AND device_id=?2", params![i.tenant_id_str(),i.device_id(),desired.to_string(),delta.to_string(),chrono::Utc::now().timestamp_micros()]).await.map_err(row::error)?;
+                }
+            }
+        }
+        tx.commit().await.map_err(row::error)?;
+        Ok(true)
     }
     async fn list_device_deployments(
         &self,
@@ -503,6 +533,18 @@ impl FirmwareRepository for TursoAdapter {
             tx.rollback().await.map_err(row::error)?;
             return Ok(TriggerOtaOutcome::Incompatible);
         }
+        if !crate::domains::firmware::types::valid_ota_artifact(
+            &version,
+            hash.as_deref(),
+            if raw_url.starts_with("https://") {
+                &raw_url
+            } else {
+                public_url
+            },
+        ) {
+            tx.rollback().await.map_err(row::error)?;
+            return Ok(TriggerOtaOutcome::InvalidArtifact);
+        }
         let mut rs=tx.query("SELECT desired,reported,version FROM device_shadows WHERE tenant_id=?1 AND device_id=?2",params![t.as_str(),device]).await.map_err(row::error)?;
         let s = rs
             .next()
@@ -514,16 +556,16 @@ impl FirmwareRepository for TursoAdapter {
         let shadow_version: i64 = s.get(2).map_err(row::error)?;
         drop(rs);
         use extrittio_common::ota::fields;
+        let now = chrono::Utc::now().timestamp_micros();
+        tx.execute("UPDATE ota_deployments SET status='failed',error_message='Superseded by a new deployment',completed_at=?3 WHERE tenant_id=?1 AND device_id=?2 AND status NOT IN ('success','failed')",params![t.as_str(),device,now]).await.map_err(row::error)?;
+        tx.execute("INSERT INTO ota_deployments(tenant_id,device_id,firmware_update_id,status,initiated_at)VALUES(?1,?2,?3,'pending',?4)",params![t.as_str(),device,id,now]).await.map_err(row::error)?;
+        let deployment_id = scalar(&tx, "SELECT last_insert_rowid()", ()).await?;
         let url = if raw_url.starts_with("https://") {
             raw_url
         } else {
-            format!(
-                "{}/{}",
-                public_url.trim_end_matches('/'),
-                raw_url.trim_start_matches('/')
-            )
+            public_url.to_string()
         };
-        let mut ota = serde_json::json!({fields::FIRMWARE_VERSION:version,fields::FIRMWARE_URL:url,fields::FIRMWARE_UPDATE_ID:id});
+        let mut ota = serde_json::json!({fields::FIRMWARE_VERSION:version,fields::FIRMWARE_URL:url,fields::FIRMWARE_UPDATE_ID:id,fields::DEPLOYMENT_ID:deployment_id});
         if let Some(v) = hash {
             ota[fields::SHA256] = serde_json::Value::String(v)
         }
@@ -554,7 +596,6 @@ impl FirmwareRepository for TursoAdapter {
             .ok_or_else(|| PersistenceError::Internal("shadow version overflow".into()))?;
         let now = chrono::Utc::now().timestamp_micros();
         tx.execute("UPDATE device_shadows SET desired=?3,delta=?4,version=?5,updated_at=?6 WHERE tenant_id=?1 AND device_id=?2",params![t.as_str(),device,serde_json::to_string(&desired).map_err(|e|PersistenceError::Internal(e.to_string()))?,serde_json::to_string(&delta).map_err(|e|PersistenceError::Internal(e.to_string()))?,next,now]).await.map_err(row::error)?;
-        tx.execute("INSERT INTO ota_deployments(tenant_id,device_id,firmware_update_id,status,initiated_at)VALUES(?1,?2,?3,'pending',?4)",params![t.as_str(),device,id,now]).await.map_err(row::error)?;
         tx.commit().await.map_err(row::error)?;
         Ok(TriggerOtaOutcome::Ready {
             delta,

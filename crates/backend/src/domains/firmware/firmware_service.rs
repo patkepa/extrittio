@@ -1,4 +1,7 @@
 // Firmware service — business logic for firmware updates
+pub use super::firmware_creation::{
+    delete_stored_firmware, prepare_blueprint_firmware, upload_blueprint_firmware,
+};
 
 use crate::auth::context::RequestContext;
 use crate::auth::policy::{self, Permission};
@@ -136,11 +139,26 @@ pub async fn trigger_ota_with_repository(
     device_id: &str,
     firmware_update_id: i32,
     public_url: &str,
+    download_secret: &str,
     zenoh_metrics: &ZenohMetrics,
 ) -> Result<(), AppError> {
     policy::require(ctx, Permission::DeployFirmware)?;
+    let token = crate::domains::firmware::download::issue(
+        ctx.tenant_id(),
+        firmware_update_id,
+        download_secret,
+    )?;
+    let download_url = format!(
+        "{}/api/v1/ota-downloads/{token}",
+        public_url.trim_end_matches('/')
+    );
     let outcome = repository
-        .trigger_ota(ctx.tenant_id(), device_id, firmware_update_id, public_url)
+        .trigger_ota(
+            ctx.tenant_id(),
+            device_id,
+            firmware_update_id,
+            &download_url,
+        )
         .await?;
     let (delta, version) = match outcome {
         TriggerOtaOutcome::DeviceNotFound => {
@@ -157,6 +175,9 @@ pub async fn trigger_ota_with_repository(
             return Err(AppError::BadRequest(
                 "Firmware device type does not match device".into(),
             ));
+        }
+        TriggerOtaOutcome::InvalidArtifact => {
+            return Err(AppError::BadRequest("Firmware requires a valid SHA-256, a version of at most 63 bytes and a download URL of at most 1023 bytes".into()));
         }
         TriggerOtaOutcome::Ready { delta, version } => (delta, version),
     };

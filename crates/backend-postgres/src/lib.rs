@@ -2,7 +2,9 @@
 
 //! PostgreSQL persistence adapters for the backend application core.
 
+pub mod api_keys;
 pub mod executor;
+pub use api_keys::PostgresApiKeyRepository;
 pub mod migrations;
 #[cfg(feature = "migration-bridge")]
 #[doc(hidden)]

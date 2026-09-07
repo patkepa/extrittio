@@ -1,15 +1,29 @@
 use async_trait::async_trait;
 use diesel::prelude::*;
 
-use crate::db::models::{ApiKey, NewApiKey};
-use crate::db::schema::{api_keys, device_types};
-use crate::domains::identity::api_key_repository::ApiKeyRepository;
-use crate::domains::identity::api_key_types::{ApiKeyRecord, ApiKeySummary, CreateApiKeyRecord};
-use crate::persistence::PersistenceError;
-use crate::tenancy::TenantId;
+use crate::models::{ApiKey, NewApiKey};
+use crate::schema::{api_keys, device_types};
+use extrittio_backend_core::ApiKeyRepository;
+use extrittio_backend_core::PersistenceError;
+use extrittio_backend_core::TenantId;
+use extrittio_backend_core::{ApiKeyRecord, ApiKeySummary, CreateApiKeyRecord};
 
-use super::PostgresAdapter;
-use super::executor::map_diesel_error;
+use crate::error::map_diesel_error;
+use crate::{PostgresExecutor, PostgresPool};
+
+#[derive(Clone)]
+pub struct PostgresApiKeyRepository {
+    executor: PostgresExecutor,
+}
+
+impl PostgresApiKeyRepository {
+    #[must_use]
+    pub fn from_pool(pool: PostgresPool) -> Self {
+        Self {
+            executor: PostgresExecutor::new(pool),
+        }
+    }
+}
 
 fn to_record(row: ApiKey) -> ApiKeyRecord {
     ApiKeyRecord {
@@ -23,7 +37,7 @@ fn to_record(row: ApiKey) -> ApiKeyRecord {
 }
 
 #[async_trait]
-impl ApiKeyRepository for PostgresAdapter {
+impl ApiKeyRepository for PostgresApiKeyRepository {
     async fn create(
         &self,
         tenant: &TenantId,

@@ -38,6 +38,16 @@ path = "tests/postgres_zones.rs"
 required-features = ["postgres"]
 
 [[test]]
+name = "postgres_api_keys"
+path = "tests/postgres_api_keys.rs"
+required-features = ["postgres"]
+
+[[test]]
+name = "turso_api_keys"
+path = "tests/turso_api_keys.rs"
+required-features = ["turso"]
+
+[[test]]
 name = "postgres_roles"
 path = "tests/postgres_roles.rs"
 required-features = ["postgres"]

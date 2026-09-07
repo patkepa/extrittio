@@ -2,8 +2,6 @@
 pub mod activity_service;
 #[path = "../domains/alerts/alert_service.rs"]
 pub mod alert_service;
-#[path = "../domains/identity/api_key_service.rs"]
-pub mod api_key_service;
 #[path = "../domains/audit/audit_service.rs"]
 pub mod audit_service;
 #[path = "../domains/identity/cert_service.rs"]
@@ -24,6 +22,8 @@ pub mod device_ingress_service;
 pub mod device_service;
 #[path = "../domains/device_types/device_type_service.rs"]
 pub mod device_type_service;
+#[path = "../domains/firmware/firmware_creation.rs"]
+mod firmware_creation;
 #[path = "../domains/firmware/firmware_service.rs"]
 pub mod firmware_service;
 #[path = "../domains/fleets/fleet_service.rs"]

@@ -5148,7 +5148,7 @@ export interface operations {
     list_all_ota_deployments: {
         parameters: {
             query?: {
-                /** @description Filter by status: all, in_progress, completed, pending, downloading, verifying, installing, success, failed. */
+                /** @description Filter by status: all, in_progress, completed, pending, downloading, verifying, installing, rebooting, success, failed. */
                 status?: string | null;
                 limit?: number | null;
                 offset?: number | null;

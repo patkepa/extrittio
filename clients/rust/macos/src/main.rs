@@ -55,6 +55,7 @@ enum Commands {
 }
 
 fn main() {
+    extrittio_sdk::native_ota::watchdog_entry();
     let cli = Cli::parse();
 
     match cli.command {
@@ -110,6 +111,9 @@ fn run(
 }
 
 async fn run_async(cfg: config::Config, device_id: String) {
+    let installed_version =
+        extrittio_sdk::native_ota::boot(&std::env::current_exe().expect("executable path"))
+            .expect("OTA journal");
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -186,7 +190,9 @@ async fn run_async(cfg: config::Config, device_id: String) {
 
     let reported_state: Arc<Mutex<serde_json::Map<String, serde_json::Value>>> =
         Arc::new(Mutex::new(serde_json::Map::new()));
-    let firmware_version: Arc<Mutex<String>> = Arc::new(Mutex::new(cfg.firmware_version.clone()));
+    let firmware_version: Arc<Mutex<String>> = Arc::new(Mutex::new(
+        installed_version.unwrap_or_else(|| cfg.firmware_version.clone()),
+    ));
     let ota_in_progress: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
 
     let start = Instant::now();
@@ -221,17 +227,6 @@ async fn run_async(cfg: config::Config, device_id: String) {
         }
     });
 
-    // -- Request pending shadow delta on startup --
-    let shadow_get = ShadowGet {
-        device_id: device_id.clone(),
-    };
-    let payload = shadow_get.encode_to_vec();
-    if let Err(e) = session.put(&shadow_get_topic, payload).await {
-        tracing::warn!("Failed to send ShadowGet: {}", e);
-    } else {
-        tracing::info!("Sent ShadowGet to '{}'", shadow_get_topic);
-    }
-
     // -- Shadow subscriber task --
     let shadow_session = session.clone();
     let shadow_device_id = device_id.clone();
@@ -246,6 +241,42 @@ async fn run_async(cfg: config::Config, device_id: String) {
 
         tracing::info!("Subscribed to '{}'", shadow_delta_topic);
 
+        // Confirm only after this process has survived normal startup and heartbeat activity.
+        if extrittio_sdk::native_ota::needs_confirmation(
+            &std::env::current_exe().expect("executable path"),
+        ) {
+            tokio::time::sleep(Duration::from_secs(30)).await;
+        }
+        match extrittio_sdk::native_ota::confirm(&std::env::current_exe().expect("executable path"))
+        {
+            Ok(Some(status)) => {
+                shadow_reported
+                    .lock()
+                    .await
+                    .insert(ota_fields::SHADOW_KEY.into(), status);
+                ota::send_shadow_report(
+                    &shadow_device_id,
+                    &shadow_session,
+                    &shadow_report_topic,
+                    &shadow_reported,
+                    0,
+                )
+                .await;
+            }
+            Ok(None) => {}
+            Err(error) => tracing::error!("OTA startup confirmation failed: {error}"),
+        }
+        // -- Request pending shadow delta on startup --
+        let shadow_get = ShadowGet {
+            device_id: shadow_device_id.clone(),
+        };
+        let payload = shadow_get.encode_to_vec();
+        if let Err(e) = shadow_session.put(&shadow_get_topic, payload).await {
+            tracing::warn!("Failed to send ShadowGet: {}", e);
+        } else {
+            tracing::info!("Sent ShadowGet to '{}'", shadow_get_topic);
+        }
+
         loop {
             let sample = subscriber.recv_async().await;
             match sample {
@@ -253,7 +284,7 @@ async fn run_async(cfg: config::Config, device_id: String) {
                     let bytes = sample.payload().to_bytes();
                     match ShadowDelta::decode(bytes.as_ref()) {
                         Ok(delta) => {
-                            tracing::info!("Shadow delta received: {}", delta.delta_json);
+                            tracing::info!("Shadow delta received: version={}", delta.version);
 
                             match serde_json::from_str::<serde_json::Value>(&delta.delta_json) {
                                 Ok(serde_json::Value::Object(mut delta_map)) => {

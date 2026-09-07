@@ -68,14 +68,6 @@ impl Config {
         }
         std::fs::write(path, contents)
     }
-
-    /// Update the firmware_version field in the config file on disk.
-    pub fn update_firmware_version(version: &str) -> std::io::Result<()> {
-        let path = Self::config_path();
-        let mut config = Self::load();
-        config.firmware_version = version.to_string();
-        config.save(&path)
-    }
 }
 
 impl Default for Config {

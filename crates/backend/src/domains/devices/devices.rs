@@ -173,11 +173,41 @@ pub struct BulkOperationError {
     pub error: String,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Default, Serialize, ToSchema)]
 pub struct BulkResultResponse {
     pub succeeded: i64,
     pub failed: i64,
     pub errors: Vec<BulkOperationError>,
+}
+
+impl BulkResultResponse {
+    fn record<T>(&mut self, device_id: &str, result: Result<T, AppError>) {
+        match result {
+            Ok(_) => self.succeeded += 1,
+            Err(error) => {
+                self.failed += 1;
+                self.errors.push(BulkOperationError {
+                    device_id: device_id.to_owned(),
+                    error: error.to_string(),
+                });
+            }
+        }
+    }
+}
+
+fn bulk_target_selection<'a>(
+    device_ids: Option<&'a [String]>,
+    select_all: Option<bool>,
+    filters: Option<&'a BulkDeviceFilters>,
+) -> device_catalog_service::DeviceTargetSelection<'a> {
+    device_catalog_service::DeviceTargetSelection {
+        device_ids,
+        select_all: select_all.unwrap_or(false),
+        status: filters.and_then(|filter| filter.status.as_deref()),
+        search: filters.and_then(|filter| filter.search.as_deref()),
+        fleet_id: filters.and_then(|filter| filter.fleet_id),
+        max_size: MAX_BULK_SIZE,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -579,6 +609,7 @@ pub(crate) async fn trigger_ota(
         &id,
         body.firmware_update_id,
         &state.public_url,
+        &state.jwt_secret,
         &state.zenoh_metrics,
     )
     .await?;
@@ -602,14 +633,11 @@ pub(crate) async fn bulk_change_fleet(
     let ids = device_catalog_service::resolve_target_ids(
         &ctx,
         state.persistence.devices.as_ref(),
-        device_catalog_service::DeviceTargetSelection {
-            device_ids: body.device_ids.as_deref(),
-            select_all: body.select_all.unwrap_or(false),
-            status: body.filters.as_ref().and_then(|f| f.status.as_deref()),
-            search: body.filters.as_ref().and_then(|f| f.search.as_deref()),
-            fleet_id: body.filters.as_ref().and_then(|f| f.fleet_id),
-            max_size: MAX_BULK_SIZE,
-        },
+        bulk_target_selection(
+            body.device_ids.as_deref(),
+            body.select_all,
+            body.filters.as_ref(),
+        ),
     )
     .await?;
     let affected = device_catalog_service::bulk_assign_fleet(
@@ -639,14 +667,11 @@ pub(crate) async fn bulk_delete_devices(
     let ids = device_catalog_service::resolve_target_ids(
         &ctx,
         state.persistence.devices.as_ref(),
-        device_catalog_service::DeviceTargetSelection {
-            device_ids: body.device_ids.as_deref(),
-            select_all: body.select_all.unwrap_or(false),
-            status: body.filters.as_ref().and_then(|f| f.status.as_deref()),
-            search: body.filters.as_ref().and_then(|f| f.search.as_deref()),
-            fleet_id: body.filters.as_ref().and_then(|f| f.fleet_id),
-            max_size: MAX_BULK_SIZE,
-        },
+        bulk_target_selection(
+            body.device_ids.as_deref(),
+            body.select_all,
+            body.filters.as_ref(),
+        ),
     )
     .await?;
     let deleted =
@@ -673,23 +698,18 @@ pub(crate) async fn bulk_restart_devices(
     let ids = device_catalog_service::resolve_target_ids(
         &ctx,
         state.persistence.devices.as_ref(),
-        device_catalog_service::DeviceTargetSelection {
-            device_ids: body.device_ids.as_deref(),
-            select_all: body.select_all.unwrap_or(false),
-            status: body.filters.as_ref().and_then(|f| f.status.as_deref()),
-            search: body.filters.as_ref().and_then(|f| f.search.as_deref()),
-            fleet_id: body.filters.as_ref().and_then(|f| f.fleet_id),
-            max_size: MAX_BULK_SIZE,
-        },
+        bulk_target_selection(
+            body.device_ids.as_deref(),
+            body.select_all,
+            body.filters.as_ref(),
+        ),
     )
     .await?;
 
-    let mut succeeded: i64 = 0;
-    let mut failed: i64 = 0;
-    let mut errors = Vec::new();
+    let mut result = BulkResultResponse::default();
 
     for device_id in &ids {
-        match command_service::send_command_as_user_with_repository(
+        let outcome = command_service::send_command_as_user_with_repository(
             &ctx,
             state.persistence.commands.as_ref(),
             state.persistence.devices.as_ref(),
@@ -699,24 +719,11 @@ pub(crate) async fn bulk_restart_devices(
             serde_json::json!({}),
             &state.zenoh_metrics,
         )
-        .await
-        {
-            Ok(_) => succeeded += 1,
-            Err(e) => {
-                failed += 1;
-                errors.push(BulkOperationError {
-                    device_id: device_id.clone(),
-                    error: e.to_string(),
-                });
-            }
-        }
+        .await;
+        result.record(device_id, outcome);
     }
 
-    Ok(Json(BulkResultResponse {
-        succeeded,
-        failed,
-        errors,
-    }))
+    Ok(Json(result))
 }
 
 /// Bulk trigger OTA firmware update on multiple devices.
@@ -735,49 +742,32 @@ pub(crate) async fn bulk_trigger_ota(
     let ids = device_catalog_service::resolve_target_ids(
         &ctx,
         state.persistence.devices.as_ref(),
-        device_catalog_service::DeviceTargetSelection {
-            device_ids: body.device_ids.as_deref(),
-            select_all: body.select_all.unwrap_or(false),
-            status: body.filters.as_ref().and_then(|f| f.status.as_deref()),
-            search: body.filters.as_ref().and_then(|f| f.search.as_deref()),
-            fleet_id: body.filters.as_ref().and_then(|f| f.fleet_id),
-            max_size: MAX_BULK_SIZE,
-        },
+        bulk_target_selection(
+            body.device_ids.as_deref(),
+            body.select_all,
+            body.filters.as_ref(),
+        ),
     )
     .await?;
 
-    let mut succeeded: i64 = 0;
-    let mut failed: i64 = 0;
-    let mut errors = Vec::new();
+    let mut result = BulkResultResponse::default();
 
     for device_id in &ids {
-        match firmware_service::trigger_ota_with_repository(
+        let outcome = firmware_service::trigger_ota_with_repository(
             &ctx,
             state.persistence.firmware.as_ref(),
             &state.zenoh_session,
             device_id,
             firmware_update_id,
             &state.public_url,
+            &state.jwt_secret,
             &state.zenoh_metrics,
         )
-        .await
-        {
-            Ok(_) => succeeded += 1,
-            Err(e) => {
-                failed += 1;
-                errors.push(BulkOperationError {
-                    device_id: device_id.clone(),
-                    error: e.to_string(),
-                });
-            }
-        }
+        .await;
+        result.record(device_id, outcome);
     }
 
-    Ok(Json(BulkResultResponse {
-        succeeded,
-        failed,
-        errors,
-    }))
+    Ok(Json(result))
 }
 
 // ---------------------------------------------------------------------------

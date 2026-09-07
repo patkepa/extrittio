@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState, type SetStateAction } from 'react';
 import {
   Button,
   Callout,
@@ -10,7 +10,7 @@ import {
   InputGroup,
   NumericInput,
   TextArea,
-  Icon,
+  Spinner,
 } from '@blueprintjs/core';
 import { useRule, useCreateRule, useUpdateRule } from '../queries/use-rules';
 import { useConfirmShortcut } from '@patkepa/kantzen-ui/interactions';
@@ -32,85 +32,104 @@ import {
   contractRuleMetricFields,
 } from '../model/rule-metric-fields';
 
-interface ConditionRow {
-  field: string;
-  operator: string;
-  value: string;
-  zone_id?: string;
-}
-
-interface ActionRow {
-  action_type: string;
-  config: Record<string, unknown>;
-}
-
-const STATUS_FIELDS = [{ value: 'status', label: 'Status' }];
-
-const GEOFENCE_FIELDS = [
-  { label: 'Zone State', value: 'zone_state' },
-  { label: 'Dwell Time (seconds)', value: 'dwell_seconds' },
-];
-
-const ZONE_STATE_VALUES = [
-  { label: 'Inside', value: 'inside' },
-  { label: 'Outside', value: 'outside' },
-];
-
-const NUMERIC_OPERATORS = [
-  { value: 'gt', label: '>' },
-  { value: 'gte', label: '>=' },
-  { value: 'lt', label: '<' },
-  { value: 'lte', label: '<=' },
-  { value: 'eq', label: '=' },
-  { value: 'neq', label: '!=' },
-];
-const STATUS_OPERATORS = [
-  { value: 'eq', label: '=' },
-  { value: 'neq', label: '!=' },
-];
-const ZONE_STATE_OPERATORS = [
-  { value: 'eq', label: '=' },
-  { value: 'neq', label: '!=' },
-];
-const STATUS_VALUES = ['online', 'offline', 'warning'];
-
-const ACTION_TYPES = ['alert', 'webhook', 'command'];
-const SEVERITY_OPTIONS = ['info', 'warning', 'critical'];
-
-const emptyCondition = (triggerType: string): ConditionRow => ({
-  field:
-    triggerType === 'device_status' ? 'status' : triggerType === 'geofence' ? 'zone_state' : '',
-  operator: triggerType === 'device_status' || triggerType === 'geofence' ? 'eq' : 'gt',
-  value: '',
-  zone_id: undefined,
-});
-const emptyAction = (): ActionRow => ({
-  action_type: 'alert',
-  config: { severity: 'warning' },
-});
+import type { Rule } from '../../../types/rules';
+import {
+  createRuleForm,
+  validateRuleForm,
+  ruleFormRequest,
+  emptyCondition,
+  emptyAction,
+  type RuleForm,
+  type ConditionRow,
+  type ActionRow,
+} from '../model/rule-form';
+import { RuleConditions } from './rule-conditions';
+import { RuleActions } from './rule-actions';
 
 export function RuleDialog() {
-  const { isRuleDialogOpen, editingRuleId, closeRuleDialog } = useUIStore();
-  const { data: existingRule } = useRule(editingRuleId);
+  const isOpen = useUIStore((state) => state.isRuleDialogOpen);
+  const editingRuleId = useUIStore((state) => state.editingRuleId);
+  const close = useUIStore((state) => state.closeRuleDialog);
+  if (!isOpen) return null;
+  return (
+    <RuleDialogLoader
+      key={editingRuleId ?? 'new'}
+      editingRuleId={editingRuleId}
+      closeRuleDialog={close}
+    />
+  );
+}
+
+interface EditorProps {
+  editingRuleId: string | null;
+  closeRuleDialog: () => void;
+  existingRule?: Rule;
+}
+
+function RuleDialogLoader({ editingRuleId, closeRuleDialog }: EditorProps) {
+  const query = useRule(editingRuleId);
+  if (editingRuleId && !query.data) {
+    return (
+      <Dialog isOpen title="Edit Rule" onClose={closeRuleDialog}>
+        <DialogBody>
+          {query.isError ? (
+            <Callout intent="danger">
+              Failed to load rule. <Button onClick={() => void query.refetch()}>Retry</Button>
+            </Callout>
+          ) : (
+            <Spinner aria-label="Loading rule" />
+          )}
+        </DialogBody>
+      </Dialog>
+    );
+  }
+  return (
+    <RuleEditor
+      editingRuleId={editingRuleId}
+      closeRuleDialog={closeRuleDialog}
+      existingRule={query.data}
+    />
+  );
+}
+
+function RuleEditor({ editingRuleId, closeRuleDialog, existingRule }: EditorProps) {
   const createMutation = useCreateRule();
   const updateMutation = useUpdateRule();
+  const [form, setForm] = useState(() => createRuleForm(existingRule));
+  const {
+    name,
+    description,
+    triggerType,
+    targetType,
+    targetId,
+    cooldownSeconds,
+    conditions,
+    actions,
+  } = form;
+  function setField<K extends keyof RuleForm>(field: K, value: SetStateAction<RuleForm[K]>) {
+    setForm((previous) => ({
+      ...previous,
+      [field]:
+        typeof value === 'function'
+          ? (value as (previous: RuleForm[K]) => RuleForm[K])(previous[field])
+          : value,
+    }));
+  }
+  const setName = (value: string) => setField('name', value);
+  const setDescription = (value: string) => setField('description', value);
+  const setTriggerType = (value: string) => setField('triggerType', value);
+  const setTargetType = (value: string) => setField('targetType', value);
+  const setTargetId = (value: string) => setField('targetId', value);
+  const setCooldownSeconds = (value: number) => setField('cooldownSeconds', value);
+  const setConditions = (value: SetStateAction<ConditionRow[]>) => setField('conditions', value);
+  const setActions = (value: SetStateAction<ActionRow[]>) => setField('actions', value);
 
-  // Data for target dropdowns
   const { data: deviceTypes } = useDeviceTypes();
   const { data: fleets } = useFleets();
-  const { data: devicesData } = useAllDevices();
+  const { data: devicesData } = useAllDevices(undefined, { enabled: targetType === 'device' });
   const devices = devicesData?.data ?? [];
   const { data: zones = [] } = useZones();
   const { data: blueprints = [] } = useDeviceBlueprints();
-
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [triggerType, setTriggerType] = useState('telemetry');
-  const [targetType, setTargetType] = useState('global');
-  const [targetId, setTargetId] = useState('');
-  const [cooldownSeconds, setCooldownSeconds] = useState(300);
-  const [conditions, setConditions] = useState<ConditionRow[]>([emptyCondition('telemetry')]);
-  const [actions, setActions] = useState<ActionRow[]>([emptyAction()]);
   const blueprintRevisionQuery = useLatestDeviceBlueprintRevision(
     targetType === 'blueprint' ? targetId : '',
   );
@@ -136,76 +155,7 @@ export function RuleDialog() {
     return [];
   }, [blueprintRevisionQuery.data, deviceContractQuery.data, targetType]);
 
-  const resetForm = useCallback(() => {
-    setName('');
-    setDescription('');
-    setTriggerType('telemetry');
-    setTargetType('global');
-    setTargetId('');
-    setCooldownSeconds(300);
-    setConditions([emptyCondition('telemetry')]);
-    setActions([emptyAction()]);
-  }, []);
-
-  // Populate form when editing
-  /* eslint-disable react-hooks/set-state-in-effect -- hydrate form state when async rule data arrives */
-  useEffect(() => {
-    if (editingRuleId && existingRule) {
-      setName(existingRule.name);
-      setDescription(existingRule.description ?? '');
-      setTriggerType(existingRule.trigger_type);
-      setTargetType(existingRule.target_type);
-      setTargetId(existingRule.target_id ?? '');
-      setCooldownSeconds(existingRule.cooldown_seconds);
-      setConditions(
-        existingRule.conditions.length > 0
-          ? existingRule.conditions.map((c) => ({
-              field: c.field,
-              operator: c.operator,
-              value: c.value,
-              zone_id: c.zone_id,
-            }))
-          : [emptyCondition(existingRule.trigger_type)],
-      );
-      setActions(
-        existingRule.actions.length > 0
-          ? existingRule.actions.map((a) => ({
-              action_type: a.action_type,
-              config: { ...a.config },
-            }))
-          : [emptyAction()],
-      );
-    } else if (!editingRuleId) {
-      resetForm();
-    }
-  }, [editingRuleId, existingRule, resetForm]);
-  /* eslint-enable react-hooks/set-state-in-effect */
-
-  // Reset mutation errors when dialog opens/closes
-  const resetCreate = createMutation.reset;
-  const resetUpdate = updateMutation.reset;
-  useEffect(() => {
-    if (!isRuleDialogOpen) {
-      resetCreate();
-      resetUpdate();
-    }
-  }, [isRuleDialogOpen, resetCreate, resetUpdate]);
-
-  const hasEmptyConditions = conditions.some((c) => {
-    if (triggerType === 'geofence' && !c.zone_id) return true;
-    return c.field.trim() === '' || c.value.trim() === '';
-  });
-  const hasInvalidActions = actions.some((a) => {
-    if (a.action_type === 'webhook') {
-      const url = (a.config.url as string) ?? '';
-      return !url.trim() || !url.startsWith('https://');
-    }
-    if (a.action_type === 'command') {
-      return !((a.config.command as string) ?? '').trim();
-    }
-    return false;
-  });
-  const hasMissingTarget = targetType !== 'global' && targetId.trim() === '';
+  const { hasEmptyConditions, hasInvalidActions, hasMissingTarget } = validateRuleForm(form);
 
   const handleSubmit = () => {
     if (hasMissingTarget) {
@@ -221,21 +171,7 @@ export function RuleDialog() {
       return;
     }
 
-    const body = {
-      name,
-      description: description || undefined,
-      trigger_type: triggerType,
-      target_type: targetType,
-      target_id: targetType !== 'global' ? targetId || undefined : undefined,
-      cooldown_seconds: cooldownSeconds,
-      conditions: conditions.map((c) => ({
-        field: c.field,
-        operator: c.operator,
-        value: c.value,
-        ...(c.zone_id && { zone_id: c.zone_id }),
-      })),
-      actions: actions.map((a) => ({ action_type: a.action_type, config: a.config })),
-    };
+    const body = ruleFormRequest(form);
 
     if (editingRuleId) {
       updateMutation.mutate(
@@ -244,7 +180,6 @@ export function RuleDialog() {
           onSuccess: () => {
             void showSuccessToast('Rule updated');
             closeRuleDialog();
-            resetForm();
           },
           onError: () => {
             void showErrorToast('Failed to update rule');
@@ -256,7 +191,6 @@ export function RuleDialog() {
         onSuccess: () => {
           void showSuccessToast('Rule created');
           closeRuleDialog();
-          resetForm();
         },
         onError: () => {
           void showErrorToast('Failed to create rule');
@@ -301,7 +235,7 @@ export function RuleDialog() {
     !!name.trim() && !hasMissingTarget && !hasEmptyConditions && !hasInvalidActions && !isPending;
 
   useConfirmShortcut({
-    isOpen: isRuleDialogOpen,
+    isOpen: true,
     canConfirm: canSubmit,
     onConfirm: handleSubmit,
   });
@@ -310,7 +244,7 @@ export function RuleDialog() {
     <Dialog
       icon={editingRuleId ? 'edit' : 'add'}
       title={editingRuleId ? 'Edit Rule' : 'Add Rule'}
-      isOpen={isRuleDialogOpen}
+      isOpen
       onClose={closeRuleDialog}
       style={{ width: 600 }}
     >
@@ -427,327 +361,24 @@ export function RuleDialog() {
           />
         </FormGroup>
 
-        {/* Conditions */}
-        <div style={{ marginBottom: 16 }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: 8,
-            }}
-          >
-            <span className="section-label" style={{ margin: 0 }}>
-              Conditions
-            </span>
-            <Button icon="add" minimal small onClick={addCondition}>
-              Add
-            </Button>
-          </div>
-          {conditions.map((cond, i) => {
-            if (triggerType === 'geofence') {
-              const isZoneState = cond.field === 'zone_state';
-              const operators = isZoneState ? ZONE_STATE_OPERATORS : NUMERIC_OPERATORS;
-
-              return (
-                <div
-                  key={i}
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 6,
-                    marginBottom: 12,
-                    padding: 8,
-                    border: '1px solid var(--border-color)',
-                    background: 'hsla(0,0%,100%,0.02)',
-                  }}
-                >
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    {/* Field selector */}
-                    <HTMLSelect
-                      value={cond.field}
-                      onChange={(e) => {
-                        const newField = e.target.value;
-                        updateCondition(i, 'field', newField);
-                        // Reset operator and value when field changes
-                        setConditions((prev) =>
-                          prev.map((c, idx) =>
-                            idx === i
-                              ? {
-                                  ...c,
-                                  field: newField,
-                                  operator: newField === 'zone_state' ? 'eq' : 'gt',
-                                  value: '',
-                                }
-                              : c,
-                          ),
-                        );
-                      }}
-                      style={{ flex: 1 }}
-                    >
-                      {GEOFENCE_FIELDS.map((f) => (
-                        <option key={f.value} value={f.value}>
-                          {f.label}
-                        </option>
-                      ))}
-                    </HTMLSelect>
-                    <Button
-                      icon="cross"
-                      minimal
-                      small
-                      disabled={conditions.length <= 1}
-                      onClick={() => removeCondition(i)}
-                    />
-                  </div>
-                  {/* Zone picker */}
-                  <HTMLSelect
-                    value={cond.zone_id ?? ''}
-                    onChange={(e) => updateCondition(i, 'zone_id', e.target.value)}
-                  >
-                    <option value="">Select zone...</option>
-                    {zones.map((z) => (
-                      <option key={z.id} value={z.id}>
-                        {z.name}
-                      </option>
-                    ))}
-                  </HTMLSelect>
-                  {/* Operator + value row */}
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <HTMLSelect
-                      value={cond.operator}
-                      onChange={(e) => updateCondition(i, 'operator', e.target.value)}
-                      style={{ width: 70 }}
-                    >
-                      {operators.map((op) => (
-                        <option key={op.value} value={op.value}>
-                          {op.label}
-                        </option>
-                      ))}
-                    </HTMLSelect>
-                    {isZoneState ? (
-                      <HTMLSelect
-                        value={cond.value}
-                        onChange={(e) => updateCondition(i, 'value', e.target.value)}
-                        style={{ flex: 1 }}
-                      >
-                        <option value="">Select state...</option>
-                        {ZONE_STATE_VALUES.map((sv) => (
-                          <option key={sv.value} value={sv.value}>
-                            {sv.label}
-                          </option>
-                        ))}
-                      </HTMLSelect>
-                    ) : (
-                      <InputGroup
-                        placeholder="Threshold seconds"
-                        value={cond.value}
-                        onChange={(e) => updateCondition(i, 'value', e.target.value)}
-                        type="number"
-                        style={{ flex: 1 }}
-                      />
-                    )}
-                  </div>
-                </div>
-              );
-            }
-
-            // Telemetry / device_status conditions (original layout)
-            const fields = triggerType === 'device_status' ? STATUS_FIELDS : telemetryFields;
-            const operators =
-              triggerType === 'device_status' ? STATUS_OPERATORS : NUMERIC_OPERATORS;
-            const isStatusField = cond.field === 'status';
-
-            return (
-              <div
-                key={i}
-                style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}
-              >
-                {triggerType === 'device_status' || fields.length > 0 ? (
-                  <HTMLSelect
-                    value={cond.field}
-                    onChange={(e) => updateCondition(i, 'field', e.target.value)}
-                    style={{ flex: 1 }}
-                  >
-                    {triggerType !== 'device_status' && <option value="">Select metric...</option>}
-                    {cond.field && !fields.some((field) => field.value === cond.field) && (
-                      <option value={cond.field}>{cond.field} (existing)</option>
-                    )}
-                    {fields.map((f) => (
-                      <option key={f.value} value={f.value}>
-                        {f.label}
-                      </option>
-                    ))}
-                  </HTMLSelect>
-                ) : (
-                  <InputGroup
-                    value={cond.field}
-                    onChange={(e) => updateCondition(i, 'field', e.target.value)}
-                    placeholder="Metric key, e.g. environment./temperature"
-                    style={{ flex: 1 }}
-                  />
-                )}
-                <HTMLSelect
-                  value={cond.operator}
-                  onChange={(e) => updateCondition(i, 'operator', e.target.value)}
-                  style={{ width: 70 }}
-                >
-                  {operators.map((op) => (
-                    <option key={op.value} value={op.value}>
-                      {op.label}
-                    </option>
-                  ))}
-                </HTMLSelect>
-                {isStatusField ? (
-                  <HTMLSelect
-                    value={cond.value}
-                    onChange={(e) => updateCondition(i, 'value', e.target.value)}
-                    style={{ flex: 1 }}
-                  >
-                    <option value="">Select status...</option>
-                    {STATUS_VALUES.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </HTMLSelect>
-                ) : (
-                  <InputGroup
-                    placeholder="Threshold value"
-                    value={cond.value}
-                    onChange={(e) => updateCondition(i, 'value', e.target.value)}
-                    type="number"
-                    style={{ flex: 1 }}
-                  />
-                )}
-                <Button
-                  icon="cross"
-                  minimal
-                  small
-                  disabled={conditions.length <= 1}
-                  onClick={() => removeCondition(i)}
-                />
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Actions */}
-        <div style={{ marginBottom: 8 }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: 8,
-            }}
-          >
-            <span className="section-label" style={{ margin: 0 }}>
-              Actions
-            </span>
-            <Button icon="add" minimal small onClick={addAction}>
-              Add
-            </Button>
-          </div>
-          {actions.map((action, i) => (
-            <div
-              key={i}
-              style={{
-                padding: 12,
-                marginBottom: 8,
-                border: '1px solid var(--border-color)',
-                background: 'hsla(0,0%,100%,0.02)',
-              }}
-            >
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                <HTMLSelect
-                  value={action.action_type}
-                  onChange={(e) => changeActionType(i, e.target.value)}
-                  style={{ flex: 1 }}
-                >
-                  {ACTION_TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {t.charAt(0).toUpperCase() + t.slice(1)}
-                    </option>
-                  ))}
-                </HTMLSelect>
-                <Button
-                  icon="cross"
-                  minimal
-                  small
-                  disabled={actions.length <= 1}
-                  onClick={() => removeAction(i)}
-                />
-              </div>
-              {action.action_type === 'alert' && (
-                <FormGroup label="Severity" style={{ marginBottom: 0 }}>
-                  <HTMLSelect
-                    fill
-                    value={(action.config.severity as string) ?? 'warning'}
-                    onChange={(e) =>
-                      updateAction(i, { config: { ...action.config, severity: e.target.value } })
-                    }
-                  >
-                    {SEVERITY_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {s.charAt(0).toUpperCase() + s.slice(1)}
-                      </option>
-                    ))}
-                  </HTMLSelect>
-                </FormGroup>
-              )}
-              {action.action_type === 'webhook' && (
-                <FormGroup label="URL" style={{ marginBottom: 0 }}>
-                  <InputGroup
-                    placeholder="https://..."
-                    value={(action.config.url as string) ?? ''}
-                    onChange={(e) =>
-                      updateAction(i, { config: { ...action.config, url: e.target.value } })
-                    }
-                    leftIcon={<Icon icon="globe" />}
-                  />
-                </FormGroup>
-              )}
-              {action.action_type === 'command' && (
-                <FormGroup label="Command" style={{ marginBottom: 0 }}>
-                  {commandOptions.length > 0 ? (
-                    <HTMLSelect
-                      fill
-                      value={(action.config.command as string) ?? ''}
-                      onChange={(e) =>
-                        updateAction(i, { config: { ...action.config, command: e.target.value } })
-                      }
-                    >
-                      <option value="">Select command...</option>
-                      {typeof action.config.command === 'string' &&
-                        action.config.command.length > 0 &&
-                        !commandOptions.some(
-                          (command) => command.value === action.config.command,
-                        ) && (
-                          <option value={String(action.config.command)}>
-                            {String(action.config.command)} (existing)
-                          </option>
-                        )}
-                      {commandOptions.map((command) => (
-                        <option key={command.value} value={command.value}>
-                          {command.label}
-                        </option>
-                      ))}
-                    </HTMLSelect>
-                  ) : (
-                    <InputGroup
-                      placeholder="Contract command key..."
-                      value={(action.config.command as string) ?? ''}
-                      onChange={(e) =>
-                        updateAction(i, { config: { ...action.config, command: e.target.value } })
-                      }
-                      leftIcon={<Icon icon="console" />}
-                    />
-                  )}
-                </FormGroup>
-              )}
-            </div>
-          ))}
-        </div>
+        <RuleConditions
+          conditions={conditions}
+          triggerType={triggerType}
+          telemetryFields={telemetryFields}
+          zones={zones}
+          setConditions={setConditions}
+          updateCondition={updateCondition}
+          addCondition={addCondition}
+          removeCondition={removeCondition}
+        />
+        <RuleActions
+          actions={actions}
+          commandOptions={commandOptions}
+          updateAction={updateAction}
+          changeActionType={changeActionType}
+          addAction={addAction}
+          removeAction={removeAction}
+        />
 
         {isError && (
           <Callout intent="danger" icon="error">

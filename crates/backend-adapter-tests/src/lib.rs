@@ -5,6 +5,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use extrittio_backend_core::{PersistenceError, RuleZoneSnapshotRepository, ZoneRepository};
 
+pub mod api_keys;
 pub mod roles;
 pub mod users;
 pub mod zones;

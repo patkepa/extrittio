@@ -43,7 +43,7 @@ pub async fn update_desired(
     patch: &serde_json::Map<String, Value>,
     zenoh_metrics: &ZenohMetrics,
 ) -> Result<ShadowRecord, AppError> {
-    authorize_shadow_mutation(ctx)?;
+    authorize_desired_patch(ctx, patch)?;
 
     let shadow = repository
         .update_desired(
@@ -115,6 +115,19 @@ fn authorize_shadow_mutation(ctx: &RequestContext) -> Result<(), AppError> {
     policy::require(ctx, Permission::ManageShadows)
 }
 
+fn authorize_desired_patch(
+    ctx: &RequestContext,
+    patch: &serde_json::Map<String, Value>,
+) -> Result<(), AppError> {
+    authorize_shadow_mutation(ctx)?;
+    if patch.contains_key(extrittio_common::ota::fields::SHADOW_KEY) {
+        return Err(AppError::BadRequest(
+            "The ota shadow key is reserved; use the firmware deployment endpoint".into(),
+        ));
+    }
+    Ok(())
+}
+
 /// Publish a ShadowDelta via Zenoh if the delta is non-empty.
 pub async fn publish_delta_if_nonempty(
     session: &Arc<zenoh::Session>,
@@ -163,6 +176,14 @@ pub async fn process_ota_from_report_with_repository(
         return Ok(());
     };
     let status = status_raw.to_lowercase();
+    let Some(deployment_id) = ota
+        .get(ota_fields::DEPLOYMENT_ID)
+        .and_then(serde_json::Value::as_i64)
+        .and_then(|id| i32::try_from(id).ok())
+        .filter(|id| *id > 0)
+    else {
+        return Ok(());
+    };
     let firmware_update_id = ota
         .get(ota_fields::FIRMWARE_UPDATE_ID)
         .and_then(serde_json::Value::as_i64)
@@ -177,6 +198,7 @@ pub async fn process_ota_from_report_with_repository(
         .apply_ota_status(
             identity,
             OtaStatusUpdate {
+                deployment_id,
                 firmware_update_id,
                 status,
                 error_message,
@@ -357,5 +379,24 @@ mod tests {
         for role in ["owner", "admin", "operator"] {
             authorize_shadow_mutation(&context(role, "tenant-a", &["shadows.manage"])).unwrap();
         }
+    }
+
+    #[test]
+    fn shadow_management_cannot_inject_or_remove_ota_commands() {
+        let operator = context("operator", "tenant-a", &["shadows.manage"]);
+        assert!(policy::require(&operator, Permission::DeployFirmware).is_err());
+        for patch in [
+            json!({"ota": {"firmware_url":"https://example.com/evil"}}),
+            json!({"ota":null}),
+        ] {
+            assert!(matches!(
+                authorize_desired_patch(&operator, patch.as_object().unwrap()),
+                Err(AppError::BadRequest(_))
+            ));
+        }
+        assert!(
+            authorize_desired_patch(&operator, json!({"sample_rate":10}).as_object().unwrap())
+                .is_ok()
+        );
     }
 }

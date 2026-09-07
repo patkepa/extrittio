@@ -221,7 +221,6 @@ const APP_STATE_REPOSITORY_ACCESS_ALLOWANCES: &[AppStateRepositoryAccessAllowanc
         0,
     ),
     AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/fleets/fleets.rs", 4, 0),
-    AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/identity/api_keys.rs", 3, 0),
     AppStateRepositoryAccessAllowance::new(
         "crates/backend/src/domains/identity/certificates.rs",
         4,

@@ -4,6 +4,22 @@
 //! of extracted adapters is centralized here until the remaining repositories
 //! move into their dedicated crates.
 
+#[cfg(feature = "postgres")]
+pub(crate) fn postgres_api_keys(
+    pool: &PostgresPool,
+) -> Arc<dyn extrittio_backend_core::ApiKeyRepository> {
+    Arc::new(extrittio_backend_postgres::PostgresApiKeyRepository::from_pool(pool.clone()))
+}
+
+#[cfg(feature = "turso")]
+pub(crate) fn turso_api_keys(
+    database: &TursoDatabase,
+) -> Arc<dyn extrittio_backend_core::ApiKeyRepository> {
+    Arc::new(
+        extrittio_backend_turso::TursoApiKeyRepository::from_handles(database.shared_handles()),
+    )
+}
+
 #[cfg(any(feature = "postgres", feature = "turso"))]
 use std::sync::Arc;
 

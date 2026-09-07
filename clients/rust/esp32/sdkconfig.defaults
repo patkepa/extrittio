@@ -1,5 +1,6 @@
 # Increase main task stack size (Zenoh needs more stack)
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=65536
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 
 # Use one large factory app slot. Zenoh makes this client too large for
 # ESP-IDF's default 1 MB app slots on 4 MB ESP32-C6 modules.

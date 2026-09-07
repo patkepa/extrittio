@@ -1,12 +1,12 @@
+import { loadIconPaths, normalizeIconName, DEFAULT_DEVICE_TYPE_ICON } from './graph-icons';
+import { formatExternalTooltip } from './graph-tooltips';
+import { paintGraphNode, paintGraphLink, type DeviceAlertBadge } from './graph-renderers';
+import { paintNodeHitArea } from './node-geometry';
+export type { DeviceAlertBadge, AlertSeverity } from './graph-renderers';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { IconSize } from '@blueprintjs/icons/lib/esm/iconTypes';
-import { splitPathsBySizeLoader } from '@blueprintjs/icons/lib/esm/paths-loaders/splitPathsBySizeLoader';
-import type { IconName } from '@blueprintjs/icons';
 import ForceGraph2D from 'react-force-graph-2d';
 import type { GraphData, GraphNode, GraphLink } from './build-force-graph-data';
 import type { Device } from '../../types/api';
-import { getHealthTier, getStalenessColor, getPulseFrequency } from './health-utils';
-import { TIER_COLORS, SELECTION_COLOR } from './constants';
 import type { ViewportInfo } from './fleet-graph-minimap';
 import { useForceSimulation } from './use-force-simulation';
 import { useLassoSelection } from './use-lasso-selection';
@@ -20,186 +20,16 @@ export interface GraphActions {
   zoomOut: () => void;
 }
 
-export type AlertSeverity = 'info' | 'warning' | 'critical';
-
-export interface DeviceAlertBadge {
-  count: number;
-  severity: AlertSeverity;
-}
-
 // --- Constants ---
-const FLEET_RADIUS = 14;
-const DEVICE_RADIUS = 11;
-const EXTERNAL_RADIUS = 8;
-const HOVER_SCALE = 1.3;
-const DIM_OPACITY = 0.15;
-const FLEET_LABEL_FONT = 'bold 10px -apple-system, BlinkMacSystemFont, sans-serif';
 const GRID_SIZE = 40;
 const GRID_COLOR = 'rgba(255, 255, 255, 0.05)';
 const GRID_ACCENT_COLOR = 'rgba(255, 255, 255, 0.12)';
 const GRID_ACCENT_EVERY = 5; // every 5th line is brighter
-const ALERT_BADGE_COLORS: Record<AlertSeverity, string> = {
-  info: '#2D72D2',
-  warning: '#D9822B',
-  critical: '#C23030',
-};
 // Click-vs-drag threshold (px). The library's internal threshold is only 5 px
 // and its background-pan detection has *zero* tolerance for mouse events, so
 // fast-approach clicks are swallowed as drags. We bypass the library's click
 // handling entirely and use this more generous threshold instead.
 const CLICK_DIST_THRESHOLD = 12;
-
-// --- Pre-built Path2D cache for device-type icons (16×16 viewBox) ---
-const iconPathCache = new Map<string, Path2D[]>();
-const pendingIconLoads = new Map<string, Promise<Path2D[]>>();
-const DEFAULT_DEVICE_TYPE_ICON: IconName = 'cube';
-
-function normalizeIconName(iconName?: string): string {
-  return iconName?.trim().toLowerCase().replaceAll('_', '-') || DEFAULT_DEVICE_TYPE_ICON;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
-}
-
-function formatTimestamp(value?: string | null): string | undefined {
-  if (!value) return undefined;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
-}
-
-function formatExternalTooltip(node: GraphNode): string {
-  if (node.details && node.details.length > 0) {
-    return formatNodeTooltip(node.name, node.details);
-  }
-
-  const connection = node.connection;
-  if (!connection) return '';
-
-  const rows = [
-    ['Type', connection.device_type ?? node.deviceTypeName],
-    ['Connection', connection.connection_type],
-    ['Status', connection.status],
-    ['Address', connection.address],
-    ['Last seen', formatTimestamp(connection.last_seen_at)],
-    ['First seen', formatTimestamp(connection.first_seen_at)],
-    ['External ID', connection.external_id],
-    ['Source', connection.source],
-    ['Device ID', connection.device_id],
-  ].filter((row): row is [string, string] => Boolean(row[1]));
-
-  if (rows.length === 0) return escapeHtml(node.name);
-
-  return formatNodeTooltip(
-    node.name,
-    rows.map(([label, value]) => ({ label, value })),
-  );
-}
-
-function formatNodeTooltip(name: string, rows: Array<{ label: string; value: string }>): string {
-  return `
-    <div class="fleet-graph-node-tooltip">
-      <div class="fleet-graph-node-tooltip-title">${escapeHtml(name)}</div>
-      ${rows
-        .map(
-          ({ label, value }) => `
-            <div class="fleet-graph-node-tooltip-row">
-              <span>${escapeHtml(label)}</span>
-              <strong>${escapeHtml(value)}</strong>
-            </div>
-          `,
-        )
-        .join('')}
-    </div>
-  `;
-}
-
-async function loadIconPaths(iconName?: string): Promise<Path2D[]> {
-  const key = normalizeIconName(iconName);
-  const cached = iconPathCache.get(key);
-  if (cached) return cached;
-
-  const pending = pendingIconLoads.get(key);
-  if (pending) return pending;
-
-  const load = (async () => {
-    let svgPaths = await splitPathsBySizeLoader(key as IconName, IconSize.STANDARD);
-    if (!svgPaths && key !== DEFAULT_DEVICE_TYPE_ICON) {
-      svgPaths = await splitPathsBySizeLoader(DEFAULT_DEVICE_TYPE_ICON, IconSize.STANDARD);
-    }
-    const paths = (svgPaths ?? []).map((d) => new Path2D(d));
-    iconPathCache.set(key, paths);
-    return paths;
-  })().finally(() => {
-    pendingIconLoads.delete(key);
-  });
-
-  pendingIconLoads.set(key, load);
-  return load;
-}
-
-function getIconPaths(iconName?: string): Path2D[] {
-  const key = normalizeIconName(iconName);
-  return iconPathCache.get(key) ?? iconPathCache.get(DEFAULT_DEVICE_TYPE_ICON) ?? [];
-}
-
-function colorWithAlpha(color: string | undefined, alpha: number): string {
-  const match = /^#?([0-9a-f]{6})$/i.exec(color ?? '');
-  const hex = match?.[1];
-  if (!hex) return `rgba(123,139,154,${alpha})`;
-
-  const r = parseInt(hex.slice(0, 2), 16);
-  const g = parseInt(hex.slice(2, 4), 16);
-  const b = parseInt(hex.slice(4, 6), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
-}
-
-function drawRoundedRect(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  radius: number,
-) {
-  const r = Math.min(radius, width / 2, height / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + width - r, y);
-  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
-  ctx.lineTo(x + width, y + height - r);
-  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
-  ctx.lineTo(x + r, y + height);
-  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
-  ctx.closePath();
-}
-
-/** Draw a Blueprint icon (16×16 paths) centered at (cx, cy), scaled to fit `size`. */
-function drawIcon(
-  ctx: CanvasRenderingContext2D,
-  paths: Path2D[],
-  cx: number,
-  cy: number,
-  size: number,
-) {
-  const scale = size / 16;
-  ctx.save();
-  // Translate so the 16×16 icon is centered at (cx, cy)
-  ctx.translate(cx - size / 2, cy - size / 2);
-  ctx.scale(scale, scale);
-  for (const p of paths) {
-    ctx.fill(p);
-  }
-  ctx.restore();
-}
 
 interface FleetGraphCanvasProps {
   graphData: GraphData;
@@ -491,272 +321,20 @@ export const FleetGraphCanvas = memo(
     // on hover). This mismatch causes clicks to miss, especially during
     // the hover-expand transition. We paint the hit area at the *expanded*
     // size so clicks always register on the visible area.
-    const paintPointerArea = useCallback(
-      (node: GraphNode, color: string, ctx: CanvasRenderingContext2D) => {
-        if (node.x == null || node.y == null) return;
-
-        if (node.type === 'fleet') {
-          // Fleet nodes are rendered as label rectangles — approximate the
-          // clickable area with a generous rectangle matching the visual.
-          const padX = 8;
-          const padY = 4;
-          const barH = 3;
-          ctx.font = FLEET_LABEL_FONT;
-          const textWidth = ctx.measureText(node.name).width;
-          // Always use the hover-expanded size for the hit area
-          const hoverScale = 1.1;
-          const rectW = (textWidth + padX * 2) * hoverScale;
-          const rectH = (FLEET_RADIUS + padY + barH) * hoverScale;
-
-          ctx.fillStyle = color;
-          ctx.fillRect(node.x - rectW / 2, node.y - rectH / 2, rectW, rectH);
-        } else {
-          // Device nodes — use hover-expanded radius so the click area
-          // always covers the visual, even mid-expansion.
-          const radius = (node.type === 'external' ? EXTERNAL_RADIUS : DEVICE_RADIUS) * HOVER_SCALE;
-          const side = radius * 2;
-
-          ctx.fillStyle = color;
-          ctx.fillRect(node.x - side / 2, node.y - side / 2, side, side);
-        }
-      },
-      [],
-    );
+    const paintPointerArea = paintNodeHitArea;
 
     // --- Canvas rendering callbacks ---
-    const paintNode = useCallback(
-      (node: GraphNode, ctx: CanvasRenderingContext2D, globalScale: number) => {
-        const isFleet = node.type === 'fleet';
-        const isExternal = node.type === 'external';
-        const baseRadius = isFleet ? FLEET_RADIUS : isExternal ? EXTERNAL_RADIUS : DEVICE_RADIUS;
-        const isHovered = node === activeHoverNode;
-        const isSelected = node.id === selectedNodeId;
-        const isHighlighted = hoverHighlight.nodes.has(node);
-        const shouldDim = activeHoverNode && !isHighlighted;
-
-        if (node.x == null || node.y == null) return;
-
-        const iconsReady = iconCacheVersion > 0;
-        ctx.globalAlpha = shouldDim ? DIM_OPACITY : 1;
-
-        const radius = isHovered ? baseRadius * HOVER_SCALE : baseRadius;
-
-        if (!isFleet && isHovered) {
-          ctx.shadowColor = node.color;
-          ctx.shadowBlur = 20;
-        } else if (!isFleet && isHighlighted) {
-          ctx.shadowColor = node.color;
-          ctx.shadowBlur = 10;
-        } else {
-          ctx.shadowBlur = 0;
-        }
-
-        if (isFleet) {
-          const padX = 8;
-          const padY = 4;
-          const barH = 3;
-          const hoverScale = isHovered ? 1.1 : 1;
-
-          ctx.font = FLEET_LABEL_FONT;
-          const textWidth = ctx.measureText(node.name).width;
-          const rectW = (textWidth + padX * 2) * hoverScale;
-          const rectH = (FLEET_RADIUS + padY + barH) * hoverScale;
-          const rx = node.x! - rectW / 2;
-          const ry = node.y! - rectH / 2;
-
-          ctx.fillStyle = node.color;
-          ctx.fillRect(rx, ry, rectW, rectH);
-
-          ctx.shadowBlur = 0;
-
-          if (node.tierRatios) {
-            const scaledBarH = barH * hoverScale;
-            const barY = ry + rectH - scaledBarH;
-            const segments: [number, string][] = [
-              [node.tierRatios.fresh, TIER_COLORS.fresh],
-              [node.tierRatios.warm, TIER_COLORS.warm],
-              [node.tierRatios.stale, TIER_COLORS.stale],
-              [node.tierRatios.dead, TIER_COLORS.dead],
-              [node.tierRatios.never, TIER_COLORS.never],
-            ];
-            let offsetX = 0;
-            for (const [ratio, color] of segments) {
-              if (ratio <= 0) continue;
-              const segW = ratio * rectW;
-              ctx.fillStyle = color;
-              ctx.fillRect(rx + offsetX, barY, segW, scaledBarH);
-              offsetX += segW;
-            }
-
-            ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-            ctx.lineWidth = 0.5;
-            ctx.beginPath();
-            ctx.moveTo(rx, barY);
-            ctx.lineTo(rx + rectW, barY);
-            ctx.stroke();
-          }
-
-          ctx.strokeStyle = isSelected ? SELECTION_COLOR : 'rgba(0,0,0,0.6)';
-          ctx.lineWidth = isSelected ? 2 : 0.5;
-          ctx.strokeRect(rx, ry, rectW, rectH);
-
-          ctx.font = FLEET_LABEL_FONT;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillStyle = '#ffffff';
-          ctx.fillText(node.name, node.x!, node.y! - (barH * hoverScale) / 2);
-
-          if (node.deviceCount != null) {
-            ctx.font = '8px -apple-system, sans-serif';
-            ctx.fillStyle = 'rgba(255,255,255,0.6)';
-            ctx.fillText(
-              `${node.deviceCount} device${node.deviceCount === 1 ? '' : 's'}`,
-              node.x!,
-              node.y! + rectH / 2 + 10,
-            );
-          }
-        } else if (isExternal) {
-          ctx.shadowBlur = 0;
-          const typeColor = node.deviceTypeColor ?? node.color;
-          const side = radius * 2.35;
-          const rx = node.x! - side / 2;
-          const ry = node.y! - side / 2;
-
-          drawRoundedRect(ctx, rx, ry, side, side, 0);
-          ctx.fillStyle = colorWithAlpha(typeColor, shouldDim ? 0.05 : 0.18);
-          ctx.fill();
-          ctx.strokeStyle = shouldDim
-            ? colorWithAlpha(typeColor, DIM_OPACITY)
-            : isSelected
-              ? SELECTION_COLOR
-              : colorWithAlpha(typeColor, isHovered ? 0.95 : 0.72);
-          ctx.lineWidth = isSelected || isHovered ? 2 : 1.4;
-          ctx.stroke();
-
-          const stripHeight = Math.max(2, side * 0.14);
-          drawRoundedRect(ctx, rx, ry + side - stripHeight, side, stripHeight, 0);
-          ctx.fillStyle = shouldDim ? colorWithAlpha(node.color, DIM_OPACITY) : node.color;
-          ctx.fill();
-
-          const iconPaths = getIconPaths(node.deviceTypeIcon);
-          ctx.fillStyle = shouldDim ? `rgba(255,255,255,${DIM_OPACITY})` : '#ffffff';
-          if (iconsReady || iconPaths.length > 0) {
-            drawIcon(ctx, iconPaths, node.x!, node.y! - stripHeight / 2, radius * 1.35);
-          }
-
-          if (showDeviceLabels) {
-            const fontSize = Math.max(9, 11 / globalScale);
-            ctx.font = `${fontSize}px -apple-system, sans-serif`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillStyle = shouldDim
-              ? `rgba(190,200,210,${DIM_OPACITY})`
-              : 'rgba(190,200,210,0.8)';
-            ctx.fillText(node.name, node.x!, node.y! + radius + fontSize + 2);
-          }
-        } else {
-          ctx.shadowBlur = 0;
-          const now = Date.now();
-          const stalenessMs = node.lastSeenTimestamp ? now - node.lastSeenTimestamp : NaN;
-          const tier = getHealthTier(stalenessMs, node.status);
-          const stalenessColor = getStalenessColor(stalenessMs, node.status);
-          const pulseHz = getPulseFrequency(tier);
-
-          const effectiveRadius = tier === 'dead' || tier === 'never' ? radius * 0.85 : radius;
-          const side = effectiveRadius * 2;
-          const rx = node.x! - side / 2;
-          const ry = node.y! - side / 2;
-
-          if (pulseHz > 0) {
-            const t = pulseClockRef.current / 1000;
-            const glowRadius = effectiveRadius + 4 + 4 * Math.sin(2 * Math.PI * pulseHz * t);
-            const gradient = ctx.createRadialGradient(
-              node.x!,
-              node.y!,
-              effectiveRadius,
-              node.x!,
-              node.y!,
-              glowRadius,
-            );
-            const r = parseInt(stalenessColor.slice(1, 3), 16);
-            const g = parseInt(stalenessColor.slice(3, 5), 16);
-            const b = parseInt(stalenessColor.slice(5, 7), 16);
-            gradient.addColorStop(0, `rgba(${r},${g},${b},0.5)`);
-            gradient.addColorStop(1, `rgba(${r},${g},${b},0)`);
-            ctx.beginPath();
-            ctx.arc(node.x!, node.y!, glowRadius, 0, 2 * Math.PI);
-            ctx.fillStyle = gradient;
-            ctx.fill();
-          }
-
-          ctx.fillStyle = stalenessColor;
-          ctx.fillRect(rx, ry, side, side);
-
-          if (node.uptimeArcAngle && node.uptimeArcAngle > 0) {
-            const ringOffset = 3;
-            ctx.strokeStyle = stalenessColor;
-            ctx.lineWidth = 2;
-            ctx.strokeRect(
-              rx - ringOffset,
-              ry - ringOffset,
-              side + ringOffset * 2,
-              side + ringOffset * 2,
-            );
-          }
-
-          if (selectedDeviceIds.has(node.id)) {
-            const selOffset = 7;
-            ctx.strokeStyle = SELECTION_COLOR;
-            ctx.lineWidth = 2;
-            ctx.strokeRect(
-              rx - selOffset,
-              ry - selOffset,
-              side + selOffset * 2,
-              side + selOffset * 2,
-            );
-          }
-
-          const iconPaths = getIconPaths(node.deviceTypeIcon);
-          const iconSize = effectiveRadius * 1.2;
-          ctx.fillStyle = '#ffffff';
-          if (iconsReady || iconPaths.length > 0) {
-            drawIcon(ctx, iconPaths, node.x!, node.y!, iconSize);
-          }
-
-          if (showAlertBadges && node.device) {
-            const badge = alertBadges[node.device.id];
-            if (badge && badge.count > 0) {
-              const badgeRadius = Math.max(5, 7 / Math.sqrt(globalScale));
-              const badgeX = node.x! + effectiveRadius - 1;
-              const badgeY = node.y! - effectiveRadius + 1;
-              ctx.beginPath();
-              ctx.arc(badgeX, badgeY, badgeRadius, 0, 2 * Math.PI);
-              ctx.fillStyle = ALERT_BADGE_COLORS[badge.severity];
-              ctx.fill();
-              ctx.strokeStyle = 'rgba(0,0,0,0.75)';
-              ctx.lineWidth = 1 / globalScale;
-              ctx.stroke();
-
-              ctx.font = `bold ${Math.max(7, 9 / Math.sqrt(globalScale))}px -apple-system, sans-serif`;
-              ctx.textAlign = 'center';
-              ctx.textBaseline = 'middle';
-              ctx.fillStyle = '#ffffff';
-              ctx.fillText(badge.count > 9 ? '9+' : String(badge.count), badgeX, badgeY + 0.5);
-            }
-          }
-
-          if (showDeviceLabels) {
-            const fontSize = Math.max(10, 12 / globalScale);
-            ctx.font = `${fontSize}px -apple-system, sans-serif`;
-            ctx.fillStyle = shouldDim
-              ? `rgba(255,255,255,${DIM_OPACITY})`
-              : 'rgba(255,255,255,0.8)';
-            ctx.fillText(node.name, node.x!, node.y! + effectiveRadius + fontSize + 2);
-          }
-        }
-
-        ctx.globalAlpha = 1;
-      },
+    const renderState = useMemo(
+      () => ({
+        activeHoverNode,
+        selectedNodeId,
+        hoverHighlight,
+        iconCacheVersion,
+        selectedDeviceIds,
+        showDeviceLabels,
+        showAlertBadges,
+        alertBadges,
+      }),
       [
         activeHoverNode,
         alertBadges,
@@ -769,97 +347,22 @@ export const FleetGraphCanvas = memo(
       ],
     );
 
+    const paintNode = useCallback(
+      (node: GraphNode, ctx: CanvasRenderingContext2D, globalScale: number) => {
+        paintGraphNode(node, ctx, globalScale, renderState, pulseClockRef.current);
+      },
+      [renderState],
+    );
+
+    const linkRenderState = useMemo(
+      () => ({ activeHoverNode, hoverHighlight }),
+      [activeHoverNode, hoverHighlight],
+    );
     const paintLink = useCallback(
       (link: GraphLink, ctx: CanvasRenderingContext2D) => {
-        const isHighlighted = hoverHighlight.links.has(link);
-        const shouldDim = activeHoverNode && !isHighlighted;
-
-        if (typeof link.source === 'string' || typeof link.target === 'string') return;
-        const source = link.source;
-        const target = link.target;
-        if (source.x == null || target.x == null) return;
-
-        if (link.kind === 'declared') {
-          ctx.beginPath();
-          ctx.setLineDash([2, 5]);
-          ctx.moveTo(source.x!, source.y!);
-          ctx.lineTo(target.x!, target.y!);
-          if (isHighlighted) {
-            ctx.strokeStyle = 'rgba(138, 187, 255, 0.95)';
-            ctx.lineWidth = 1.6;
-            ctx.shadowColor = 'rgba(138, 187, 255, 0.35)';
-            ctx.shadowBlur = 6;
-          } else if (shouldDim) {
-            ctx.strokeStyle = `rgba(138, 187, 255, ${DIM_OPACITY * 0.65})`;
-            ctx.lineWidth = 0.7;
-            ctx.shadowBlur = 0;
-          } else {
-            ctx.strokeStyle = 'rgba(138, 187, 255, 0.55)';
-            ctx.lineWidth = 0.9;
-            ctx.shadowBlur = 0;
-          }
-          ctx.stroke();
-          ctx.setLineDash([]);
-          ctx.shadowBlur = 0;
-          return;
-        }
-
-        const deviceNode =
-          source.type === 'device' ? source : target.type === 'device' ? target : null;
-        const isActive = deviceNode?.status === 'online' || deviceNode?.status === 'warning';
-        const isNever =
-          deviceNode != null && !deviceNode.lastSeenTimestamp && deviceNode.status === 'offline';
-
-        ctx.beginPath();
-        if (isActive) {
-          ctx.setLineDash([4, 4]);
-          ctx.lineDashOffset = -(pulseClockRef.current / 1000) * 12;
-        } else {
-          ctx.setLineDash([3, 5]);
-        }
-        ctx.moveTo(source.x!, source.y!);
-        ctx.lineTo(target.x!, target.y!);
-
-        if (isHighlighted) {
-          const hlColor = isActive
-            ? 'rgba(0, 200, 80, 0.9)'
-            : isNever
-              ? 'rgba(92, 112, 128, 0.9)'
-              : 'rgba(255, 60, 60, 0.8)';
-          const hlGlow = isActive
-            ? 'rgba(0, 200, 80, 0.4)'
-            : isNever
-              ? 'rgba(92, 112, 128, 0.4)'
-              : 'rgba(255, 60, 60, 0.3)';
-          ctx.strokeStyle = hlColor;
-          ctx.lineWidth = 1.5;
-          ctx.shadowColor = hlGlow;
-          ctx.shadowBlur = 6;
-        } else if (shouldDim) {
-          const dimColor = isActive
-            ? `rgba(0, 200, 80, ${DIM_OPACITY * 0.5})`
-            : isNever
-              ? `rgba(92, 112, 128, ${DIM_OPACITY * 0.5})`
-              : `rgba(255, 60, 60, ${DIM_OPACITY * 0.5})`;
-          ctx.strokeStyle = dimColor;
-          ctx.lineWidth = 0.5;
-          ctx.shadowBlur = 0;
-        } else {
-          ctx.strokeStyle = isActive
-            ? 'rgba(0, 200, 80, 0.6)'
-            : isNever
-              ? 'rgba(92, 112, 128, 0.8)'
-              : 'rgba(255, 60, 60, 0.45)';
-          ctx.lineWidth = isActive ? 1 : isNever ? 0.8 : 0.5;
-          ctx.shadowBlur = 0;
-        }
-
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.lineDashOffset = 0;
-        ctx.shadowBlur = 0;
+        paintGraphLink(link, ctx, linkRenderState, pulseClockRef.current);
       },
-      [activeHoverNode, hoverHighlight],
+      [linkRenderState],
     );
 
     // Draw a grid in world-space

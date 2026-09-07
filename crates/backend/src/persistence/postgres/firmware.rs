@@ -113,7 +113,7 @@ fn update_desired_shadow(
 ) -> Result<(serde_json::Value, i32), AppError> {
     use extrittio_common::shadow::{compute_delta, merge_json};
 
-    let shadow = shadow_repo::find_shadow(connection, tenant_id, device_id)?;
+    let shadow = shadow_repo::lock_shadow(connection, tenant_id, device_id)?;
     let desired = if shadow.desired.is_object() {
         shadow.desired
     } else {
@@ -464,26 +464,52 @@ impl FirmwareRepository for PostgresAdapter {
         let device_id = identity.device_id().to_string();
         self.executor
             .run(move |connection| {
-                let deployment_id = firmware_repo::find_active_ota_deployment(
-                    connection,
-                    &tenant_id,
-                    &device_id,
-                    update.firmware_update_id,
-                )
-                .map_err(map_diesel_error)?;
-                let Some(deployment_id) = deployment_id else {
-                    return Ok(false);
-                };
-                firmware_repo::update_ota_deployment_status(
-                    connection,
-                    &tenant_id,
-                    deployment_id,
-                    &update.status,
-                    update.error_message.as_deref(),
-                    update.completed_at,
-                )
-                .map(|rows| rows == 1)
-                .map_err(map_diesel_error)
+                connection
+                    .transaction::<_, AppError, _>(|connection| {
+                        use crate::db::schema::ota_deployments;
+                        use diesel::prelude::*;
+                        let shadow = shadow_repo::lock_shadow(connection, &tenant_id, &device_id)?;
+                        let previous = ota_deployments::table
+                            .filter(ota_deployments::tenant_id.eq(&tenant_id))
+                            .filter(ota_deployments::device_id.eq(&device_id))
+                            .filter(ota_deployments::id.eq(update.deployment_id))
+                            .select((ota_deployments::status, ota_deployments::firmware_update_id))
+                            .first::<(String, i32)>(connection)
+                            .optional()?;
+                        let Some((status, firmware_id)) = previous else {
+                            return Ok(false);
+                        };
+                        if update.firmware_update_id != Some(firmware_id)
+                            || !crate::domains::firmware::types::ota_transition_allowed(
+                                &status,
+                                &update.status,
+                            )
+                        {
+                            return Ok(false);
+                        }
+                        firmware_repo::update_ota_deployment_status(
+                            connection,
+                            &tenant_id,
+                            update.deployment_id,
+                            &update.status,
+                            update.error_message.as_deref(),
+                            update.completed_at,
+                        )?;
+                        if extrittio_common::ota::status::is_terminal(&update.status)
+                            && shadow.desired["ota"]["deployment_id"].as_i64()
+                                == Some(i64::from(update.deployment_id))
+                        {
+                            let patch = serde_json::json!({"ota": null});
+                            update_desired_shadow(
+                                connection,
+                                &tenant_id,
+                                &device_id,
+                                patch.as_object().unwrap(),
+                            )?;
+                        }
+                        Ok(true)
+                    })
+                    .map_err(map_app_error)
             })
             .await
     }
@@ -571,19 +597,51 @@ impl FirmwareRepository for PostgresAdapter {
                         }
 
                         use extrittio_common::ota::fields;
+                        if !crate::domains::firmware::types::valid_ota_artifact(
+                            &firmware.version,
+                            firmware.sha256.as_deref(),
+                            if firmware.url.starts_with("https://") {
+                                &firmware.url
+                            } else {
+                                &public_url
+                            },
+                        ) {
+                            return Ok(TriggerOtaOutcome::InvalidArtifact);
+                        }
+                        shadow_repo::lock_shadow(connection, &tenant_id, &device_id)?;
+                        use crate::db::schema::ota_deployments;
+                        use diesel::prelude::*;
+                        diesel::update(
+                            ota_deployments::table
+                                .filter(ota_deployments::tenant_id.eq(&tenant_id))
+                                .filter(ota_deployments::device_id.eq(&device_id))
+                                .filter(ota_deployments::status.ne("success"))
+                                .filter(ota_deployments::status.ne("failed")),
+                        )
+                        .set((
+                            ota_deployments::status.eq("failed"),
+                            ota_deployments::error_message.eq("Superseded by a new deployment"),
+                            ota_deployments::completed_at.eq(chrono::Utc::now().naive_utc()),
+                        ))
+                        .execute(connection)?;
+                        let deployment_id = firmware_repo::insert_ota_deployment(
+                            connection,
+                            &NewOtaDeployment {
+                                tenant_id: tenant_id.clone(),
+                                device_id: device_id.clone(),
+                                firmware_update_id: firmware.id,
+                            },
+                        )?;
                         let firmware_url = if firmware.url.starts_with("https://") {
                             firmware.url.clone()
                         } else {
-                            format!(
-                                "{}/{}",
-                                public_url.trim_end_matches('/'),
-                                firmware.url.trim_start_matches('/')
-                            )
+                            public_url.clone()
                         };
                         let mut ota = serde_json::json!({
                             fields::FIRMWARE_VERSION: firmware.version,
                             fields::FIRMWARE_URL: firmware_url,
                             fields::FIRMWARE_UPDATE_ID: firmware.id,
+                            fields::DEPLOYMENT_ID: deployment_id,
                         });
                         if let Some(hash) = firmware.sha256 {
                             ota[fields::SHA256] = serde_json::Value::String(hash);
@@ -592,14 +650,6 @@ impl FirmwareRepository for PostgresAdapter {
                         patch.insert(fields::SHADOW_KEY.to_string(), ota);
                         let (delta, version) =
                             update_desired_shadow(connection, &tenant_id, &device_id, &patch)?;
-                        firmware_repo::insert_ota_deployment(
-                            connection,
-                            &NewOtaDeployment {
-                                tenant_id,
-                                device_id,
-                                firmware_update_id: firmware.id,
-                            },
-                        )?;
                         Ok(TriggerOtaOutcome::Ready { delta, version })
                     })
                     .map_err(map_app_error)

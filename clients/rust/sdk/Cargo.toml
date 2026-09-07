@@ -12,8 +12,13 @@ publish.workspace = true
 default = ["std"]
 std = ["extrittio-common/std", "dep:serde_json", "serde_json?/std"]
 alloc = ["extrittio-common/alloc", "dep:serde_json", "serde_json?/alloc"]
+native-ota = ["std", "dep:sha2"]
 
 [dependencies]
 extrittio-common = { version = "0.1.0", path = "../../../crates/common", default-features = false }
 serde_json = { version = "1", default-features = false, optional = true }
 libm = "0.2"
+sha2 = { version = "0.10", optional = true }
+
+[dev-dependencies]
+tempfile = "3"

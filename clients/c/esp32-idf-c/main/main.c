@@ -1,7 +1,9 @@
 #include <string.h>
 #include <stdlib.h>
+#include <stdatomic.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_timer.h"
@@ -17,17 +19,32 @@
 static const char *TAG = "main";
 
 static z_loaned_session_t *g_session = NULL;
+static QueueHandle_t ota_queue;
+static atomic_bool boot_ready = false;
+
+static void ota_worker(void *arg) {
+    (void)arg;
+    extrittio_ota_payload_t payload;
+    for (;;) {
+        if (xQueueReceive(ota_queue, &payload, portMAX_DELAY) == pdTRUE) {
+            while (!atomic_load(&boot_ready)) vTaskDelay(pdMS_TO_TICKS(100));
+            ota_handle(g_session, CONFIG_EXTRITTIO_DEVICE_ID,
+                ota_current_version(CONFIG_EXTRITTIO_FIRMWARE_VERSION), &payload);
+        }
+    }
+}
 
 static void shadow_delta_callback(const char *device_id,
                                    const char *delta_json,
                                    int64_t version,
                                    void *user_data) {
-    ESP_LOGI(TAG, "Shadow delta v%lld: %s", (long long)version, delta_json);
+    ESP_LOGI(TAG, "Shadow delta v%lld received", (long long)version);
 
     extrittio_ota_payload_t ota;
     if (extrittio_ota_parse_from_delta(delta_json, &ota)) {
-        ota_handle(g_session, CONFIG_EXTRITTIO_DEVICE_ID,
-                   CONFIG_EXTRITTIO_FIRMWARE_VERSION, &ota);
+        // Keep HTTP, flash writes, and their large buffers off Zenoh's read task.
+        xQueueOverwrite(ota_queue, &ota);
+        return; // OTA reports acknowledge the attempt; never echo its command as state.
     }
 
     extrittio_shadow_report_publish(g_session, CONFIG_EXTRITTIO_DEVICE_ID,
@@ -51,6 +68,9 @@ void app_main(void) {
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
+    ota_start_boot_watchdog();
+    // Initialize the immutable running-version cache before starting worker tasks.
+    ota_current_version(CONFIG_EXTRITTIO_FIRMWARE_VERSION);
 
     ESP_ERROR_CHECK(wifi_init_sta());
 
@@ -73,6 +93,9 @@ void app_main(void) {
     }
 
     g_session = z_loan(session);
+    ota_queue = xQueueCreate(1, sizeof(extrittio_ota_payload_t));
+    configASSERT(ota_queue);
+    configASSERT(xTaskCreate(ota_worker, "extrittio_ota", 16384, NULL, 5, NULL) == pdPASS);
     ESP_LOGI(TAG, "Zenoh session opened, device=%s", CONFIG_EXTRITTIO_DEVICE_ID);
 
     z_owned_subscriber_t shadow_sub, cmd_sub;
@@ -83,13 +106,13 @@ void app_main(void) {
                                 CONFIG_EXTRITTIO_DEVICE_ID,
                                 command_callback, NULL, &cmd_sub);
 
-    extrittio_shadow_get_publish(z_loan(session), CONFIG_EXTRITTIO_DEVICE_ID);
 
     int64_t boot_time = esp_timer_get_time();
     extrittio_sensor_state_t sensor;
     extrittio_sensor_init(&sensor);
 
     int64_t last_heartbeat = 0;
+    bool startup_confirmed = false;
 
     ESP_LOGI(TAG, "Entering main loop (telemetry=%ds, heartbeat=%ds)",
              CONFIG_EXTRITTIO_TELEMETRY_INTERVAL_S,
@@ -97,6 +120,12 @@ void app_main(void) {
 
     while (1) {
         int64_t now = extrittio_now_millis();
+        if (!startup_confirmed && esp_timer_get_time() - boot_time >= 30000000) {
+            ota_confirm_boot(z_loan(session), CONFIG_EXTRITTIO_DEVICE_ID);
+            atomic_store(&boot_ready, true);
+            extrittio_shadow_get_publish(z_loan(session), CONFIG_EXTRITTIO_DEVICE_ID);
+            startup_confirmed = true;
+        }
 
         float t_off = ((float)(rand() % 100) / 100.0f) - 0.5f;
         float h_off = ((float)(rand() % 200) / 100.0f) - 1.0f;
@@ -119,7 +148,7 @@ void app_main(void) {
                 .device_id = CONFIG_EXTRITTIO_DEVICE_ID,
                 .timestamp = now,
                 .status = EXTRITTIO_STATUS_ONLINE,
-                .firmware = CONFIG_EXTRITTIO_FIRMWARE_VERSION,
+                .firmware = ota_current_version(CONFIG_EXTRITTIO_FIRMWARE_VERSION),
                 .uptime_seconds = uptime_us / 1000000,
             };
             extrittio_heartbeat_publish(z_loan(session), &hb);

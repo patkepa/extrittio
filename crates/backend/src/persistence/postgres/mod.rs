@@ -1,12 +1,11 @@
 use std::sync::Arc;
 
-use crate::persistence::{DatabaseRuntime, RepositoryPorts, RepositorySet};
+use crate::persistence::{DatabaseRuntime, RepositorySet};
 use executor::PostgresPool;
 
 mod activity;
 mod alerts;
 mod analytics;
-mod api_keys;
 mod audit;
 mod bootstrap;
 mod certificates;
@@ -59,11 +58,12 @@ fn build_repositories(pool: PostgresPool) -> RepositorySet {
     let (zones, rule_zone_snapshots) = crate::database::postgres_zones(&pool);
     let roles = crate::database::postgres_roles(&pool);
     let users = crate::database::postgres_users(&pool);
+    let api_keys = crate::database::postgres_api_keys(&pool);
     let adapter = Arc::new(PostgresAdapter::new(pool));
-    RepositorySet::new(RepositoryPorts {
+    RepositorySet {
         activity: adapter.clone(),
         analytics: adapter.clone(),
-        api_keys: adapter.clone(),
+        api_keys,
         alerts: adapter.clone(),
         audit: adapter.clone(),
         bootstrap: adapter.clone(),
@@ -87,5 +87,5 @@ fn build_repositories(pool: PostgresPool) -> RepositorySet {
         telemetry: adapter.clone(),
         users,
         zones,
-    })
+    }
 }

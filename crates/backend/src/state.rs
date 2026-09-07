@@ -199,6 +199,7 @@ impl AppState {
         let application = extrittio_backend_core::Application::new(
             extrittio_backend_core::RepositorySet::new(
                 extrittio_backend_core::RepositorySetInput {
+                    api_keys: persistence.api_keys.clone(),
                     roles: persistence.roles.clone(),
                     users: persistence.users.clone(),
                     zones: persistence.zones.clone(),
@@ -208,6 +209,7 @@ impl AppState {
             extrittio_backend_core::ApplicationDependencies::new(
                 Arc::new(crate::auth::Argon2PasswordHasher),
                 Arc::new(crate::auth::SystemClock),
+                Arc::new(crate::api_key_util::RandomApiKeyGenerator),
             ),
         );
 
@@ -256,5 +258,14 @@ impl AppState {
             self.persistence.rules.as_ref(),
             self.persistence.rule_zone_snapshots.as_ref(),
         )
+    }
+
+    /// Narrow host bridge for resolving device-scoped firmware download grants
+    /// while the firmware vertical slice is still migrating behind `Application`.
+    #[must_use]
+    pub(crate) fn firmware_download_repository(
+        &self,
+    ) -> &dyn crate::domains::firmware::port::FirmwareRepository {
+        self.persistence.firmware.as_ref()
     }
 }

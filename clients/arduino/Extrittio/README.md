@@ -79,9 +79,11 @@ extrittio.begin(DEVICE_ID, FIRMWARE_VERSION, ZENOH_ENDPOINT);
 ```
 
 When Extrittio deploys firmware, the backend publishes an `ota` shadow delta.
-The client downloads `firmware_url`, verifies `sha256` if present, writes the
-next OTA partition, reports `downloading`, `verifying`, `installing`, and
-`success`/`failed` through shadow reports, then restarts.
+The client downloads `firmware_url`, requires and verifies `sha256`, writes the
+next OTA partition, and reports `downloading`, `verifying`, `installing`, and
+`rebooting` before restarting. It reports `success` only after the new image
+passes its startup check, or `failed` after rollback. The bootloader must have
+rollback enabled; see [OTA deployment requirements](../../../docs/architecture/ota.md).
 
 For uploaded firmware blobs, make sure `EXTRITTIO_PUBLIC_URL` on the backend is
 an HTTP or HTTPS URL reachable by the ESP32, for example:

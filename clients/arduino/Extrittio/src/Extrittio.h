@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <atomic>
 
 #if !defined(ARDUINO_ARCH_ESP32)
 #error "The Extrittio Arduino client currently supports ESP32 boards only."
@@ -18,6 +19,7 @@
 #define EXTRITTIO_OTA_DOWNLOADING "downloading"
 #define EXTRITTIO_OTA_VERIFYING "verifying"
 #define EXTRITTIO_OTA_INSTALLING "installing"
+#define EXTRITTIO_OTA_REBOOTING "rebooting"
 #define EXTRITTIO_OTA_SUCCESS "success"
 #define EXTRITTIO_OTA_FAILED "failed"
 
@@ -52,6 +54,7 @@ struct ExtrittioShadowDelta {
 };
 
 struct ExtrittioOtaPayload {
+    int64_t deploymentId = 0;
     String firmwareVersion;
     String firmwareUrl;
     int64_t firmwareUpdateId = 0;
@@ -109,6 +112,10 @@ private:
     bool _shadowSubscribed;
     bool _commandSubscribed;
     bool _fotaEnabled;
+    bool _bootConfirmed = false;
+    int64_t _confirmedAttemptId = 0;
+    std::atomic<ExtrittioShadowDelta *> _pendingOta{nullptr};
+    uint32_t _startupAt = 0;
 
     uint32_t _heartbeatIntervalMs;
     uint32_t _lastHeartbeatMs;
@@ -140,6 +147,7 @@ private:
     void setError(const String &error);
 
     bool parseOtaPayload(const char *deltaJson, ExtrittioOtaPayload *out) const;
+    void confirmOtaBoot();
     bool maybeHandleFota(const ExtrittioShadowDelta &delta);
     bool performFota(const ExtrittioOtaPayload &payload,
                      const char *syncReportedStateJson,

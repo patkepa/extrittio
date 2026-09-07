@@ -28,6 +28,21 @@ This ledger describes the checked-in implementation, not the target state descri
 
 The immediate checkpoint is closure of the users/passwords authentication-epoch correction and its migration/contract/integration proof. The next new sub-slice is P3.1 API keys/nonces. Continue removing broad compatibility access with each vertical slice; do not add a new handler-to-repository path.
 
+### Incremental update (2026-09-07)
+
+API-key management (create/list/delete) now runs through the core `ApiKeyApplication`.
+Core owns its types, validation, permission checks, repository port, and a host-supplied
+key generator. PostgreSQL and Turso own the management implementations; HTTP retains
+response formatting and the existing 422 validation mapping. The handler's direct
+repository allowance has been removed. API-key authentication, CI ingestion, nonces,
+certificates, and bootstrap remain in their existing slices, so this does not close
+the full P3.1 API keys/nonces work package.
+
+The shared management contract covers tenant filtering, exact names, list ordering,
+hash uniqueness, and missing-delete behavior. Existing schema differences remain:
+Turso enforces tenant/name uniqueness for API keys, while PostgreSQL permits duplicate
+names. This extraction introduces no schema or stored-key-format changes.
+
 ## 1. Executive decision
 
 Proceed with the four-crate split, but treat it as an ownership refactor rather than a file move.

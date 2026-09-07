@@ -1,3 +1,5 @@
+mod api_keys;
+pub use api_keys::ApiKeyApplication;
 mod roles;
 mod users;
 mod zones;
@@ -21,16 +23,22 @@ pub use zones::{CreateZone, ZoneApplication, ZoneUpdate};
 /// intentionally do not belong here.
 #[derive(Clone)]
 pub struct ApplicationDependencies {
+    pub api_key_generator: Arc<dyn crate::ApiKeyGenerator>,
     pub password_hasher: Arc<dyn PasswordHasher>,
     pub clock: Arc<dyn Clock>,
 }
 
 impl ApplicationDependencies {
     #[must_use]
-    pub fn new(password_hasher: Arc<dyn PasswordHasher>, clock: Arc<dyn Clock>) -> Self {
+    pub fn new(
+        password_hasher: Arc<dyn PasswordHasher>,
+        clock: Arc<dyn Clock>,
+        api_key_generator: Arc<dyn crate::ApiKeyGenerator>,
+    ) -> Self {
         Self {
             password_hasher,
             clock,
+            api_key_generator,
         }
     }
 }
@@ -38,6 +46,7 @@ impl ApplicationDependencies {
 /// Curated application façade passed to transports.
 #[derive(Clone)]
 pub struct Application {
+    api_keys: ApiKeyApplication,
     roles: RoleApplication,
     users: UserApplication,
     zones: ZoneApplication,
@@ -52,6 +61,7 @@ impl Application {
     pub fn new(repositories: RepositorySet, dependencies: ApplicationDependencies) -> Self {
         let repositories = repositories.into_parts();
         Self {
+            api_keys: ApiKeyApplication::new(repositories.api_keys, dependencies.api_key_generator),
             roles: RoleApplication::new(repositories.roles),
             users: UserApplication::new(
                 repositories.users,
@@ -61,6 +71,11 @@ impl Application {
             zones: ZoneApplication::new(repositories.zones),
             _rule_zone_snapshots: repositories.rule_zone_snapshots,
         }
+    }
+
+    #[must_use]
+    pub fn api_keys(&self) -> &ApiKeyApplication {
+        &self.api_keys
     }
 
     #[must_use]
@@ -290,12 +305,17 @@ mod tests {
         let repository = Arc::new(FakeRepositories);
         let application = Application::new(
             RepositorySet::new(RepositorySetInput {
+                api_keys: Arc::new(crate::api_keys::tests::RecordingRepository::default()),
                 roles: repository.clone(),
                 users: repository.clone(),
                 zones: repository.clone(),
                 rule_zone_snapshots: repository.clone(),
             }),
-            ApplicationDependencies::new(Arc::new(FakePasswordHasher), Arc::new(FakeClock)),
+            ApplicationDependencies::new(
+                Arc::new(FakePasswordHasher),
+                Arc::new(FakeClock),
+                Arc::new(crate::api_keys::tests::TestGenerator),
+            ),
         );
 
         // The caller, zone façade, and retained snapshot port each hold one

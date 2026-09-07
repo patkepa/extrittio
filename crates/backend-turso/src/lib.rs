@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 
+pub mod api_keys;
 mod database;
+pub use api_keys::TursoApiKeyRepository;
 mod error;
 mod lifecycle;
 mod maintenance;

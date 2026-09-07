@@ -102,6 +102,7 @@ impl TelemetrySource for SimulatedTelemetry {
 
 #[tokio::main]
 async fn main() {
+    extrittio_sdk::native_ota::watchdog_entry();
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()

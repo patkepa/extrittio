@@ -3,6 +3,7 @@ pub mod status {
     pub const DOWNLOADING: &str = "downloading";
     pub const VERIFYING: &str = "verifying";
     pub const INSTALLING: &str = "installing";
+    pub const REBOOTING: &str = "rebooting";
     pub const SUCCESS: &str = "success";
     pub const FAILED: &str = "failed";
 
@@ -19,6 +20,7 @@ pub mod fields {
     pub const FIRMWARE_VERSION: &str = "firmware_version";
     pub const FIRMWARE_URL: &str = "firmware_url";
     pub const FIRMWARE_UPDATE_ID: &str = "firmware_update_id";
+    pub const DEPLOYMENT_ID: &str = "deployment_id";
     pub const SHA256: &str = "sha256";
     pub const STATUS: &str = "status";
     pub const ERROR: &str = "error";
