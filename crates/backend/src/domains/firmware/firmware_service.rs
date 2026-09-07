@@ -176,6 +176,9 @@ pub async fn trigger_ota_with_repository(
                 "Firmware device type does not match device".into(),
             ));
         }
+        TriggerOtaOutcome::InvalidArtifact => {
+            return Err(AppError::BadRequest("Firmware requires a valid SHA-256, a version of at most 63 bytes and a download URL of at most 1023 bytes".into()));
+        }
         TriggerOtaOutcome::Ready { delta, version } => (delta, version),
     };
     crate::services::shadow_service::publish_delta_if_nonempty(

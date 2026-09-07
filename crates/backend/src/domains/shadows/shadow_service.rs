@@ -43,7 +43,7 @@ pub async fn update_desired(
     patch: &serde_json::Map<String, Value>,
     zenoh_metrics: &ZenohMetrics,
 ) -> Result<ShadowRecord, AppError> {
-    authorize_shadow_mutation(ctx)?;
+    authorize_desired_patch(ctx, patch)?;
 
     let shadow = repository
         .update_desired(
@@ -113,6 +113,19 @@ pub async fn delete_shadow(
 
 fn authorize_shadow_mutation(ctx: &RequestContext) -> Result<(), AppError> {
     policy::require(ctx, Permission::ManageShadows)
+}
+
+fn authorize_desired_patch(
+    ctx: &RequestContext,
+    patch: &serde_json::Map<String, Value>,
+) -> Result<(), AppError> {
+    authorize_shadow_mutation(ctx)?;
+    if patch.contains_key(extrittio_common::ota::fields::SHADOW_KEY) {
+        return Err(AppError::BadRequest(
+            "The ota shadow key is reserved; use the firmware deployment endpoint".into(),
+        ));
+    }
+    Ok(())
 }
 
 /// Publish a ShadowDelta via Zenoh if the delta is non-empty.
@@ -357,5 +370,24 @@ mod tests {
         for role in ["owner", "admin", "operator"] {
             authorize_shadow_mutation(&context(role, "tenant-a", &["shadows.manage"])).unwrap();
         }
+    }
+
+    #[test]
+    fn shadow_management_cannot_inject_or_remove_ota_commands() {
+        let operator = context("operator", "tenant-a", &["shadows.manage"]);
+        assert!(policy::require(&operator, Permission::DeployFirmware).is_err());
+        for patch in [
+            json!({"ota": {"firmware_url":"https://example.com/evil"}}),
+            json!({"ota":null}),
+        ] {
+            assert!(matches!(
+                authorize_desired_patch(&operator, patch.as_object().unwrap()),
+                Err(AppError::BadRequest(_))
+            ));
+        }
+        assert!(
+            authorize_desired_patch(&operator, json!({"sample_rate":10}).as_object().unwrap())
+                .is_ok()
+        );
     }
 }

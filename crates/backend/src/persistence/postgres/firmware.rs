@@ -571,6 +571,17 @@ impl FirmwareRepository for PostgresAdapter {
                         }
 
                         use extrittio_common::ota::fields;
+                        if !crate::domains::firmware::types::valid_ota_artifact(
+                            &firmware.version,
+                            firmware.sha256.as_deref(),
+                            if firmware.url.starts_with("https://") {
+                                &firmware.url
+                            } else {
+                                &public_url
+                            },
+                        ) {
+                            return Ok(TriggerOtaOutcome::InvalidArtifact);
+                        }
                         let firmware_url = if firmware.url.starts_with("https://") {
                             firmware.url.clone()
                         } else {

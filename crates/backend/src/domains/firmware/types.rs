@@ -40,7 +40,16 @@ pub enum TriggerOtaOutcome {
     DeviceNotFound,
     FirmwareNotFound,
     Incompatible,
+    InvalidArtifact,
     Ready { delta: Value, version: i32 },
+}
+
+pub fn valid_ota_artifact(version: &str, hash: Option<&str>, url: &str) -> bool {
+    !version.is_empty()
+        && version.len() <= 63
+        && url.len() <= 1023
+        && (url.starts_with("https://") || url.starts_with("http://"))
+        && hash.is_some_and(|hash| hash.len() == 64 && hash.bytes().all(|c| c.is_ascii_hexdigit()))
 }
 
 #[derive(Debug, Clone)]

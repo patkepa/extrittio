@@ -962,7 +962,7 @@ mod tests {
                 device_type_id: device_type.id,
                 version: "1.0.0".into(),
                 url: "firmware/sensor.bin".into(),
-                sha256: Some("abcd".into()),
+                sha256: Some("a".repeat(64)),
                 description: None,
                 commit_sha: None,
                 branch: None,

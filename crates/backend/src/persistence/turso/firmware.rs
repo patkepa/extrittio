@@ -503,6 +503,18 @@ impl FirmwareRepository for TursoAdapter {
             tx.rollback().await.map_err(row::error)?;
             return Ok(TriggerOtaOutcome::Incompatible);
         }
+        if !crate::domains::firmware::types::valid_ota_artifact(
+            &version,
+            hash.as_deref(),
+            if raw_url.starts_with("https://") {
+                &raw_url
+            } else {
+                public_url
+            },
+        ) {
+            tx.rollback().await.map_err(row::error)?;
+            return Ok(TriggerOtaOutcome::InvalidArtifact);
+        }
         let mut rs=tx.query("SELECT desired,reported,version FROM device_shadows WHERE tenant_id=?1 AND device_id=?2",params![t.as_str(),device]).await.map_err(row::error)?;
         let s = rs
             .next()
