@@ -9,11 +9,17 @@
 #include <WiFiClientSecure.h>
 #include <mbedtls/sha256.h>
 #include <time.h>
+#include <Preferences.h>
+#include <esp_ota_ops.h>
+#include <esp_timer.h>
+#include <new>
 
 namespace {
 
 constexpr size_t ProtoBufSize = 2048;
 constexpr size_t TopicBufSize = 160;
+esp_timer_handle_t otaBootWatchdog = nullptr;
+void otaBootTimeout(void *) { ESP.restart(); }
 
 bool isHttpsUrl(const String &url) {
     return url.startsWith("https://");
@@ -73,6 +79,20 @@ bool ExtrittioClient::begin(const char *deviceId,
     _firmwareVersion = firmwareVersion;
     _zenohEndpoint = zenohEndpoint;
     _lastError = "";
+    _startupAt = millis();
+    _bootConfirmed = false;
+    esp_ota_img_states_t bootState;
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    if (running && esp_ota_get_state_partition(running, &bootState) == ESP_OK && bootState == ESP_OTA_IMG_PENDING_VERIFY) {
+        esp_timer_create_args_t args = {};
+        args.callback = otaBootTimeout;
+        args.name = "ota_health";
+        if (esp_timer_create(&args, &otaBootWatchdog) != ESP_OK ||
+            esp_timer_start_once(otaBootWatchdog, 120000000) != ESP_OK) {
+            setError("Failed to start OTA boot watchdog");
+            return false;
+        }
+    }
 
     z_owned_config_t config;
     z_config_default(&config);
@@ -102,7 +122,6 @@ bool ExtrittioClient::begin(const char *deviceId,
     }
 
     publishHeartbeat();
-    requestShadow();
     _lastHeartbeatMs = millis();
     return true;
 }
@@ -121,6 +140,7 @@ void ExtrittioClient::end() {
         _commandSubscribed = false;
     }
     z_drop(z_move(_session));
+    delete _pendingOta.exchange(nullptr);
     _sessionOpen = false;
     _tasksStarted = false;
 }
@@ -131,9 +151,22 @@ void ExtrittioClient::loop() {
     }
 
     const uint32_t now = millis();
+    if (!_bootConfirmed && now - _startupAt >= 30000) {
+        confirmOtaBoot();
+        if (_bootConfirmed) requestShadow();
+    }
     if (now - _lastHeartbeatMs >= _heartbeatIntervalMs) {
         publishHeartbeat();
         _lastHeartbeatMs = now;
+    }
+    if (_bootConfirmed) {
+        ExtrittioShadowDelta *pending = _pendingOta.exchange(nullptr);
+        if (pending) {
+            ExtrittioOtaPayload payload;
+            if (parseOtaPayload(pending->deltaJson.c_str(), &payload))
+                performFota(payload, pending->deltaJson.c_str(), pending->version);
+            delete pending;
+        }
     }
 }
 
@@ -531,6 +564,12 @@ bool ExtrittioClient::parseOtaPayload(const char *deltaJson, ExtrittioOtaPayload
     out->firmwareUrl = firmwareUrl;
     out->firmwareUpdateId = ota["firmware_update_id"] | 0;
     out->sha256 = ota["sha256"] | "";
+    out->deploymentId = ota["deployment_id"] | int64_t(0);
+    if (out->deploymentId <= 0 || out->firmwareUpdateId <= 0 || out->sha256.length() != 64 ||
+        out->firmwareVersion.length() == 0 || out->firmwareVersion.length() > 63 ||
+        out->firmwareUrl.length() > 1023 ||
+        !(out->firmwareUrl.startsWith("https://") || out->firmwareUrl.startsWith("http://"))) return false;
+    for (size_t i = 0; i < 64; ++i) if (!isxdigit(static_cast<unsigned char>(out->sha256[i]))) return false;
     return true;
 }
 
@@ -539,18 +578,27 @@ bool ExtrittioClient::maybeHandleFota(const ExtrittioShadowDelta &delta) {
     if (!parseOtaPayload(delta.deltaJson.c_str(), &payload)) {
         return false;
     }
-    performFota(payload, delta.deltaJson.c_str(), delta.version);
+    auto *pending = new (std::nothrow) ExtrittioShadowDelta(delta);
+    if (!pending) {
+        reportOtaStatus(EXTRITTIO_OTA_FAILED, payload, "Unable to queue OTA attempt");
+        return true;
+    }
+    delete _pendingOta.exchange(pending);
     return true;
 }
 
 bool ExtrittioClient::performFota(const ExtrittioOtaPayload &payload,
                                   const char *syncReportedStateJson,
                                   int64_t syncVersion) {
-    if (payload.firmwareVersion == _firmwareVersion) {
-        emitOtaEvent(EXTRITTIO_OTA_SUCCESS, payload, "already running requested firmware");
-        reportOtaStatus(EXTRITTIO_OTA_SUCCESS, payload, nullptr);
-        publishShadowReport(syncReportedStateJson, syncVersion);
-        return true;
+    (void)syncVersion;
+    if (payload.deploymentId == _confirmedAttemptId) { confirmOtaBoot(); return true; }
+#if !defined(CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE) || !CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE
+    reportOtaStatus(EXTRITTIO_OTA_FAILED, payload, "OTA requires a bootloader built with rollback enabled");
+    return false;
+#endif
+    if (!_bootConfirmed) {
+        reportOtaStatus(EXTRITTIO_OTA_FAILED, payload, "Startup health check is not complete");
+        return false;
     }
 
     emitOtaEvent(EXTRITTIO_OTA_DOWNLOADING, payload, nullptr);
@@ -672,20 +720,64 @@ bool ExtrittioClient::performFota(const ExtrittioOtaPayload &payload,
     emitOtaEvent(EXTRITTIO_OTA_INSTALLING, payload, nullptr);
     reportOtaStatus(EXTRITTIO_OTA_INSTALLING, payload, nullptr);
 
+    const esp_partition_t *target = esp_ota_get_next_update_partition(nullptr);
+    Preferences journal;
+    StaticJsonDocument<2048> checkpoint;
+    if (!target || !journal.begin("extrittio_ota", false) ||
+        deserializeJson(checkpoint, syncReportedStateJson)) {
+        Update.abort();
+        reportOtaStatus(EXTRITTIO_OTA_FAILED, payload, "Failed to open OTA boot journal");
+        return false;
+    }
+    checkpoint["target"] = target->address;
+    String checkpointJson;
+    serializeJson(checkpoint, checkpointJson);
+    if (journal.putString("attempt", checkpointJson) == 0) {
+        journal.end();
+        Update.abort();
+        reportOtaStatus(EXTRITTIO_OTA_FAILED, payload, "Failed to persist OTA attempt");
+        return false;
+    }
+    journal.end();
     if (!Update.end(true)) {
         String err = updateErrorString();
         reportOtaStatus(EXTRITTIO_OTA_FAILED, payload, err.c_str());
         return false;
     }
 
-    emitOtaEvent(EXTRITTIO_OTA_SUCCESS, payload, nullptr);
-    reportOtaStatus(EXTRITTIO_OTA_SUCCESS, payload, nullptr);
+    emitOtaEvent(EXTRITTIO_OTA_REBOOTING, payload, nullptr);
+    reportOtaStatus(EXTRITTIO_OTA_REBOOTING, payload, nullptr);
 
     delay(300);
-    publishShadowReport(syncReportedStateJson, syncVersion);
     delay(500);
     ESP.restart();
     return true;
+}
+
+void ExtrittioClient::confirmOtaBoot() {
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    if (!running) return;
+    esp_ota_img_states_t state;
+    if (esp_ota_get_state_partition(running, &state) == ESP_OK && state == ESP_OTA_IMG_PENDING_VERIFY &&
+        esp_ota_mark_app_valid_cancel_rollback() != ESP_OK) return;
+    _bootConfirmed = true;
+    if (otaBootWatchdog) {
+        esp_timer_stop(otaBootWatchdog);
+        esp_timer_delete(otaBootWatchdog);
+        otaBootWatchdog = nullptr;
+    }
+    Preferences journal;
+    if (!journal.begin("extrittio_ota", true)) return;
+    String checkpointJson = journal.getString("attempt", "");
+    journal.end();
+    StaticJsonDocument<2048> checkpoint;
+    ExtrittioOtaPayload payload;
+    if (deserializeJson(checkpoint, checkpointJson) || !parseOtaPayload(checkpointJson.c_str(), &payload)) return;
+    const bool success = checkpoint["target"].as<uint32_t>() == running->address;
+    _confirmedAttemptId = payload.deploymentId;
+    if (success) _firmwareVersion = payload.firmwareVersion;
+    reportOtaStatus(success ? EXTRITTIO_OTA_SUCCESS : EXTRITTIO_OTA_FAILED, payload,
+        success ? nullptr : "New image failed to boot; rolled back");
 }
 
 bool ExtrittioClient::reportOtaStatus(const char *status,
@@ -695,6 +787,7 @@ bool ExtrittioClient::reportOtaStatus(const char *status,
     JsonObject ota = doc.createNestedObject("ota");
     ota["status"] = status;
     ota["firmware_version"] = payload.firmwareVersion;
+    ota["deployment_id"] = payload.deploymentId;
     if (payload.firmwareUpdateId != 0) {
         ota["firmware_update_id"] = payload.firmwareUpdateId;
     }

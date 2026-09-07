@@ -4,6 +4,8 @@
 extern crate alloc;
 
 pub mod location;
+#[cfg(all(feature = "native-ota", unix))]
+pub mod native_ota;
 #[cfg(any(feature = "std", feature = "alloc"))]
 pub mod ota;
 pub mod sensor;

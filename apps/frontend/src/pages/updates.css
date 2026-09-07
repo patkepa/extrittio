@@ -112,7 +112,8 @@
 .updates-row--pending,
 .updates-row--downloading,
 .updates-row--verifying,
-.updates-row--installing {
+.updates-row--installing,
+.updates-row--rebooting {
   border-left-color: hsl(var(--accent));
 }
 

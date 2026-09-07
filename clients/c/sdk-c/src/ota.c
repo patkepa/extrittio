@@ -17,7 +17,10 @@ bool extrittio_ota_parse_from_delta(const char *delta_json,
     cJSON *fw_ver = cJSON_GetObjectItemCaseSensitive(ota, "firmware_version");
     cJSON *fw_url = cJSON_GetObjectItemCaseSensitive(ota, "firmware_url");
 
-    if (!cJSON_IsString(fw_ver) || !cJSON_IsString(fw_url)) {
+    if (!cJSON_IsString(fw_ver) || !cJSON_IsString(fw_url)
+        || !fw_ver->valuestring[0] || strlen(fw_ver->valuestring) >= sizeof(out->firmware_version)
+        || strlen(fw_url->valuestring) >= sizeof(out->firmware_url)
+        || (strncmp(fw_url->valuestring, "https://", 8) && strncmp(fw_url->valuestring, "http://", 7))) {
         cJSON_Delete(root);
         return false;
     }
@@ -34,9 +37,20 @@ bool extrittio_ota_parse_from_delta(const char *delta_json,
     }
 
     cJSON *sha = cJSON_GetObjectItemCaseSensitive(ota, "sha256");
-    if (cJSON_IsString(sha)) {
-        strncpy(out->sha256, sha->valuestring, sizeof(out->sha256) - 1);
+    cJSON *deployment = cJSON_GetObjectItemCaseSensitive(ota, "deployment_id");
+    if (!cJSON_IsNumber(deployment) || deployment->valuedouble <= 0
+        || deployment->valuedouble > INT32_MAX || (double)deployment->valueint != deployment->valuedouble
+        || !cJSON_IsNumber(fw_id) || fw_id->valuedouble <= 0 || fw_id->valuedouble > INT32_MAX
+        || (double)fw_id->valueint != fw_id->valuedouble
+        || !cJSON_IsString(sha) || strlen(sha->valuestring) != 64) {
+        cJSON_Delete(root);
+        return false;
     }
+    for (size_t i = 0; i < 64; ++i) {
+        if (!isxdigit((unsigned char)sha->valuestring[i])) { cJSON_Delete(root); return false; }
+    }
+    out->deployment_id = deployment->valueint;
+    memcpy(out->sha256, sha->valuestring, 65);
 
     cJSON_Delete(root);
     return true;
@@ -46,12 +60,14 @@ int extrittio_ota_build_status_json(char *buf, size_t len,
                                      const char *status,
                                      const char *fw_version,
                                      int64_t fw_update_id,
+                                     int64_t deployment_id,
                                      const char *error) {
     cJSON *obj = cJSON_CreateObject();
     if (!obj) return -1;
 
     cJSON_AddStringToObject(obj, "status", status);
     cJSON_AddStringToObject(obj, "firmware_version", fw_version);
+    cJSON_AddNumberToObject(obj, "deployment_id", (double)deployment_id);
 
     if (fw_update_id != 0) {
         cJSON_AddNumberToObject(obj, "firmware_update_id", (double)fw_update_id);

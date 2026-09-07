@@ -12,6 +12,7 @@ use tokio::sync::Mutex;
 use tracing::info;
 
 pub mod contract;
+pub use extrittio_sdk::native_ota::watchdog_entry;
 
 // ---------------------------------------------------------------------------
 // Embedded device ID
@@ -105,6 +106,9 @@ pub async fn run_native_client<T: TelemetrySource>(
     mut telemetry_source: T,
     embedded_slot: &[u8],
 ) {
+    let _installed_version =
+        extrittio_sdk::native_ota::boot(&std::env::current_exe().expect("executable path"))
+            .expect("OTA journal");
     let provisioned_contract = match config.contract_path.as_deref() {
         Some(path) => match contract::ProvisionedContract::load(path).await {
             Ok(contract) => Some(contract),
@@ -286,6 +290,31 @@ pub async fn run_native_client<T: TelemetrySource>(
 
         info!("Subscribed to '{}'", shadow_delta_topic);
 
+        // Confirm only after this process has survived normal startup and heartbeat activity.
+        if extrittio_sdk::native_ota::needs_confirmation(
+            &std::env::current_exe().expect("executable path"),
+        ) {
+            tokio::time::sleep(Duration::from_secs(30)).await;
+        }
+        match extrittio_sdk::native_ota::confirm(&std::env::current_exe().expect("executable path"))
+        {
+            Ok(Some(status)) => {
+                shadow_reported
+                    .lock()
+                    .await
+                    .insert(ota_fields::SHADOW_KEY.into(), status);
+                send_shadow_report(
+                    &shadow_device_id,
+                    &shadow_session,
+                    &shadow_report_topic,
+                    &shadow_reported,
+                    0,
+                )
+                .await;
+            }
+            Ok(None) => {}
+            Err(error) => tracing::error!("OTA startup confirmation failed: {error}"),
+        }
         loop {
             let sample = subscriber.recv_async().await;
             match sample {
@@ -293,7 +322,7 @@ pub async fn run_native_client<T: TelemetrySource>(
                     let bytes = sample.payload().to_bytes();
                     match ShadowDelta::decode(bytes.as_ref()) {
                         Ok(delta) => {
-                            info!("Shadow delta received: {}", delta.delta_json);
+                            info!("Shadow delta received: version={}", delta.version);
 
                             // Parse delta JSON and merge into reported state
                             match serde_json::from_str::<serde_json::Value>(&delta.delta_json) {
@@ -463,10 +492,17 @@ async fn report_ota_status(
     version: i64,
     fw_version: &str,
     fw_update_id: Option<i64>,
+    deployment_id: i64,
     status: &str,
     error: Option<&str>,
 ) {
-    let ota_obj = extrittio_sdk::ota::build_status_json(status, fw_version, fw_update_id, error);
+    let ota_obj = extrittio_sdk::ota::build_status_json(
+        status,
+        fw_version,
+        fw_update_id,
+        deployment_id,
+        error,
+    );
 
     {
         let mut state = reported_state.lock().await;
@@ -501,31 +537,18 @@ async fn handle_ota(
     let fw_version = parsed.firmware_version;
     let fw_url = parsed.firmware_url;
     let fw_update_id = parsed.firmware_update_id;
+    let deployment_id = parsed.deployment_id;
     let expected_sha256 = parsed.sha256;
 
-    // Check if we're already running the requested version
+    if std::env::current_exe()
+        .ok()
+        .is_some_and(|exe| extrittio_sdk::native_ota::is_installed_attempt(&exe, deployment_id))
     {
-        let current = firmware_version.lock().await;
-        if *current == format!("v{fw_version}") {
-            info!("OTA: already running v{}, skipping", fw_version);
-            report_ota_status(
-                &reported_state,
-                &device_id,
-                &session,
-                &report_topic,
-                shadow_version,
-                &fw_version,
-                fw_update_id,
-                "success",
-                None,
-            )
-            .await;
-            return;
-        }
+        return;
     }
 
     // -- Report "downloading" --
-    info!("OTA: downloading firmware v{} from {}", fw_version, fw_url);
+    info!("OTA: downloading firmware v{}", fw_version);
     report_ota_status(
         &reported_state,
         &device_id,
@@ -534,6 +557,7 @@ async fn handle_ota(
         shadow_version,
         &fw_version,
         fw_update_id,
+        deployment_id,
         "downloading",
         None,
     )
@@ -558,6 +582,7 @@ async fn handle_ota(
                     shadow_version,
                     &fw_version,
                     fw_update_id,
+                    deployment_id,
                     "failed",
                     Some(&err),
                 )
@@ -567,7 +592,7 @@ async fn handle_ota(
             match resp.bytes().await {
                 Ok(b) => b,
                 Err(e) => {
-                    let err = format!("download read error: {e}");
+                    let err = format!("download read error: {}", e.without_url());
                     tracing::warn!("OTA: {}", err);
                     report_ota_status(
                         &reported_state,
@@ -577,6 +602,7 @@ async fn handle_ota(
                         shadow_version,
                         &fw_version,
                         fw_update_id,
+                        deployment_id,
                         "failed",
                         Some(&err),
                     )
@@ -586,7 +612,7 @@ async fn handle_ota(
             }
         }
         Err(e) => {
-            let err = format!("download error: {e}");
+            let err = format!("download error: {}", e.without_url());
             tracing::warn!("OTA: {}", err);
             report_ota_status(
                 &reported_state,
@@ -596,6 +622,7 @@ async fn handle_ota(
                 shadow_version,
                 &fw_version,
                 fw_update_id,
+                deployment_id,
                 "failed",
                 Some(&err),
             )
@@ -616,6 +643,7 @@ async fn handle_ota(
             shadow_version,
             &fw_version,
             fw_update_id,
+            deployment_id,
             "verifying",
             None,
         )
@@ -636,6 +664,7 @@ async fn handle_ota(
                 shadow_version,
                 &fw_version,
                 fw_update_id,
+                deployment_id,
                 "failed",
                 Some(&err),
             )
@@ -662,6 +691,7 @@ async fn handle_ota(
         shadow_version,
         &fw_version,
         fw_update_id,
+        deployment_id,
         "installing",
         None,
     )
@@ -680,6 +710,7 @@ async fn handle_ota(
                 shadow_version,
                 &fw_version,
                 fw_update_id,
+                deployment_id,
                 "failed",
                 Some(&err),
             )
@@ -688,13 +719,13 @@ async fn handle_ota(
         }
     };
 
-    // Write to a temp file next to the current binary, then atomically rename
-    let tmp_path = current_exe.with_extension("ota_tmp");
-
-    if let Err(e) = tokio::fs::write(&tmp_path, &firmware_bytes).await {
-        let err = format!("failed to write firmware to {}: {}", tmp_path.display(), e);
-        tracing::warn!("OTA: {}", err);
-        let _ = tokio::fs::remove_file(&tmp_path).await;
+    let previous_version = firmware_version.lock().await.clone();
+    if let Err(error) = extrittio_sdk::native_ota::install(
+        &current_exe,
+        &firmware_bytes,
+        &ota_payload,
+        &previous_version,
+    ) {
         report_ota_status(
             &reported_state,
             &device_id,
@@ -703,65 +734,13 @@ async fn handle_ota(
             shadow_version,
             &fw_version,
             fw_update_id,
+            deployment_id,
             "failed",
-            Some(&err),
+            Some(&error.to_string()),
         )
         .await;
         return;
     }
-
-    // Set executable permissions
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if let Err(e) =
-            tokio::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o755)).await
-        {
-            let err = format!("failed to set permissions: {e}");
-            tracing::warn!("OTA: {}", err);
-            let _ = tokio::fs::remove_file(&tmp_path).await;
-            report_ota_status(
-                &reported_state,
-                &device_id,
-                &session,
-                &report_topic,
-                shadow_version,
-                &fw_version,
-                fw_update_id,
-                "failed",
-                Some(&err),
-            )
-            .await;
-            return;
-        }
-    }
-
-    // Atomic rename: tmp -> current executable
-    if let Err(e) = tokio::fs::rename(&tmp_path, &current_exe).await {
-        let err = format!("failed to replace binary: {e}");
-        tracing::warn!("OTA: {}", err);
-        let _ = tokio::fs::remove_file(&tmp_path).await;
-        report_ota_status(
-            &reported_state,
-            &device_id,
-            &session,
-            &report_topic,
-            shadow_version,
-            &fw_version,
-            fw_update_id,
-            "failed",
-            Some(&err),
-        )
-        .await;
-        return;
-    }
-
-    // -- Success: report and exit so the process manager (systemd) restarts us --
-    {
-        let mut fw = firmware_version.lock().await;
-        *fw = format!("v{fw_version}");
-    }
-
     report_ota_status(
         &reported_state,
         &device_id,
@@ -770,7 +749,8 @@ async fn handle_ota(
         shadow_version,
         &fw_version,
         fw_update_id,
-        "success",
+        deployment_id,
+        "rebooting",
         None,
     )
     .await;

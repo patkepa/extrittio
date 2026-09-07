@@ -12,12 +12,14 @@ extern "C" {
 #define EXTRITTIO_OTA_DOWNLOADING "downloading"
 #define EXTRITTIO_OTA_VERIFYING   "verifying"
 #define EXTRITTIO_OTA_INSTALLING  "installing"
+#define EXTRITTIO_OTA_REBOOTING   "rebooting"
 #define EXTRITTIO_OTA_SUCCESS     "success"
 #define EXTRITTIO_OTA_FAILED      "failed"
 
 typedef struct {
     char firmware_version[64];
-    char firmware_url[256];
+    char firmware_url[1024];
+    int64_t deployment_id;
     int64_t firmware_update_id;
     char sha256[65];
 } extrittio_ota_payload_t;
@@ -29,6 +31,7 @@ int extrittio_ota_build_status_json(char *buf, size_t len,
                                      const char *status,
                                      const char *fw_version,
                                      int64_t fw_update_id,
+                                     int64_t deployment_id,
                                      const char *error);
 
 bool extrittio_ota_is_terminal(const char *status);

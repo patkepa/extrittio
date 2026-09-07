@@ -11,7 +11,7 @@ publish.workspace = true
 [dependencies]
 extrittio-common = { version = "0.1.0", path = "../../../crates/common" }
 extrittio-device-contract = { version = "0.1.0", path = "../../../crates/device-contract" }
-extrittio-sdk = { version = "0.1.0", path = "../sdk" }
+extrittio-sdk = { version = "0.1.0", path = "../sdk", features = ["native-ota"] }
 zenoh = { version = "1", default-features = false, features = ["transport_tcp", "transport_tls"] }
 prost = "0.14"
 tokio = { version = "1", features = ["fs", "rt-multi-thread", "sync", "time"] }

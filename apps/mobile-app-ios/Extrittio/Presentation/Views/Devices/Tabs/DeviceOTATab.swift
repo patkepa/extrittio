@@ -165,7 +165,7 @@ struct DeviceOTATab: View {
         switch status {
         case "success": .green
         case "failed": .red
-        case "pending", "downloading", "installing": .blue
+        case "pending", "downloading", "verifying", "installing", "rebooting": .blue
         default: .gray
         }
     }

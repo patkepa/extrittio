@@ -21,7 +21,7 @@ publish = false
 extrittio-common = { path = "../../../crates/common", default-features = false, features = ["std"] }
 extrittio-sdk = { path = "../sdk", default-features = false, features = ["std"] }
 embedded-svc = "0.28"
-prost = "0.13"
+prost = "0.14"
 zenoh = { version = "1", default-features = false, features = ["transport_tcp"] }
 esp-idf-svc = { version = "0.50", features = ["binstart"] }
 log = "0.4"

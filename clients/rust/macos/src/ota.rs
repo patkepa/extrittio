@@ -8,8 +8,6 @@ use tokio::sync::Mutex;
 use extrittio_common::extrittio::ShadowReport;
 use extrittio_common::ota::fields as ota_fields;
 
-use crate::config::Config;
-
 /// Send a shadow report with the current reported state.
 pub async fn send_shadow_report(
     device_id: &str,
@@ -46,10 +44,17 @@ async fn report_ota_status(
     version: i64,
     fw_version: &str,
     fw_update_id: Option<i64>,
+    deployment_id: i64,
     status: &str,
     error: Option<&str>,
 ) {
-    let ota_obj = extrittio_sdk::ota::build_status_json(status, fw_version, fw_update_id, error);
+    let ota_obj = extrittio_sdk::ota::build_status_json(
+        status,
+        fw_version,
+        fw_update_id,
+        deployment_id,
+        error,
+    );
 
     {
         let mut state = reported_state.lock().await;
@@ -60,7 +65,7 @@ async fn report_ota_status(
 }
 
 /// Handle an OTA update. Downloads firmware, verifies SHA-256, replaces binary,
-/// updates config firmware_version, then exits for launchd restart.
+/// journals the pending installation, then exits for launchd restart.
 ///
 /// Unlike the Linux/RPi clients, this does NOT patch a device ID into the binary.
 /// Device identity is stored in the config file and survives OTA naturally.
@@ -84,31 +89,18 @@ pub async fn handle_ota(
     let fw_version = parsed.firmware_version;
     let fw_url = parsed.firmware_url;
     let fw_update_id = parsed.firmware_update_id;
+    let deployment_id = parsed.deployment_id;
     let expected_sha256 = parsed.sha256;
 
-    // Skip if already running this version
+    if std::env::current_exe()
+        .ok()
+        .is_some_and(|exe| extrittio_sdk::native_ota::is_installed_attempt(&exe, deployment_id))
     {
-        let current = firmware_version.lock().await;
-        if *current == format!("v{fw_version}") {
-            tracing::info!("OTA: already running v{}, skipping", fw_version);
-            report_ota_status(
-                &reported_state,
-                &device_id,
-                &session,
-                &report_topic,
-                shadow_version,
-                &fw_version,
-                fw_update_id,
-                "success",
-                None,
-            )
-            .await;
-            return;
-        }
+        return;
     }
 
     // Download
-    tracing::info!("OTA: downloading firmware v{} from {}", fw_version, fw_url);
+    tracing::info!("OTA: downloading firmware v{}", fw_version);
     report_ota_status(
         &reported_state,
         &device_id,
@@ -117,6 +109,7 @@ pub async fn handle_ota(
         shadow_version,
         &fw_version,
         fw_update_id,
+        deployment_id,
         "downloading",
         None,
     )
@@ -140,6 +133,7 @@ pub async fn handle_ota(
                     shadow_version,
                     &fw_version,
                     fw_update_id,
+                    deployment_id,
                     "failed",
                     Some(&err),
                 )
@@ -149,7 +143,7 @@ pub async fn handle_ota(
             match resp.bytes().await {
                 Ok(b) => b,
                 Err(e) => {
-                    let err = format!("download read error: {e}");
+                    let err = format!("download read error: {}", e.without_url());
                     tracing::warn!("OTA: {}", err);
                     report_ota_status(
                         &reported_state,
@@ -159,6 +153,7 @@ pub async fn handle_ota(
                         shadow_version,
                         &fw_version,
                         fw_update_id,
+                        deployment_id,
                         "failed",
                         Some(&err),
                     )
@@ -168,7 +163,7 @@ pub async fn handle_ota(
             }
         }
         Err(e) => {
-            let err = format!("download error: {e}");
+            let err = format!("download error: {}", e.without_url());
             tracing::warn!("OTA: {}", err);
             report_ota_status(
                 &reported_state,
@@ -178,6 +173,7 @@ pub async fn handle_ota(
                 shadow_version,
                 &fw_version,
                 fw_update_id,
+                deployment_id,
                 "failed",
                 Some(&err),
             )
@@ -198,6 +194,7 @@ pub async fn handle_ota(
             shadow_version,
             &fw_version,
             fw_update_id,
+            deployment_id,
             "verifying",
             None,
         )
@@ -218,6 +215,7 @@ pub async fn handle_ota(
                 shadow_version,
                 &fw_version,
                 fw_update_id,
+                deployment_id,
                 "failed",
                 Some(&err),
             )
@@ -236,6 +234,7 @@ pub async fn handle_ota(
         shadow_version,
         &fw_version,
         fw_update_id,
+        deployment_id,
         "installing",
         None,
     )
@@ -254,6 +253,7 @@ pub async fn handle_ota(
                 shadow_version,
                 &fw_version,
                 fw_update_id,
+                deployment_id,
                 "failed",
                 Some(&err),
             )
@@ -262,12 +262,10 @@ pub async fn handle_ota(
         }
     };
 
-    let tmp_path = current_exe.with_extension("ota_tmp");
-
-    if let Err(e) = tokio::fs::write(&tmp_path, &bytes).await {
-        let err = format!("failed to write firmware to {}: {}", tmp_path.display(), e);
-        tracing::warn!("OTA: {}", err);
-        let _ = tokio::fs::remove_file(&tmp_path).await;
+    let previous_version = firmware_version.lock().await.clone();
+    if let Err(error) =
+        extrittio_sdk::native_ota::install(&current_exe, &bytes, &ota_payload, &previous_version)
+    {
         report_ota_status(
             &reported_state,
             &device_id,
@@ -276,67 +274,13 @@ pub async fn handle_ota(
             shadow_version,
             &fw_version,
             fw_update_id,
+            deployment_id,
             "failed",
-            Some(&err),
+            Some(&error.to_string()),
         )
         .await;
         return;
     }
-
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if let Err(e) =
-            tokio::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o755)).await
-        {
-            let err = format!("failed to set permissions: {e}");
-            tracing::warn!("OTA: {}", err);
-            let _ = tokio::fs::remove_file(&tmp_path).await;
-            report_ota_status(
-                &reported_state,
-                &device_id,
-                &session,
-                &report_topic,
-                shadow_version,
-                &fw_version,
-                fw_update_id,
-                "failed",
-                Some(&err),
-            )
-            .await;
-            return;
-        }
-    }
-
-    if let Err(e) = tokio::fs::rename(&tmp_path, &current_exe).await {
-        let err = format!("failed to replace binary: {e}");
-        tracing::warn!("OTA: {}", err);
-        let _ = tokio::fs::remove_file(&tmp_path).await;
-        report_ota_status(
-            &reported_state,
-            &device_id,
-            &session,
-            &report_topic,
-            shadow_version,
-            &fw_version,
-            fw_update_id,
-            "failed",
-            Some(&err),
-        )
-        .await;
-        return;
-    }
-
-    // Update firmware version in config file so it persists across restart
-    let new_version = format!("v{fw_version}");
-    if let Err(e) = Config::update_firmware_version(&new_version) {
-        tracing::warn!("OTA: failed to update config firmware_version: {e}");
-    }
-
-    {
-        let mut fw = firmware_version.lock().await;
-        *fw = new_version;
-    }
-
     report_ota_status(
         &reported_state,
         &device_id,
@@ -345,7 +289,8 @@ pub async fn handle_ota(
         shadow_version,
         &fw_version,
         fw_update_id,
-        "success",
+        deployment_id,
+        "rebooting",
         None,
     )
     .await;

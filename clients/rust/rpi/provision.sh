@@ -190,6 +190,8 @@ Type=simple
 ExecStart=${INSTALL_DIR}/extrittio-rpi --device-id ${DEVICE_ID} --connect ${ZENOH_CONNECT}
 Restart=always
 RestartSec=5
+# The bounded OTA rollback watchdog must survive the main client's restart.
+KillMode=process
 Environment=RUST_LOG=extrittio_rpi=info
 
 [Install]

@@ -72,7 +72,7 @@ pub struct NextVersionResponse {
 
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct ListOtaDeploymentsQuery {
-    /// Filter by status: all, in_progress, completed, pending, downloading, verifying, installing, success, failed.
+    /// Filter by status: all, in_progress, completed, pending, downloading, verifying, installing, rebooting, success, failed.
     pub status: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,

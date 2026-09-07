@@ -1659,6 +1659,8 @@ dependencies = [
  "extrittio-common",
  "libm",
  "serde_json",
+ "sha2",
+ "tempfile",
 ]
 
 [[package]]
