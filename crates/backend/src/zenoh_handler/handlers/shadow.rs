@@ -93,7 +93,7 @@ pub async fn handle_shadow_report(
     if let Err(error) = shadow_service::process_ota_from_report_with_repository(
         persistence.firmware.as_ref(),
         &identity,
-        &shadow.reported,
+        &reported,
     )
     .await
     {

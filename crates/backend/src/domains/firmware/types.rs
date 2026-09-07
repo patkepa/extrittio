@@ -3,10 +3,28 @@ use serde_json::Value;
 
 #[derive(Debug, Clone)]
 pub struct OtaStatusUpdate {
+    pub deployment_id: i32,
     pub firmware_update_id: Option<i32>,
     pub status: String,
     pub error_message: Option<String>,
     pub completed_at: Option<NaiveDateTime>,
+}
+
+/// Only forward transitions are accepted; terminal deployments are immutable.
+pub fn ota_transition_allowed(previous: &str, next: &str) -> bool {
+    fn rank(status: &str) -> Option<u8> {
+        Some(match status {
+            "pending" => 0,
+            "downloading" => 1,
+            "verifying" => 2,
+            "installing" => 3,
+            "rebooting" => 4,
+            "success" | "failed" => 5,
+            _ => return None,
+        })
+    }
+    !extrittio_common::ota::status::is_terminal(previous)
+        && matches!((rank(previous), rank(next)), (Some(a), Some(b)) if b >= a)
 }
 
 #[derive(Debug, Clone)]

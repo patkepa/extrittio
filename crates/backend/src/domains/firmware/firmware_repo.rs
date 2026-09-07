@@ -324,30 +324,6 @@ pub fn list_all_ota_deployments(
     Ok((results, total))
 }
 
-/// Find the ID of the active (non-terminal) OTA deployment for the given device,
-/// optionally filtered by firmware_update_id for precise targeting.
-pub fn find_active_ota_deployment(
-    conn: &mut PgConnection,
-    tenant_id: &str,
-    device_id: &str,
-    firmware_update_id: Option<i32>,
-) -> Result<Option<i32>, diesel::result::Error> {
-    let mut query = ota_deployments::table
-        .filter(ota_deployments::tenant_id.eq(tenant_id))
-        .filter(ota_deployments::device_id.eq(device_id))
-        .filter(ota_deployments::status.ne("success"))
-        .filter(ota_deployments::status.ne("failed"))
-        .order(ota_deployments::initiated_at.desc())
-        .select(ota_deployments::id)
-        .into_boxed();
-
-    if let Some(fwid) = firmware_update_id {
-        query = query.filter(ota_deployments::firmware_update_id.eq(fwid));
-    }
-
-    query.first(conn).optional()
-}
-
 /// Update OTA deployment status. If terminal (success/failed), also set
 /// completed_at and optional error_message.
 pub fn update_ota_deployment_status(
@@ -374,9 +350,9 @@ pub fn update_ota_deployment_status(
 pub fn insert_ota_deployment(
     conn: &mut PgConnection,
     deployment: &NewOtaDeployment,
-) -> Result<(), diesel::result::Error> {
+) -> Result<i32, diesel::result::Error> {
     diesel::insert_into(ota_deployments::table)
         .values(deployment)
-        .execute(conn)?;
-    Ok(())
+        .returning(ota_deployments::id)
+        .get_result(conn)
 }
