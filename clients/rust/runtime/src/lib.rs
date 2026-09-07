@@ -265,17 +265,6 @@ pub async fn run_native_client<T: TelemetrySource>(
         }
     });
 
-    // Request any pending shadow delta on startup
-    let shadow_get = ShadowGet {
-        device_id: device_id.clone(),
-    };
-    let payload = shadow_get.encode_to_vec();
-    if let Err(e) = session.put(&shadow_get_topic, payload).await {
-        tracing::warn!("Failed to send ShadowGet: {}", e);
-    } else {
-        info!("Sent ShadowGet to '{}'", shadow_get_topic);
-    }
-
     // Spawn shadow subscriber task
     let shadow_session = session.clone();
     let shadow_device_id = device_id.clone();
@@ -315,6 +304,17 @@ pub async fn run_native_client<T: TelemetrySource>(
             Ok(None) => {}
             Err(error) => tracing::error!("OTA startup confirmation failed: {error}"),
         }
+        // Request any pending shadow delta on startup
+        let shadow_get = ShadowGet {
+            device_id: shadow_device_id.clone(),
+        };
+        let payload = shadow_get.encode_to_vec();
+        if let Err(e) = shadow_session.put(&shadow_get_topic, payload).await {
+            tracing::warn!("Failed to send ShadowGet: {}", e);
+        } else {
+            info!("Sent ShadowGet to '{}'", shadow_get_topic);
+        }
+
         loop {
             let sample = subscriber.recv_async().await;
             match sample {

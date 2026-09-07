@@ -109,18 +109,6 @@ fn main() {
         ota_boot::installed_version().unwrap_or_else(|| FIRMWARE_VERSION.to_string()),
     ));
 
-    // ── Request pending shadow delta on startup ──────────────────────
-    let shadow_get = ShadowGet {
-        device_id: DEVICE_ID.to_string(),
-    };
-    match session
-        .put(&shadow_get_topic, shadow_get.encode_to_vec())
-        .wait()
-    {
-        Ok(_) => info!("Shadow get request sent to '{shadow_get_topic}'"),
-        Err(e) => log::warn!("Failed to send shadow get request: {e}"),
-    }
-
     // ── Shadow subscriber thread ─────────────────────────────────────
     let shadow_session = session.clone();
     let shadow_report_key = shadow_report_topic.clone();
@@ -145,6 +133,18 @@ fn main() {
             Ok(None) => {}
             Err(error) => log::error!("OTA boot confirmation failed: {error}"),
         }
+        // ── Request pending shadow delta on startup ──────────────────────
+        let shadow_get = ShadowGet {
+            device_id: DEVICE_ID.to_string(),
+        };
+        match shadow_session
+            .put(&shadow_get_topic, shadow_get.encode_to_vec())
+            .wait()
+        {
+            Ok(_) => info!("Shadow get request sent to '{shadow_get_topic}'"),
+            Err(e) => log::warn!("Failed to send shadow get request: {e}"),
+        }
+
         loop {
             match subscriber.recv() {
                 Ok(sample) => {

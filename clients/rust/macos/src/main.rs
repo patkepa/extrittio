@@ -227,17 +227,6 @@ async fn run_async(cfg: config::Config, device_id: String) {
         }
     });
 
-    // -- Request pending shadow delta on startup --
-    let shadow_get = ShadowGet {
-        device_id: device_id.clone(),
-    };
-    let payload = shadow_get.encode_to_vec();
-    if let Err(e) = session.put(&shadow_get_topic, payload).await {
-        tracing::warn!("Failed to send ShadowGet: {}", e);
-    } else {
-        tracing::info!("Sent ShadowGet to '{}'", shadow_get_topic);
-    }
-
     // -- Shadow subscriber task --
     let shadow_session = session.clone();
     let shadow_device_id = device_id.clone();
@@ -277,6 +266,17 @@ async fn run_async(cfg: config::Config, device_id: String) {
             Ok(None) => {}
             Err(error) => tracing::error!("OTA startup confirmation failed: {error}"),
         }
+        // -- Request pending shadow delta on startup --
+        let shadow_get = ShadowGet {
+            device_id: shadow_device_id.clone(),
+        };
+        let payload = shadow_get.encode_to_vec();
+        if let Err(e) = shadow_session.put(&shadow_get_topic, payload).await {
+            tracing::warn!("Failed to send ShadowGet: {}", e);
+        } else {
+            tracing::info!("Sent ShadowGet to '{}'", shadow_get_topic);
+        }
+
         loop {
             let sample = subscriber.recv_async().await;
             match sample {
