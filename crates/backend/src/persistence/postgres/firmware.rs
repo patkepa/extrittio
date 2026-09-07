@@ -468,7 +468,7 @@ impl FirmwareRepository for PostgresAdapter {
                     .transaction::<_, AppError, _>(|connection| {
                         use crate::db::schema::ota_deployments;
                         use diesel::prelude::*;
-                        shadow_repo::lock_shadow(connection, &tenant_id, &device_id)?;
+                        let shadow = shadow_repo::lock_shadow(connection, &tenant_id, &device_id)?;
                         let previous = ota_deployments::table
                             .filter(ota_deployments::tenant_id.eq(&tenant_id))
                             .filter(ota_deployments::device_id.eq(&device_id))
@@ -495,6 +495,18 @@ impl FirmwareRepository for PostgresAdapter {
                             update.error_message.as_deref(),
                             update.completed_at,
                         )?;
+                        if extrittio_common::ota::status::is_terminal(&update.status)
+                            && shadow.desired["ota"]["deployment_id"].as_i64()
+                                == Some(i64::from(update.deployment_id))
+                        {
+                            let patch = serde_json::json!({"ota": null});
+                            update_desired_shadow(
+                                connection,
+                                &tenant_id,
+                                &device_id,
+                                patch.as_object().unwrap(),
+                            )?;
+                        }
                         Ok(true)
                     })
                     .map_err(map_app_error)

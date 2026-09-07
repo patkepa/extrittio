@@ -191,6 +191,196 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn ota_attempts_isolate_retries_clear_terminal_desired_and_ignore_stale_reports() {
+        use crate::domains::firmware::types::OtaStatusUpdate;
+        use crate::tenancy::DeviceIdentity;
+        use prost::Message;
+        let (_directory, adapter) = adapter().await;
+        let tenant = TenantId::new(TEST_TENANT_ID).unwrap();
+        let identity = DeviceIdentity::new(TEST_TENANT_ID, "ota-device").unwrap();
+        let device_type = DeviceTypeRepository::create(
+            &adapter,
+            &tenant,
+            CreateDeviceTypeRecord {
+                name: "ota-sensor".into(),
+                icon: "sensor".into(),
+                color_hex: "#112233".into(),
+            },
+        )
+        .await
+        .unwrap();
+        DeviceRepository::create(
+            &adapter,
+            &tenant,
+            CreateDeviceRecord {
+                id: "ota-device".into(),
+                name: "OTA".into(),
+                device_type_id: device_type.id,
+                fleet_id: None,
+                firmware: "1.0.0".into(),
+                contract: None,
+            },
+            None,
+        )
+        .await
+        .unwrap();
+        let firmware = FirmwareRepository::create(
+            &adapter,
+            &tenant,
+            NewFirmwareRecord {
+                device_type_id: device_type.id,
+                version: "2.0.0".into(),
+                url: "/download".into(),
+                sha256: Some("a".repeat(64)),
+                description: None,
+                commit_sha: None,
+                branch: None,
+                ci_run_url: None,
+                build_timestamp: None,
+                changelog: None,
+                source: None,
+                blueprint_revision_id: None,
+                compatibility: json!({}),
+                update_strategy: None,
+            },
+            None,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let start = async || {
+            let TriggerOtaOutcome::Ready { delta, .. } = FirmwareRepository::trigger_ota(
+                &adapter,
+                &tenant,
+                "ota-device",
+                firmware.id,
+                "https://hub.example/api/v1/ota-downloads/grant",
+            )
+            .await
+            .unwrap() else {
+                panic!("deployment rejected")
+            };
+            assert_eq!(
+                delta["ota"]["firmware_url"],
+                "https://hub.example/api/v1/ota-downloads/grant"
+            );
+            delta["ota"]["deployment_id"].as_i64().unwrap() as i32
+        };
+        let update = |deployment_id, status: &str| OtaStatusUpdate {
+            deployment_id,
+            firmware_update_id: Some(firmware.id),
+            status: status.into(),
+            error_message: None,
+            completed_at: extrittio_common::ota::status::is_terminal(status)
+                .then(|| Utc::now().naive_utc()),
+        };
+        let first = start().await;
+        let persistence = build_repositories(adapter.database.clone());
+        let failed = extrittio_common::extrittio::ShadowReport {device_id:"ota-device".into(), timestamp:0, version:0,
+            state_json:json!({"ota":{"deployment_id":first,"firmware_update_id":firmware.id,"status":"failed"}}).to_string()};
+        crate::zenoh_handler::handlers::shadow::handle_shadow_report(
+            &persistence,
+            "ota-device",
+            &failed.encode_to_vec(),
+        )
+        .await;
+        assert!(
+            ShadowRepository::get(&adapter, &tenant, "ota-device")
+                .await
+                .unwrap()
+                .unwrap()
+                .desired
+                .get("ota")
+                .is_none()
+        );
+        let second = start().await;
+        assert_ne!(first, second);
+        let unrelated = extrittio_common::extrittio::ShadowReport {
+            state_json: json!({"sample_rate":10}).to_string(),
+            ..failed.clone()
+        };
+        crate::zenoh_handler::handlers::shadow::handle_shadow_report(
+            &persistence,
+            "ota-device",
+            &unrelated.encode_to_vec(),
+        )
+        .await;
+        let page =
+            FirmwareRepository::list_device_deployments(&adapter, &tenant, "ota-device", 10, 0)
+                .await
+                .unwrap()
+                .unwrap();
+        assert_eq!(
+            page.records.iter().find(|r| r.id == second).unwrap().status,
+            "pending"
+        );
+        assert!(
+            !FirmwareRepository::apply_ota_status(&adapter, &identity, update(first, "success"))
+                .await
+                .unwrap()
+        );
+        assert!(
+            FirmwareRepository::apply_ota_status(&adapter, &identity, update(second, "rebooting"))
+                .await
+                .unwrap()
+        );
+        assert!(
+            !FirmwareRepository::apply_ota_status(
+                &adapter,
+                &identity,
+                update(second, "downloading")
+            )
+            .await
+            .unwrap()
+        );
+        assert!(
+            !FirmwareRepository::apply_ota_status(&adapter, &identity, update(second, "invented"))
+                .await
+                .unwrap()
+        );
+        assert!(
+            FirmwareRepository::apply_ota_status(&adapter, &identity, update(second, "success"))
+                .await
+                .unwrap()
+        );
+        assert!(
+            !FirmwareRepository::apply_ota_status(&adapter, &identity, update(second, "failed"))
+                .await
+                .unwrap()
+        );
+        assert!(
+            ShadowRepository::get(&adapter, &tenant, "ota-device")
+                .await
+                .unwrap()
+                .unwrap()
+                .desired
+                .get("ota")
+                .is_none()
+        );
+        let third = start().await;
+        let fourth = start().await;
+        assert!(
+            !FirmwareRepository::apply_ota_status(&adapter, &identity, update(third, "success"))
+                .await
+                .unwrap()
+        );
+        assert_eq!(
+            ShadowRepository::get(&adapter, &tenant, "ota-device")
+                .await
+                .unwrap()
+                .unwrap()
+                .desired["ota"]["deployment_id"],
+            fourth
+        );
+        let foreign = DeviceIdentity::new("another-tenant", "ota-device").unwrap();
+        assert!(
+            !FirmwareRepository::apply_ota_status(&adapter, &foreign, update(fourth, "success"))
+                .await
+                .unwrap()
+        );
+    }
+
+    #[tokio::test]
     async fn activity_totals_remain_stable_beyond_the_final_page() {
         let (_directory, adapter) = adapter().await;
         let tenant = TenantId::new(TEST_TENANT_ID).unwrap();

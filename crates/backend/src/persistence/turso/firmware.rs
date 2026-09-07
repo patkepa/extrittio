@@ -408,7 +408,24 @@ impl FirmwareRepository for TursoAdapter {
             tx.rollback().await.map_err(row::error)?;
             return Ok(false);
         }
+        let terminal = extrittio_common::ota::status::is_terminal(&u.status);
         tx.execute("UPDATE ota_deployments SET status=?3,error_message=?4,completed_at=?5 WHERE tenant_id=?1 AND id=?2",params![i.tenant_id_str(),id,u.status,u.error_message,u.completed_at.map(|v|v.and_utc().timestamp_micros())]).await.map_err(row::error)?;
+        if terminal {
+            let mut rows = tx.query("SELECT desired,reported FROM device_shadows WHERE tenant_id=?1 AND device_id=?2", params![i.tenant_id_str(),i.device_id()]).await.map_err(row::error)?;
+            if let Some(r) = rows.next().await.map_err(row::error)? {
+                let mut desired: serde_json::Value =
+                    serde_json::from_str(&r.get::<String>(0).map_err(row::error)?)
+                        .map_err(|e| PersistenceError::CorruptData(e.to_string()))?;
+                let reported: serde_json::Value =
+                    serde_json::from_str(&r.get::<String>(1).map_err(row::error)?)
+                        .map_err(|e| PersistenceError::CorruptData(e.to_string()))?;
+                if desired["ota"]["deployment_id"].as_i64() == Some(id) {
+                    desired.as_object_mut().unwrap().remove("ota");
+                    let delta = extrittio_common::shadow::compute_delta(&desired, &reported);
+                    tx.execute("UPDATE device_shadows SET desired=?3,delta=?4,version=version+1,updated_at=?5 WHERE tenant_id=?1 AND device_id=?2", params![i.tenant_id_str(),i.device_id(),desired.to_string(),delta.to_string(),chrono::Utc::now().timestamp_micros()]).await.map_err(row::error)?;
+                }
+            }
+        }
         tx.commit().await.map_err(row::error)?;
         Ok(true)
     }
