@@ -13,7 +13,7 @@ clap = { version = "4", features = ["derive"] }
 extrittio-common = { version = "0.1.0", path = "../../../crates/common" }
 extrittio-sdk = { version = "0.1.0", path = "../sdk" }
 prost = "0.14"
-rand = "0.9"
+rand = "0.10"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "time"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

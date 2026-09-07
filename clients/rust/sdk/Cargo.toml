@@ -18,7 +18,7 @@ native-ota = ["std", "dep:sha2"]
 extrittio-common = { version = "0.1.0", path = "../../../crates/common", default-features = false }
 serde_json = { version = "1", default-features = false, optional = true }
 libm = "0.2"
-sha2 = { version = "0.10", optional = true }
+sha2 = { version = "0.11", optional = true }
 
 [dev-dependencies]
 tempfile = "3"
