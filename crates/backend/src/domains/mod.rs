@@ -153,7 +153,7 @@ pub mod identity {
     pub use crate::api::{api_keys, auth_routes, certificates, roles, users};
     #[cfg(feature = "postgres")]
     pub use crate::repositories::{api_key_repo, cert_repo};
-    pub use crate::services::{api_key_service, cert_service};
+    pub use crate::services::cert_service;
 }
 
 pub mod logs {

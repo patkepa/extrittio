@@ -1,6 +1,19 @@
 use rand::Rng;
 use sha2::{Digest, Sha256};
 
+pub struct RandomApiKeyGenerator;
+
+impl extrittio_backend_core::ApiKeyGenerator for RandomApiKeyGenerator {
+    fn generate(&self) -> extrittio_backend_core::GeneratedApiKey {
+        let plaintext = generate_api_key();
+        extrittio_backend_core::GeneratedApiKey {
+            hash: hash_api_key(&plaintext),
+            prefix: key_prefix(&plaintext),
+            plaintext,
+        }
+    }
+}
+
 /// Generate a new API key with `extr_` prefix and 32 bytes of randomness.
 pub fn generate_api_key() -> String {
     let random_bytes: Vec<u8> = (0..32).map(|_| rand::thread_rng().r#gen()).collect();

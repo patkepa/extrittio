@@ -1,5 +1,4 @@
 use chrono::{DateTime, Utc};
-#[cfg(any(feature = "migration-bridge", test))]
 use extrittio_backend_core::ConstraintName;
 use extrittio_backend_core::PersistenceError;
 
@@ -19,8 +18,9 @@ pub fn i32(value: i64, column: &str) -> Result<i32, PersistenceError> {
 }
 
 /// Compatibility mapper for host repositories that have not moved into this
-/// adapter yet. Migrated repositories use the richer private adapter mapper.
-#[cfg(any(feature = "migration-bridge", test))]
+/// adapter yet, and for API-key management which preserves its existing error
+/// categories during extraction. Other migrated repositories use the richer
+/// private adapter mapper.
 pub fn legacy_error(error: turso::Error) -> PersistenceError {
     match error {
         turso::Error::Constraint(message) => {

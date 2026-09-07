@@ -33,3 +33,10 @@ pub use users::{
 pub use zones::{
     DeleteZoneOutcome, NewZone, RuleZoneSnapshotRepository, Zone, ZonePatch, ZoneRepository,
 };
+
+pub mod api_keys;
+pub use api_keys::{
+    ApiKeyGenerator, ApiKeyRecord, ApiKeyRepository, ApiKeySummary, CreateApiKey,
+    CreateApiKeyRecord, CreatedApiKey, GeneratedApiKey,
+};
+pub use application::ApiKeyApplication;

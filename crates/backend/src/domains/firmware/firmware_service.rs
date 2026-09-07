@@ -1,4 +1,7 @@
 // Firmware service — business logic for firmware updates
+pub use super::firmware_creation::{
+    delete_stored_firmware, prepare_blueprint_firmware, upload_blueprint_firmware,
+};
 
 use crate::auth::context::RequestContext;
 use crate::auth::policy::{self, Permission};

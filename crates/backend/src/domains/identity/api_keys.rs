@@ -3,12 +3,10 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
 
-use crate::api_key_util;
 use crate::auth::context::RequestContext;
-use crate::domains::identity::api_key_types::CreateApiKeyRecord;
 use crate::error::AppError;
-use crate::services::api_key_service;
 use crate::state::AppState;
+use extrittio_backend_core::CreateApiKey;
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateApiKeyRequest {
@@ -54,31 +52,32 @@ pub(crate) async fn create_api_key(
     Extension(ctx): Extension<RequestContext>,
     Json(body): Json<CreateApiKeyRequest>,
 ) -> Result<(StatusCode, Json<CreateApiKeyResponse>), AppError> {
-    if body.name.trim().is_empty() {
-        return Err(AppError::UnprocessableEntity("name is required".into()));
-    }
-
-    let plaintext_key = api_key_util::generate_api_key();
-    let key_hash = api_key_util::hash_api_key(&plaintext_key);
-    let key_prefix = api_key_util::key_prefix(&plaintext_key);
-
-    let new_key = CreateApiKeyRecord {
-        name: body.name.clone(),
-        key_hash,
-        key_prefix: key_prefix.clone(),
-        device_type_id: body.device_type_id,
-    };
-
-    let api_key =
-        api_key_service::create(&ctx, state.persistence.api_keys.as_ref(), new_key).await?;
+    let created = state
+        .application()
+        .api_keys()
+        .create(
+            &ctx.tenant_context(),
+            CreateApiKey {
+                name: body.name,
+                device_type_id: body.device_type_id,
+            },
+        )
+        .await
+        .map_err(|error| match error {
+            extrittio_backend_core::ApplicationError::InvalidInput(message) => {
+                AppError::UnprocessableEntity(message)
+            }
+            other => AppError::Application(other),
+        })?;
+    let api_key = created.record;
 
     Ok((
         StatusCode::CREATED,
         Json(CreateApiKeyResponse {
             id: api_key.id,
             name: api_key.name,
-            key: plaintext_key,
-            key_prefix,
+            key: created.plaintext,
+            key_prefix: api_key.key_prefix,
             device_type_id: api_key.device_type_id,
         }),
     ))
@@ -92,7 +91,11 @@ pub(crate) async fn list_api_keys(
     State(state): State<Arc<AppState>>,
     Extension(ctx): Extension<RequestContext>,
 ) -> Result<Json<Vec<ApiKeyResponse>>, AppError> {
-    let keys = api_key_service::list(&ctx, state.persistence.api_keys.as_ref()).await?;
+    let keys = state
+        .application()
+        .api_keys()
+        .list(&ctx.tenant_context())
+        .await?;
     let keys = keys
         .into_iter()
         .map(|summary| ApiKeyResponse {
@@ -128,7 +131,11 @@ pub(crate) async fn delete_api_key(
     Extension(ctx): Extension<RequestContext>,
     axum::extract::Path(id): axum::extract::Path<i32>,
 ) -> Result<StatusCode, AppError> {
-    api_key_service::delete(&ctx, state.persistence.api_keys.as_ref(), id).await?;
+    state
+        .application()
+        .api_keys()
+        .delete(&ctx.tenant_context(), id)
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

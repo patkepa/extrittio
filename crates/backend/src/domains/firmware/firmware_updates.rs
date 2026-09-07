@@ -7,15 +7,11 @@ use axum::{
     routing::get,
 };
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::auth::context::RequestContext;
-use crate::domains::device_blueprints::blueprint_service;
-use crate::domains::firmware::types::{
-    FirmwareRecord, GlobalOtaDeploymentRecord, NewFirmwareBlobRecord, NewFirmwareRecord,
-};
+use crate::domains::firmware::types::{FirmwareRecord, GlobalOtaDeploymentRecord};
 use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse};
 use crate::security;
@@ -298,31 +294,11 @@ pub(crate) async fn create_firmware_update(
         ));
     }
 
-    let revision = blueprint_service::get_revision(
+    let prepared = firmware_service::prepare_blueprint_firmware(
         &ctx,
         state.persistence.device_blueprints.as_ref(),
-        &body.blueprint_revision_id,
-    )
-    .await?;
-    let blueprint: extrittio_device_contract::DeviceBlueprint =
-        serde_json::from_value(revision.document).map_err(|error| {
-            AppError::Internal(format!(
-                "Stored device blueprint revision is invalid: {error}"
-            ))
-        })?;
-    let firmware_definition = blueprint.spec.firmware.ok_or_else(|| {
-        AppError::UnprocessableEntity(
-            "The selected blueprint does not declare firmware update behavior".into(),
-        )
-    })?;
-    let update_strategy = serde_json::to_value(firmware_definition.strategy)?
-        .as_str()
-        .map(ToOwned::to_owned);
-    let compatibility = serde_json::to_value(firmware_definition.compatibility)?;
-    let compatibility_type = crate::services::device_type_service::resolve_for_device_creation(
-        &ctx,
         state.persistence.device_types.as_ref(),
-        None,
+        &body.blueprint_revision_id,
     )
     .await?;
 
@@ -340,22 +316,13 @@ pub(crate) async fn create_firmware_update(
     let created = firmware_service::create_with_repository(
         &ctx,
         state.persistence.firmware.as_ref(),
-        NewFirmwareRecord {
-            device_type_id: compatibility_type.id,
+        prepared.into_record(
+            body.blueprint_revision_id,
             version,
-            url: body.url,
-            sha256: body.sha256,
-            description: body.description,
-            commit_sha: None,
-            branch: None,
-            ci_run_url: None,
-            build_timestamp: None,
-            changelog: None,
-            source: None,
-            blueprint_revision_id: Some(body.blueprint_revision_id),
-            compatibility,
-            update_strategy,
-        },
+            body.url,
+            body.sha256,
+            body.description,
+        ),
         None,
     )
     .await?;
@@ -442,31 +409,11 @@ pub(crate) async fn upload_firmware_update(
         .ok_or_else(|| AppError::BadRequest("Missing blueprint_revision_id".into()))?;
     let file_data = file_data.ok_or_else(|| AppError::BadRequest("Missing file".into()))?;
 
-    let revision = blueprint_service::get_revision(
+    let prepared = firmware_service::prepare_blueprint_firmware(
         &ctx,
         state.persistence.device_blueprints.as_ref(),
-        &blueprint_revision_id,
-    )
-    .await?;
-    let blueprint: extrittio_device_contract::DeviceBlueprint =
-        serde_json::from_value(revision.document).map_err(|error| {
-            AppError::Internal(format!(
-                "Stored device blueprint revision is invalid: {error}"
-            ))
-        })?;
-    let firmware_definition = blueprint.spec.firmware.ok_or_else(|| {
-        AppError::UnprocessableEntity(
-            "The selected blueprint does not declare firmware update behavior".into(),
-        )
-    })?;
-    let update_strategy = serde_json::to_value(firmware_definition.strategy)?
-        .as_str()
-        .map(ToOwned::to_owned);
-    let compatibility = serde_json::to_value(firmware_definition.compatibility)?;
-    let compatibility_type = crate::services::device_type_service::resolve_for_device_creation(
-        &ctx,
         state.persistence.device_types.as_ref(),
-        None,
+        &blueprint_revision_id,
     )
     .await?;
 
@@ -482,18 +429,6 @@ pub(crate) async fn upload_firmware_update(
         return Err(AppError::BadRequest("File is empty".into()));
     }
 
-    // Compute SHA-256
-    let sha256_hex = Sha256::digest(&file_data)
-        .iter()
-        .fold(String::new(), |mut acc, b| {
-            use std::fmt::Write;
-            let _ = write!(acc, "{b:02x}");
-            acc
-        });
-
-    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
-    let file_size = file_data.len() as i32;
-
     let version = match version {
         Some(version) => version,
         None => {
@@ -506,57 +441,22 @@ pub(crate) async fn upload_firmware_update(
         }
     };
 
-    let storage_key = state
-        .firmware_store
-        .allocate_key(ctx.tenant_id_str(), &filename);
-    state
-        .firmware_store
-        .put(&storage_key, file_data)
-        .await
-        .map_err(|error| {
-            tracing::error!(%error, "Firmware object upload failed");
-            AppError::Internal("Firmware storage is unavailable".to_string())
-        })?;
-
-    let storage_backend = state.firmware_store.backend().to_string();
-    let response = firmware_service::create_with_repository(
+    let response = firmware_service::upload_blueprint_firmware(
         &ctx,
         state.persistence.firmware.as_ref(),
-        NewFirmwareRecord {
-            device_type_id: compatibility_type.id,
+        &state.firmware_store,
+        prepared.into_record(
+            blueprint_revision_id,
             version,
-            url: String::new(),
-            sha256: Some(sha256_hex),
+            String::new(),
+            None,
             description,
-            commit_sha: None,
-            branch: None,
-            ci_run_url: None,
-            build_timestamp: None,
-            changelog: None,
-            source: None,
-            blueprint_revision_id: Some(blueprint_revision_id),
-            compatibility,
-            update_strategy,
-        },
-        Some(NewFirmwareBlobRecord {
-            size: file_size,
-            filename,
-            storage_key: storage_key.clone(),
-            storage_backend,
-        }),
+        ),
+        filename,
+        file_data,
     )
-    .await
-    .map(FirmwareUpdateResponse::from);
-
-    let response = match response {
-        Ok(response) => response,
-        Err(error) => {
-            if let Err(cleanup_error) = state.firmware_store.delete(&storage_key).await {
-                tracing::error!(%cleanup_error, "Failed to clean up unreferenced firmware object");
-            }
-            return Err(error);
-        }
-    };
+    .await?
+    .into();
 
     Ok((StatusCode::CREATED, Json(response)))
 }
@@ -656,30 +556,13 @@ pub(crate) async fn delete_firmware_update(
     Extension(ctx): Extension<RequestContext>,
     Path(id): Path<i32>,
 ) -> Result<StatusCode, AppError> {
-    let blob =
-        firmware_service::delete_with_repository(&ctx, state.persistence.firmware.as_ref(), id)
-            .await?;
-
-    if let Some(blob) = blob
-        && let Some(storage_key) = blob.storage_key
-    {
-        if blob.storage_backend == state.firmware_store.backend() {
-            if let Err(error) = state.firmware_store.delete(&storage_key).await {
-                tracing::error!(
-                    %error,
-                    firmware_update_id = id,
-                    "Firmware metadata deleted but object cleanup failed"
-                );
-            }
-        } else {
-            tracing::error!(
-                firmware_update_id = id,
-                stored_backend = %blob.storage_backend,
-                configured_backend = state.firmware_store.backend(),
-                "Firmware metadata deleted but object backend was not configured for cleanup"
-            );
-        }
-    }
+    firmware_service::delete_stored_firmware(
+        &ctx,
+        state.persistence.firmware.as_ref(),
+        &state.firmware_store,
+        id,
+    )
+    .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

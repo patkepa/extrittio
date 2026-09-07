@@ -199,6 +199,7 @@ impl AppState {
         let application = extrittio_backend_core::Application::new(
             extrittio_backend_core::RepositorySet::new(
                 extrittio_backend_core::RepositorySetInput {
+                    api_keys: persistence.api_keys.clone(),
                     roles: persistence.roles.clone(),
                     users: persistence.users.clone(),
                     zones: persistence.zones.clone(),
@@ -208,6 +209,7 @@ impl AppState {
             extrittio_backend_core::ApplicationDependencies::new(
                 Arc::new(crate::auth::Argon2PasswordHasher),
                 Arc::new(crate::auth::SystemClock),
+                Arc::new(crate::api_key_util::RandomApiKeyGenerator),
             ),
         );
 

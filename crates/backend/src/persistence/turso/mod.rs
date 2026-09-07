@@ -1,7 +1,6 @@
 mod activity;
 mod alerts;
 mod analytics;
-mod api_keys;
 mod audit;
 mod bootstrap;
 mod certificates;
@@ -25,7 +24,7 @@ mod telemetry;
 
 use std::sync::Arc;
 
-use crate::persistence::{DatabaseRuntime, RepositoryPorts, RepositorySet};
+use crate::persistence::{DatabaseRuntime, RepositorySet};
 
 pub use database::{LogicalArchiveInfo, TursoBackupInfo, TursoDatabase, TursoDatabaseInfo};
 
@@ -56,11 +55,12 @@ fn build_repositories(database: Arc<TursoDatabase>) -> RepositorySet {
     let (zones, rule_zone_snapshots) = crate::database::turso_zones(&database);
     let roles = crate::database::turso_roles(&database);
     let users = crate::database::turso_users(&database);
+    let api_keys = crate::database::turso_api_keys(&database);
     let adapter = Arc::new(TursoAdapter::new(database));
-    RepositorySet::new(RepositoryPorts {
+    RepositorySet {
         activity: adapter.clone(),
         analytics: adapter.clone(),
-        api_keys: adapter.clone(),
+        api_keys,
         alerts: adapter.clone(),
         audit: adapter.clone(),
         bootstrap: adapter.clone(),
@@ -84,7 +84,7 @@ fn build_repositories(database: Arc<TursoDatabase>) -> RepositorySet {
         telemetry: adapter.clone(),
         users,
         zones,
-    })
+    }
 }
 
 #[cfg(test)]
@@ -147,7 +147,7 @@ mod tests {
     use crate::domains::telemetry::types::{TelemetryQuery, TelemetryWrite};
     use crate::persistence::{BootstrapOwner, BootstrapRepository, BuiltinDeviceType};
     use crate::tenancy::{DEFAULT_TENANT_ID as TEST_TENANT_ID, TenantId};
-    use extrittio_backend_core::{CreateUserOutcome, EncodedPasswordHash, NewUser, UserRepository};
+    use extrittio_backend_core::{CreateUserOutcome, EncodedPasswordHash, NewUser};
 
     async fn adapter() -> (tempfile::TempDir, TursoAdapter) {
         let directory = tempfile::tempdir().unwrap();
@@ -721,8 +721,9 @@ mod tests {
             FleetRepository::create(&adapter, &tenant, CreateFleetRecord { name: "lab".into() })
                 .await
                 .unwrap();
+        let api_keys = crate::database::turso_api_keys(&adapter.database);
         let key = ApiKeyRepository::create(
-            &adapter,
+            api_keys.as_ref(),
             &tenant,
             CreateApiKeyRecord {
                 name: "ci".into(),
@@ -734,7 +735,9 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(
-            ApiKeyRepository::list(&adapter, &tenant).await.unwrap()[0]
+            ApiKeyRepository::list(api_keys.as_ref(), &tenant)
+                .await
+                .unwrap()[0]
                 .key
                 .id,
             key.id
@@ -1029,13 +1032,13 @@ mod tests {
         };
         let outbox_connection = adapter.database.connect().unwrap();
         assert_eq!(
-            super::devices::enqueue(&outbox_connection, &[recurring_action.clone()])
+            super::devices::enqueue(&outbox_connection, std::slice::from_ref(&recurring_action))
                 .await
                 .unwrap(),
             1
         );
         assert_eq!(
-            super::devices::enqueue(&outbox_connection, &[recurring_action.clone()])
+            super::devices::enqueue(&outbox_connection, std::slice::from_ref(&recurring_action))
                 .await
                 .unwrap(),
             0,

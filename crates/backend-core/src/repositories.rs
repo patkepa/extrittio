@@ -8,6 +8,7 @@ use crate::{RoleRepository, RuleZoneSnapshotRepository, UserRepository, ZoneRepo
 /// repositories. Database connection, migration, health, backup, and other
 /// lifecycle capabilities intentionally do not belong here.
 pub struct RepositorySetInput {
+    pub api_keys: Arc<dyn crate::ApiKeyRepository>,
     pub roles: Arc<dyn RoleRepository>,
     pub users: Arc<dyn UserRepository>,
     pub zones: Arc<dyn ZoneRepository>,
@@ -21,6 +22,7 @@ pub struct RepositorySetInput {
 /// use-case façades they own.
 #[derive(Clone)]
 pub struct RepositorySet {
+    api_keys: Arc<dyn crate::ApiKeyRepository>,
     roles: Arc<dyn RoleRepository>,
     users: Arc<dyn UserRepository>,
     zones: Arc<dyn ZoneRepository>,
@@ -31,6 +33,7 @@ impl RepositorySet {
     #[must_use]
     pub fn new(input: RepositorySetInput) -> Self {
         Self {
+            api_keys: input.api_keys,
             roles: input.roles,
             users: input.users,
             zones: input.zones,
@@ -40,6 +43,7 @@ impl RepositorySet {
 
     pub(crate) fn into_parts(self) -> RepositorySetParts {
         RepositorySetParts {
+            api_keys: self.api_keys,
             roles: self.roles,
             users: self.users,
             zones: self.zones,
@@ -49,6 +53,7 @@ impl RepositorySet {
 }
 
 pub(crate) struct RepositorySetParts {
+    pub(crate) api_keys: Arc<dyn crate::ApiKeyRepository>,
     pub(crate) roles: Arc<dyn RoleRepository>,
     pub(crate) users: Arc<dyn UserRepository>,
     pub(crate) zones: Arc<dyn ZoneRepository>,
@@ -233,6 +238,7 @@ mod tests {
         let users = Arc::new(FakeUserRepository);
 
         let repositories = RepositorySet::new(RepositorySetInput {
+            api_keys: Arc::new(crate::api_keys::tests::RecordingRepository::default()),
             roles: roles.clone(),
             users: users.clone(),
             zones: zones.clone(),
