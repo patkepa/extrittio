@@ -8,6 +8,9 @@ proposals, not in the operational documentation.
 
 - [Backend crate architecture plan](design/backend-crate-architecture-plan.md)
   — proposed modular-monolith crate boundaries and migration sequence.
+- [Fleet OTA implementation plan](design/fleet-ota-implementation-plan.md)
+  — phased release security, device recovery, campaign orchestration, scaling,
+  migration and qualification work.
 
 ## Architecture
 
