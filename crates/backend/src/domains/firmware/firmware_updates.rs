@@ -493,8 +493,7 @@ async fn download_for_device(
     let grant = crate::domains::firmware::download::verify(&token, &state.jwt_secret)?;
     let tenant = crate::tenancy::TenantId::new(grant.tenant).map_err(|_| AppError::Unauthorized)?;
     let blob = state
-        .persistence
-        .firmware
+        .firmware_download_repository()
         .get_blob(&tenant, grant.firmware_id)
         .await?
         .ok_or_else(|| AppError::NotFound("Firmware not found".into()))?;

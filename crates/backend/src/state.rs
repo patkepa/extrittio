@@ -259,4 +259,13 @@ impl AppState {
             self.persistence.rule_zone_snapshots.as_ref(),
         )
     }
+
+    /// Narrow host bridge for resolving device-scoped firmware download grants
+    /// while the firmware vertical slice is still migrating behind `Application`.
+    #[must_use]
+    pub(crate) fn firmware_download_repository(
+        &self,
+    ) -> &dyn crate::domains::firmware::port::FirmwareRepository {
+        self.persistence.firmware.as_ref()
+    }
 }
