@@ -1,4 +1,4 @@
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Duration;
 
 #[cfg(feature = "otlp")]
@@ -6,25 +6,18 @@ use opentelemetry::global;
 #[cfg(feature = "otlp")]
 use opentelemetry::propagation::Injector;
 use prost::Message;
-#[cfg(any(feature = "postgres", feature = "turso"))]
-use sha2::{Digest, Sha256};
 use tokio::time::sleep;
 use tracing::{Instrument, info, warn};
 #[cfg(feature = "otlp")]
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
-use super::cache::RuleCache;
 use super::types::PendingAction;
-use crate::domains::alerts::types::{
-    AlertTransition, AlertTransitionOutcome, CooldownRecord, NewAlertRecord,
-};
 use crate::domains::commands::types::NewCommandRecord;
-#[cfg(any(feature = "postgres", feature = "turso"))]
-use crate::domains::operations::outbox_types::NewOutboxEventRecord;
-use crate::domains::operations::outbox_types::OutboxEventRecord;
 use crate::persistence::RepositorySet;
 use crate::state::ZenohMetrics;
 use crate::tenancy::TenantId;
+use extrittio_backend_core::alerts::CooldownRecord;
+use extrittio_backend_core::outbox::OutboxEventRecord;
 
 #[derive(Debug, Clone, Copy)]
 pub struct OutboxWorkerConfig {
@@ -34,35 +27,19 @@ pub struct OutboxWorkerConfig {
     pub lease_timeout: Duration,
 }
 
-#[cfg(any(feature = "postgres", feature = "turso"))]
-pub(crate) fn outbox_event_for_action(
-    action: &PendingAction,
-) -> Result<NewOutboxEventRecord, serde_json::Error> {
-    Ok(NewOutboxEventRecord {
-        id: uuid::Uuid::new_v4().to_string(),
-        tenant_id: tenant_id_for_action(action).to_string(),
-        event_type: event_type_for_action(action).to_string(),
-        aggregate_type: aggregate_type_for_action(action).to_string(),
-        aggregate_id: aggregate_id_for_action(action),
-        idempotency_key: Some(idempotency_key_for_action(action)),
-        payload: serde_json::to_value(action)?,
-    })
-}
-
 pub async fn run_rule_action_outbox_worker(
     persistence: RepositorySet,
-    rule_cache: Arc<RwLock<RuleCache>>,
     http_client: reqwest::Client,
     zenoh_session: Arc<zenoh::Session>,
     zenoh_metrics: Arc<ZenohMetrics>,
     config: OutboxWorkerConfig,
 ) {
+    let outbox = extrittio_backend_core::OutboxWorkerApplication::new(persistence.outbox.clone());
     let worker_id = format!("rule-action-worker-{}", uuid::Uuid::new_v4());
     info!("Rule action outbox worker started: {}", worker_id);
 
     loop {
-        let events = match persistence
-            .outbox
+        let events = match outbox
             .claim_batch(&worker_id, config.batch_size, config.lease_timeout)
             .await
         {
@@ -88,11 +65,10 @@ pub async fn run_rule_action_outbox_worker(
             }
 
             let persistence = persistence.clone();
-            let cache = rule_cache.clone();
+            let outbox = outbox.clone();
             let client = http_client.clone();
             let session = zenoh_session.clone();
             let metrics = zenoh_metrics.clone();
-            let processing_worker_id = worker_id.clone();
             let span = tracing::info_span!(
                 "rule_action_delivery",
                 event_id = %event.id,
@@ -101,16 +77,8 @@ pub async fn run_rule_action_outbox_worker(
             );
             tasks.spawn(
                 async move {
-                    process_outbox_event(
-                        event,
-                        &processing_worker_id,
-                        &persistence,
-                        &cache,
-                        &client,
-                        &session,
-                        &metrics,
-                    )
-                    .await;
+                    process_outbox_event(event, &outbox, &persistence, &client, &session, &metrics)
+                        .await;
                 }
                 .instrument(span),
             );
@@ -125,62 +93,53 @@ pub async fn run_rule_action_outbox_worker(
 
 async fn process_outbox_event(
     event: OutboxEventRecord,
-    worker_id: &str,
+    outbox: &extrittio_backend_core::OutboxWorkerApplication,
     persistence: &RepositorySet,
-    rule_cache: &Arc<RwLock<RuleCache>>,
     http_client: &reqwest::Client,
     zenoh_session: &Arc<zenoh::Session>,
     zenoh_metrics: &Arc<ZenohMetrics>,
 ) {
-    let result = match serde_json::from_value::<PendingAction>(event.payload.clone()) {
+    let mut failure = extrittio_backend_core::outbox::FailureClass::Retryable;
+    let result = match extrittio_backend_core::rule_actions::decode_event(&event) {
         Ok(action) => {
             execute_action(
                 action,
                 persistence,
-                rule_cache,
                 http_client,
                 zenoh_session,
                 zenoh_metrics,
                 &event.id,
+                event.created_at,
             )
             .await
         }
-        Err(e) => Err(format!("failed to deserialize pending action: {e}")),
+        Err(e) => {
+            failure = extrittio_backend_core::outbox::FailureClass::Permanent;
+            Err(format!("failed to deserialize pending action: {e}"))
+        }
     };
 
     let mark_result = match result {
-        Ok(()) => {
-            persistence
-                .outbox
-                .mark_succeeded(&event.id, worker_id)
-                .await
-        }
-        Err(error) => {
-            persistence
-                .outbox
-                .mark_failed(
-                    &event.id,
-                    worker_id,
-                    event.attempts,
-                    event.max_attempts,
-                    &error,
-                )
-                .await
-        }
+        Ok(()) => outbox.succeeded(&event).await,
+        Err(error) => outbox.failed(&event, failure, &error).await,
     };
-    if let Err(error) = mark_result {
-        warn!(%error, "Failed to mark rule action outbox event");
+    match mark_result {
+        Ok(true) => {}
+        Ok(false) => {
+            tracing::debug!(event_id = %event.id, "Ignoring completion of a superseded outbox claim")
+        }
+        Err(error) => warn!(%error, "Failed to mark rule action outbox event"),
     }
 }
 
 pub async fn execute_action(
     action: PendingAction,
     persistence: &RepositorySet,
-    rule_cache: &Arc<RwLock<RuleCache>>,
     _http_client: &reqwest::Client,
     zenoh_session: &Arc<zenoh::Session>,
     zenoh_metrics: &Arc<ZenohMetrics>,
     delivery_id: &str,
+    delivery_created_at: chrono::NaiveDateTime,
 ) -> Result<(), String> {
     match action {
         PendingAction::CreateAlert {
@@ -191,28 +150,13 @@ pub async fn execute_action(
             message,
             triggered_value,
         } => {
-            let tid = tenant_id.clone();
-            let rid = rule_id.clone();
-            let did = device_id.clone();
-
-            if let Ok(mut guard) = rule_cache.write() {
-                let key = (tid.clone(), rid.clone(), did.clone());
-                if guard.active_alerts.contains_key(&key) {
-                    return Ok(());
-                }
-                guard.active_alerts.insert(key, String::new());
-            } else {
-                return Err("rule cache lock poisoned while reserving alert".to_string());
-            }
-
             let tenant = TenantId::new(tenant_id).map_err(|error| error.to_string())?;
-            let result = persistence
-                .alerts
-                .create(
+            extrittio_backend_core::AlertWorkerApplication::new(persistence.alerts.clone())
+                .create_for_action(
                     &tenant,
-                    NewAlertRecord {
-                        id: uuid::Uuid::new_v4().to_string(),
-                        rule_id: Some(rule_id),
+                    delivery_id,
+                    extrittio_backend_core::RuleAlertIntent {
+                        rule_id,
                         device_id,
                         severity,
                         message,
@@ -220,22 +164,8 @@ pub async fn execute_action(
                     },
                 )
                 .await
-                .map_err(|error| error.to_string());
-
-            match result {
-                Ok(alert) => {
-                    if let Ok(mut cache) = rule_cache.write() {
-                        cache.active_alerts.insert((tid, rid, did), alert.id);
-                    }
-                    Ok(())
-                }
-                Err(e) => {
-                    if let Ok(mut cache) = rule_cache.write() {
-                        cache.active_alerts.remove(&(tid, rid, did));
-                    }
-                    Err(e)
-                }
-            }
+                .map_err(|error| error.to_string())?;
+            Ok(())
         }
         PendingAction::UpdateAlertValue {
             tenant_id,
@@ -243,49 +173,20 @@ pub async fn execute_action(
             triggered_value,
         } => {
             let tenant = TenantId::new(tenant_id).map_err(|error| error.to_string())?;
-            if persistence
-                .alerts
-                .update_triggered_value(&tenant, &alert_id, triggered_value)
+            extrittio_backend_core::AlertWorkerApplication::new(persistence.alerts.clone())
+                .update_value_for_action(&tenant, &alert_id, triggered_value)
                 .await
-                .map_err(|error| error.to_string())?
-            {
-                Ok(())
-            } else {
-                Err(format!("Alert '{alert_id}' not found"))
-            }
+                .map_err(|e| e.to_string())
         }
         PendingAction::ResolveAlert {
             tenant_id,
             alert_id,
         } => {
             let tenant = TenantId::new(tenant_id).map_err(|error| error.to_string())?;
-            let result = persistence
-                .alerts
-                .transition(&tenant, &alert_id, AlertTransition::Resolve)
+            extrittio_backend_core::AlertWorkerApplication::new(persistence.alerts.clone())
+                .resolve_for_action(&tenant, &alert_id)
                 .await
-                .map_err(|error| error.to_string());
-
-            match result {
-                Ok(AlertTransitionOutcome::Updated(alert)) => {
-                    if let Ok(mut cache) = rule_cache.write()
-                        && let Some(rule_id) = &alert.rule_id
-                    {
-                        cache.active_alerts.remove(&(
-                            alert.tenant_id.clone(),
-                            rule_id.clone(),
-                            alert.device_id.clone(),
-                        ));
-                    }
-                    Ok(())
-                }
-                Ok(AlertTransitionOutcome::NotFound) => {
-                    Err(format!("Alert '{alert_id}' not found"))
-                }
-                Ok(AlertTransitionOutcome::InvalidStatus(status)) => Err(format!(
-                    "Alert '{alert_id}' cannot be resolved from status '{status}'"
-                )),
-                Err(error) => Err(error),
-            }
+                .map_err(|e| e.to_string())
         }
         PendingAction::SendWebhook {
             tenant_id: _,
@@ -400,22 +301,16 @@ pub async fn execute_action(
             device_id,
             fired_at,
         } => {
-            persistence
-                .alerts
-                .persist_cooldowns(vec![CooldownRecord {
-                    tenant_id: tenant_id.clone(),
-                    rule_id: rule_id.clone(),
-                    device_id: device_id.clone(),
+            extrittio_backend_core::AlertWorkerApplication::new(persistence.alerts.clone())
+                .apply_legacy_cooldown(CooldownRecord {
+                    tenant_id,
+                    rule_id,
+                    device_id,
                     last_fired_at: fired_at,
-                }])
+                })
                 .await
                 .map_err(|error| error.to_string())?;
 
-            if let Ok(mut cache) = rule_cache.write() {
-                cache
-                    .cooldowns
-                    .insert((tenant_id, rule_id, device_id), fired_at);
-            }
             Ok(())
         }
         PendingAction::UpdateZoneEntry {
@@ -424,20 +319,20 @@ pub async fn execute_action(
             device_id,
             entered_at,
         } => {
-            let key = (tenant_id, rule_id, device_id);
-            if let Ok(mut cache) = rule_cache.write() {
-                match entered_at {
-                    Some(ts) => {
-                        cache.zone_entry_times.insert(key, ts);
-                    }
-                    None => {
-                        cache.zone_entry_times.remove(&key);
-                    }
-                }
-                Ok(())
-            } else {
-                Err("rule cache lock poisoned while updating zone entry".to_string())
-            }
+            let tenant = TenantId::new(tenant_id).map_err(|error| error.to_string())?;
+            extrittio_backend_core::RuleRuntimeApplication::new(persistence.rules.clone())
+                .apply_legacy_zone_entry(
+                    &tenant,
+                    extrittio_backend_core::rule_snapshots::LegacyZoneEntry {
+                        rule_id,
+                        device_id,
+                        entered_at,
+                        event_id: delivery_id.to_owned(),
+                        created_at: delivery_created_at,
+                    },
+                )
+                .await
+                .map_err(|error| error.to_string())
         }
     }
 }
@@ -456,122 +351,4 @@ impl Injector for HeaderInjector<'_> {
         };
         self.0.insert(name, value);
     }
-}
-
-#[cfg(any(feature = "postgres", feature = "turso"))]
-fn tenant_id_for_action(action: &PendingAction) -> &str {
-    match action {
-        PendingAction::CreateAlert { tenant_id, .. }
-        | PendingAction::UpdateAlertValue { tenant_id, .. }
-        | PendingAction::ResolveAlert { tenant_id, .. }
-        | PendingAction::SendWebhook { tenant_id, .. }
-        | PendingAction::SendCommand { tenant_id, .. }
-        | PendingAction::UpdateCooldown { tenant_id, .. }
-        | PendingAction::UpdateZoneEntry { tenant_id, .. } => tenant_id,
-    }
-}
-
-#[cfg(any(feature = "postgres", feature = "turso"))]
-fn event_type_for_action(action: &PendingAction) -> &'static str {
-    match action {
-        PendingAction::CreateAlert { .. } => "rule.create_alert",
-        PendingAction::UpdateAlertValue { .. } => "rule.update_alert_value",
-        PendingAction::ResolveAlert { .. } => "rule.resolve_alert",
-        PendingAction::SendWebhook { .. } => "rule.send_webhook",
-        PendingAction::SendCommand { .. } => "rule.send_command",
-        PendingAction::UpdateCooldown { .. } => "rule.update_cooldown",
-        PendingAction::UpdateZoneEntry { .. } => "rule.update_zone_entry",
-    }
-}
-
-#[cfg(any(feature = "postgres", feature = "turso"))]
-fn aggregate_type_for_action(action: &PendingAction) -> &'static str {
-    match action {
-        PendingAction::CreateAlert { .. }
-        | PendingAction::UpdateAlertValue { .. }
-        | PendingAction::ResolveAlert { .. } => "alert",
-        PendingAction::SendWebhook { .. } => "webhook",
-        PendingAction::SendCommand { .. } => "command",
-        PendingAction::UpdateCooldown { .. } => "rule_cooldown",
-        PendingAction::UpdateZoneEntry { .. } => "zone_entry",
-    }
-}
-
-#[cfg(any(feature = "postgres", feature = "turso"))]
-fn aggregate_id_for_action(action: &PendingAction) -> String {
-    match action {
-        PendingAction::CreateAlert {
-            rule_id, device_id, ..
-        }
-        | PendingAction::UpdateCooldown {
-            rule_id, device_id, ..
-        }
-        | PendingAction::UpdateZoneEntry {
-            rule_id, device_id, ..
-        } => format!("{rule_id}:{device_id}"),
-        PendingAction::UpdateAlertValue { alert_id, .. }
-        | PendingAction::ResolveAlert { alert_id, .. } => alert_id.clone(),
-        PendingAction::SendWebhook { url, .. } => url.clone(),
-        PendingAction::SendCommand {
-            device_id, command, ..
-        } => format!("{device_id}:{command}"),
-    }
-}
-
-#[cfg(any(feature = "postgres", feature = "turso"))]
-fn idempotency_key_for_action(action: &PendingAction) -> String {
-    match action {
-        PendingAction::CreateAlert {
-            rule_id, device_id, ..
-        } => format!("create-alert:{rule_id}:{device_id}"),
-        PendingAction::UpdateAlertValue {
-            alert_id,
-            triggered_value,
-            ..
-        } => format!(
-            "update-alert-value:{alert_id}:{}",
-            stable_hash(triggered_value.as_bytes())
-        ),
-        PendingAction::ResolveAlert { alert_id, .. } => format!("resolve-alert:{alert_id}"),
-        PendingAction::SendWebhook {
-            url,
-            headers,
-            payload,
-            ..
-        } => format!(
-            "webhook:{url}:{}:{}",
-            stable_json_hash(headers),
-            stable_json_hash(payload)
-        ),
-        PendingAction::SendCommand {
-            device_id,
-            command,
-            params,
-            ..
-        } => format!(
-            "send-command:{device_id}:{command}:{}",
-            stable_json_hash(params)
-        ),
-        PendingAction::UpdateCooldown {
-            rule_id, device_id, ..
-        } => format!("update-cooldown:{rule_id}:{device_id}"),
-        PendingAction::UpdateZoneEntry {
-            rule_id, device_id, ..
-        } => format!("update-zone-entry:{rule_id}:{device_id}"),
-    }
-}
-
-#[cfg(any(feature = "postgres", feature = "turso"))]
-fn stable_json_hash<T>(value: &T) -> String
-where
-    T: serde::Serialize,
-{
-    let bytes = serde_json::to_vec(value).unwrap_or_default();
-    stable_hash(&bytes)
-}
-
-#[cfg(any(feature = "postgres", feature = "turso"))]
-fn stable_hash(bytes: &[u8]) -> String {
-    let digest = Sha256::digest(bytes);
-    format!("{digest:x}")
 }

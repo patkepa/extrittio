@@ -9,14 +9,11 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 use crate::auth::context::RequestContext;
-use crate::domains::alerts::types::{
-    AlertListFilter, AlertRecord, AlertTransition, CooldownRecord,
-};
 use crate::error::AppError;
 use crate::pagination;
-use crate::services::alert_service;
 use crate::state::AppState;
 use crate::util;
+use extrittio_backend_core::alerts::{AlertListFilter, AlertRecord, AlertTransition};
 
 // ---------------------------------------------------------------------------
 // Request / Response DTOs
@@ -137,21 +134,23 @@ pub(crate) async fn list_alerts(
     let before = util::parse_timestamp(params.before.as_deref())?;
     let (limit, offset) = pagination::clamp(params.limit, params.offset);
 
-    let (alerts, total) = alert_service::list_with_repository(
-        &ctx,
-        state.persistence.alerts.as_ref(),
-        AlertListFilter {
-            status: params.status,
-            severity: params.severity,
-            device_id: params.device_id,
-            rule_id: params.rule_id,
-            since,
-            before,
-            limit,
-            offset,
-        },
-    )
-    .await?;
+    let (alerts, total) = state
+        .application()
+        .alerts()
+        .list(
+            &ctx.tenant_context(),
+            AlertListFilter {
+                status: params.status,
+                severity: params.severity,
+                device_id: params.device_id,
+                rule_id: params.rule_id,
+                since,
+                before,
+                limit,
+                offset,
+            },
+        )
+        .await?;
     let response = pagination::PaginatedResponse::new(
         alerts.into_iter().map(to_alert_response).collect(),
         total,
@@ -170,8 +169,11 @@ pub(crate) async fn get_summary(
     Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<AlertSummary>, AppError> {
-    let rows =
-        alert_service::summary_with_repository(&ctx, state.persistence.alerts.as_ref()).await?;
+    let rows = state
+        .application()
+        .alerts()
+        .summary(&ctx.tenant_context())
+        .await?;
 
     let mut active = AlertSeverityCounts {
         info: 0,
@@ -220,8 +222,11 @@ pub(crate) async fn get_alert(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<AlertResponse>, AppError> {
-    let alert =
-        alert_service::get_with_repository(&ctx, state.persistence.alerts.as_ref(), &id).await?;
+    let alert = state
+        .application()
+        .alerts()
+        .get(&ctx.tenant_context(), &id)
+        .await?;
     Ok(Json(to_alert_response(alert)))
 }
 
@@ -234,16 +239,11 @@ pub(crate) async fn acknowledge_alert(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<AlertResponse>, AppError> {
-    let alert = alert_service::transition_with_repository(
-        &ctx,
-        state.persistence.alerts.as_ref(),
-        &id,
-        AlertTransition::Acknowledge,
-    )
-    .await?;
-
-    // Keep the alert in active_alerts cache so the rule engine continues to
-    // track it (UpdateAlertValue) rather than creating a duplicate alert.
+    let alert = state
+        .application()
+        .alerts()
+        .transition(&ctx.tenant_context(), &id, AlertTransition::Acknowledge)
+        .await?;
 
     Ok(Json(to_alert_response(alert)))
 }
@@ -257,45 +257,11 @@ pub(crate) async fn resolve_alert_handler(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<AlertResponse>, AppError> {
-    let alert = alert_service::transition_with_repository(
-        &ctx,
-        state.persistence.alerts.as_ref(),
-        &id,
-        AlertTransition::Resolve,
-    )
-    .await?;
-
-    // Remove from active_alerts cache and set cooldown to prevent immediate re-fire
-    if let Some(rule_id) = &alert.rule_id {
-        let rid = rule_id.clone();
-        let did = alert.device_id.clone();
-        let now = chrono::Utc::now().naive_utc();
-        if let Ok(mut guard) = state.rule_cache.write() {
-            guard
-                .active_alerts
-                .remove(&(alert.tenant_id.clone(), rid.clone(), did.clone()));
-            guard
-                .cooldowns
-                .insert((alert.tenant_id.clone(), rid.clone(), did.clone()), now);
-        }
-        let repository = state.persistence.alerts.clone();
-        let tenant_id = alert.tenant_id.clone();
-        tokio::spawn(async move {
-            if let Err(error) = alert_service::persist_cooldowns_with_repository(
-                repository.as_ref(),
-                vec![CooldownRecord {
-                    tenant_id,
-                    rule_id: rid,
-                    device_id: did,
-                    last_fired_at: now,
-                }],
-            )
-            .await
-            {
-                tracing::warn!(%error, "Failed to persist cooldown on alert resolve");
-            }
-        });
-    }
+    let alert = state
+        .application()
+        .alerts()
+        .transition(&ctx.tenant_context(), &id, AlertTransition::Resolve)
+        .await?;
 
     Ok(Json(to_alert_response(alert)))
 }
@@ -309,16 +275,15 @@ pub(crate) async fn bulk_acknowledge(
     State(state): State<Arc<AppState>>,
     Json(body): Json<BulkAlertIds>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let results = alert_service::transition_many_with_repository(
-        &ctx,
-        state.persistence.alerts.as_ref(),
-        body.ids,
-        AlertTransition::Acknowledge,
-    )
-    .await?;
-
-    // Keep alerts in active_alerts cache so the rule engine continues to
-    // track them rather than creating duplicate alerts.
+    let results = state
+        .application()
+        .alerts()
+        .transition_many(
+            &ctx.tenant_context(),
+            body.ids,
+            AlertTransition::Acknowledge,
+        )
+        .await?;
 
     Ok(Json(serde_json::json!({ "acknowledged": results.len() })))
 }
@@ -332,129 +297,47 @@ pub(crate) async fn bulk_resolve(
     State(state): State<Arc<AppState>>,
     Json(body): Json<BulkAlertIds>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let results = alert_service::transition_many_with_repository(
-        &ctx,
-        state.persistence.alerts.as_ref(),
-        body.ids,
-        AlertTransition::Resolve,
-    )
-    .await?;
-
-    // Remove from cache and set cooldowns to prevent immediate re-fire
-    let now = chrono::Utc::now().naive_utc();
-    let mut cooldown_entries = Vec::new();
-    if let Ok(mut guard) = state.rule_cache.write() {
-        for a in &results {
-            if let Some(rule_id) = &a.rule_id {
-                guard.active_alerts.remove(&(
-                    a.tenant_id.clone(),
-                    rule_id.clone(),
-                    a.device_id.clone(),
-                ));
-                guard.cooldowns.insert(
-                    (a.tenant_id.clone(), rule_id.clone(), a.device_id.clone()),
-                    now,
-                );
-                cooldown_entries.push((a.tenant_id.clone(), rule_id.clone(), a.device_id.clone()));
-            }
-        }
-    }
-    if !cooldown_entries.is_empty() {
-        let repository = state.persistence.alerts.clone();
-        tokio::spawn(async move {
-            let cooldowns = cooldown_entries
-                .into_iter()
-                .map(|(tenant_id, rule_id, device_id)| CooldownRecord {
-                    tenant_id,
-                    rule_id,
-                    device_id,
-                    last_fired_at: now,
-                })
-                .collect();
-            if let Err(error) =
-                alert_service::persist_cooldowns_with_repository(repository.as_ref(), cooldowns)
-                    .await
-            {
-                tracing::warn!(%error, "Failed to persist cooldowns on bulk resolve");
-            }
-        });
-    }
+    let results = state
+        .application()
+        .alerts()
+        .transition_many(&ctx.tenant_context(), body.ids, AlertTransition::Resolve)
+        .await?;
 
     Ok(Json(serde_json::json!({ "resolved": results.len() })))
 }
 
 #[utoipa::path(
     put, path = "/api/v1/alerts/{id}/reactivate", tag = "alerts", security(("bearer_auth" = [])),
-    params(("id" = String, Path)), responses((status = 200, body = AlertResponse), (status = 404))
+    params(("id" = String, Path)), responses((status = 200, body = AlertResponse), (status = 404), (status = 409, description = "Another alert is active or acknowledged for this rule and device"))
 )]
 pub(crate) async fn reactivate_alert_handler(
     Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<AlertResponse>, AppError> {
-    let alert = alert_service::transition_with_repository(
-        &ctx,
-        state.persistence.alerts.as_ref(),
-        &id,
-        AlertTransition::Reactivate,
-    )
-    .await?;
-
-    // Re-add to active_alerts cache and clear any stale cooldown so the rule
-    // engine can resume tracking this alert immediately.
-    if let Ok(mut guard) = state.rule_cache.write()
-        && let Some(rule_id) = &alert.rule_id
-    {
-        guard.active_alerts.insert(
-            (
-                alert.tenant_id.clone(),
-                rule_id.clone(),
-                alert.device_id.clone(),
-            ),
-            alert.id.clone(),
-        );
-        guard.cooldowns.remove(&(
-            alert.tenant_id.clone(),
-            rule_id.clone(),
-            alert.device_id.clone(),
-        ));
-    }
+    let alert = state
+        .application()
+        .alerts()
+        .transition(&ctx.tenant_context(), &id, AlertTransition::Reactivate)
+        .await?;
 
     Ok(Json(to_alert_response(alert)))
 }
 
 #[utoipa::path(
     put, path = "/api/v1/alerts/bulk-reactivate", tag = "alerts", security(("bearer_auth" = [])),
-    request_body = BulkAlertIds, responses((status = 200, body = serde_json::Value))
+    request_body = BulkAlertIds, responses((status = 200, description = "Count of reactivated alerts; missing, invalid-status, and conflicting alerts are skipped", body = serde_json::Value))
 )]
 pub(crate) async fn bulk_reactivate(
     Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
     Json(body): Json<BulkAlertIds>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let results = alert_service::transition_many_with_repository(
-        &ctx,
-        state.persistence.alerts.as_ref(),
-        body.ids,
-        AlertTransition::Reactivate,
-    )
-    .await?;
-
-    if let Ok(mut guard) = state.rule_cache.write() {
-        for a in &results {
-            if let Some(rule_id) = &a.rule_id {
-                guard.active_alerts.insert(
-                    (a.tenant_id.clone(), rule_id.clone(), a.device_id.clone()),
-                    a.id.clone(),
-                );
-                guard.cooldowns.remove(&(
-                    a.tenant_id.clone(),
-                    rule_id.clone(),
-                    a.device_id.clone(),
-                ));
-            }
-        }
-    }
+    let results = state
+        .application()
+        .alerts()
+        .transition_many(&ctx.tenant_context(), body.ids, AlertTransition::Reactivate)
+        .await?;
 
     Ok(Json(serde_json::json!({ "reactivated": results.len() })))
 }

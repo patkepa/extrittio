@@ -10,10 +10,9 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 use crate::auth::context::RequestContext;
-use crate::domains::rules::types::{RuleDetails, RuleFilter};
 use crate::error::AppError;
-use crate::services::rule_service;
 use crate::state::AppState;
+use extrittio_backend_core::rules::{RuleDetails, RuleFilter};
 
 // ---------------------------------------------------------------------------
 // Request / Response DTOs
@@ -151,24 +150,6 @@ fn to_rule_response(details: RuleDetails) -> Result<RuleResponse, AppError> {
 }
 
 // ---------------------------------------------------------------------------
-// Cache refresh helper
-// ---------------------------------------------------------------------------
-
-async fn refresh_rule_cache(state: &AppState) {
-    let (rules, zone_snapshots) = state.rule_cache_repositories();
-    match rule_service::build_cache_with_repositories(rules, zone_snapshots).await {
-        Ok(new_cache) => {
-            if let Ok(mut guard) = state.rule_cache.write() {
-                *guard = new_cache;
-            } else {
-                tracing::warn!("Rule cache lock poisoned; skipping refresh");
-            }
-        }
-        Err(error) => tracing::warn!(%error, "Failed to refresh rule cache"),
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -198,16 +179,18 @@ pub(crate) async fn list_rules(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ListRulesQuery>,
 ) -> Result<Json<Vec<RuleResponse>>, AppError> {
-    let details_list = rule_service::list_with_repository(
-        &ctx,
-        state.persistence.rules.as_ref(),
-        RuleFilter {
-            enabled: params.enabled,
-            trigger_type: params.trigger_type,
-            target_type: params.target_type,
-        },
-    )
-    .await?;
+    let details_list = state
+        .application()
+        .rules()
+        .list(
+            &ctx.tenant_context(),
+            RuleFilter {
+                enabled: params.enabled,
+                trigger_type: params.trigger_type,
+                target_type: params.target_type,
+            },
+        )
+        .await?;
     let responses = details_list
         .into_iter()
         .map(to_rule_response)
@@ -225,8 +208,11 @@ pub(crate) async fn get_rule(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<RuleResponse>, AppError> {
-    let details =
-        rule_service::get_with_repository(&ctx, state.persistence.rules.as_ref(), &id).await?;
+    let details = state
+        .application()
+        .rules()
+        .get(&ctx.tenant_context(), &id)
+        .await?;
 
     Ok(Json(to_rule_response(details)?))
 }
@@ -254,21 +240,21 @@ pub(crate) async fn create_rule(
 
     let cooldown = body.cooldown_seconds.unwrap_or(0);
 
-    let details = rule_service::create_with_repository(
-        &ctx,
-        state.persistence.rules.as_ref(),
-        &body.name,
-        body.description,
-        &body.trigger_type,
-        &body.target_type,
-        body.target_id,
-        cooldown,
-        conditions,
-        actions,
-    )
-    .await?;
-
-    refresh_rule_cache(&state).await;
+    let details = state
+        .application()
+        .rules()
+        .create(
+            &ctx.tenant_context(),
+            &body.name,
+            body.description,
+            &body.trigger_type,
+            &body.target_type,
+            body.target_id,
+            cooldown,
+            conditions,
+            actions,
+        )
+        .await?;
 
     Ok((StatusCode::CREATED, Json(to_rule_response(details)?)))
 }
@@ -284,7 +270,6 @@ pub(crate) async fn update_rule_handler(
     Path(id): Path<String>,
     Json(body): Json<UpdateRuleRequest>,
 ) -> Result<Json<RuleResponse>, AppError> {
-    let trigger_type_changing = body.trigger_type.clone();
     let conditions: Option<Vec<(String, String, String)>> = body.conditions.map(|cs| {
         cs.into_iter()
             .map(|c| (c.field, c.operator, c.value))
@@ -297,40 +282,22 @@ pub(crate) async fn update_rule_handler(
             .collect()
     });
 
-    let rule_id = id.clone();
-    let details = rule_service::update_with_repository(
-        &ctx,
-        state.persistence.rules.as_ref(),
-        &id,
-        body.name,
-        body.description,
-        body.trigger_type,
-        body.target_type,
-        body.target_id,
-        body.cooldown_seconds,
-        conditions,
-        actions,
-    )
-    .await?;
-
-    // If trigger_type changed, remove any active alert cache entries for this
-    // rule to prevent the engine from issuing UpdateAlertValue with mismatched
-    // data types (e.g. telemetry value on a status alert).
-    if trigger_type_changing.is_some()
-        && let Ok(mut guard) = state.rule_cache.write()
-    {
-        let keys_to_remove: Vec<_> = guard
-            .active_alerts
-            .keys()
-            .filter(|(_, rid, _)| rid == &rule_id)
-            .cloned()
-            .collect();
-        for key in keys_to_remove {
-            guard.active_alerts.remove(&key);
-        }
-    }
-
-    refresh_rule_cache(&state).await;
+    let details = state
+        .application()
+        .rules()
+        .update(
+            &ctx.tenant_context(),
+            &id,
+            body.name,
+            body.description,
+            body.trigger_type,
+            body.target_type,
+            body.target_id,
+            body.cooldown_seconds,
+            conditions,
+            actions,
+        )
+        .await?;
 
     Ok(Json(to_rule_response(details)?))
 }
@@ -344,9 +311,11 @@ pub(crate) async fn delete_rule_handler(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
-    rule_service::delete_with_repository(&ctx, state.persistence.rules.as_ref(), &id).await?;
-
-    refresh_rule_cache(&state).await;
+    state
+        .application()
+        .rules()
+        .delete(&ctx.tenant_context(), &id)
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -362,15 +331,11 @@ pub(crate) async fn toggle_rule(
     Path(id): Path<String>,
     Json(body): Json<EnabledInput>,
 ) -> Result<Json<RuleResponse>, AppError> {
-    let details = rule_service::toggle_with_repository(
-        &ctx,
-        state.persistence.rules.as_ref(),
-        &id,
-        body.enabled,
-    )
-    .await?;
-
-    refresh_rule_cache(&state).await;
+    let details = state
+        .application()
+        .rules()
+        .toggle(&ctx.tenant_context(), &id, body.enabled)
+        .await?;
 
     Ok(Json(to_rule_response(details)?))
 }

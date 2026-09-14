@@ -123,6 +123,7 @@ pub struct AppConfig {
     pub alert_retention_days: u64,
     pub telemetry_retention_days: u64,
     pub log_retention_days: u64,
+    pub rule_snapshot_refresh_interval_secs: u64,
     pub system_metrics_interval_secs: u64,
     pub app_metrics_flush_interval_secs: u64,
     pub metrics_retention_hours: u64,
@@ -320,6 +321,11 @@ impl AppConfig {
                     DEFAULT_LOG_RETENTION_DAYS
                 },
             ),
+            rule_snapshot_refresh_interval_secs: env_parse(
+                &read_env,
+                "RULE_SNAPSHOT_REFRESH_INTERVAL_SECS",
+            )?
+            .unwrap_or(5),
             system_metrics_interval_secs: env_parse(&read_env, "SYSTEM_METRICS_INTERVAL_SECS")?
                 .unwrap_or(if rpi_mode {
                     RPI_SYSTEM_METRICS_INTERVAL_SECS
@@ -431,6 +437,11 @@ impl AppConfig {
                     "FIRMWARE_S3_ALLOW_HTTP=true is required for an HTTP S3 endpoint".to_string(),
                 ));
             }
+        }
+        if !(1..=60).contains(&self.rule_snapshot_refresh_interval_secs) {
+            return Err(ConfigError::Validation(
+                "RULE_SNAPSHOT_REFRESH_INTERVAL_SECS must be between 1 and 60".into(),
+            ));
         }
         if self.offline_timeout_secs == 0
             || self.command_timeout_secs == 0
@@ -894,4 +905,12 @@ mod tests {
 
         assert!(result.is_err());
     }
+}
+
+/// Optional key-encryption secret resolved at certificate composition.
+pub(crate) fn certificate_encryption_secret() -> Option<String> {
+    std::env::var("EXTRITTIO_KEY_ENCRYPTION_SECRET")
+        .ok()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
 }

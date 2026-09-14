@@ -4,15 +4,7 @@
 //! compatibility aliases while callers migrate to these cohesive boundaries.
 
 pub mod alerts {
-    #[path = "repository.rs"]
-    pub mod port;
-    #[path = "types.rs"]
-    pub mod types;
-
     pub use crate::api::alerts as api;
-    #[cfg(feature = "postgres")]
-    pub use crate::repositories::alert_repo as repository;
-    pub use crate::services::alert_service as service;
 }
 
 pub mod analytics {
@@ -84,7 +76,6 @@ pub mod devices {
     pub use crate::api::devices as api;
     #[cfg(feature = "postgres")]
     pub use crate::repositories::device_repo as legacy_repository;
-    pub use crate::services::device_catalog_service as catalog_service;
     pub use crate::services::device_ingress_service as ingress_service;
     pub use crate::services::device_service as service;
 }
@@ -96,21 +87,12 @@ pub mod events {
 }
 
 pub mod device_blueprints {
-    pub mod blueprint_service;
-    pub mod repository;
-    pub mod types;
 
     pub use crate::api::device_blueprints as api;
 }
 
 pub mod device_types {
-    #[path = "repository.rs"]
-    pub mod repository;
-    #[path = "types.rs"]
-    pub mod types;
-
     pub use crate::api::device_types as api;
-    pub use crate::services::device_type_service as service;
 }
 
 pub mod firmware {
@@ -132,24 +114,11 @@ pub mod firmware {
 pub mod firmware_store;
 
 pub mod fleets {
-    #[path = "repository.rs"]
-    pub mod repository;
-    #[path = "types.rs"]
-    pub mod types;
-
     pub use crate::api::fleets as api;
-    pub use crate::services::fleet_service as service;
 }
 
 pub mod identity {
-    #[path = "certificate_repository.rs"]
-    pub mod certificate_repository;
-    #[path = "certificate_types.rs"]
-    pub mod certificate_types;
     pub use crate::api::{api_keys, auth_routes, certificates, roles, users};
-    #[cfg(feature = "postgres")]
-    pub use crate::repositories::cert_repo;
-    pub use crate::services::cert_service;
 }
 
 pub mod logs {
@@ -170,28 +139,16 @@ pub mod operations {
     #[path = "metrics_types.rs"]
     pub mod metrics_types;
 
-    #[path = "outbox_repository.rs"]
-    pub mod outbox_repository;
-    #[path = "outbox_types.rs"]
-    pub mod outbox_types;
-
     pub use crate::api::{health, outbox, server_metrics, system};
     #[cfg(feature = "postgres")]
-    pub use crate::repositories::{rule_action_outbox_repo, server_metrics_repo};
+    pub use crate::repositories::server_metrics_repo;
     pub use crate::services::{metrics_middleware, server_metrics as server_metrics_service};
 }
 
 pub mod rules {
-    #[path = "repository.rs"]
-    pub mod port;
-    #[path = "types.rs"]
-    pub mod types;
 
     pub use crate::api::rules as api;
-    #[cfg(feature = "postgres")]
-    pub use crate::repositories::rule_repo as repository;
     pub use crate::rule_engine as engine;
-    pub use crate::services::rule_service as service;
 }
 
 pub mod shadows {

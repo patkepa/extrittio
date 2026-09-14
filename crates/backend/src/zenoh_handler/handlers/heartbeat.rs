@@ -2,7 +2,6 @@ use prost::Message;
 use tracing::{info, warn};
 
 use crate::persistence::RepositorySet;
-use crate::rule_engine::cache::RuleCache;
 use crate::services::device_ingress_service;
 use crate::tenancy::DeviceIdentity;
 
@@ -15,7 +14,7 @@ pub async fn handle_heartbeat(
     resolved_identity: Option<DeviceIdentity>,
     topic_device_id: &str,
     payload: &[u8],
-    rule_cache: &std::sync::RwLock<RuleCache>,
+    rule_cache: &crate::rule_snapshots::RuleSnapshotStore,
 ) -> usize {
     let heartbeat = match DeviceHeartbeat::decode(payload) {
         Ok(message) => message,
@@ -40,7 +39,7 @@ pub async fn handle_heartbeat(
     };
 
     match device_ingress_service::apply_heartbeat(
-        persistence.devices.as_ref(),
+        persistence.device_ingress.as_ref(),
         identity,
         &heartbeat.status,
         &heartbeat.firmware,

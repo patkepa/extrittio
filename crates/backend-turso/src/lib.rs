@@ -1,6 +1,14 @@
 #![forbid(unsafe_code)]
 
 pub mod api_keys;
+mod fleets;
+pub use fleets::TursoFleetRepository;
+mod device_types;
+pub use device_types::TursoDeviceTypeRepository;
+mod bootstrap;
+pub use bootstrap::TursoBootstrapRepository;
+mod certificates;
+pub use certificates::TursoCertificateRepository;
 mod ci_ingest;
 pub use ci_ingest::TursoCiIngestRepository;
 mod database;
@@ -48,3 +56,28 @@ pub mod migration_bridge {
         handles.lock_writer().await
     }
 }
+
+mod device_blueprints;
+pub use device_blueprints::TursoDeviceBlueprintRepository;
+
+mod devices;
+pub use devices::TursoDeviceRepository;
+
+mod rules;
+pub use rules::TursoRuleRepository;
+
+mod outbox;
+pub use outbox::TursoOutboxRepository;
+
+mod alerts;
+pub use alerts::TursoAlertRepository;
+
+#[cfg(feature = "migration-bridge")]
+mod rule_runtime;
+#[cfg(feature = "migration-bridge")]
+#[doc(hidden)]
+pub use rule_runtime::evaluate_rules_in_transaction;
+
+#[cfg(feature = "migration-bridge")]
+#[doc(hidden)]
+pub use outbox::enqueue_actions_in_transaction;

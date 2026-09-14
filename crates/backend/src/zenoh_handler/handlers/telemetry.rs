@@ -3,8 +3,6 @@ use tracing::{info, warn};
 
 use crate::domains::telemetry::types::TelemetryWrite;
 use crate::persistence::RepositorySet;
-use crate::rule_engine::cache::RuleCache;
-use crate::rule_engine::evaluate::{evaluate_geofence_for_tenant, evaluate_telemetry_for_tenant};
 use crate::rule_engine::types::TelemetryData;
 use crate::tenancy::DeviceIdentity;
 
@@ -19,7 +17,7 @@ pub async fn handle_telemetry(
     identity: &DeviceIdentity,
     topic_device_id: &str,
     payload: &[u8],
-    rule_cache: &std::sync::RwLock<RuleCache>,
+    rule_cache: &crate::rule_snapshots::RuleSnapshotStore,
 ) -> usize {
     let telemetry = match DeviceTelemetry::decode(payload) {
         Ok(message) => message,
@@ -54,7 +52,7 @@ pub async fn handle_telemetry(
     };
 
     for _ in 0..MAX_OPTIMISTIC_RETRIES {
-        let context = match persistence.devices.ingress_context(identity).await {
+        let context = match persistence.device_ingress.ingress_context(identity).await {
             Ok(Some(context)) => context,
             Ok(None) => {
                 warn!(
@@ -68,33 +66,26 @@ pub async fn handle_telemetry(
                 return 0;
             }
         };
-        let pending_actions = {
-            let cache = match rule_cache.read() {
-                Ok(cache) => cache,
-                Err(error) => {
-                    warn!("Failed to read-lock rule cache: {error}");
-                    return 0;
-                }
-            };
-            let mut actions = evaluate_telemetry_for_tenant(
-                context.identity.tenant_id_str(),
-                context.identity.device_id(),
-                context.device_type_id,
-                context.fleet_id,
-                context.blueprint_id.as_deref(),
-                &data,
-                &cache,
-            );
-            actions.extend(evaluate_geofence_for_tenant(
-                context.identity.tenant_id_str(),
-                context.identity.device_id(),
-                context.device_type_id,
-                context.fleet_id,
-                context.blueprint_id.as_deref(),
-                &data,
-                &cache,
-            ));
-            actions
+        let observed_at = chrono::Utc::now().naive_utc();
+        let snapshot = match rule_cache.snapshot() {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                warn!("Failed to obtain rule snapshot: {error}");
+                return 0;
+            }
+        };
+        let rule_evaluation = extrittio_backend_core::rule_snapshots::DeviceRuleEvaluation {
+            snapshot,
+            tenant: identity.tenant_id().clone(),
+            device_id: identity.device_id().to_owned(),
+            device_type_id: context.device_type_id,
+            fleet_id: context.fleet_id,
+            blueprint_id: context.blueprint_id,
+            input: extrittio_backend_core::rule_snapshots::RuleEvaluationInput::Telemetry {
+                data: data.clone(),
+                geofence: true,
+            },
+            observed_at,
         };
         let outcome = persistence
             .telemetry
@@ -113,8 +104,8 @@ pub async fn handle_telemetry(
                     speed: has_location.then_some(telemetry.speed),
                     altitude: has_location.then_some(telemetry.altitude),
                     heading: has_location.then_some(telemetry.heading),
-                    pending_actions,
-                    observed_at: chrono::Utc::now().naive_utc(),
+                    rule_evaluation,
+                    observed_at,
                 },
             )
             .await;

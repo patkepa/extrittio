@@ -297,8 +297,8 @@ pub(crate) async fn create_firmware_update(
 
     let prepared = firmware_service::prepare_blueprint_firmware(
         &ctx,
-        state.persistence.device_blueprints.as_ref(),
-        state.persistence.device_types.as_ref(),
+        state.application().device_blueprints(),
+        state.application().device_types(),
         &body.blueprint_revision_id,
     )
     .await?;
@@ -412,8 +412,8 @@ pub(crate) async fn upload_firmware_update(
 
     let prepared = firmware_service::prepare_blueprint_firmware(
         &ctx,
-        state.persistence.device_blueprints.as_ref(),
-        state.persistence.device_types.as_ref(),
+        state.application().device_blueprints(),
+        state.application().device_types(),
         &blueprint_revision_id,
     )
     .await?;

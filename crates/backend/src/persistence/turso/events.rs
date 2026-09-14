@@ -108,8 +108,14 @@ impl DeviceEventRepository for TursoAdapter {
                 .await
                 .map_err(row::error)?;
         }
-        let actions_enqueued =
-            super::devices::enqueue(&transaction, &event.pending_actions).await?;
+        let actions = crate::database::turso_ingress_rules(
+            &transaction,
+            tenant.as_str(),
+            &event.device_id,
+            Some(&event.rule_evaluation),
+        )
+        .await?;
+        let actions_enqueued = super::devices::enqueue(&transaction, &actions).await?;
         transaction.commit().await.map_err(row::error)?;
         Ok(RecordDeviceEventOutcome {
             recorded: true,

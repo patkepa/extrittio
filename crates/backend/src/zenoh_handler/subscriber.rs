@@ -1,10 +1,8 @@
 use std::sync::Arc;
-use std::sync::RwLock;
 use std::sync::atomic::Ordering;
 use tracing::{info, warn};
 
 use crate::persistence::RepositorySet;
-use crate::rule_engine::cache::RuleCache;
 use crate::state::ZenohMetrics;
 
 use super::handlers;
@@ -27,7 +25,7 @@ pub async fn run_subscriber(
     session: Arc<zenoh::Session>,
     persistence: RepositorySet,
     zenoh_metrics: Arc<ZenohMetrics>,
-    rule_cache: Arc<RwLock<RuleCache>>,
+    rule_cache: Arc<crate::rule_snapshots::RuleSnapshotStore>,
     max_payload_size_bytes: usize,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use extrittio_common::topics;

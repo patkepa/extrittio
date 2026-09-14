@@ -552,3 +552,16 @@ mod tests {
         );
     }
 }
+
+pub(crate) async fn list_snapshot_on_connection(
+    connection: &Connection,
+) -> Result<Vec<Zone>, PersistenceError> {
+    list_from(
+        connection,
+        &format!(
+            "{SELECT_ZONE} ORDER BY tenant_id COLLATE BINARY,name COLLATE BINARY,id COLLATE BINARY"
+        ),
+        (),
+    )
+    .await
+}

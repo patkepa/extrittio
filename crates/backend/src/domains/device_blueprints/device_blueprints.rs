@@ -15,8 +15,7 @@ use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse, PaginationParams};
 use crate::state::AppState;
 
-use crate::domains::device_blueprints::blueprint_service;
-use crate::domains::device_blueprints::types::{
+use extrittio_backend_core::device_blueprints::{
     BlueprintDraftRecord, BlueprintRecord, BlueprintRevisionRecord,
 };
 
@@ -157,13 +156,11 @@ pub(crate) async fn list_blueprints(
     Query(params): Query<PaginationParams>,
 ) -> Result<Json<PaginatedResponse<BlueprintResponse>>, AppError> {
     let (limit, offset) = pagination::clamp(params.limit, params.offset);
-    let result = blueprint_service::list(
-        &ctx,
-        state.persistence.device_blueprints.as_ref(),
-        limit,
-        offset,
-    )
-    .await?;
+    let result = state
+        .application()
+        .device_blueprints()
+        .list(&ctx.tenant_context(), limit, offset)
+        .await?;
     Ok(Json(PaginatedResponse::new(
         result.records.into_iter().map(Into::into).collect(),
         result.total,
@@ -189,12 +186,11 @@ pub(crate) async fn create_blueprint(
     Extension(ctx): Extension<RequestContext>,
     Json(body): Json<BlueprintDocumentRequest>,
 ) -> Result<(StatusCode, Json<BlueprintResponse>), AppError> {
-    let (blueprint, _) = blueprint_service::create(
-        &ctx,
-        state.persistence.device_blueprints.as_ref(),
-        body.document,
-    )
-    .await?;
+    let (blueprint, _) = state
+        .application()
+        .device_blueprints()
+        .create(&ctx.tenant_context(), body.document)
+        .await?;
     Ok((StatusCode::CREATED, Json(blueprint.into())))
 }
 
@@ -215,7 +211,10 @@ pub(crate) async fn get_blueprint(
     Path(id): Path<String>,
 ) -> Result<Json<BlueprintResponse>, AppError> {
     Ok(Json(
-        blueprint_service::get(&ctx, state.persistence.device_blueprints.as_ref(), &id)
+        state
+            .application()
+            .device_blueprints()
+            .get(&ctx.tenant_context(), &id)
             .await?
             .into(),
     ))
@@ -238,7 +237,10 @@ pub(crate) async fn get_blueprint_draft(
     Path(id): Path<String>,
 ) -> Result<Json<BlueprintDraftResponse>, AppError> {
     Ok(Json(
-        blueprint_service::get_draft(&ctx, state.persistence.device_blueprints.as_ref(), &id)
+        state
+            .application()
+            .device_blueprints()
+            .get_draft(&ctx.tenant_context(), &id)
             .await?
             .into(),
     ))
@@ -265,14 +267,12 @@ pub(crate) async fn replace_blueprint_draft(
     Json(body): Json<BlueprintDocumentRequest>,
 ) -> Result<Json<BlueprintDraftResponse>, AppError> {
     Ok(Json(
-        blueprint_service::replace_draft(
-            &ctx,
-            state.persistence.device_blueprints.as_ref(),
-            &id,
-            body.document,
-        )
-        .await?
-        .into(),
+        state
+            .application()
+            .device_blueprints()
+            .replace_draft(&ctx.tenant_context(), &id, body.document)
+            .await?
+            .into(),
     ))
 }
 
@@ -292,9 +292,11 @@ pub(crate) async fn validate_blueprint_draft(
     Extension(ctx): Extension<RequestContext>,
     Path(id): Path<String>,
 ) -> Result<Json<BlueprintValidationResponse>, AppError> {
-    let result =
-        blueprint_service::validate_draft(&ctx, state.persistence.device_blueprints.as_ref(), &id)
-            .await?;
+    let result = state
+        .application()
+        .device_blueprints()
+        .validate_draft(&ctx.tenant_context(), &id)
+        .await?;
     Ok(Json(BlueprintValidationResponse {
         valid: result.valid,
         issues: result
@@ -326,8 +328,11 @@ pub(crate) async fn publish_blueprint_draft(
     Extension(ctx): Extension<RequestContext>,
     Path(id): Path<String>,
 ) -> Result<(StatusCode, Json<BlueprintRevisionResponse>), AppError> {
-    let revision =
-        blueprint_service::publish(&ctx, state.persistence.device_blueprints.as_ref(), &id).await?;
+    let revision = state
+        .application()
+        .device_blueprints()
+        .publish(&ctx.tenant_context(), &id)
+        .await?;
     Ok((StatusCode::CREATED, Json(revision.into())))
 }
 
@@ -348,7 +353,10 @@ pub(crate) async fn get_latest_blueprint_revision(
     Path(id): Path<String>,
 ) -> Result<Json<BlueprintRevisionResponse>, AppError> {
     Ok(Json(
-        blueprint_service::latest_revision(&ctx, state.persistence.device_blueprints.as_ref(), &id)
+        state
+            .application()
+            .device_blueprints()
+            .latest_revision(&ctx.tenant_context(), &id)
             .await?
             .into(),
     ))
@@ -371,7 +379,10 @@ pub(crate) async fn get_blueprint_revision(
     Path(id): Path<String>,
 ) -> Result<Json<BlueprintRevisionResponse>, AppError> {
     Ok(Json(
-        blueprint_service::get_revision(&ctx, state.persistence.device_blueprints.as_ref(), &id)
+        state
+            .application()
+            .device_blueprints()
+            .get_revision(&ctx.tenant_context(), &id)
             .await?
             .into(),
     ))

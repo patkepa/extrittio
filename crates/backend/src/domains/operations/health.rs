@@ -76,7 +76,19 @@ pub(crate) async fn ready(
         .health()
         .await
         .is_ok_and(|health| health.reachable);
-    let snapshot = state.readiness.snapshot();
+    let mut snapshot = state.readiness.snapshot();
+    let snapshot_ready = state
+        .rule_cache
+        .metrics()
+        .is_ok_and(|metrics| metrics.ready);
+    let worker_ready = snapshot
+        .workers
+        .get("rule-snapshots")
+        .copied()
+        .unwrap_or(true);
+    snapshot
+        .workers
+        .insert("rule-snapshots".into(), worker_ready && snapshot_ready);
     let workers_ready = snapshot.workers.values().all(|ready| *ready);
     let ready =
         database_ready && snapshot.migrations_ready && snapshot.zenoh_ready && workers_ready;

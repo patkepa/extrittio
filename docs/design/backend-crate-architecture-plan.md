@@ -1,5 +1,11 @@
 # Backend Crate Architecture and Implementation Plan
 
+For the detailed remaining implementation sequence, dependencies, and resumable
+work-package ledger, use [Backend refactor execution plan](backend-refactor-execution-plan.md).
+Its current execution policy skips test execution, additions, and repairs; tests
+made invalid by the refactor are removed, and unaffected tests are retained.
+Historical test gates below remain future verification requirements.
+
 For the source-checked 2026-09-14 continuation order and verification gaps, see
 [Backend refactor continuation](backend-refactor-continuation.md). The dated
 status entries below are historical and require the evidence reconciliation
@@ -70,6 +76,15 @@ shared ingest contracts, API-key CI test registration, nonce/rotation scope, and
 cross-engine semantic convergence remain open; this update does not declare P3.1
 or the full firmware slice complete. The next extraction is certificates/key
 protection, followed by bootstrap.
+
+### R01/R02 continuation
+
+Certificates and business bootstrap now have core application ownership and
+adapter-owned repositories. Host crypto is injected; certificate routes and
+provisioning preparation use the application, and startup/CLI bootstrap uses an
+explicit system façade. ADR-010 records one-time rotation and global device identity;
+ADR-011 records first-owner semantics and role preconditions. The detailed execution
+ledger tracks implementation separately from deferred behavioral verification.
 
 ## 1. Executive decision
 

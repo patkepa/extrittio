@@ -451,6 +451,7 @@ export interface AppMetricsSnapshot {
 }
 
 export interface CurrentMetricsResponse {
+  rule_snapshots: components['schemas']['RuleSnapshotMetrics'];
   system: SystemMetricsSnapshot | null;
   app: AppMetricsSnapshot | null;
 }

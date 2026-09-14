@@ -1,6 +1,5 @@
 use async_trait::async_trait;
-use diesel::Connection;
-use diesel::RunQueryDsl;
+use diesel::prelude::*;
 use diesel::sql_types::{BigInt, Bool, Float8, Jsonb, Nullable, Text, Timestamptz};
 
 use crate::domains::events::repository::DeviceEventRepository;
@@ -83,6 +82,14 @@ impl DeviceEventRepository for PostgresAdapter {
             .run(move |connection| {
                 connection
                     .transaction::<_, AppError, _>(|connection| {
+                        use crate::db::schema::devices;
+                        devices::table
+                            .filter(devices::tenant_id.eq(&tenant_id))
+                            .filter(devices::id.eq(&event.device_id))
+                            .for_update()
+                            .select(devices::id)
+                            .first::<String>(connection)?;
+
                         let inserted = diesel::sql_query(
                             "INSERT INTO device_events
                                 (id, tenant_id, device_id, contract_id, route_key,
@@ -163,8 +170,13 @@ impl DeviceEventRepository for PostgresAdapter {
                             .bind::<Timestamptz, _>(event.occurred_at)
                             .execute(connection)?;
                         }
-                        let actions_enqueued =
-                            enqueue_pending_actions(connection, &event.pending_actions)?;
+                        let actions = crate::database::postgres_ingress_rules(
+                            connection,
+                            &tenant_id,
+                            &event.device_id,
+                            Some(&event.rule_evaluation),
+                        )?;
+                        let actions_enqueued = enqueue_pending_actions(connection, &actions)?;
                         Ok(RecordDeviceEventOutcome {
                             recorded: true,
                             metrics_recorded,

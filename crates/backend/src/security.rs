@@ -175,3 +175,18 @@ mod tests {
         assert!(validate_resolved_addrs("webhook.example", []).is_err());
     }
 }
+
+/// Rule configuration validation uses the same URL policy as webhook dispatch.
+pub struct PublicWebhookUrlPolicy;
+impl extrittio_backend_core::rules::WebhookUrlPolicy for PublicWebhookUrlPolicy {
+    fn validate(&self, url: &str) -> Result<(), extrittio_backend_core::ApplicationError> {
+        validate_public_https_url(url, "webhook url")
+            .map(|_| ())
+            .map_err(|error| match error {
+                AppError::BadRequest(message) => {
+                    extrittio_backend_core::ApplicationError::InvalidInput(message)
+                }
+                other => extrittio_backend_core::ApplicationError::Internal(other.to_string()),
+            })
+    }
+}

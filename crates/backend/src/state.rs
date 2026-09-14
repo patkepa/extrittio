@@ -3,7 +3,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
 use crate::rate_limit::{ApiKeyRateLimiter, RateLimiter, TrustedProxy};
-use crate::rule_engine::cache::RuleCache;
 
 const MAX_LATENCY_SAMPLES_PER_FLUSH: usize = 10_000;
 
@@ -157,7 +156,7 @@ pub struct AppStateInput {
     pub ci_rate_limiter: ApiKeyRateLimiter,
     pub metrics_accumulator: MetricsAccumulator,
     pub zenoh_metrics: Arc<ZenohMetrics>,
-    pub rule_cache: Arc<RwLock<RuleCache>>,
+    pub rule_cache: Arc<crate::rule_snapshots::RuleSnapshotStore>,
     pub http_client: reqwest::Client,
     pub firmware_store: crate::domains::firmware_store::FirmwareObjectStore,
     pub readiness: Arc<ReadinessRegistry>,
@@ -185,7 +184,7 @@ pub struct AppState {
     pub(crate) ci_rate_limiter: ApiKeyRateLimiter,
     pub(crate) metrics_accumulator: MetricsAccumulator,
     pub(crate) zenoh_metrics: Arc<ZenohMetrics>,
-    pub(crate) rule_cache: Arc<RwLock<RuleCache>>,
+    pub(crate) rule_cache: Arc<crate::rule_snapshots::RuleSnapshotStore>,
     pub(crate) http_client: reqwest::Client,
     pub(crate) firmware_store: crate::domains::firmware_store::FirmwareObjectStore,
     pub(crate) readiness: Arc<ReadinessRegistry>,
@@ -196,21 +195,35 @@ impl AppState {
     #[must_use]
     pub fn new(input: AppStateInput) -> Self {
         let persistence = input.database.repositories().clone();
+        let crypto = Arc::new(crate::outbound::certificates::CertificateCrypto::new(
+            crate::config::certificate_encryption_secret(),
+        ));
         let application = extrittio_backend_core::Application::new(
             extrittio_backend_core::RepositorySet::new(
                 extrittio_backend_core::RepositorySetInput {
+                    alerts: persistence.alerts.clone(),
+                    outbox: persistence.outbox.clone(),
+                    rules: persistence.rules.clone(),
+                    devices: persistence.devices.clone(),
+                    device_blueprints: persistence.device_blueprints.clone(),
                     api_keys: persistence.api_keys.clone(),
+                    fleets: persistence.fleets.clone(),
+                    device_types: persistence.device_types.clone(),
                     ci_ingest: persistence.ci_ingest.clone(),
+                    certificates: persistence.certificates.clone(),
                     roles: persistence.roles.clone(),
                     users: persistence.users.clone(),
                     zones: persistence.zones.clone(),
-                    rule_zone_snapshots: persistence.rule_zone_snapshots.clone(),
                 },
             ),
             extrittio_backend_core::ApplicationDependencies::new(
                 Arc::new(crate::auth::Argon2PasswordHasher),
                 Arc::new(crate::auth::SystemClock),
                 Arc::new(crate::api_key_util::RandomApiKeyGenerator),
+                crypto.clone(),
+                crypto,
+                Arc::new(crate::security::PublicWebhookUrlPolicy),
+                input.rule_cache.clone(),
             ),
         );
 
@@ -244,21 +257,6 @@ impl AppState {
     #[must_use]
     pub fn application(&self) -> &extrittio_backend_core::Application {
         &self.application
-    }
-
-    /// Temporary narrow bridge for rebuilding the host-local rule cache while
-    /// the rules vertical slice is still migrating behind `Application`.
-    #[must_use]
-    pub(crate) fn rule_cache_repositories(
-        &self,
-    ) -> (
-        &dyn crate::domains::rules::port::RuleRepository,
-        &dyn extrittio_backend_core::RuleZoneSnapshotRepository,
-    ) {
-        (
-            self.persistence.rules.as_ref(),
-            self.persistence.rule_zone_snapshots.as_ref(),
-        )
     }
 
     /// Narrow host bridge for resolving device-scoped firmware download grants

@@ -4,26 +4,19 @@ use crate::persistence::{DatabaseRuntime, RepositorySet};
 use executor::PostgresPool;
 
 mod activity;
-mod alerts;
 mod analytics;
 mod audit;
-mod bootstrap;
-mod certificates;
 mod commands;
 mod configuration;
 mod dashboard;
-mod device_blueprints;
-mod device_types;
 mod devices;
 mod events;
 pub mod executor;
 mod firmware;
-mod fleets;
 pub(crate) mod lifecycle;
 mod logs;
 mod metrics;
 mod outbox;
-mod rules;
 mod shadows;
 mod telemetry;
 
@@ -59,6 +52,15 @@ fn build_repositories(pool: PostgresPool) -> RepositorySet {
     let roles = crate::database::postgres_roles(&pool);
     let users = crate::database::postgres_users(&pool);
     let api_keys = crate::database::postgres_api_keys(&pool);
+    let fleets = crate::database::postgres_fleets(&pool);
+    let device_blueprints = crate::database::postgres_device_blueprints(&pool);
+    let alerts = crate::database::postgres_alerts(&pool);
+    let outbox = crate::database::postgres_outbox(&pool);
+    let rules = crate::database::postgres_rules(&pool);
+    let devices = crate::database::postgres_devices(&pool);
+    let device_types = crate::database::postgres_device_types(&pool);
+    let bootstrap = crate::database::postgres_bootstrap(&pool);
+    let certificates = crate::database::postgres_certificates(&pool);
     let ci_ingest = crate::database::postgres_ci_ingest(&pool);
     let adapter = Arc::new(PostgresAdapter::new(pool));
     RepositorySet {
@@ -66,25 +68,26 @@ fn build_repositories(pool: PostgresPool) -> RepositorySet {
         analytics: adapter.clone(),
         api_keys,
         ci_ingest,
-        alerts: adapter.clone(),
+        alerts,
         audit: adapter.clone(),
-        bootstrap: adapter.clone(),
-        certificates: adapter.clone(),
+        bootstrap,
+        certificates,
         commands: adapter.clone(),
         configuration: adapter.clone(),
         dashboard: adapter.clone(),
-        device_blueprints: adapter.clone(),
-        device_types: adapter.clone(),
-        devices: adapter.clone(),
+        device_blueprints,
+        device_types,
+        devices,
+        device_ingress: adapter.clone(),
         events: adapter.clone(),
-        fleets: adapter.clone(),
+        fleets,
         firmware: adapter.clone(),
         logs: adapter.clone(),
         metrics: adapter.clone(),
-        outbox: adapter.clone(),
+        outbox,
         roles,
         rule_zone_snapshots,
-        rules: adapter.clone(),
+        rules,
         shadows: adapter.clone(),
         telemetry: adapter.clone(),
         users,

@@ -67,15 +67,3 @@ pub trait CiIngestRepository: Send + Sync {
         params: CiIngestParams,
     ) -> Result<CiIngestOutcome, PersistenceError>;
 }
-
-#[cfg(test)]
-#[async_trait]
-impl CiIngestRepository for crate::api_keys::tests::RecordingRepository {
-    async fn ingest_ci(
-        &self,
-        _key_hash: &str,
-        _params: CiIngestParams,
-    ) -> Result<CiIngestOutcome, PersistenceError> {
-        panic!("unused by application composition tests")
-    }
-}

@@ -20,6 +20,7 @@ use crate::state::AppState;
 
 #[derive(Serialize, ToSchema)]
 pub struct CurrentMetricsResponse {
+    pub rule_snapshots: crate::rule_snapshots::RuleSnapshotMetrics,
     pub system: Option<SystemMetricsSnapshot>,
     pub app: Option<AppMetricsSnapshot>,
 }
@@ -135,6 +136,7 @@ pub(crate) async fn get_current_metrics(
     let metrics =
         server_metrics::get_current_metrics(&ctx, state.persistence.metrics.as_ref()).await?;
     let response = CurrentMetricsResponse {
+        rule_snapshots: state.rule_cache.metrics()?,
         system: metrics.system.map(SystemMetricsSnapshot::from),
         app: metrics.app.map(AppMetricsSnapshot::from),
     };

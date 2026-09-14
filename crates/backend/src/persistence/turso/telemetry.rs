@@ -141,7 +141,14 @@ impl TelemetryRepository for TursoAdapter {
              WHERE tenant_id = ?1 AND id = ?2",
             params![identity.tenant_id_str(), identity.device_id(), observed_at, write.latitude, write.longitude],
         ).await.map_err(row::error)?;
-        let actions_enqueued = enqueue(&transaction, &write.pending_actions).await?;
+        let actions = crate::database::turso_ingress_rules(
+            &transaction,
+            identity.tenant_id_str(),
+            identity.device_id(),
+            Some(&write.rule_evaluation),
+        )
+        .await?;
+        let actions_enqueued = enqueue(&transaction, &actions).await?;
         transaction.commit().await.map_err(row::error)?;
         Ok(TelemetryWriteOutcome {
             recorded: true,

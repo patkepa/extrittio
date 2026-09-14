@@ -22,6 +22,7 @@ pub mod error;
 pub mod init;
 pub mod middleware;
 pub mod observability;
+pub mod outbound;
 pub mod pagination;
 pub mod persistence;
 pub mod rate_limit;
@@ -41,3 +42,5 @@ use diesel_migrations::{EmbeddedMigrations, embed_migrations};
 
 #[cfg(feature = "postgres")]
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("../backend-postgres/migrations");
+
+pub mod rule_snapshots;

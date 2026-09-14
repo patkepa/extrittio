@@ -9,6 +9,9 @@ homepage.workspace = true
 publish.workspace = true
 
 [dependencies]
+sha2 = "0.10"
+extrittio-rule-engine = { path = "../rule-engine" }
+extrittio-device-contract = { path = "../device-contract" }
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }

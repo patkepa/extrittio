@@ -8,7 +8,6 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 use crate::auth::context::RequestContext;
-use crate::auth::policy::{self, Permission};
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -94,11 +93,10 @@ pub(crate) async fn list_dead_letters(
 ) -> Result<Json<DeadLetterListResponse>, AppError> {
     let limit = query.limit.unwrap_or(50).clamp(1, 200);
     let offset = query.offset.unwrap_or(0).max(0);
-    policy::require(&ctx, Permission::ReadServerMetrics)?;
     let events = state
-        .persistence
-        .outbox
-        .list_dead_letters(ctx.tenant_id(), limit, offset)
+        .application()
+        .outbox()
+        .dead_letters(&ctx.tenant_context(), limit, offset)
         .await?
         .into_iter()
         .map(|event| DeadLetterEventResponse {
@@ -134,23 +132,10 @@ pub(crate) async fn replay_dead_letters(
     State(state): State<Arc<AppState>>,
     Json(request): Json<ReplayDeadLettersRequest>,
 ) -> Result<Json<ReplayDeadLettersResponse>, AppError> {
-    if !request.replay_all && request.event_ids.is_empty() {
-        return Err(AppError::BadRequest(
-            "provide event_ids or set replay_all to true".to_string(),
-        ));
-    }
-    if request.replay_all && !request.event_ids.is_empty() {
-        return Err(AppError::BadRequest(
-            "event_ids and replay_all are mutually exclusive".to_string(),
-        ));
-    }
-
-    policy::require(&ctx, Permission::ManageRules)?;
-    let ids = (!request.replay_all).then_some(request.event_ids);
     let replayed_count = state
-        .persistence
-        .outbox
-        .replay_dead_letters(ctx.tenant_id(), ids)
+        .application()
+        .outbox()
+        .replay(&ctx.tenant_context(), request.event_ids, request.replay_all)
         .await?;
 
     Ok(Json(ReplayDeadLettersResponse { replayed_count }))
@@ -170,8 +155,11 @@ pub(crate) async fn get_summary(
     Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<RuleActionOutboxSummaryResponse>, AppError> {
-    policy::require(&ctx, Permission::ReadServerMetrics)?;
-    let summary = state.persistence.outbox.summary(ctx.tenant_id()).await?;
+    let summary = state
+        .application()
+        .outbox()
+        .summary(&ctx.tenant_context())
+        .await?;
     let response = RuleActionOutboxSummaryResponse {
         pending_count: summary.pending_count,
         processing_count: summary.processing_count,

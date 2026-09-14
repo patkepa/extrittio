@@ -2,6 +2,14 @@
 #![deny(clippy::disallowed_methods)]
 
 pub mod application;
+pub mod fleets;
+pub use application::FleetApplication;
+pub mod device_types;
+pub use application::DeviceTypeApplication;
+pub mod bootstrap;
+pub mod certificates;
+pub use application::BootstrapApplication;
+pub use application::{CertificateApplication, CertificateSystemApplication};
 pub mod ci_ingest;
 pub mod context;
 pub use application::CiIngestApplication;
@@ -45,3 +53,26 @@ pub use api_keys::{
     CreateApiKeyRecord, CreatedApiKey, GeneratedApiKey,
 };
 pub use application::ApiKeyApplication;
+
+pub mod device_blueprints;
+pub mod device_contracts;
+pub use application::DeviceBlueprintApplication;
+
+pub mod devices;
+pub use application::{DeviceApplication, DeviceTargetSelection, ProvisionDevice};
+
+pub mod rules;
+pub use extrittio_rule_engine as rule_engine;
+
+pub mod rule_snapshots;
+
+pub mod outbox;
+pub mod rule_actions;
+pub use application::{OutboxApplication, OutboxWorkerApplication};
+
+pub mod alerts;
+pub use application::{
+    AlertApplication, AlertMaintenanceApplication, AlertWorkerApplication, RuleAlertIntent,
+};
+
+pub use application::RuleRuntimeApplication;

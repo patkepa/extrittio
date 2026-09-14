@@ -142,8 +142,13 @@ impl TelemetryRepository for PostgresAdapter {
                             ))
                             .execute(connection)?;
                         }
-                        let actions_enqueued =
-                            enqueue_pending_actions(connection, &write.pending_actions)?;
+                        let actions = crate::database::postgres_ingress_rules(
+                            connection,
+                            &tenant_id,
+                            &device_id,
+                            Some(&write.rule_evaluation),
+                        )?;
+                        let actions_enqueued = enqueue_pending_actions(connection, &actions)?;
                         Ok(TelemetryWriteOutcome {
                             recorded: true,
                             actions_enqueued,
