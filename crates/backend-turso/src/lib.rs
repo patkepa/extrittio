@@ -115,3 +115,6 @@ pub use analytics::TursoAnalyticsRepository;
 
 mod audit;
 pub use audit::TursoAuditRepository;
+
+mod metrics;
+pub use metrics::TursoMetricsRepository;

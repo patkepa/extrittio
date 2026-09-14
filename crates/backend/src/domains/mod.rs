@@ -123,8 +123,6 @@ pub mod operations {
     pub mod metrics_types;
 
     pub use crate::api::{health, outbox, server_metrics, system};
-    #[cfg(feature = "postgres")]
-    pub use crate::repositories::server_metrics_repo;
     pub use crate::services::{metrics_middleware, server_metrics as server_metrics_service};
 }
 

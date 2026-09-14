@@ -1,17 +1,29 @@
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDateTime};
+use diesel::Connection;
 
-use crate::db::models::{AppMetric, NewAppMetric, NewServerMetric, ServerMetric};
-use crate::domains::operations::metrics_repository::MetricsRepository;
-use crate::domains::operations::metrics_types::{
+use crate::metrics_sql as server_metrics_repo;
+use crate::models::{AppMetric, NewAppMetric, NewServerMetric, ServerMetric};
+use extrittio_backend_core::PersistenceError;
+use extrittio_backend_core::metrics::MetricsRepository;
+use extrittio_backend_core::metrics::{
     AppMetricRecord, MetricsHistory, MetricsSnapshot, NewAppMetricRecord, NewSystemMetricRecord,
     SystemMetricRecord,
 };
-use crate::persistence::PersistenceError;
-use crate::repositories::server_metrics_repo;
 
-use super::PostgresAdapter;
-use super::executor::map_diesel_error;
+use crate::{PostgresExecutor, PostgresPool};
+#[derive(Clone)]
+pub struct PostgresMetricsRepository {
+    executor: PostgresExecutor,
+}
+impl PostgresMetricsRepository {
+    pub fn from_pool(pool: PostgresPool) -> Self {
+        Self {
+            executor: PostgresExecutor::new(pool),
+        }
+    }
+}
+use crate::error::map_diesel_error;
 
 fn system_record(metric: ServerMetric) -> SystemMetricRecord {
     SystemMetricRecord {
@@ -43,14 +55,18 @@ fn app_record(metric: AppMetric) -> AppMetricRecord {
     }
 }
 
-fn bucket_time(bucket: i64) -> NaiveDateTime {
+fn bucket_time(bucket: i64) -> Result<NaiveDateTime, PersistenceError> {
     DateTime::from_timestamp(bucket, 0)
-        .unwrap_or_default()
-        .naive_utc()
+        .map(|time| time.naive_utc())
+        .ok_or_else(|| {
+            PersistenceError::CorruptData(
+                "metrics bucket timestamp is outside the supported range".into(),
+            )
+        })
 }
 
 #[async_trait]
-impl MetricsRepository for PostgresAdapter {
+impl MetricsRepository for PostgresMetricsRepository {
     async fn insert_system(&self, record: NewSystemMetricRecord) -> Result<(), PersistenceError> {
         self.executor
             .run(move |connection| {
@@ -124,20 +140,22 @@ impl MetricsRepository for PostgresAdapter {
                     )
                     .map_err(map_diesel_error)?
                     .into_iter()
-                    .map(|metric| SystemMetricRecord {
-                        cpu_usage_percent: metric.cpu_usage_percent,
-                        memory_used_bytes: metric.memory_used_bytes,
-                        memory_total_bytes: metric.memory_total_bytes,
-                        disk_used_bytes: metric.disk_used_bytes,
-                        disk_total_bytes: metric.disk_total_bytes,
-                        network_rx_bytes_delta: metric.network_rx_bytes_delta,
-                        network_tx_bytes_delta: metric.network_tx_bytes_delta,
-                        load_avg_1m: metric.load_avg_1m,
-                        load_avg_5m: metric.load_avg_5m,
-                        load_avg_15m: metric.load_avg_15m,
-                        recorded_at: bucket_time(metric.bucket),
+                    .map(|metric| {
+                        Ok(SystemMetricRecord {
+                            cpu_usage_percent: metric.cpu_usage_percent,
+                            memory_used_bytes: metric.memory_used_bytes,
+                            memory_total_bytes: metric.memory_total_bytes,
+                            disk_used_bytes: metric.disk_used_bytes,
+                            disk_total_bytes: metric.disk_total_bytes,
+                            network_rx_bytes_delta: metric.network_rx_bytes_delta,
+                            network_tx_bytes_delta: metric.network_tx_bytes_delta,
+                            load_avg_1m: metric.load_avg_1m,
+                            load_avg_5m: metric.load_avg_5m,
+                            load_avg_15m: metric.load_avg_15m,
+                            recorded_at: bucket_time(metric.bucket)?,
+                        })
                     })
-                    .collect();
+                    .collect::<Result<Vec<_>, PersistenceError>>()?;
                     let app = server_metrics_repo::list_app_metrics_downsampled(
                         connection,
                         since,
@@ -145,18 +163,20 @@ impl MetricsRepository for PostgresAdapter {
                     )
                     .map_err(map_diesel_error)?
                     .into_iter()
-                    .map(|metric| AppMetricRecord {
-                        request_count: metric.request_count,
-                        error_count: metric.error_count,
-                        avg_latency_ms: metric.avg_latency_ms,
-                        p95_latency_ms: metric.p95_latency_ms,
-                        db_pool_active: metric.db_pool_active,
-                        db_pool_idle: metric.db_pool_idle,
-                        zenoh_messages_in: metric.zenoh_messages_in,
-                        zenoh_messages_out: metric.zenoh_messages_out,
-                        recorded_at: bucket_time(metric.bucket),
+                    .map(|metric| {
+                        Ok(AppMetricRecord {
+                            request_count: metric.request_count,
+                            error_count: metric.error_count,
+                            avg_latency_ms: metric.avg_latency_ms,
+                            p95_latency_ms: metric.p95_latency_ms,
+                            db_pool_active: metric.db_pool_active,
+                            db_pool_idle: metric.db_pool_idle,
+                            zenoh_messages_in: metric.zenoh_messages_in,
+                            zenoh_messages_out: metric.zenoh_messages_out,
+                            recorded_at: bucket_time(metric.bucket)?,
+                        })
                     })
-                    .collect();
+                    .collect::<Result<Vec<_>, PersistenceError>>()?;
                     Ok(MetricsHistory { system, app })
                 } else {
                     let system =
@@ -182,11 +202,14 @@ impl MetricsRepository for PostgresAdapter {
     ) -> Result<(usize, usize), PersistenceError> {
         self.executor
             .run(move |connection| {
-                let system = server_metrics_repo::delete_old_server_metrics(connection, cutoff)
-                    .map_err(map_diesel_error)?;
-                let app = server_metrics_repo::delete_old_app_metrics(connection, cutoff)
-                    .map_err(map_diesel_error)?;
-                Ok((system, app))
+                connection
+                    .transaction::<_, diesel::result::Error, _>(|connection| {
+                        let system =
+                            server_metrics_repo::delete_old_server_metrics(connection, cutoff)?;
+                        let app = server_metrics_repo::delete_old_app_metrics(connection, cutoff)?;
+                        Ok((system, app))
+                    })
+                    .map_err(map_diesel_error)
             })
             .await
     }

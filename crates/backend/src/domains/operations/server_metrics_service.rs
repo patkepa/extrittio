@@ -1,22 +1,18 @@
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use chrono::Utc;
 use sysinfo::{Disks, Networks, System};
 use tokio::time::{Duration, interval};
 use tracing::{info, warn};
 
-use crate::auth::context::RequestContext;
-use crate::auth::policy::{self, Permission};
-use crate::domains::operations::metrics_repository::MetricsRepository;
-use crate::domains::operations::metrics_types::{
-    MetricsHistory, MetricsSnapshot, NewAppMetricRecord, NewSystemMetricRecord,
-};
-use crate::error::AppError;
-use crate::persistence::RepositorySet;
+use crate::domains::operations::metrics_types::{NewAppMetricRecord, NewSystemMetricRecord};
 use crate::state::AppState;
+use extrittio_backend_core::application::MetricsWorkerApplication;
 
-pub async fn run_system_metrics_collector(persistence: RepositorySet, interval_secs: u64) {
+pub async fn run_system_metrics_collector(
+    application: MetricsWorkerApplication,
+    interval_secs: u64,
+) {
     let interval_secs = interval_secs.max(1);
     info!(
         "System metrics collector started ({}s interval)",
@@ -83,9 +79,8 @@ pub async fn run_system_metrics_collector(persistence: RepositorySet, interval_s
         first_sample = false;
         let load = System::load_average();
 
-        if let Err(error) = persistence
-            .metrics
-            .insert_system(NewSystemMetricRecord {
+        if let Err(error) = application
+            .record_system(NewSystemMetricRecord {
                 cpu_usage_percent: system.global_cpu_usage(),
                 memory_used_bytes: system.used_memory() as i64,
                 memory_total_bytes: system.total_memory() as i64,
@@ -104,7 +99,11 @@ pub async fn run_system_metrics_collector(persistence: RepositorySet, interval_s
     }
 }
 
-pub async fn run_app_metrics_flusher(state: Arc<AppState>, interval_secs: u64) {
+pub async fn run_app_metrics_flusher(
+    state: Arc<AppState>,
+    application: MetricsWorkerApplication,
+    interval_secs: u64,
+) {
     let interval_secs = interval_secs.max(1);
     info!("App metrics flusher started ({}s interval)", interval_secs);
     let mut tick = interval(Duration::from_secs(interval_secs));
@@ -122,10 +121,8 @@ pub async fn run_app_metrics_flusher(state: Arc<AppState>, interval_secs: u64) {
             0.0
         };
 
-        if let Err(error) = state
-            .persistence
-            .metrics
-            .insert_app(NewAppMetricRecord {
+        if let Err(error) = application
+            .record_app(NewAppMetricRecord {
                 request_count: request_count as i32,
                 error_count: error_count as i32,
                 avg_latency_ms,
@@ -142,16 +139,14 @@ pub async fn run_app_metrics_flusher(state: Arc<AppState>, interval_secs: u64) {
     }
 }
 
-pub async fn run_metrics_retention(persistence: RepositorySet, retention_hours: u64) {
+pub async fn run_metrics_retention(application: MetricsWorkerApplication, retention_hours: u64) {
     let retention_hours = retention_hours.max(1);
     info!("Metrics retention started ({}h retention)", retention_hours);
     let mut tick = interval(Duration::from_secs(3600));
 
     loop {
         tick.tick().await;
-        #[allow(clippy::cast_possible_wrap)]
-        let cutoff = Utc::now().naive_utc() - chrono::TimeDelta::hours(retention_hours as i64);
-        match persistence.metrics.delete_before(cutoff).await {
+        match application.retain(retention_hours).await {
             Ok((system, app)) => {
                 if system > 0 {
                     info!("Pruned {} old server_metrics rows", system);
@@ -163,24 +158,6 @@ pub async fn run_metrics_retention(persistence: RepositorySet, retention_hours: 
             Err(error) => warn!(%error, "Failed to prune metrics"),
         }
     }
-}
-
-pub async fn get_current_metrics(
-    ctx: &RequestContext,
-    repository: &dyn MetricsRepository,
-) -> Result<MetricsSnapshot, AppError> {
-    policy::require(ctx, Permission::ReadServerMetrics)?;
-    Ok(repository.current().await?)
-}
-
-pub async fn get_metrics_history(
-    ctx: &RequestContext,
-    repository: &dyn MetricsRepository,
-    since: chrono::NaiveDateTime,
-    resolution_secs: i64,
-) -> Result<MetricsHistory, AppError> {
-    policy::require(ctx, Permission::ReadServerMetrics)?;
-    Ok(repository.history(since, resolution_secs).await?)
 }
 
 fn compute_p95(samples: &[u64]) -> f32 {

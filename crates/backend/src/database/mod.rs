@@ -34,11 +34,6 @@ pub use extrittio_backend_postgres::{PostgresExecutor, PostgresPool, models, sch
 #[cfg(feature = "turso")]
 mod turso;
 #[cfg(feature = "turso")]
-pub(crate) use extrittio_backend_turso::migration_bridge::{
-    connect as turso_connect, datetime as turso_datetime, i32 as turso_i32,
-    legacy_error as turso_error, lock_writer as turso_lock_writer,
-};
-#[cfg(feature = "turso")]
 pub use turso::{LogicalArchiveInfo, TursoBackupInfo, TursoDatabase, TursoDatabaseInfo};
 
 #[cfg(feature = "postgres")]
@@ -433,4 +428,19 @@ pub(crate) fn turso_audit(
     Arc::new(extrittio_backend_turso::TursoAuditRepository::from_handles(
         database.shared_handles(),
     ))
+}
+
+#[cfg(feature = "postgres")]
+pub(crate) fn postgres_metrics(
+    pool: &PostgresPool,
+) -> Arc<dyn extrittio_backend_core::metrics::MetricsRepository> {
+    Arc::new(extrittio_backend_postgres::PostgresMetricsRepository::from_pool(pool.clone()))
+}
+#[cfg(feature = "turso")]
+pub(crate) fn turso_metrics(
+    database: &TursoDatabase,
+) -> Arc<dyn extrittio_backend_core::metrics::MetricsRepository> {
+    Arc::new(
+        extrittio_backend_turso::TursoMetricsRepository::from_handles(database.shared_handles()),
+    )
 }

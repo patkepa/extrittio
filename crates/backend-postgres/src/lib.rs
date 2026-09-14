@@ -108,3 +108,7 @@ pub use analytics::PostgresAnalyticsRepository;
 mod audit;
 pub use audit::PostgresAuditRepository;
 mod audit_sql;
+
+mod metrics;
+pub use metrics::PostgresMetricsRepository;
+mod metrics_sql;

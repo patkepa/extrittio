@@ -1,3 +1,5 @@
+mod metrics;
+pub use metrics::{MetricsApplication, MetricsWorkerApplication};
 mod audit;
 pub use audit::AuditApplication;
 mod analytics;
@@ -111,6 +113,7 @@ impl ApplicationDependencies {
 /// Curated application façade passed to transports.
 #[derive(Clone)]
 pub struct Application {
+    metrics: MetricsApplication,
     audit: AuditApplication,
     analytics: AnalyticsApplication,
     dashboard: DashboardApplication,
@@ -138,6 +141,9 @@ pub struct Application {
 }
 
 impl Application {
+    pub fn metrics(&self) -> &MetricsApplication {
+        &self.metrics
+    }
     pub fn audit(&self) -> &AuditApplication {
         &self.audit
     }
@@ -200,6 +206,7 @@ impl Application {
             dependencies.clock.clone(),
         );
         Self {
+            metrics: MetricsApplication::new(repositories.metrics),
             audit: AuditApplication::new(repositories.audit),
             analytics: AnalyticsApplication::new(repositories.analytics),
             dashboard: DashboardApplication::new(repositories.dashboard),

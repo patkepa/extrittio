@@ -441,7 +441,7 @@ with a generic “done.” List individual PRs if a package is split.
 | R07 | Implemented | Deferred | Existing shadow/configuration behavior, commands/DeviceBus, shared OTA shadow mutation; no new config protocol |
 | R08 | Implemented | Deferred | Core ingress/read/maintenance policy, both adapters, explicit timestamps and durable pruning boundary |
 | R09 | Implemented | Deferred | Core firmware/object/OTA applications, both adapters, source preservation audit; host signing/storage/transport |
-| R10 | In progress | Deferred | Activity application and adapter SQL extracted; remaining projections/audit/metrics next |
+| R10 | In progress | Deferred | Projection/audit applications and metrics read boundary extracted; semantic audit and worker boundaries remain |
 | R11 | Partial through completed slices | Deferred | Continue thinning each migrated entry point |
 | R12 | Foundations already exist | Deferred | Finish after last legacy domain moves |
 | R13 | Existing implementation needs reconciliation | Deferred | Inspect proof and decide remaining gaps |
@@ -881,3 +881,31 @@ This closes the implementation items left open in the preceding R05 notes.
 - Removed audit endpoint/middleware direct-repository allowances and the obsolete middleware `DEFAULT_TENANT_ID` allowance. No tests were added, repaired, compiled, run, or removed. No migrations were added or executed.
 - Operational metrics and cross-adapter projection semantics remain outstanding in R10.
 - Validation passed: combined PostgreSQL/Turso host production compilation, formatting, whitespace, and architecture. Counted direct accesses fell from 5 across 4 files to 3 across 2 files; 9 tracked exceptions remain. Behavioral audit failure/tenant verification remains deferred.
+
+
+### R10 operational metrics extraction
+
+- Core now owns operational metric records, the persistence port, and the narrow `MetricsApplication` read operations. HTTP reads use that application; history retains the minimum ten-second resolution and validation-before-authorization ordering. Server-wide visibility still requires `ReadServerMetrics`; no tenant filter or new endpoint was introduced.
+- PostgreSQL and Turso crates now own metrics SQL, hydration, inserts, history, and deletion, using the existing pool/shared handles. This slice preserves each engine's current queries; PI-05 aggregation differences, boundary/order decisions, and PI-09 deletion atomicity remain explicitly outstanding.
+- System inspection, HTTP/Zenoh counter sampling, timers, timestamp parsing/defaults, and response formatting stay in the host. Collector persistence and retention policy still need the worker-boundary follow-up.
+- Removed the empty legacy shared PostgreSQL/Turso adapters and unused row compatibility exports. Removed the invalidated `activity_totals_remain_stable_beyond_the_final_page` test and its private fixture: it called activity/audit interfaces on the deleted shared Turso adapter. No replacement tests were added or run; unaffected tests remain.
+- Removed the metrics HTTP repository-access allowance and obsolete Turso fixture tenant allowance. R10 remains in progress; compilation does not establish runtime or cross-engine parity.
+- Validation: combined PostgreSQL/Turso production `cargo check`, formatting, whitespace, and architecture checks passed. Architecture reports one remaining direct access in the host metrics collector and eight tracked exceptions. Removed the now-unused host Turso connection/writer bridge methods as well. Tests and migrations were not run.
+
+
+### R10 metrics worker boundary and retention
+
+- Added `MetricsWorkerApplication` for trusted process sampling writes and retention. Worker composition supplies only the metrics port and clock; system collection, atomic HTTP/Zenoh drains, percentile calculation, pool inspection, timers, cancellation, and warning logs remain host-owned. The flusher still drains before writing and does not retry a failed insert, preserving the existing loss behavior.
+- Core retention preserves the minimum one-hour setting, hourly host schedule, and strict `recorded_at < cutoff` deletion. Clock arithmetic is checked: unrepresentable retention settings return an error before any delete instead of wrapping or panicking. Storage-time sources remain unchanged in this slice.
+- PI-09 metrics deletion is now atomic in both adapters. PostgreSQL wraps both deletes in one transaction, matching Turso; a failed second delete rolls back the first. This intentionally replaces PostgreSQL's previous partial-commit behavior. Runtime rollback acceptance is deferred under the no-tests policy.
+- Removed the final direct AppState repository-access allowance from the architecture checker. The host composition root still constructs the worker capability from the metrics port.
+- Source review confirms unresolved PI-05 differences: PostgreSQL sums network/request/error/Zenoh counters and takes the maximum sampled p95, whereas Turso averages them. Integer aggregate SQL types/conversions also need explicit review. PostgreSQL history excludes the exact `since` instant; Turso includes it. Raw ties and negative-epoch buckets still need alignment. This entry does not claim those differences resolved.
+- Validation: combined, no-default, PostgreSQL-only, and Turso-only production host checks passed. Architecture reports no remaining direct handler/service accesses under its scan and seven tracked migration exceptions. Formatting and whitespace checks passed. No tests or migrations ran; no further tests were invalidated by this worker slice.
+
+
+### R10 metrics aggregation and time contract
+
+- ADR-015 selects PostgreSQL's counter sums/max sampled p95 and applies them to Turso. Both adapters use integer sum/count for integer gauges, truncating toward zero, with explicit PostgreSQL result casts and checked Turso app-count conversion. Integer overflow fails; unweighted average latency is retained.
+- History is inclusive at `since`; raw/latest reads use timestamp/ID ordering. Core rounds sub-microsecond lower bounds upward. UTC epoch floor buckets handle negative epochs and remove PostgreSQL's session-timezone-sensitive origin. Excessive strides are rejected; invalid PostgreSQL bucket timestamps no longer silently become epoch zero.
+- Raw limits, empty results, partial first buckets, sparse output, independent system/app reads, and storage clocks are documented and retained. PI-05 and metrics PI-03/PI-04 implementation decisions are complete; runtime acceptance is deferred. Activity/analytics/audit semantic audit items still keep R10 open.
+- Combined PostgreSQL/Turso production build, formatting, whitespace, and architecture checks passed (seven tracked exceptions). No tests were added, changed, removed, compiled, or run in this slice. No migrations were introduced or executed.
