@@ -47,6 +47,20 @@ fn decode(record: &Row) -> Result<CommandRecord, PersistenceError> {
 
 #[async_trait]
 impl CommandRepository for TursoCommandRepository {
+    async fn find(
+        &self,
+        tenant: &TenantId,
+        id: &str,
+    ) -> Result<Option<CommandRecord>, PersistenceError> {
+        let connection = self.connect()?;
+        let mut rows = connection.query("SELECT id, device_id, command, params, status, response_payload, created_at, updated_at FROM command_history WHERE tenant_id = ?1 AND id = ?2", params![tenant.as_str(), id]).await.map_err(row::legacy_error)?;
+        rows.next()
+            .await
+            .map_err(row::legacy_error)?
+            .map(|row| decode(&row))
+            .transpose()
+    }
+
     async fn create(
         &self,
         tenant: &TenantId,

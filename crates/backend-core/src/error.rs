@@ -46,6 +46,8 @@ pub enum PersistenceError {
 #[derive(Debug, thiserror::Error)]
 pub enum ApplicationError {
     #[error("{0}")]
+    DeviceCommunication(String),
+    #[error("{0}")]
     NotFound(String),
     #[error("{0}")]
     Conflict(String),

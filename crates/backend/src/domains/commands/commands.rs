@@ -11,7 +11,6 @@ use utoipa::{IntoParams, ToSchema};
 use crate::auth::context::RequestContext;
 use crate::domains::commands::types::{CommandQuery, CommandRecord};
 use crate::error::AppError;
-use crate::services::command_service;
 use crate::state::AppState;
 
 // ---------------------------------------------------------------------------
@@ -101,22 +100,12 @@ pub(crate) async fn send_command(
     Path(id): Path<String>,
     Json(body): Json<SendCommandRequest>,
 ) -> Result<(StatusCode, Json<CommandResponse>), AppError> {
-    if body.command.trim().is_empty() {
-        return Err(AppError::BadRequest("Command must not be empty".into()));
-    }
-
     let params = body.params.unwrap_or_else(|| serde_json::json!({}));
-    let record = command_service::send_command_as_user_with_repository(
-        &ctx,
-        state.persistence.commands.as_ref(),
-        state.persistence.devices.as_ref(),
-        &state.zenoh_session,
-        &id,
-        &body.command,
-        params,
-        &state.zenoh_metrics,
-    )
-    .await?;
+    let record = state
+        .application()
+        .commands()
+        .send(&ctx.tenant_context(), &id, &body.command, params)
+        .await?;
     Ok((StatusCode::CREATED, Json(to_command_response(record))))
 }
 
@@ -141,16 +130,18 @@ pub(crate) async fn list_commands(
     Path(id): Path<String>,
     Query(params): Query<CommandsQuery>,
 ) -> Result<Json<Vec<CommandResponse>>, AppError> {
-    let records = command_service::list_commands_with_repository(
-        &ctx,
-        state.persistence.commands.as_ref(),
-        &id,
-        CommandQuery {
-            limit: params.limit.unwrap_or(50).min(500),
-            status: params.status,
-        },
-    )
-    .await?;
+    let records = state
+        .application()
+        .commands()
+        .list(
+            &ctx.tenant_context(),
+            &id,
+            CommandQuery {
+                limit: params.limit.unwrap_or(50).min(500),
+                status: params.status,
+            },
+        )
+        .await?;
     let response = records.into_iter().map(to_command_response).collect();
 
     Ok(Json(response))

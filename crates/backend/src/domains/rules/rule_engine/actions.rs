@@ -5,14 +5,12 @@ use std::time::Duration;
 use opentelemetry::global;
 #[cfg(feature = "otlp")]
 use opentelemetry::propagation::Injector;
-use prost::Message;
 use tokio::time::sleep;
 use tracing::{Instrument, info, warn};
 #[cfg(feature = "otlp")]
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use super::types::PendingAction;
-use crate::domains::commands::types::NewCommandRecord;
 use crate::persistence::RepositorySet;
 use crate::state::ZenohMetrics;
 use crate::tenancy::TenantId;
@@ -245,54 +243,19 @@ pub async fn execute_action(
             command,
             params,
         } => {
-            let params_map: std::collections::HashMap<String, String> = match params {
-                serde_json::Value::Object(map) => map
-                    .into_iter()
-                    .map(|(key, value)| {
-                        let rendered = match value {
-                            serde_json::Value::String(s) => s,
-                            other => other.to_string(),
-                        };
-                        (key, rendered)
-                    })
-                    .collect(),
-                _ => std::collections::HashMap::new(),
-            };
-
-            let correlation_id = delivery_id.to_string();
-            let params_json =
-                serde_json::to_string(&params_map).unwrap_or_else(|_| "{}".to_string());
             let tenant = TenantId::new(tenant_id).map_err(|error| error.to_string())?;
-            persistence
-                .commands
-                .create(
-                    &tenant,
-                    &device_id,
-                    NewCommandRecord {
-                        id: correlation_id.clone(),
-                        command: command.clone(),
-                        params: params_json,
-                    },
-                )
-                .await
-                .map_err(|error| error.to_string())?
-                .ok_or_else(|| format!("Device '{device_id}' not found"))?;
-
-            let proto_command = extrittio_common::extrittio::DeviceCommand {
-                command,
-                params: params_map,
-                correlation_id: correlation_id.clone(),
-            };
-            let payload = proto_command.encode_to_vec();
-            let topic = extrittio_common::topics::commands(&device_id);
-            zenoh_session
-                .put(&topic, payload)
-                .await
-                .map_err(|e| e.to_string())?;
-            zenoh_metrics
-                .messages_out
-                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            info!("Rule-triggered command sent: {}", correlation_id);
+            let bus = Arc::new(crate::outbound::device_bus::ZenohDeviceBus::new(
+                zenoh_session.clone(),
+                zenoh_metrics.clone(),
+            ));
+            extrittio_backend_core::CommandApplication::new(
+                persistence.commands.clone(),
+                persistence.devices.clone(),
+                bus,
+            )
+            .deliver_action(&tenant, &device_id, delivery_id, &command, params)
+            .await
+            .map_err(|error| error.to_string())?;
             Ok(())
         }
         PendingAction::UpdateCooldown {

@@ -207,3 +207,18 @@ pub trait ShadowRepository: Send + Sync {
         updated_at: DateTime<Utc>,
     ) -> Result<bool, PersistenceError>;
 }
+
+/// A terminal deployment may clear only its own desired OTA command. A late
+/// report must never erase a newer deployment's command.
+pub fn clear_ota_for_deployment(
+    shadow: ShadowRecord,
+    deployment_id: i64,
+    updated_at: DateTime<Utc>,
+) -> Result<Option<ShadowRecord>, ShadowMutationError> {
+    if shadow.desired["ota"]["deployment_id"].as_i64() != Some(deployment_id) {
+        return Ok(None);
+    }
+    let mut patch = Map::new();
+    patch.insert("ota".into(), Value::Null);
+    apply_desired_patch(shadow, &patch, updated_at).map(Some)
+}

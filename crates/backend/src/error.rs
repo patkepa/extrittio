@@ -262,7 +262,10 @@ impl IntoResponse for AppError {
                     "Internal server error".to_string(),
                 )
             }
-            AppError::Zenoh(msg) => {
+            AppError::Zenoh(msg)
+            | AppError::Application(
+                extrittio_backend_core::ApplicationError::DeviceCommunication(msg),
+            ) => {
                 tracing::error!("Zenoh error: {msg}");
                 (
                     StatusCode::BAD_GATEWAY,

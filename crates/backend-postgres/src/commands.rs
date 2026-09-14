@@ -38,6 +38,27 @@ fn to_record(record: PgCommandRecord) -> CommandRecord {
 
 #[async_trait]
 impl CommandRepository for PostgresCommandRepository {
+    async fn find(
+        &self,
+        tenant: &TenantId,
+        id: &str,
+    ) -> Result<Option<CommandRecord>, PersistenceError> {
+        let tenant = tenant.as_str().to_owned();
+        let id = id.to_owned();
+        self.executor
+            .run(move |connection| {
+                command_history::table
+                    .filter(command_history::tenant_id.eq(tenant))
+                    .filter(command_history::id.eq(id))
+                    .select(PgCommandRecord::as_select())
+                    .first::<PgCommandRecord>(connection)
+                    .optional()
+                    .map(|row| row.map(to_record))
+                    .map_err(map_diesel_error)
+            })
+            .await
+    }
+
     async fn create(
         &self,
         tenant: &TenantId,

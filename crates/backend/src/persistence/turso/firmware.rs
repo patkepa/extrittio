@@ -333,18 +333,17 @@ impl FirmwareRepository for TursoAdapter {
         let terminal = extrittio_common::ota::status::is_terminal(&u.status);
         tx.execute("UPDATE ota_deployments SET status=?3,error_message=?4,completed_at=?5 WHERE tenant_id=?1 AND id=?2",params![i.tenant_id_str(),id,u.status,u.error_message,u.completed_at.map(|v|v.and_utc().timestamp_micros())]).await.map_err(row::error)?;
         if terminal {
-            let mut rows = tx.query("SELECT desired,reported FROM device_shadows WHERE tenant_id=?1 AND device_id=?2", params![i.tenant_id_str(),i.device_id()]).await.map_err(row::error)?;
-            if let Some(r) = rows.next().await.map_err(row::error)? {
-                let mut desired: serde_json::Value =
-                    serde_json::from_str(&r.get::<String>(0).map_err(row::error)?)
-                        .map_err(|e| PersistenceError::CorruptData(e.to_string()))?;
-                let reported: serde_json::Value =
-                    serde_json::from_str(&r.get::<String>(1).map_err(row::error)?)
-                        .map_err(|e| PersistenceError::CorruptData(e.to_string()))?;
-                if desired["ota"]["deployment_id"].as_i64() == Some(id) {
-                    desired.as_object_mut().unwrap().remove("ota");
-                    let delta = extrittio_common::shadow::compute_delta(&desired, &reported);
-                    tx.execute("UPDATE device_shadows SET desired=?3,delta=?4,version=version+1,updated_at=?5 WHERE tenant_id=?1 AND device_id=?2", params![i.tenant_id_str(),i.device_id(),desired.to_string(),delta.to_string(),chrono::Utc::now().timestamp_micros()]).await.map_err(row::error)?;
+            if let Some(shadow) =
+                crate::database::turso_read_shadow(&tx, i.tenant_id(), i.device_id()).await?
+            {
+                if let Some(updated) = extrittio_backend_core::shadows::clear_ota_for_deployment(
+                    shadow,
+                    id,
+                    chrono::Utc::now(),
+                )
+                .map_err(|error| PersistenceError::CorruptData(error.to_string()))?
+                {
+                    crate::database::turso_store_shadow(&tx, i.tenant_id(), &updated).await?;
                 }
             }
         }
@@ -467,16 +466,9 @@ impl FirmwareRepository for TursoAdapter {
             tx.rollback().await.map_err(row::error)?;
             return Ok(TriggerOtaOutcome::InvalidArtifact);
         }
-        let mut rs=tx.query("SELECT desired,reported,version FROM device_shadows WHERE tenant_id=?1 AND device_id=?2",params![t.as_str(),device]).await.map_err(row::error)?;
-        let s = rs
-            .next()
-            .await
-            .map_err(row::error)?
+        let shadow = crate::database::turso_read_shadow(&tx, t, device)
+            .await?
             .ok_or(PersistenceError::NotFound)?;
-        let desired_raw: String = s.get(0).map_err(row::error)?;
-        let reported_raw: String = s.get(1).map_err(row::error)?;
-        let shadow_version: i64 = s.get(2).map_err(row::error)?;
-        drop(rs);
         use extrittio_common::ota::fields;
         let now = chrono::Utc::now().timestamp_micros();
         tx.execute("UPDATE ota_deployments SET status='failed',error_message='Superseded by a new deployment',completed_at=?3 WHERE tenant_id=?1 AND device_id=?2 AND status NOT IN ('success','failed')",params![t.as_str(),device,now]).await.map_err(row::error)?;
@@ -493,35 +485,17 @@ impl FirmwareRepository for TursoAdapter {
         }
         let mut patch = serde_json::Map::new();
         patch.insert(fields::SHADOW_KEY.into(), ota);
-        let desired: serde_json::Value = serde_json::from_str(&desired_raw)
-            .map_err(|e| PersistenceError::CorruptData(e.to_string()))?;
-        let reported: serde_json::Value = serde_json::from_str(&reported_raw)
-            .map_err(|e| PersistenceError::CorruptData(e.to_string()))?;
-        let desired = extrittio_common::shadow::merge_json(
-            if desired.is_object() {
-                desired
-            } else {
-                serde_json::json!({})
-            },
+        let updated = extrittio_backend_core::shadows::apply_desired_patch(
+            shadow,
             &patch,
-        );
-        let delta = extrittio_common::shadow::compute_delta(
-            &desired,
-            &if reported.is_object() {
-                reported
-            } else {
-                serde_json::json!({})
-            },
-        );
-        let next = shadow_version
-            .checked_add(1)
-            .ok_or_else(|| PersistenceError::Internal("shadow version overflow".into()))?;
-        let now = chrono::Utc::now().timestamp_micros();
-        tx.execute("UPDATE device_shadows SET desired=?3,delta=?4,version=?5,updated_at=?6 WHERE tenant_id=?1 AND device_id=?2",params![t.as_str(),device,serde_json::to_string(&desired).map_err(|e|PersistenceError::Internal(e.to_string()))?,serde_json::to_string(&delta).map_err(|e|PersistenceError::Internal(e.to_string()))?,next,now]).await.map_err(row::error)?;
+            chrono::Utc::now(),
+        )
+        .map_err(|error| PersistenceError::CorruptData(error.to_string()))?;
+        crate::database::turso_store_shadow(&tx, t, &updated).await?;
         tx.commit().await.map_err(row::error)?;
         Ok(TriggerOtaOutcome::Ready {
-            delta,
-            version: row::i32(next, "shadow.version")?,
+            delta: updated.delta,
+            version: updated.version,
         })
     }
     async fn next_legacy_blob(&self) -> Result<Option<LegacyFirmwareBlob>, PersistenceError> {

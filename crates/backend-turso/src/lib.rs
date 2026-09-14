@@ -90,3 +90,10 @@ pub use configuration::TursoConfigurationRepository;
 
 mod commands;
 pub use commands::TursoCommandRepository;
+
+#[cfg(feature = "migration-bridge")]
+#[doc(hidden)]
+pub use shadows::{get_from as read_shadow_in_transaction, store as store_shadow_in_transaction};
+
+mod logs;
+pub use logs::TursoLogRepository;

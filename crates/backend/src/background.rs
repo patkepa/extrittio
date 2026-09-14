@@ -5,7 +5,7 @@ use chrono::Timelike;
 use tracing::{info, warn};
 
 use crate::persistence::RepositorySet;
-use crate::services::{device_ingress_service, log_service};
+use crate::services::device_ingress_service;
 
 /// Compute a backoff sleep duration based on consecutive failures.
 /// Doubles each failure from `base` up to `max`.
@@ -188,10 +188,12 @@ pub async fn run_log_retention(persistence: RepositorySet, retention_days: u64) 
         };
         tokio::time::sleep(sleep_dur).await;
 
-        #[allow(clippy::cast_possible_wrap)]
-        let cutoff = chrono::Utc::now().naive_utc() - chrono::Duration::days(retention_days as i64);
-        let result =
-            log_service::delete_older_than_with_repository(persistence.logs.as_ref(), cutoff).await;
+        let result = extrittio_backend_core::LogIngressApplication::new(
+            persistence.logs.clone(),
+            std::sync::Arc::new(crate::auth::SystemClock),
+        )
+        .prune(retention_days)
+        .await;
 
         match result {
             Ok(count) => {

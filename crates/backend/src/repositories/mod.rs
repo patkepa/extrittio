@@ -6,11 +6,7 @@ pub mod device_repo;
 pub mod device_type_repo;
 #[path = "../domains/firmware/firmware_repo.rs"]
 pub mod firmware_repo;
-#[path = "../domains/logs/log_repo.rs"]
-pub mod log_repo;
 #[path = "../domains/operations/server_metrics_repo.rs"]
 pub mod server_metrics_repo;
-#[path = "../domains/shadows/shadow_repo.rs"]
-pub mod shadow_repo;
 #[path = "../domains/telemetry/telemetry_repo.rs"]
 pub mod telemetry_repo;

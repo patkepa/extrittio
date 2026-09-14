@@ -2,51 +2,45 @@ use async_trait::async_trait;
 use diesel::OptionalExtension;
 use diesel::prelude::*;
 
-use crate::db::models::{DeviceLog, NewDeviceLog};
-use crate::db::schema::{device_logs, devices};
-use crate::domains::logs::port::LogRepository;
-use crate::domains::logs::types::{LogQuery, LogRecord};
-use crate::persistence::PersistenceError;
-use crate::tenancy::DeviceIdentity;
-use crate::tenancy::TenantId;
+use crate::models::DeviceLog;
+use crate::schema::{device_logs, devices};
+use extrittio_backend_core::PersistenceError;
+use extrittio_backend_core::TenantId;
+use extrittio_backend_core::logs::LogRepository;
+use extrittio_backend_core::logs::{LogQuery, LogRecord};
 
-use super::PostgresAdapter;
-use super::executor::map_diesel_error;
+use crate::{PostgresExecutor, PostgresPool};
+#[derive(Clone)]
+pub struct PostgresLogRepository {
+    executor: PostgresExecutor,
+}
+impl PostgresLogRepository {
+    pub fn from_pool(pool: PostgresPool) -> Self {
+        Self {
+            executor: PostgresExecutor::new(pool),
+        }
+    }
+}
+use crate::error::map_diesel_error;
 
 #[async_trait]
-impl LogRepository for PostgresAdapter {
+impl LogRepository for PostgresLogRepository {
     async fn record(
         &self,
-        identity: &DeviceIdentity,
+        tenant: &TenantId,
+        device_id: &str,
         level: String,
         message: String,
+        observed_at: chrono::NaiveDateTime,
     ) -> Result<bool, PersistenceError> {
-        let tenant_id = identity.tenant_id_str().to_string();
-        let device_id = identity.device_id().to_string();
+        let tenant_id = tenant.as_str().to_string();
+        let device_id = device_id.to_string();
         self.executor
             .run(move |connection| {
-                let exists = devices::table
-                    .filter(devices::tenant_id.eq(&tenant_id))
-                    .filter(devices::id.eq(&device_id))
-                    .select(devices::id)
-                    .first::<String>(connection)
-                    .optional()
-                    .map_err(map_diesel_error)?
-                    .is_some();
-                if !exists {
-                    return Ok(false);
-                }
-
-                diesel::insert_into(device_logs::table)
-                    .values(NewDeviceLog {
-                        tenant_id,
-                        device_id,
-                        level,
-                        message,
-                    })
-                    .execute(connection)
-                    .map_err(map_diesel_error)?;
-                Ok(true)
+                use diesel::sql_types::{Text, Timestamp};
+                diesel::sql_query("INSERT INTO device_logs (tenant_id, device_id, level, message, created_at) SELECT tenant_id, id, $3, $4, $5 FROM devices WHERE tenant_id = $1 AND id = $2 FOR KEY SHARE")
+                    .bind::<Text,_>(&tenant_id).bind::<Text,_>(&device_id).bind::<Text,_>(&level).bind::<Text,_>(&message).bind::<Timestamp,_>(observed_at)
+                    .execute(connection).map(|count| count == 1).map_err(map_diesel_error)
             })
             .await
     }
@@ -80,10 +74,10 @@ impl LogRepository for PostgresAdapter {
                     statement = statement.filter(device_logs::level.eq(level));
                 }
                 if let Some(since) = query.since {
-                    statement = statement.filter(device_logs::created_at.gt(since));
+                    statement = statement.filter(device_logs::created_at.ge(since));
                 }
                 let records = statement
-                    .order(device_logs::created_at.desc())
+                    .order((device_logs::created_at.desc(), device_logs::id.desc()))
                     .limit(query.limit)
                     .select(DeviceLog::as_select())
                     .load::<DeviceLog>(connection)

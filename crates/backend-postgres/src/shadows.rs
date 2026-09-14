@@ -68,34 +68,12 @@ fn mutate_shadow(
 ) -> Result<Option<ShadowRecord>, PersistenceError> {
     connection
         .transaction::<_, ShadowTransactionError, _>(|connection| {
-            let row = device_shadows::table
-                .filter(device_shadows::tenant_id.eq(tenant_id))
-                .filter(device_shadows::device_id.eq(device_id))
-                .select(DeviceShadow::as_select())
-                .for_update()
-                .first::<DeviceShadow>(connection)
-                .optional()
-                .map_err(map_diesel_error)?;
-            let Some(row) = row else {
+            let Some(current) = lock_in_transaction(connection, tenant_id, device_id)? else {
                 return Ok(None);
             };
-            let updated = mutate(to_record(row)).map_err(map_mutation_error)?;
-            let row = diesel::update(
-                device_shadows::table
-                    .filter(device_shadows::tenant_id.eq(tenant_id))
-                    .filter(device_shadows::device_id.eq(device_id)),
-            )
-            .set(UpdateShadow {
-                desired: Some(updated.desired),
-                reported: Some(updated.reported),
-                delta: Some(updated.delta),
-                version: Some(updated.version),
-                updated_at: Some(updated.updated_at.naive_utc()),
-            })
-            .returning(DeviceShadow::as_returning())
-            .get_result::<DeviceShadow>(connection)
-            .map_err(map_diesel_error)?;
-            Ok(Some(to_record(row)))
+            let updated = mutate(current).map_err(map_mutation_error)?;
+            let stored = store_in_transaction(connection, tenant_id, &updated)?;
+            Ok(Some(stored))
         })
         .map_err(|error| match error {
             ShadowTransactionError::Diesel(error) => map_diesel_error(error),
@@ -179,4 +157,44 @@ impl ShadowRepository for PostgresShadowRepository {
             })
             .await
     }
+}
+
+/// Caller owns the transaction; this lock remains held until its completion.
+pub fn lock_in_transaction(
+    connection: &mut PgConnection,
+    tenant_id: &str,
+    device_id: &str,
+) -> Result<Option<ShadowRecord>, PersistenceError> {
+    device_shadows::table
+        .filter(device_shadows::tenant_id.eq(tenant_id))
+        .filter(device_shadows::device_id.eq(device_id))
+        .select(DeviceShadow::as_select())
+        .for_update()
+        .first::<DeviceShadow>(connection)
+        .optional()
+        .map(|row| row.map(to_record))
+        .map_err(map_diesel_error)
+}
+/// Caller must hold the shadow row lock for the whole read/decide/store interval.
+pub fn store_in_transaction(
+    connection: &mut PgConnection,
+    tenant_id: &str,
+    updated: &ShadowRecord,
+) -> Result<ShadowRecord, PersistenceError> {
+    diesel::update(
+        device_shadows::table
+            .filter(device_shadows::tenant_id.eq(tenant_id))
+            .filter(device_shadows::device_id.eq(&updated.device_id)),
+    )
+    .set(UpdateShadow {
+        desired: Some(updated.desired.clone()),
+        reported: Some(updated.reported.clone()),
+        delta: Some(updated.delta.clone()),
+        version: Some(updated.version),
+        updated_at: Some(updated.updated_at.naive_utc()),
+    })
+    .returning(DeviceShadow::as_returning())
+    .get_result::<DeviceShadow>(connection)
+    .map(to_record)
+    .map_err(map_diesel_error)
 }

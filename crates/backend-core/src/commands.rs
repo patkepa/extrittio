@@ -56,6 +56,11 @@ impl CommandResponseStatus {
 
 #[async_trait]
 pub trait CommandRepository: Send + Sync {
+    async fn find(
+        &self,
+        tenant: &TenantId,
+        id: &str,
+    ) -> Result<Option<CommandRecord>, PersistenceError>;
     async fn create(
         &self,
         tenant: &TenantId,
@@ -87,4 +92,22 @@ pub trait CommandRepository: Send + Sync {
         cutoff: NaiveDateTime,
         now: NaiveDateTime,
     ) -> Result<usize, PersistenceError>;
+}
+
+/// Domain command handed to the host; None selects its default device route.
+#[derive(Debug, Clone)]
+pub struct CommandDelivery {
+    pub device_id: String,
+    pub command: String,
+    pub params: serde_json::Value,
+    pub correlation_id: String,
+    pub address: Option<String>,
+}
+#[derive(Debug, thiserror::Error)]
+#[error("{0}")]
+pub struct DeviceBusError(pub String);
+#[async_trait]
+pub trait DeviceBus: Send + Sync {
+    fn supports(&self, protocol: &extrittio_device_contract::TransportProtocol) -> bool;
+    async fn publish_command(&self, delivery: CommandDelivery) -> Result<(), DeviceBusError>;
 }

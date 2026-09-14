@@ -6,7 +6,6 @@ mod database;
 mod devices;
 mod events;
 mod firmware;
-mod logs;
 mod metrics;
 mod row;
 mod telemetry;
@@ -45,6 +44,7 @@ fn build_repositories(database: Arc<TursoDatabase>) -> RepositorySet {
     let roles = crate::database::turso_roles(&database);
     let users = crate::database::turso_users(&database);
     let api_keys = crate::database::turso_api_keys(&database);
+    let logs = crate::database::turso_logs(&database);
     let commands = crate::database::turso_commands(&database);
     let configuration = crate::database::turso_configuration(&database);
     let shadows = crate::database::turso_shadows(&database);
@@ -78,7 +78,7 @@ fn build_repositories(database: Arc<TursoDatabase>) -> RepositorySet {
         events: adapter.clone(),
         fleets,
         firmware: adapter.clone(),
-        logs: adapter.clone(),
+        logs,
         metrics: adapter.clone(),
         outbox,
         roles,

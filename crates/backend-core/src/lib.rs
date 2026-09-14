@@ -85,3 +85,8 @@ pub use application::ConfigurationApplication;
 
 pub mod commands;
 pub use application::CommandWorkerApplication;
+
+pub use application::CommandApplication;
+
+pub mod logs;
+pub use application::{LogApplication, LogIngressApplication};

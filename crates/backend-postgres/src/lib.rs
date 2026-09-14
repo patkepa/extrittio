@@ -80,3 +80,10 @@ pub use configuration::PostgresConfigurationRepository;
 
 mod commands;
 pub use commands::PostgresCommandRepository;
+
+#[cfg(feature = "migration-bridge")]
+#[doc(hidden)]
+pub use shadows::{lock_in_transaction, store_in_transaction};
+
+mod logs;
+pub use logs::PostgresLogRepository;

@@ -42,7 +42,6 @@ pub mod commands {
     pub mod types;
 
     pub use crate::api::commands as api;
-    pub use crate::services::command_service as service;
 }
 
 pub mod configuration {
@@ -125,9 +124,6 @@ pub mod logs {
     pub mod types;
 
     pub use crate::api::logs as api;
-    #[cfg(feature = "postgres")]
-    pub use crate::repositories::log_repo as repository;
-    pub use crate::services::log_service as service;
 }
 
 pub mod operations {

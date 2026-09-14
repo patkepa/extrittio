@@ -12,7 +12,6 @@ mod events;
 pub mod executor;
 mod firmware;
 pub(crate) mod lifecycle;
-mod logs;
 mod metrics;
 mod outbox;
 mod telemetry;
@@ -49,6 +48,7 @@ fn build_repositories(pool: PostgresPool) -> RepositorySet {
     let roles = crate::database::postgres_roles(&pool);
     let users = crate::database::postgres_users(&pool);
     let api_keys = crate::database::postgres_api_keys(&pool);
+    let logs = crate::database::postgres_logs(&pool);
     let commands = crate::database::postgres_commands(&pool);
     let configuration = crate::database::postgres_configuration(&pool);
     let shadows = crate::database::postgres_shadows(&pool);
@@ -82,7 +82,7 @@ fn build_repositories(pool: PostgresPool) -> RepositorySet {
         events: adapter.clone(),
         fleets,
         firmware: adapter.clone(),
-        logs: adapter.clone(),
+        logs,
         metrics: adapter.clone(),
         outbox,
         roles,

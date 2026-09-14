@@ -45,7 +45,8 @@ fn decode(record: &Row) -> Result<ShadowRecord, PersistenceError> {
     })
 }
 
-async fn get_from(
+/// Read using the caller's transaction connection; no connection or commit is created.
+pub async fn get_from(
     connection: &Connection,
     tenant: &TenantId,
     device_id: &str,
@@ -65,7 +66,8 @@ async fn get_from(
         .transpose()
 }
 
-async fn store(
+/// Caller holds the writer transaction across read, core mutation, and this write.
+pub async fn store(
     connection: &Connection,
     tenant: &TenantId,
     shadow: &ShadowRecord,
