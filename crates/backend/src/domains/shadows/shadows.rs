@@ -10,10 +10,10 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 use crate::auth::context::RequestContext;
-use crate::domains::shadows::types::ShadowRecord;
 use crate::error::AppError;
 use crate::services::shadow_service;
 use crate::state::AppState;
+use extrittio_backend_core::shadows::ShadowRecord;
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -130,11 +130,11 @@ pub(crate) async fn update_desired(
         .update_desired(&ctx.tenant_context(), &id, body.state)
         .await?;
     shadow_service::publish_delta_if_nonempty(
-        &state.zenoh_session,
+        state.messaging().zenoh_session(),
         &id,
         &updated.delta,
         updated.version,
-        &state.zenoh_metrics,
+        state.messaging().zenoh_metrics(),
     )
     .await;
     let response = to_shadow_response(updated);

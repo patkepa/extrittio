@@ -9,10 +9,10 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
 use crate::auth::context::RequestContext;
-use crate::domains::activity::types::{ActivityEventRecord, ActivityQuery};
 use crate::error::AppError;
 use crate::state::AppState;
 use crate::util;
+use extrittio_backend_core::activity::{ActivityEventRecord, ActivityQuery};
 
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct ActivityQueryParams {

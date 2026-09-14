@@ -1,17 +1,10 @@
 use std::collections::BTreeSet;
-#[cfg(feature = "postgres")]
-use std::time::Duration;
 
 use anyhow::Context;
-#[cfg(feature = "postgres")]
-use diesel::PgConnection;
-#[cfg(feature = "postgres")]
-use diesel::r2d2::{ConnectionManager, Pool};
 use tracing::{debug, info, warn};
 
-#[cfg(feature = "postgres")]
-use crate::persistence::postgres::executor::PostgresPool;
-use crate::persistence::{DatabaseRuntime, RepositorySet};
+use crate::persistence::DatabaseRuntime;
+use extrittio_backend_core::RepositorySetInput;
 use extrittio_backend_core::bootstrap::SeedOwnerOutcome;
 use extrittio_common::topics::{self, patterns};
 
@@ -19,18 +12,6 @@ use extrittio_common::topics::{self, patterns};
 /// `rustls-no-provider`. Calling this more than once is harmless.
 pub fn install_crypto_provider() {
     let _ = rustls::crypto::ring::default_provider().install_default();
-}
-
-/// Create the PostgreSQL connection pool.
-#[cfg(feature = "postgres")]
-pub fn create_db_pool(database_url: &str, pool_size: u32) -> anyhow::Result<PostgresPool> {
-    let manager = ConnectionManager::<PgConnection>::new(database_url);
-    Pool::builder()
-        .max_size(pool_size)
-        .connection_timeout(Duration::from_secs(5))
-        .idle_timeout(Some(Duration::from_secs(300)))
-        .build(manager)
-        .context("Failed to create database connection pool")
 }
 
 fn env_bool(key: &str) -> bool {
@@ -52,7 +33,7 @@ pub async fn run_database_migrations(database: &DatabaseRuntime) -> anyhow::Resu
 }
 
 pub fn bootstrap_application(
-    persistence: &RepositorySet,
+    persistence: &RepositorySetInput,
 ) -> extrittio_backend_core::BootstrapApplication {
     extrittio_backend_core::BootstrapApplication::new(
         persistence.bootstrap.clone(),
@@ -65,14 +46,16 @@ fn bootstrap_tenant() -> crate::tenancy::TenantId {
         .expect("default tenant id is valid")
 }
 
-pub async fn seed_persistence_device_types(persistence: &RepositorySet) -> anyhow::Result<()> {
+pub async fn seed_persistence_device_types(persistence: &RepositorySetInput) -> anyhow::Result<()> {
     bootstrap_application(persistence)
         .seed_device_types(&bootstrap_tenant())
         .await?;
     Ok(())
 }
 
-pub async fn init_persistence_jwt_secret(persistence: &RepositorySet) -> anyhow::Result<String> {
+pub async fn init_persistence_jwt_secret(
+    persistence: &RepositorySetInput,
+) -> anyhow::Result<String> {
     if let Some(secret) = std::env::var("JWT_SECRET")
         .ok()
         .map(|value| value.trim().to_string())
@@ -96,7 +79,7 @@ pub async fn init_persistence_jwt_secret(persistence: &RepositorySet) -> anyhow:
         .map_err(Into::into)
 }
 
-pub async fn seed_persistence_admin_user(persistence: &RepositorySet) -> anyhow::Result<()> {
+pub async fn seed_persistence_admin_user(persistence: &RepositorySetInput) -> anyhow::Result<()> {
     if bootstrap_application(persistence).users_exist().await? {
         return Ok(());
     }
@@ -123,7 +106,7 @@ pub async fn seed_persistence_admin_user(persistence: &RepositorySet) -> anyhow:
 }
 
 pub async fn seed_persistence_owner(
-    persistence: &RepositorySet,
+    persistence: &RepositorySetInput,
     username: String,
     password: String,
 ) -> anyhow::Result<SeedOwnerOutcome> {
@@ -134,7 +117,7 @@ pub async fn seed_persistence_owner(
 
 /// The explicit local single-binary setup retains its admin/admin compatibility.
 pub async fn seed_persistence_local_owner(
-    persistence: &RepositorySet,
+    persistence: &RepositorySetInput,
     username: String,
     password: String,
 ) -> anyhow::Result<SeedOwnerOutcome> {
@@ -144,7 +127,7 @@ pub async fn seed_persistence_local_owner(
 }
 
 pub(crate) fn certificate_system(
-    persistence: &RepositorySet,
+    persistence: &RepositorySetInput,
 ) -> extrittio_backend_core::CertificateSystemApplication {
     let crypto = std::sync::Arc::new(crate::outbound::certificates::CertificateCrypto::new(
         crate::config::certificate_encryption_secret(),
@@ -156,7 +139,9 @@ pub(crate) fn certificate_system(
     )
 }
 
-pub async fn init_persistence_ca_certificate(persistence: &RepositorySet) -> anyhow::Result<()> {
+pub async fn init_persistence_ca_certificate(
+    persistence: &RepositorySetInput,
+) -> anyhow::Result<()> {
     if certificate_system(persistence).initialize_ca().await? {
         info!("Generated new root CA certificate");
     }
@@ -164,7 +149,7 @@ pub async fn init_persistence_ca_certificate(persistence: &RepositorySet) -> any
 }
 
 pub async fn write_persistence_tls_certs(
-    persistence: &RepositorySet,
+    persistence: &RepositorySetInput,
     certs_dir: &str,
 ) -> anyhow::Result<()> {
     let system = certificate_system(persistence);

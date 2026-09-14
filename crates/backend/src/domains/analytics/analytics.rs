@@ -9,7 +9,7 @@ use crate::error::AppError;
 use crate::state::AppState;
 use crate::util;
 
-use crate::domains::analytics::types::{
+use extrittio_backend_core::analytics::{
     AnalyticsDataSource, AnalyticsMetric, AnalyticsMetricSelector, AnalyticsRequest,
     AnalyticsResult, AnalyticsScope, AnalyticsSeriesKind, AnalyticsSeriesMode, AnalyticsWeighting,
 };
@@ -387,8 +387,8 @@ fn metric_response(metric: AnalyticsMetric) -> AnalyticsMetricResponse {
     }
 }
 
-impl From<crate::domains::analytics::types::AnalyticsStats> for AnalyticsStatsResponse {
-    fn from(stats: crate::domains::analytics::types::AnalyticsStats) -> Self {
+impl From<extrittio_backend_core::analytics::AnalyticsStats> for AnalyticsStatsResponse {
+    fn from(stats: extrittio_backend_core::analytics::AnalyticsStats) -> Self {
         Self {
             minimum: stats.minimum,
             maximum: stats.maximum,

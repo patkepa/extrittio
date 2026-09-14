@@ -229,7 +229,7 @@ pub(crate) async fn get_thread_scan(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ThreadNetworkDiagnosticsResponse>, AppError> {
     require_owner(&ctx)?;
-    let Some(runtime) = state.thread_runtime.as_ref() else {
+    let Some(runtime) = state.runtime().thread_runtime().as_ref() else {
         return Ok(Json(ThreadNetworkDiagnosticsResponse::empty(Some(
             "The local OpenThread border router is unavailable".to_string(),
         ))));
@@ -284,7 +284,7 @@ pub(crate) async fn get_thread_status(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ThreadStatusResponse>, AppError> {
     require_owner(&ctx)?;
-    let Some(runtime) = state.thread_runtime.clone() else {
+    let Some(runtime) = state.runtime().thread_runtime().clone() else {
         return Ok(Json(ThreadStatusResponse::unavailable()));
     };
 
@@ -306,7 +306,7 @@ pub(crate) async fn refresh_thread_runtime(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ThreadStatusResponse>, AppError> {
     require_owner(&ctx)?;
-    let Some(runtime) = state.thread_runtime.clone() else {
+    let Some(runtime) = state.runtime().thread_runtime().clone() else {
         return Ok(Json(ThreadStatusResponse::unavailable()));
     };
     let refreshed_runtime = runtime.clone();
@@ -335,7 +335,7 @@ pub(crate) async fn configure_thread_runtime(
     Json(request): Json<ConfigureThreadRuntimeRequest>,
 ) -> Result<Json<ThreadStatusResponse>, AppError> {
     require_owner(&ctx)?;
-    let runtime = state.thread_runtime.clone().ok_or_else(|| {
+    let runtime = state.runtime().thread_runtime().clone().ok_or_else(|| {
         AppError::Conflict("OpenThread is unavailable on this deployment".to_string())
     })?;
     let rcp_device = request.rcp_device.map(PathBuf::from);
@@ -760,7 +760,7 @@ fn require_owner(ctx: &RequestContext) -> Result<(), AppError> {
 }
 
 fn thread_runtime(state: &AppState) -> Result<Arc<ThreadRuntime>, AppError> {
-    let Some(runtime) = state.thread_runtime.clone() else {
+    let Some(runtime) = state.runtime().thread_runtime().clone() else {
         return Err(AppError::Conflict(
             "The local OpenThread border router is unavailable. Connect an RCP and refresh Thread settings."
                 .to_string(),

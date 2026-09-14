@@ -419,8 +419,8 @@ pub(crate) async fn create_device(
                 configuration: body.configuration,
                 automatic_zenoh_endpoint: automatic_zenoh_endpoint(
                     &headers,
-                    state.zenoh_tls_enabled,
-                    state.zenoh_port,
+                    state.messaging().zenoh_tls_enabled(),
+                    state.messaging().zenoh_port(),
                 ),
             },
         )
@@ -588,12 +588,12 @@ pub(crate) async fn trigger_ota(
     firmware_service::trigger_ota(
         &ctx,
         state.application().firmware(),
-        &state.zenoh_session,
+        state.messaging().zenoh_session(),
         &id,
         body.firmware_update_id,
-        &state.public_url,
-        &state.jwt_secret,
-        &state.zenoh_metrics,
+        state.http().public_url(),
+        state.http().jwt_secret(),
+        state.messaging().zenoh_metrics(),
     )
     .await?;
     Ok(StatusCode::OK)
@@ -613,22 +613,17 @@ pub(crate) async fn bulk_change_fleet(
         AppError::BadRequest("fleet_id is required (use null to unassign)".into())
     })?;
 
-    let ids = state
+    let affected = state
         .application()
-        .devices()
-        .resolve_target_ids(
+        .assign_selected_devices(
             &ctx.tenant_context(),
             bulk_target_selection(
                 body.device_ids.as_deref(),
                 body.select_all,
                 body.filters.as_ref(),
             ),
+            target_fleet_id,
         )
-        .await?;
-    let affected = state
-        .application()
-        .devices()
-        .bulk_assign_fleet(&ctx.tenant_context(), ids, target_fleet_id)
         .await?;
     let response = BulkAffectedResponse {
         affected: affected as i64,
@@ -647,10 +642,9 @@ pub(crate) async fn bulk_delete_devices(
     Extension(ctx): Extension<RequestContext>,
     Json(body): Json<BulkDeviceRequest>,
 ) -> Result<Json<BulkAffectedResponse>, AppError> {
-    let ids = state
+    let deleted = state
         .application()
-        .devices()
-        .resolve_target_ids(
+        .delete_selected_devices(
             &ctx.tenant_context(),
             bulk_target_selection(
                 body.device_ids.as_deref(),
@@ -658,11 +652,6 @@ pub(crate) async fn bulk_delete_devices(
                 body.filters.as_ref(),
             ),
         )
-        .await?;
-    let deleted = state
-        .application()
-        .devices()
-        .bulk_delete(&ctx.tenant_context(), ids)
         .await?;
     let response = BulkAffectedResponse {
         affected: deleted as i64,
@@ -681,15 +670,9 @@ pub(crate) async fn bulk_restart_devices(
     Extension(ctx): Extension<RequestContext>,
     Json(body): Json<BulkDeviceRequest>,
 ) -> Result<Json<BulkResultResponse>, AppError> {
-    state
+    let outcomes = state
         .application()
-        .commands()
-        .authorize_send(&ctx.tenant_context())?;
-
-    let ids = state
-        .application()
-        .devices()
-        .resolve_target_ids(
+        .restart_selected_devices(
             &ctx.tenant_context(),
             bulk_target_selection(
                 body.device_ids.as_deref(),
@@ -698,21 +681,9 @@ pub(crate) async fn bulk_restart_devices(
             ),
         )
         .await?;
-
     let mut result = BulkResultResponse::default();
-
-    for device_id in &ids {
-        let outcome = state
-            .application()
-            .commands()
-            .send(
-                &ctx.tenant_context(),
-                device_id,
-                "restart",
-                serde_json::json!({}),
-            )
-            .await;
-        result.record(device_id, outcome.map_err(AppError::from));
+    for (device_id, outcome) in outcomes {
+        result.record(&device_id, outcome.map_err(AppError::from));
     }
 
     Ok(Json(result))
@@ -728,37 +699,31 @@ pub(crate) async fn bulk_trigger_ota(
     Extension(ctx): Extension<RequestContext>,
     Json(body): Json<BulkOtaRequest>,
 ) -> Result<Json<BulkResultResponse>, AppError> {
-    let firmware_update_id = body.firmware_update_id;
-    device_service::authorize_deploy_firmware(&ctx)?;
-
-    let ids = state
+    let publisher = crate::outbound::shadow_delta::ZenohDesiredDeltaPublisher {
+        session: state.messaging().zenoh_session(),
+        metrics: state.messaging().zenoh_metrics(),
+    };
+    let outcomes = state
         .application()
-        .devices()
-        .resolve_target_ids(
+        .deploy_selected_devices(
             &ctx.tenant_context(),
             bulk_target_selection(
                 body.device_ids.as_deref(),
                 body.select_all,
                 body.filters.as_ref(),
             ),
+            body.firmware_update_id,
+            state.http().public_url(),
+            &crate::auth::SystemClock,
+            &crate::domains::firmware::download::JwtFirmwareDownloadSigner(
+                state.http().jwt_secret(),
+            ),
+            &publisher,
         )
         .await?;
-
     let mut result = BulkResultResponse::default();
-
-    for device_id in &ids {
-        let outcome = firmware_service::trigger_ota(
-            &ctx,
-            state.application().firmware(),
-            &state.zenoh_session,
-            device_id,
-            firmware_update_id,
-            &state.public_url,
-            &state.jwt_secret,
-            &state.zenoh_metrics,
-        )
-        .await;
-        result.record(device_id, outcome.map_err(AppError::from));
+    for (device_id, outcome) in outcomes {
+        result.record(&device_id, outcome.map_err(AppError::from));
     }
 
     Ok(Json(result))

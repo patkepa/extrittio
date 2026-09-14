@@ -74,7 +74,7 @@ pub(crate) async fn login(
     State(state): State<Arc<AppState>>,
     Json(body): Json<LoginRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    let jwt_secret = state.jwt_secret.clone();
+    let jwt_secret = state.http().jwt_secret().clone();
     let tenant_id = body
         .tenant_id
         .as_deref()
@@ -118,7 +118,7 @@ pub(crate) async fn login(
     let mut headers = HeaderMap::new();
     headers.insert(
         header::SET_COOKIE,
-        HeaderValue::from_str(&session_cookie(&token, state.cookie_secure))
+        HeaderValue::from_str(&session_cookie(&token, state.http().cookie_secure()))
             .map_err(|e| AppError::Internal(format!("Failed to build session cookie: {e}")))?,
     );
 
@@ -136,7 +136,7 @@ pub(crate) async fn logout(
     let mut headers = HeaderMap::new();
     headers.insert(
         header::SET_COOKIE,
-        HeaderValue::from_str(&expired_session_cookie(state.cookie_secure))
+        HeaderValue::from_str(&expired_session_cookie(state.http().cookie_secure()))
             .map_err(|e| AppError::Internal(format!("Failed to build session cookie: {e}")))?,
     );
 

@@ -10,8 +10,8 @@ use object_store::{ObjectStore, ObjectStoreExt, PutPayload};
 use uuid::Uuid;
 
 use crate::config::FirmwareStorageConfig;
-use crate::persistence::RepositorySet;
 use crate::state::ReadinessRegistry;
+use extrittio_backend_core::application::FirmwareMigrationApplication;
 
 #[derive(Clone)]
 pub struct FirmwareObjectStore {
@@ -147,10 +147,10 @@ impl FirmwareObjectStore {
 /// Incrementally move pre-object-storage BYTEA rows out of PostgreSQL. The key
 /// is deterministic so concurrent application replicas can safely converge on
 /// the same object and conditional database update.
-pub async fn run_legacy_blob_migrator(persistence: RepositorySet, store: FirmwareObjectStore) {
-    let application = extrittio_backend_core::application::FirmwareMigrationApplication::new(
-        persistence.firmware.clone(),
-    );
+pub async fn run_legacy_blob_migrator(
+    application: FirmwareMigrationApplication,
+    store: FirmwareObjectStore,
+) {
     loop {
         match application.migrate_next(&store).await {
             Ok(None) => tokio::time::sleep(std::time::Duration::from_secs(300)).await,

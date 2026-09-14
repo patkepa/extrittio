@@ -1,8 +1,7 @@
 //! Host composition boundary for concrete database adapters.
 //!
-//! Legacy persistence modules consume only backend-neutral ports; construction
-//! of extracted adapters is centralized here until the remaining repositories
-//! move into their dedicated crates.
+//! Constructs core repository ports from shared adapter-owned engine handles.
+//! SQL, rows, and migration execution remain inside the adapter crates.
 
 #[cfg(feature = "postgres")]
 pub(crate) fn postgres_api_keys(
@@ -24,12 +23,10 @@ pub(crate) fn turso_api_keys(
 use std::sync::Arc;
 
 #[cfg(any(feature = "postgres", feature = "turso"))]
-use extrittio_backend_core::{
-    RoleRepository, RuleZoneSnapshotRepository, UserRepository, ZoneRepository,
-};
+use extrittio_backend_core::{RoleRepository, UserRepository, ZoneRepository};
 
 #[cfg(feature = "postgres")]
-pub use extrittio_backend_postgres::{PostgresExecutor, PostgresPool, models, schema};
+pub use extrittio_backend_postgres::PostgresPool;
 
 #[cfg(feature = "turso")]
 mod turso;
@@ -37,51 +34,39 @@ mod turso;
 pub use turso::{LogicalArchiveInfo, TursoBackupInfo, TursoDatabase, TursoDatabaseInfo};
 
 #[cfg(feature = "postgres")]
-pub(crate) fn postgres_zones(
-    pool: &crate::persistence::postgres::executor::PostgresPool,
-) -> (Arc<dyn ZoneRepository>, Arc<dyn RuleZoneSnapshotRepository>) {
+pub(crate) fn postgres_zones(pool: &PostgresPool) -> Arc<dyn ZoneRepository> {
     let adapter =
         Arc::new(extrittio_backend_postgres::PostgresZoneRepository::from_pool(pool.clone()));
-    (adapter.clone(), adapter)
+    adapter
 }
 
 #[cfg(feature = "postgres")]
-pub(crate) fn postgres_roles(
-    pool: &crate::persistence::postgres::executor::PostgresPool,
-) -> Arc<dyn RoleRepository> {
+pub(crate) fn postgres_roles(pool: &PostgresPool) -> Arc<dyn RoleRepository> {
     Arc::new(extrittio_backend_postgres::PostgresRoleRepository::from_pool(pool.clone()))
 }
 
 #[cfg(feature = "postgres")]
-pub(crate) fn postgres_users(
-    pool: &crate::persistence::postgres::executor::PostgresPool,
-) -> Arc<dyn UserRepository> {
+pub(crate) fn postgres_users(pool: &PostgresPool) -> Arc<dyn UserRepository> {
     Arc::new(extrittio_backend_postgres::PostgresUserRepository::from_pool(pool.clone()))
 }
 
 #[cfg(feature = "turso")]
-pub(crate) fn turso_zones(
-    database: &crate::persistence::turso::TursoDatabase,
-) -> (Arc<dyn ZoneRepository>, Arc<dyn RuleZoneSnapshotRepository>) {
+pub(crate) fn turso_zones(database: &TursoDatabase) -> Arc<dyn ZoneRepository> {
     let adapter = Arc::new(extrittio_backend_turso::TursoZoneRepository::from_handles(
         database.shared_handles(),
     ));
-    (adapter.clone(), adapter)
+    adapter
 }
 
 #[cfg(feature = "turso")]
-pub(crate) fn turso_roles(
-    database: &crate::persistence::turso::TursoDatabase,
-) -> Arc<dyn RoleRepository> {
+pub(crate) fn turso_roles(database: &TursoDatabase) -> Arc<dyn RoleRepository> {
     Arc::new(extrittio_backend_turso::TursoRoleRepository::from_handles(
         database.shared_handles(),
     ))
 }
 
 #[cfg(feature = "turso")]
-pub(crate) fn turso_users(
-    database: &crate::persistence::turso::TursoDatabase,
-) -> Arc<dyn UserRepository> {
+pub(crate) fn turso_users(database: &TursoDatabase) -> Arc<dyn UserRepository> {
     Arc::new(extrittio_backend_turso::TursoUserRepository::from_handles(
         database.shared_handles(),
     ))
@@ -444,3 +429,18 @@ pub(crate) fn turso_metrics(
         extrittio_backend_turso::TursoMetricsRepository::from_handles(database.shared_handles()),
     )
 }
+
+#[cfg(feature = "postgres")]
+pub(crate) fn open_postgres_pool(
+    database_url: &str,
+    pool_size: u32,
+) -> anyhow::Result<PostgresPool> {
+    use anyhow::Context;
+    extrittio_backend_postgres::executor::open_pool(database_url, pool_size)
+        .context("Failed to create database connection pool")
+}
+
+#[cfg(feature = "postgres")]
+mod postgres;
+#[cfg(feature = "postgres")]
+pub(crate) use postgres::PostgresLifecycle;

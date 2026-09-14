@@ -1,11 +1,3 @@
-use crate::auth::context::RequestContext;
-use crate::auth::policy::{self, Permission};
-use crate::error::AppError;
-
-pub fn authorize_deploy_firmware(ctx: &RequestContext) -> Result<(), AppError> {
-    policy::require(ctx, Permission::DeployFirmware)
-}
-
 pub fn format_uptime(seconds: Option<i32>) -> Option<String> {
     let seconds = i64::from(seconds?);
     if seconds <= 0 {

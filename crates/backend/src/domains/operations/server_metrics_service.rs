@@ -5,9 +5,9 @@ use sysinfo::{Disks, Networks, System};
 use tokio::time::{Duration, interval};
 use tracing::{info, warn};
 
-use crate::domains::operations::metrics_types::{NewAppMetricRecord, NewSystemMetricRecord};
 use crate::state::AppState;
 use extrittio_backend_core::application::MetricsWorkerApplication;
+use extrittio_backend_core::metrics::{NewAppMetricRecord, NewSystemMetricRecord};
 
 pub async fn run_system_metrics_collector(
     application: MetricsWorkerApplication,
@@ -111,10 +111,18 @@ pub async fn run_app_metrics_flusher(
     loop {
         tick.tick().await;
         let (request_count, error_count, latency_sum_micros, samples) =
-            state.metrics_accumulator.drain();
-        let zenoh_in = state.zenoh_metrics.messages_in.swap(0, Ordering::Relaxed);
-        let zenoh_out = state.zenoh_metrics.messages_out.swap(0, Ordering::Relaxed);
-        let (db_pool_active, db_pool_idle) = state.database.connection_counts();
+            state.observability().metrics_accumulator().drain();
+        let zenoh_in = state
+            .messaging()
+            .zenoh_metrics()
+            .messages_in
+            .swap(0, Ordering::Relaxed);
+        let zenoh_out = state
+            .messaging()
+            .zenoh_metrics()
+            .messages_out
+            .swap(0, Ordering::Relaxed);
+        let (db_pool_active, db_pool_idle) = state.runtime().database().connection_counts();
         let avg_latency_ms = if request_count > 0 {
             (latency_sum_micros as f64 / request_count as f64 / 1000.0) as f32
         } else {

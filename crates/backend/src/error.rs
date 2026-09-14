@@ -64,14 +64,6 @@ pub enum AppError {
     #[error("Authentication error: {0}")]
     Auth(String),
 
-    #[cfg(feature = "postgres")]
-    #[error("Database error: {0}")]
-    Database(#[from] diesel::result::Error),
-
-    #[cfg(feature = "postgres")]
-    #[error("Connection pool error: {0}")]
-    Pool(#[from] diesel::r2d2::PoolError),
-
     #[error("Persistence error: {0}")]
     Persistence(#[from] crate::persistence::PersistenceError),
 
@@ -119,30 +111,6 @@ impl IntoResponse for AppError {
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "authentication_error",
                     "Authentication error".to_string(),
-                )
-            }
-            #[cfg(feature = "postgres")]
-            AppError::Database(diesel::result::Error::NotFound) => (
-                StatusCode::NOT_FOUND,
-                "not_found",
-                "Resource not found".to_string(),
-            ),
-            #[cfg(feature = "postgres")]
-            AppError::Database(e) => {
-                tracing::error!("Database error: {e}");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "database_error",
-                    "Internal server error".to_string(),
-                )
-            }
-            #[cfg(feature = "postgres")]
-            AppError::Pool(e) => {
-                tracing::error!("Connection pool error: {e}");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "service_unavailable",
-                    "Service temporarily unavailable".to_string(),
                 )
             }
             AppError::Persistence(crate::persistence::PersistenceError::NotFound) => (

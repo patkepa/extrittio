@@ -2,25 +2,20 @@ use prost::Message;
 use std::sync::Arc;
 use tracing::{info, warn};
 
-use crate::persistence::RepositorySet;
 use crate::services::shadow_service;
 use crate::state::ZenohMetrics;
 use crate::tenancy::DeviceIdentity;
+use extrittio_backend_core::application::DeviceReportApplication;
+use extrittio_backend_core::{DeviceIngressApplication, DeviceShadowApplication};
 
 use extrittio_common::extrittio::{ShadowGet, ShadowReport};
 
 async fn resolve_identity(
-    persistence: &RepositorySet,
+    application: &DeviceIngressApplication,
     message_type: &'static str,
     device_id: &str,
 ) -> Option<DeviceIdentity> {
-    match extrittio_backend_core::DeviceIngressApplication::new(
-        persistence.device_ingress.clone(),
-        std::sync::Arc::new(crate::auth::SystemClock),
-    )
-    .resolve_identity(device_id)
-    .await
-    {
+    match application.resolve_identity(device_id).await {
         Ok(Some(identity)) => Some(identity),
         Ok(None) => {
             warn!("Dropping {message_type} from unregistered device: {device_id}");
@@ -34,9 +29,10 @@ async fn resolve_identity(
 }
 
 /// Decode a `ShadowReport`, atomically merge reported state, and then update
-/// legacy OTA status bookkeeping until that write set moves to its own port.
-pub async fn handle_shadow_report(
-    persistence: &RepositorySet,
+/// process OTA bookkeeping through the core report application.
+pub(crate) async fn handle_shadow_report(
+    identity_application: &DeviceIngressApplication,
+    application: &DeviceReportApplication,
     topic_device_id: &str,
     payload: &[u8],
 ) {
@@ -51,7 +47,8 @@ pub async fn handle_shadow_report(
         return;
     }
 
-    let Some(identity) = resolve_identity(persistence, "shadow report", &report.device_id).await
+    let Some(identity) =
+        resolve_identity(identity_application, "shadow report", &report.device_id).await
     else {
         return;
     };
@@ -70,19 +67,15 @@ pub async fn handle_shadow_report(
         return;
     };
 
-    let shadow = match extrittio_backend_core::DeviceShadowApplication::new(
-        persistence.shadows.clone(),
-        Arc::new(crate::auth::SystemClock),
-    )
-    .update_reported(identity.tenant_id(), identity.device_id(), patch)
-    .await
-    {
+    let outcome = match application.report(&identity, patch).await {
         Ok(shadow) => shadow,
         Err(error) => {
             warn!("Failed to update shadow reported state: {error}");
             return;
         }
     };
+
+    let shadow = outcome.shadow;
 
     if report.version != 0 && report.version != i64::from(shadow.version) {
         warn!(
@@ -95,20 +88,15 @@ pub async fn handle_shadow_report(
         report.device_id, shadow.version
     );
 
-    if let Err(error) = extrittio_backend_core::application::FirmwareReportApplication::new(
-        persistence.firmware.clone(),
-        Arc::new(crate::auth::SystemClock),
-    )
-    .process_report(&identity, &reported)
-    .await
-    {
+    if let Some(error) = outcome.firmware_error {
         warn!("Failed to process OTA from shadow report: {error}");
     }
 }
 
 /// Decode a `ShadowGet` and publish the currently committed delta if non-empty.
-pub async fn handle_shadow_get(
-    persistence: &RepositorySet,
+pub(crate) async fn handle_shadow_get(
+    identity_application: &DeviceIngressApplication,
+    application: &DeviceShadowApplication,
     session: &Arc<zenoh::Session>,
     topic_device_id: &str,
     payload: &[u8],
@@ -125,16 +113,14 @@ pub async fn handle_shadow_get(
         return;
     }
 
-    let Some(identity) = resolve_identity(persistence, "shadow get", &get_message.device_id).await
+    let Some(identity) =
+        resolve_identity(identity_application, "shadow get", &get_message.device_id).await
     else {
         return;
     };
-    let shadow = match extrittio_backend_core::DeviceShadowApplication::new(
-        persistence.shadows.clone(),
-        Arc::new(crate::auth::SystemClock),
-    )
-    .get(identity.tenant_id(), identity.device_id())
-    .await
+    let shadow = match application
+        .get(identity.tenant_id(), identity.device_id())
+        .await
     {
         Ok(shadow) => shadow,
         Err(error) => {

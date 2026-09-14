@@ -11,12 +11,12 @@ use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::auth::context::RequestContext;
-use crate::domains::firmware::types::{FirmwareRecord, GlobalOtaDeploymentRecord};
 use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse};
 use crate::security;
 use crate::services::firmware_service;
 use crate::state::AppState;
+use extrittio_backend_core::firmware::{FirmwareRecord, GlobalOtaDeploymentRecord};
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -450,7 +450,7 @@ pub(crate) async fn upload_firmware_update(
     let response = firmware_service::upload_blueprint_firmware(
         &ctx,
         state.application().firmware(),
-        &state.firmware_store,
+        state.firmware_store(),
         prepared.into_record(
             blueprint_revision_id,
             version,
@@ -487,7 +487,7 @@ pub(crate) async fn download_firmware_blob(
     let download = state
         .application()
         .firmware()
-        .download(&ctx.tenant_context(), id, &state.firmware_store)
+        .download(&ctx.tenant_context(), id, state.firmware_store())
         .await?;
     serve_download(download)
 }
@@ -496,7 +496,7 @@ async fn download_for_device(
     State(state): State<Arc<AppState>>,
     Path(token): Path<String>,
 ) -> Result<Response, AppError> {
-    let grant = crate::domains::firmware::download::verify(&token, &state.jwt_secret)?;
+    let grant = crate::domains::firmware::download::verify(&token, state.http().jwt_secret())?;
     let scope = extrittio_backend_core::firmware::VerifiedFirmwareDownload::from_verified_claims(
         grant.tenant,
         grant.firmware_id,
@@ -504,7 +504,7 @@ async fn download_for_device(
     let download = state
         .application()
         .firmware()
-        .download_granted(&scope, &state.firmware_store)
+        .download_granted(&scope, state.firmware_store())
         .await?;
     serve_download(download)
 }
@@ -549,7 +549,7 @@ pub(crate) async fn delete_firmware_update(
     firmware_service::delete_stored_firmware(
         &ctx,
         state.application().firmware(),
-        &state.firmware_store,
+        state.firmware_store(),
         id,
     )
     .await?;

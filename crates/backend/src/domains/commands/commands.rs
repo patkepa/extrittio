@@ -9,9 +9,9 @@ use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::auth::context::RequestContext;
-use crate::domains::commands::types::{CommandQuery, CommandRecord};
 use crate::error::AppError;
 use crate::state::AppState;
+use extrittio_backend_core::commands::{CommandQuery, CommandRecord};
 
 // ---------------------------------------------------------------------------
 // Request / Response types

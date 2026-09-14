@@ -11,8 +11,6 @@ use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode}
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
-use crate::tenancy::DEFAULT_TENANT_ID;
-
 pub mod context;
 pub mod policy;
 
@@ -113,27 +111,6 @@ impl Clock for SystemClock {
     fn now(&self) -> DateTime<Utc> {
         Utc::now()
     }
-}
-
-pub fn create_token(
-    user_id: i32,
-    username: &str,
-    role: &str,
-    auth_epoch: &str,
-    secret: &str,
-) -> Result<String, jsonwebtoken::errors::Error> {
-    create_token_with_scopes(
-        SessionTokenInput {
-            user_id,
-            username,
-            role,
-            tenant_id: DEFAULT_TENANT_ID,
-            scopes: Vec::new(),
-            permission_version: default_permission_version(),
-            auth_epoch,
-        },
-        secret,
-    )
 }
 
 pub struct SessionTokenInput<'a> {
@@ -266,15 +243,6 @@ mod tests {
             map_validated_user_claims(claims),
             Err(UserClaimsContextError::InvalidTenant(_))
         ));
-    }
-
-    #[test]
-    fn default_login_compatibility_token_contains_an_explicit_tenant() {
-        let token = create_token(1, "owner", "owner", "test-auth-epoch", SECRET).unwrap();
-        let claims = validate_token(&token, SECRET).unwrap();
-
-        assert_eq!(claims.tenant_id.as_deref(), Some("default"));
-        assert_eq!(claims.auth_epoch.as_deref(), Some("test-auth-epoch"));
     }
 
     #[test]

@@ -1,4 +1,4 @@
-use super::{BackendDescriptor, RepositorySet};
+use super::BackendDescriptor;
 
 /// Result of the smallest backend-neutral readiness probe.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,51 +31,34 @@ enum DatabaseLifecycle {
     #[allow(dead_code)]
     Unavailable,
     #[cfg(feature = "postgres")]
-    Postgres(super::postgres::lifecycle::PostgresLifecycle),
+    Postgres(crate::database::PostgresLifecycle),
     #[cfg(feature = "turso")]
-    Turso(std::sync::Arc<super::turso::TursoDatabase>),
+    Turso(std::sync::Arc<crate::database::TursoDatabase>),
 }
 
-/// Host-local database composition result.
-///
-/// Business code receives a cloned `RepositorySet`; boot, readiness and
-/// maintenance retain this façade for operational work and capability data.
+/// Host database lifecycle and diagnostics. Contains no business repository ports.
 #[derive(Clone)]
 pub struct DatabaseRuntime {
-    repositories: RepositorySet,
     descriptor: BackendDescriptor,
     lifecycle: DatabaseLifecycle,
 }
 
 impl DatabaseRuntime {
     #[cfg(feature = "postgres")]
-    pub(crate) fn postgres(
-        repositories: RepositorySet,
-        lifecycle: super::postgres::lifecycle::PostgresLifecycle,
-    ) -> Self {
+    pub(crate) fn postgres(lifecycle: crate::database::PostgresLifecycle) -> Self {
         Self {
-            repositories,
             descriptor: BackendDescriptor::postgres(),
             lifecycle: DatabaseLifecycle::Postgres(lifecycle),
         }
     }
 
     #[cfg(feature = "turso")]
-    pub(crate) fn turso(
-        repositories: RepositorySet,
-        database: std::sync::Arc<super::turso::TursoDatabase>,
-    ) -> Self {
+    pub(crate) fn turso(database: std::sync::Arc<crate::database::TursoDatabase>) -> Self {
         let descriptor = BackendDescriptor::turso(database.path().to_path_buf());
         Self {
-            repositories,
             descriptor,
             lifecycle: DatabaseLifecycle::Turso(database),
         }
-    }
-
-    #[must_use]
-    pub fn repositories(&self) -> &RepositorySet {
-        &self.repositories
     }
 
     #[must_use]

@@ -3,8 +3,8 @@ use serde::Deserialize;
 use serde_json::Value;
 use tracing::{info, warn};
 
-use crate::persistence::RepositorySet;
 use crate::tenancy::DeviceIdentity;
+use extrittio_backend_core::EventIngressApplication;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -18,8 +18,8 @@ struct DeviceEventEnvelope {
 
 /// Validate a universal JSON event against the assigned materialized contract,
 /// extract declared typed metrics, and persist both atomically.
-pub async fn handle_event(
-    persistence: &RepositorySet,
+pub(crate) async fn handle_event(
+    application: &EventIngressApplication,
     identity: &DeviceIdentity,
     route_key: &str,
     bytes: &[u8],
@@ -40,12 +40,6 @@ pub async fn handle_event(
             return 0;
         }
     };
-    let application = extrittio_backend_core::EventIngressApplication::new(
-        persistence.events.clone(),
-        persistence.devices.clone(),
-        persistence.device_ingress.clone(),
-        std::sync::Arc::new(crate::auth::SystemClock),
-    );
     match application
         .record(
             identity.tenant_id(),

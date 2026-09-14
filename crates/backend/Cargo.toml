@@ -1,5 +1,6 @@
 [package]
 name = "extrittio-backend"
+autobins = false
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -10,10 +11,9 @@ publish.workspace = true
 
 [features]
 default = []
-production = ["postgres", "jemalloc", "s3", "otlp", "swagger-ui", "mdns"]
-jemalloc = ["dep:tikv-jemallocator"]
-postgres = ["dep:diesel", "dep:diesel_migrations", "dep:extrittio-backend-postgres"]
-turso = ["dep:turso", "dep:extrittio-backend-turso"]
+production = ["postgres", "s3", "otlp", "swagger-ui", "mdns"]
+postgres = ["dep:extrittio-backend-postgres"]
+turso = ["dep:extrittio-backend-turso"]
 embedded-ui = ["dep:include_dir"]
 openapi = []
 swagger-ui = ["openapi", "dep:utoipa-swagger-ui"]
@@ -26,12 +26,11 @@ otlp = [
 ]
 mdns = ["dep:mdns-sd"]
 all-databases = ["postgres", "turso"]
-phase0-turso = ["turso"]
 
 [dependencies]
 extrittio-backend-core = { version = "0.1.0", path = "../backend-core" }
-extrittio-backend-postgres = { version = "0.1.0", path = "../backend-postgres", optional = true, features = ["migration-bridge"] }
-extrittio-backend-turso = { version = "0.1.0", path = "../backend-turso", optional = true, features = ["migration-bridge"] }
+extrittio-backend-postgres = { version = "0.1.0", path = "../backend-postgres", optional = true }
+extrittio-backend-turso = { version = "0.1.0", path = "../backend-turso", optional = true }
 extrittio-common = { version = "0.1.0", path = "../common" }
 extrittio-device-contract = { version = "0.1.0", path = "../device-contract" }
 extrittio-openthread-runtime = { version = "0.1.0", path = "../openthread-runtime" }
@@ -40,8 +39,6 @@ tokio = { version = "1", features = ["fs", "macros", "net", "rt-multi-thread", "
 tokio-util = { version = "0.7", features = ["rt"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-diesel = { version = "2.2", features = ["postgres", "r2d2", "chrono", "serde_json"], optional = true }
-diesel_migrations = { version = "2.2", optional = true }
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
@@ -75,12 +72,8 @@ async-trait = "0.1"
 dotenvy = "0.15"
 base64 = "0.22"
 ring = "0.17"
-turso = { version = "=0.7.2", default-features = false, optional = true }
 include_dir = { version = "0.7", optional = true }
 mdns-sd = { version = "0.20", optional = true }
-
-[target.'cfg(not(target_env = "msvc"))'.dependencies]
-tikv-jemallocator = { version = "0.6", optional = true }
 
 [dev-dependencies]
 http-body-util = "0.1"

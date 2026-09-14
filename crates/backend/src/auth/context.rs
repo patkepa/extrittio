@@ -36,17 +36,23 @@ impl MappedUserClaims {
 /// tenant-scoped identity.
 #[derive(Debug, thiserror::Error)]
 pub enum UserClaimsContextError {
+    #[error("missing or empty authentication epoch")]
+    MissingAuthEpoch,
     #[error("invalid tenant claim: {0}")]
     InvalidTenant(#[source] TenantIdError),
 }
 
 /// The one compatibility boundary for signed user JWT tenant claims.
 ///
-/// Tokens issued before tenant claims were introduced remain valid and map to
-/// the default tenant. A claim that is present but invalid always fails closed.
+/// Epoch-bearing tokens missing only the tenant claim map to the default tenant.
+/// Persisted epoch validation still occurs in authentication middleware.
+/// Missing epochs and present-but-invalid tenant claims fail closed.
 pub(crate) fn map_validated_user_claims(
     claims: Claims,
 ) -> Result<MappedUserClaims, UserClaimsContextError> {
+    if claims.auth_epoch.as_deref().is_none_or(str::is_empty) {
+        return Err(UserClaimsContextError::MissingAuthEpoch);
+    }
     let tenant_id = match claims.tenant_id.as_deref() {
         Some(value) => {
             TenantId::new(value.to_string()).map_err(UserClaimsContextError::InvalidTenant)?

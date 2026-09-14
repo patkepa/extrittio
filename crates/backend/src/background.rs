@@ -3,7 +3,10 @@ use std::time::Duration;
 
 use tracing::{info, warn};
 
-use crate::persistence::RepositorySet;
+use extrittio_backend_core::{
+    AlertMaintenanceApplication, CommandWorkerApplication, DeviceIngressApplication,
+    LogIngressApplication, TelemetryMaintenanceApplication,
+};
 
 /// Compute a backoff sleep duration based on consecutive failures.
 /// Doubles each failure from `base` up to `max`.
@@ -14,7 +17,7 @@ fn backoff_duration(base: Duration, consecutive_failures: u32, max: Duration) ->
 }
 
 pub async fn run_offline_checker(
-    persistence: RepositorySet,
+    application: DeviceIngressApplication,
     timeout_secs: u64,
     rule_cache: Arc<crate::rule_snapshots::RuleSnapshotStore>,
 ) {
@@ -31,12 +34,9 @@ pub async fn run_offline_checker(
         };
         tokio::time::sleep(sleep_dur).await;
 
-        let result = extrittio_backend_core::DeviceIngressApplication::new(
-            persistence.device_ingress.clone(),
-            std::sync::Arc::new(crate::auth::SystemClock),
-        )
-        .mark_offline_devices(timeout_secs, rule_cache.as_ref())
-        .await;
+        let result = application
+            .mark_offline_devices(timeout_secs, rule_cache.as_ref())
+            .await;
 
         match result {
             Ok(outcome) => {
@@ -66,7 +66,7 @@ pub async fn run_offline_checker(
     }
 }
 
-pub async fn run_command_timeout_checker(persistence: RepositorySet, timeout_secs: u64) {
+pub async fn run_command_timeout_checker(application: CommandWorkerApplication, timeout_secs: u64) {
     let base_interval = Duration::from_secs(30);
     let max_backoff = Duration::from_secs(300); // 5 minutes
     let mut consecutive_failures: u32 = 0;
@@ -83,12 +83,7 @@ pub async fn run_command_timeout_checker(persistence: RepositorySet, timeout_sec
         };
         tokio::time::sleep(sleep_dur).await;
 
-        let result = extrittio_backend_core::CommandWorkerApplication::new(
-            persistence.commands.clone(),
-            std::sync::Arc::new(crate::auth::SystemClock),
-        )
-        .timeout_stale(timeout_secs)
-        .await;
+        let result = application.timeout_stale(timeout_secs).await;
 
         match result {
             Ok(count) => {
@@ -115,11 +110,7 @@ pub async fn run_command_timeout_checker(persistence: RepositorySet, timeout_sec
     }
 }
 
-pub async fn run_alert_retention(persistence: RepositorySet, retention_days: u64) {
-    let maintenance = extrittio_backend_core::AlertMaintenanceApplication::new(
-        persistence.alerts.clone(),
-        persistence.rules.clone(),
-    );
+pub async fn run_alert_retention(application: AlertMaintenanceApplication, retention_days: u64) {
     let base_interval = Duration::from_secs(3600);
     let max_backoff = Duration::from_secs(7200); // 2 hours
     let mut consecutive_failures: u32 = 0;
@@ -133,7 +124,7 @@ pub async fn run_alert_retention(persistence: RepositorySet, retention_days: u64
         };
         tokio::time::sleep(sleep_dur).await;
 
-        let result = maintenance
+        let result = application
             .prune(retention_days, chrono::Utc::now().naive_utc())
             .await
             .map_err(|error| error.to_string());
@@ -169,7 +160,7 @@ pub async fn run_alert_retention(persistence: RepositorySet, retention_days: u64
     }
 }
 
-pub async fn run_log_retention(persistence: RepositorySet, retention_days: u64) {
+pub async fn run_log_retention(application: LogIngressApplication, retention_days: u64) {
     let base_interval = Duration::from_secs(3600);
     let max_backoff = Duration::from_secs(7200);
     let mut consecutive_failures: u32 = 0;
@@ -183,12 +174,7 @@ pub async fn run_log_retention(persistence: RepositorySet, retention_days: u64) 
         };
         tokio::time::sleep(sleep_dur).await;
 
-        let result = extrittio_backend_core::LogIngressApplication::new(
-            persistence.logs.clone(),
-            std::sync::Arc::new(crate::auth::SystemClock),
-        )
-        .prune(retention_days)
-        .await;
+        let result = application.prune(retention_days).await;
 
         match result {
             Ok(count) => {
@@ -215,7 +201,10 @@ pub async fn run_log_retention(persistence: RepositorySet, retention_days: u64) 
     }
 }
 
-pub async fn run_telemetry_rollup_and_retention(persistence: RepositorySet, retention_days: u64) {
+pub async fn run_telemetry_rollup_and_retention(
+    application: TelemetryMaintenanceApplication,
+    retention_days: u64,
+) {
     let base_interval = Duration::from_secs(3600);
     let max_backoff = Duration::from_secs(7200);
     let mut consecutive_failures: u32 = 0;
@@ -232,12 +221,7 @@ pub async fn run_telemetry_rollup_and_retention(persistence: RepositorySet, rete
         };
         tokio::time::sleep(sleep_dur).await;
 
-        let result = extrittio_backend_core::TelemetryMaintenanceApplication::new(
-            persistence.telemetry.clone(),
-            std::sync::Arc::new(crate::auth::SystemClock),
-        )
-        .maintain(retention_days)
-        .await;
+        let result = application.maintain(retention_days).await;
 
         match result {
             Ok(outcome) => {

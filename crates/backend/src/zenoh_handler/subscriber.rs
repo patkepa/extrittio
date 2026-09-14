@@ -2,8 +2,8 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use tracing::{info, warn};
 
-use crate::persistence::RepositorySet;
 use crate::state::ZenohMetrics;
+use crate::zenoh_handler::DeviceMessageApplications;
 
 use super::handlers;
 
@@ -15,15 +15,15 @@ use super::handlers;
 /// handler in the current task. All loop indefinitely, receiving messages and
 /// dispatching them to the appropriate handler function.
 ///
-/// Repository calls use backend-neutral async ports. The PostgreSQL adapter
-/// owns its blocking boundary internally.
+/// Handlers receive core application capabilities; persistence and blocking
+/// boundaries remain behind those applications.
 ///
 /// # Errors
 ///
 /// Returns an error if any Zenoh subscriber declaration fails.
-pub async fn run_subscriber(
+pub(crate) async fn run_subscriber(
     session: Arc<zenoh::Session>,
-    persistence: RepositorySet,
+    applications: DeviceMessageApplications,
     zenoh_metrics: Arc<ZenohMetrics>,
     rule_cache: Arc<crate::rule_snapshots::RuleSnapshotStore>,
     max_payload_size_bytes: usize,
@@ -54,7 +54,7 @@ pub async fn run_subscriber(
     );
     let mut subscriber_tasks = tokio::task::JoinSet::new();
 
-    let contract_persistence = persistence.clone();
+    let contract_applications = applications.clone();
     let contract_metrics = zenoh_metrics.clone();
     let contract_cache = rule_cache.clone();
     subscriber_tasks.spawn(async move {
@@ -67,7 +67,7 @@ pub async fn run_subscriber(
                         continue;
                     };
                     let Some(identity) = handlers::resolve_ingress_identity(
-                        &contract_persistence,
+                        &contract_applications.identity,
                         "contract event",
                         &topic_device_id,
                         true,
@@ -77,7 +77,9 @@ pub async fn run_subscriber(
                         continue;
                     };
                     let handled = handlers::contract_ingress::handle_contract_ingress(
-                        &contract_persistence,
+                        &contract_applications.contracts,
+                        &contract_applications.commands,
+                        &contract_applications.events,
                         &identity,
                         &topic,
                         &payload,
@@ -98,7 +100,7 @@ pub async fn run_subscriber(
     });
 
     // Spawn heartbeat handler in a background task
-    let heartbeat_persistence = persistence.clone();
+    let heartbeat_applications = applications.clone();
     let heartbeat_metrics = zenoh_metrics.clone();
     let heartbeat_cache = rule_cache.clone();
     subscriber_tasks.spawn(async move {
@@ -114,14 +116,14 @@ pub async fn run_subscriber(
                         continue;
                     };
                     let identity = handlers::resolve_ingress_identity(
-                        &heartbeat_persistence,
+                        &heartbeat_applications.identity,
                         "heartbeat",
                         &topic_device_id,
                         true,
                     )
                     .await;
                     handlers::heartbeat::handle_heartbeat(
-                        &heartbeat_persistence,
+                        &heartbeat_applications.identity,
                         identity,
                         &topic_device_id,
                         &payload,
@@ -141,7 +143,7 @@ pub async fn run_subscriber(
     });
 
     // Spawn shadow report handler
-    let shadow_report_persistence = persistence.clone();
+    let shadow_report_applications = applications.clone();
     let shadow_report_metrics = zenoh_metrics.clone();
     subscriber_tasks.spawn(async move {
         loop {
@@ -156,7 +158,8 @@ pub async fn run_subscriber(
                         continue;
                     };
                     handlers::shadow::handle_shadow_report(
-                        &shadow_report_persistence,
+                        &shadow_report_applications.identity,
+                        &shadow_report_applications.reports,
                         &topic_device_id,
                         &payload,
                     )
@@ -176,7 +179,7 @@ pub async fn run_subscriber(
     });
 
     // Spawn shadow get handler (async — DB part uses spawn_blocking internally)
-    let shadow_get_persistence = persistence.clone();
+    let shadow_get_applications = applications.clone();
     let shadow_get_session = session.clone();
     let shadow_get_metrics = zenoh_metrics.clone();
     subscriber_tasks.spawn(async move {
@@ -192,7 +195,8 @@ pub async fn run_subscriber(
                         continue;
                     };
                     handlers::shadow::handle_shadow_get(
-                        &shadow_get_persistence,
+                        &shadow_get_applications.identity,
+                        &shadow_get_applications.shadows,
                         &shadow_get_session,
                         &topic_device_id,
                         &payload,
@@ -212,7 +216,7 @@ pub async fn run_subscriber(
     });
 
     // Spawn log handler
-    let log_persistence = persistence.clone();
+    let log_applications = applications.clone();
     let log_metrics = zenoh_metrics.clone();
     subscriber_tasks.spawn(async move {
         loop {
@@ -227,7 +231,7 @@ pub async fn run_subscriber(
                         continue;
                     };
                     let Some(identity) = handlers::resolve_ingress_identity(
-                        &log_persistence,
+                        &log_applications.identity,
                         "device log",
                         &topic_device_id,
                         true,
@@ -237,7 +241,7 @@ pub async fn run_subscriber(
                         continue;
                     };
                     handlers::log::handle_device_log(
-                        &log_persistence,
+                        &log_applications.logs,
                         &identity,
                         &topic_device_id,
                         &payload,
@@ -254,7 +258,7 @@ pub async fn run_subscriber(
     });
 
     // Spawn command response handler
-    let cmd_response_persistence = persistence.clone();
+    let cmd_response_applications = applications.clone();
     let cmd_response_metrics = zenoh_metrics.clone();
     subscriber_tasks.spawn(async move {
         loop {
@@ -269,7 +273,7 @@ pub async fn run_subscriber(
                         continue;
                     };
                     let Some(identity) = handlers::resolve_ingress_identity(
-                        &cmd_response_persistence,
+                        &cmd_response_applications.identity,
                         "command response",
                         &topic_device_id,
                         true,
@@ -279,7 +283,7 @@ pub async fn run_subscriber(
                         continue;
                     };
                     handlers::command_response::handle_command_response(
-                        &cmd_response_persistence,
+                        &cmd_response_applications.commands,
                         &identity,
                         &topic_device_id,
                         &payload,
@@ -323,7 +327,7 @@ pub async fn run_subscriber(
                             continue;
                         };
                         let Some(identity) = handlers::resolve_ingress_identity(
-                            &persistence,
+                            &applications.identity,
                             "telemetry",
                             &topic_device_id,
                             true,
@@ -333,7 +337,7 @@ pub async fn run_subscriber(
                             continue;
                         };
                         handlers::telemetry::handle_telemetry(
-                            &persistence,
+                            &applications.telemetry,
                             &identity,
                             &topic_device_id,
                             &payload,
