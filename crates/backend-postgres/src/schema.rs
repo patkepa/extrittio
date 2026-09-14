@@ -682,6 +682,46 @@ diesel::joinable!(user_roles -> users (user_id));
 diesel::joinable!(users -> organizations (tenant_id));
 diesel::joinable!(zones -> organizations (tenant_id));
 
+diesel::table! {
+    rule_alert_deliveries (delivery_id) {
+        delivery_id -> Text,
+        tenant_id -> Text,
+        alert_id -> Text,
+    }
+}
+
+diesel::joinable!(rule_alert_deliveries -> rule_action_outbox (delivery_id));
+
+diesel::table! {
+    rule_zone_entries (tenant_id, rule_id, device_id) {
+        tenant_id -> Text,
+        rule_id -> Text,
+        device_id -> Text,
+        entered_at -> Timestamptz,
+    }
+}
+diesel::joinable!(rule_zone_entries -> organizations (tenant_id));
+
+diesel::table! {
+    rule_cooldown_resets (tenant_id, rule_id, device_id) {
+        tenant_id -> Text,
+        rule_id -> Text,
+        device_id -> Text,
+        reset_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    rule_zone_handoffs (tenant_id,rule_id,device_id) {
+        tenant_id -> Text,
+        rule_id -> Text,
+        device_id -> Text,
+        live_seen -> Bool,
+        legacy_created_at -> Nullable<Timestamptz>,
+        legacy_event_id -> Nullable<Text>,
+    }
+}
+
 diesel::allow_tables_to_appear_in_same_query!(
     alerts,
     api_keys,
@@ -711,9 +751,13 @@ diesel::allow_tables_to_appear_in_same_query!(
     role_permissions,
     roles,
     rule_action_outbox,
+    rule_alert_deliveries,
     rule_actions,
     rule_conditions,
     rule_cooldowns,
+    rule_cooldown_resets,
+    rule_zone_entries,
+    rule_zone_handoffs,
     rules,
     server_config,
     server_metrics,

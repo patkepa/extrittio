@@ -375,3 +375,14 @@ mod tests {
         }
     }
 }
+
+pub(crate) fn list_snapshot_on_connection(
+    connection: &mut diesel::PgConnection,
+) -> Result<Vec<Zone>, PersistenceError> {
+    sql_query(LIST_FOR_RULE_SNAPSHOT_SQL)
+        .load::<ZoneRow>(connection)
+        .map_err(map_diesel_error)?
+        .into_iter()
+        .map(ZoneRow::into_domain)
+        .collect()
+}
