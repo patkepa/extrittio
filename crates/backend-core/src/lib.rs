@@ -113,3 +113,5 @@ pub use application::{
 pub mod activity;
 
 pub mod dashboard;
+
+pub mod analytics;

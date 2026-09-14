@@ -3,12 +3,12 @@ use std::collections::{BTreeMap, HashMap};
 use chrono::NaiveDateTime;
 use extrittio_device_contract::{AggregateKind, DeviceBlueprint, FieldValueType};
 
-use crate::auth::context::RequestContext;
-use crate::auth::policy::{self, Permission};
-use crate::error::AppError;
+use super::require_permission;
+use crate::Permission;
+use crate::{ApplicationError, TenantContext};
 
-use super::repository::AnalyticsRepository;
-use super::types::{
+use crate::analytics::AnalyticsRepository;
+use crate::analytics::{
     AnalyticsBlueprintRevision, AnalyticsBucket, AnalyticsCoveragePoint, AnalyticsDataSource,
     AnalyticsDeviceStats, AnalyticsMetric, AnalyticsMetricSelector, AnalyticsPoint, AnalyticsQuery,
     AnalyticsQueryData, AnalyticsRequest, AnalyticsResult, AnalyticsSeries, AnalyticsSeriesKind,
@@ -23,90 +23,100 @@ const MAX_SCOPE_VALUES: usize = 100;
 const MAX_RANGE_SECONDS: i64 = 366 * 24 * 60 * 60;
 const ALLOWED_BUCKET_SECONDS: [i64; 6] = [60, 300, 900, 3_600, 21_600, 86_400];
 
-pub async fn catalog(
-    ctx: &RequestContext,
-    repository: &dyn AnalyticsRepository,
-) -> Result<Vec<AnalyticsMetric>, AppError> {
-    policy::require(ctx, Permission::ReadTelemetry)?;
-    let revisions = repository.blueprint_catalog(ctx.tenant_id()).await?;
-    metrics_from_blueprints(revisions)
+#[derive(Clone)]
+pub struct AnalyticsApplication {
+    repository: std::sync::Arc<dyn AnalyticsRepository>,
 }
-
-pub async fn query(
-    ctx: &RequestContext,
-    repository: &dyn AnalyticsRepository,
-    request: AnalyticsRequest,
-) -> Result<AnalyticsResult, AppError> {
-    policy::require(ctx, Permission::ReadTelemetry)?;
-    validate_scope(&request)?;
-
-    let metric = resolve_metric(
-        request.metric.clone(),
-        repository.blueprint_catalog(ctx.tenant_id()).await?,
-    )?;
-
-    let range_seconds = (request.end - request.start).num_seconds();
-    if range_seconds <= 0 {
-        return Err(AppError::BadRequest(
-            "Analytics time range must have an end after its start".to_string(),
-        ));
+impl AnalyticsApplication {
+    pub fn new(repository: std::sync::Arc<dyn AnalyticsRepository>) -> Self {
+        Self { repository }
     }
-    if range_seconds > MAX_RANGE_SECONDS {
-        return Err(AppError::UnprocessableEntity(
-            "Analytics time range cannot exceed 366 days".to_string(),
-        ));
+    pub async fn catalog(
+        &self,
+        ctx: &TenantContext,
+    ) -> Result<Vec<AnalyticsMetric>, ApplicationError> {
+        require_permission(ctx, Permission::ReadTelemetry)?;
+        let revisions = self.repository.blueprint_catalog(ctx.tenant_id()).await?;
+        metrics_from_blueprints(revisions)
     }
 
-    let max_points = request
-        .max_points_per_series
-        .unwrap_or(DEFAULT_MAX_POINTS_PER_SERIES)
-        .clamp(10, MAX_POINTS_PER_SERIES);
-    let bucket_seconds = match request.bucket_seconds {
-        Some(bucket) => validate_explicit_bucket(bucket, range_seconds, max_points)?,
-        None => automatic_bucket(range_seconds, max_points),
-    };
-    let source = AnalyticsDataSource::BlueprintMetricSamples;
+    pub async fn query(
+        &self,
+        ctx: &TenantContext,
+        request: AnalyticsRequest,
+    ) -> Result<AnalyticsResult, ApplicationError> {
+        require_permission(ctx, Permission::ReadTelemetry)?;
+        validate_scope(&request)?;
 
-    let data = repository
-        .query(
-            ctx.tenant_id(),
-            AnalyticsQuery {
-                scope: request.scope.clone(),
-                metric: metric.clone(),
-                start: request.start,
-                end: request.end,
-                bucket_seconds,
-                max_devices: MAX_DEVICES,
-                max_rows: MAX_TOTAL_POINTS,
-            },
-        )
-        .await?;
+        let metric = resolve_metric(
+            request.metric.clone(),
+            self.repository.blueprint_catalog(ctx.tenant_id()).await?,
+        )?;
 
-    if data.compatible_devices > MAX_DEVICES {
-        return Err(AppError::UnprocessableEntity(format!(
-            "Analytics metric is compatible with {} devices in this scope; narrow it to {MAX_DEVICES} or fewer",
-            data.compatible_devices
-        )));
+        let range_seconds = (request.end - request.start).num_seconds();
+        if range_seconds <= 0 {
+            return Err(ApplicationError::InvalidInput(
+                "Analytics time range must have an end after its start".to_string(),
+            ));
+        }
+        if range_seconds > MAX_RANGE_SECONDS {
+            return Err(ApplicationError::InvalidOperation(
+                "Analytics time range cannot exceed 366 days".to_string(),
+            ));
+        }
+
+        let max_points = request
+            .max_points_per_series
+            .unwrap_or(DEFAULT_MAX_POINTS_PER_SERIES)
+            .clamp(10, MAX_POINTS_PER_SERIES);
+        let bucket_seconds = match request.bucket_seconds {
+            Some(bucket) => validate_explicit_bucket(bucket, range_seconds, max_points)?,
+            None => automatic_bucket(range_seconds, max_points),
+        };
+        let source = AnalyticsDataSource::BlueprintMetricSamples;
+
+        let data = self
+            .repository
+            .query(
+                ctx.tenant_id(),
+                AnalyticsQuery {
+                    scope: request.scope.clone(),
+                    metric: metric.clone(),
+                    start: request.start,
+                    end: request.end,
+                    bucket_seconds,
+                    max_devices: MAX_DEVICES,
+                    max_rows: MAX_TOTAL_POINTS,
+                },
+            )
+            .await?;
+
+        if data.compatible_devices > MAX_DEVICES {
+            return Err(ApplicationError::InvalidOperation(format!(
+                "Analytics metric is compatible with {} devices in this scope; narrow it to {MAX_DEVICES} or fewer",
+                data.compatible_devices
+            )));
+        }
+        if data.buckets.len() > MAX_TOTAL_POINTS {
+            return Err(ApplicationError::InvalidOperation(
+                "Analytics query exceeds the point budget; use a larger bucket or narrower scope"
+                    .to_string(),
+            ));
+        }
+
+        Ok(build_result(request, metric, bucket_seconds, source, data))
     }
-    if data.buckets.len() > MAX_TOTAL_POINTS {
-        return Err(AppError::UnprocessableEntity(
-            "Analytics query exceeds the point budget; use a larger bucket or narrower scope"
-                .to_string(),
-        ));
-    }
-
-    Ok(build_result(request, metric, bucket_seconds, source, data))
 }
 
 fn resolve_metric(
     selector: AnalyticsMetricSelector,
     revisions: Vec<AnalyticsBlueprintRevision>,
-) -> Result<AnalyticsMetric, AppError> {
+) -> Result<AnalyticsMetric, ApplicationError> {
     metrics_from_blueprints(revisions)?
         .into_iter()
         .find(|metric| metric.selector == selector)
         .ok_or_else(|| {
-            AppError::UnprocessableEntity(
+            ApplicationError::InvalidOperation(
                 "Analytics metric is not a numeric field in the selected published blueprint"
                     .to_string(),
             )
@@ -115,12 +125,12 @@ fn resolve_metric(
 
 fn metrics_from_blueprints(
     revisions: Vec<AnalyticsBlueprintRevision>,
-) -> Result<Vec<AnalyticsMetric>, AppError> {
+) -> Result<Vec<AnalyticsMetric>, ApplicationError> {
     let mut metrics = Vec::new();
     for revision in revisions {
         let blueprint: DeviceBlueprint =
             serde_json::from_value(revision.document).map_err(|error| {
-                AppError::Internal(format!(
+                ApplicationError::Internal(format!(
                     "stored blueprint revision '{}' is invalid: {error}",
                     revision.revision_id
                 ))
@@ -183,12 +193,12 @@ const fn aggregate_name(aggregate: AggregateKind) -> &'static str {
     }
 }
 
-fn validate_scope(request: &AnalyticsRequest) -> Result<(), AppError> {
+fn validate_scope(request: &AnalyticsRequest) -> Result<(), ApplicationError> {
     if request.scope.device_type_ids.len() > MAX_SCOPE_VALUES
         || request.scope.fleet_ids.len() > MAX_SCOPE_VALUES
         || request.scope.device_ids.len() > MAX_SCOPE_VALUES
     {
-        return Err(AppError::BadRequest(format!(
+        return Err(ApplicationError::InvalidInput(format!(
             "Each analytics scope filter supports at most {MAX_SCOPE_VALUES} values"
         )));
     }
@@ -199,16 +209,16 @@ fn validate_explicit_bucket(
     bucket_seconds: i64,
     range_seconds: i64,
     max_points: usize,
-) -> Result<i64, AppError> {
+) -> Result<i64, ApplicationError> {
     if !ALLOWED_BUCKET_SECONDS.contains(&bucket_seconds) {
-        return Err(AppError::BadRequest(format!(
+        return Err(ApplicationError::InvalidInput(format!(
             "Unsupported analytics bucket {bucket_seconds}; use 60, 300, 900, 3600, 21600, or 86400 seconds"
         )));
     }
     let estimated_points = ceil_div(range_seconds, bucket_seconds);
     if estimated_points > i64::try_from(max_points).unwrap_or(i64::MAX) {
         let suggested = automatic_bucket(range_seconds, max_points);
-        return Err(AppError::UnprocessableEntity(format!(
+        return Err(ApplicationError::InvalidOperation(format!(
             "Requested bucket exceeds the per-series point budget; use at least {suggested} seconds"
         )));
     }

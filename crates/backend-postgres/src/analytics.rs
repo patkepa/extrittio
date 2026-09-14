@@ -2,16 +2,27 @@ use async_trait::async_trait;
 use diesel::prelude::*;
 use diesel::sql_types::{Array, BigInt, Float8, Integer, Jsonb, Text, Timestamptz};
 
-use crate::domains::analytics::repository::AnalyticsRepository;
-use crate::domains::analytics::types::{
+use extrittio_backend_core::PersistenceError;
+use extrittio_backend_core::TenantId;
+use extrittio_backend_core::analytics::AnalyticsRepository;
+use extrittio_backend_core::analytics::{
     AnalyticsBlueprintRevision, AnalyticsBucket, AnalyticsDevice, AnalyticsQuery,
     AnalyticsQueryData,
 };
-use crate::persistence::PersistenceError;
-use crate::tenancy::TenantId;
 
-use super::PostgresAdapter;
-use super::executor::map_diesel_error;
+use crate::{PostgresExecutor, PostgresPool};
+#[derive(Clone)]
+pub struct PostgresAnalyticsRepository {
+    executor: PostgresExecutor,
+}
+impl PostgresAnalyticsRepository {
+    pub fn from_pool(pool: PostgresPool) -> Self {
+        Self {
+            executor: PostgresExecutor::new(pool),
+        }
+    }
+}
+use crate::error::map_diesel_error;
 
 #[derive(QueryableByName)]
 struct CountRow {
@@ -64,7 +75,7 @@ struct BucketRow {
 }
 
 #[async_trait]
-impl AnalyticsRepository for PostgresAdapter {
+impl AnalyticsRepository for PostgresAnalyticsRepository {
     async fn blueprint_catalog(
         &self,
         tenant: &TenantId,

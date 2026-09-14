@@ -109,3 +109,6 @@ pub use activity::TursoActivityRepository;
 
 mod dashboard;
 pub use dashboard::TursoDashboardRepository;
+
+mod analytics;
+pub use analytics::TursoAnalyticsRepository;

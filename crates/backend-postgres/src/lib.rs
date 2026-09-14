@@ -101,3 +101,6 @@ pub use activity::PostgresActivityRepository;
 
 mod dashboard;
 pub use dashboard::PostgresDashboardRepository;
+
+mod analytics;
+pub use analytics::PostgresAnalyticsRepository;

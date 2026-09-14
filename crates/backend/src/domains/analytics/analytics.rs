@@ -9,7 +9,6 @@ use crate::error::AppError;
 use crate::state::AppState;
 use crate::util;
 
-use crate::domains::analytics::analytics_service;
 use crate::domains::analytics::types::{
     AnalyticsDataSource, AnalyticsMetric, AnalyticsMetricSelector, AnalyticsRequest,
     AnalyticsResult, AnalyticsScope, AnalyticsSeriesKind, AnalyticsSeriesMode, AnalyticsWeighting,
@@ -218,7 +217,10 @@ pub(crate) async fn get_catalog(
     Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<AnalyticsCatalogResponse>, AppError> {
-    let metrics = analytics_service::catalog(&ctx, state.persistence.analytics.as_ref())
+    let metrics = state
+        .application()
+        .analytics()
+        .catalog(&ctx.tenant_context())
         .await?
         .into_iter()
         .map(metric_catalog_entry)
@@ -253,29 +255,31 @@ pub(crate) async fn run_query(
         .ok_or_else(|| AppError::BadRequest("Analytics from timestamp is required".into()))?;
     let to = util::parse_timestamp(Some(&body.to))?
         .ok_or_else(|| AppError::BadRequest("Analytics to timestamp is required".into()))?;
-    let result = analytics_service::query(
-        &ctx,
-        state.persistence.analytics.as_ref(),
-        AnalyticsRequest {
-            scope: AnalyticsScope {
-                device_type_ids: body.scope.device_type_ids,
-                fleet_ids: body.scope.fleet_ids,
-                device_ids: body.scope.device_ids,
+    let result = state
+        .application()
+        .analytics()
+        .query(
+            &ctx.tenant_context(),
+            AnalyticsRequest {
+                scope: AnalyticsScope {
+                    device_type_ids: body.scope.device_type_ids,
+                    fleet_ids: body.scope.fleet_ids,
+                    device_ids: body.scope.device_ids,
+                },
+                metric: AnalyticsMetricSelector {
+                    blueprint_id: body.metric.blueprint_id,
+                    stream_key: body.metric.stream_key,
+                    field_path: body.metric.field_path,
+                },
+                start: from,
+                end: to,
+                bucket_seconds: body.bucket_seconds,
+                mode: body.mode.into(),
+                weighting: body.weighting.into(),
+                max_points_per_series: body.max_points_per_series,
             },
-            metric: AnalyticsMetricSelector {
-                blueprint_id: body.metric.blueprint_id,
-                stream_key: body.metric.stream_key,
-                field_path: body.metric.field_path,
-            },
-            start: from,
-            end: to,
-            bucket_seconds: body.bucket_seconds,
-            mode: body.mode.into(),
-            weighting: body.weighting.into(),
-            max_points_per_series: body.max_points_per_series,
-        },
-    )
-    .await?;
+        )
+        .await?;
     Ok(Json(result.into()))
 }
 

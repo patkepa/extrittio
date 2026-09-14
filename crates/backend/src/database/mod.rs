@@ -404,3 +404,18 @@ pub(crate) fn turso_dashboard(
         extrittio_backend_turso::TursoDashboardRepository::from_handles(database.shared_handles()),
     )
 }
+
+#[cfg(feature = "postgres")]
+pub(crate) fn postgres_analytics(
+    pool: &PostgresPool,
+) -> Arc<dyn extrittio_backend_core::analytics::AnalyticsRepository> {
+    Arc::new(extrittio_backend_postgres::PostgresAnalyticsRepository::from_pool(pool.clone()))
+}
+#[cfg(feature = "turso")]
+pub(crate) fn turso_analytics(
+    database: &TursoDatabase,
+) -> Arc<dyn extrittio_backend_core::analytics::AnalyticsRepository> {
+    Arc::new(
+        extrittio_backend_turso::TursoAnalyticsRepository::from_handles(database.shared_handles()),
+    )
+}

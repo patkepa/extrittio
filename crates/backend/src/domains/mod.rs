@@ -8,7 +8,6 @@ pub mod alerts {
 }
 
 pub mod analytics {
-    pub mod analytics_service;
     pub mod repository;
     pub mod types;
 
