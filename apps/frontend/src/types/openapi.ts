@@ -594,7 +594,7 @@ export interface paths {
         /**
          * Download the device certificate bundle (cert + private key + CA cert).
          * @description The private key is only returned once — after download the key is cleared
-         *     from the database.  Subsequent calls will return 410 Gone if the key has
+         *     from the database.  Subsequent calls will return 400 Bad Request if the key has
          *     already been retrieved.  Use the `/regenerate` endpoint to issue a new
          *     certificate if the key was lost.
          */
@@ -1944,6 +1944,7 @@ export interface components {
         };
         CurrentMetricsResponse: {
             app?: null | components["schemas"]["AppMetricsSnapshot"];
+            rule_snapshots: components["schemas"]["RuleSnapshotMetrics"];
             system?: null | components["schemas"]["SystemMetricsSnapshot"];
         };
         DashboardStats: {
@@ -2510,6 +2511,21 @@ export interface components {
             trigger_type: string;
             updated_at: string;
         };
+        RuleSnapshotMetrics: {
+            /** Format: double */
+            age_seconds: number;
+            /** Format: int64 */
+            definition_changes: number;
+            ready: boolean;
+            /** Format: int64 */
+            refresh_interval_seconds: number;
+            /** Format: double */
+            reload_duration_seconds: number;
+            /** Format: int64 */
+            reload_failures: number;
+            /** Format: int64 */
+            reload_successes: number;
+        };
         SendCommandRequest: {
             command: string;
             /** @description JSON input validated against the selected command's blueprint schema. */
@@ -2918,6 +2934,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description Count of reactivated alerts; missing, invalid-status, and conflicting alerts are skipped */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -3044,6 +3061,13 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Another alert is active or acknowledged for this rule and device */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

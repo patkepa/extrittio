@@ -2,12 +2,12 @@ use sha2::{Digest, Sha256};
 
 use super::firmware_service;
 use crate::auth::context::RequestContext;
-use crate::domains::device_blueprints::repository::DeviceBlueprintRepository;
-use crate::domains::device_types::repository::DeviceTypeRepository;
 use crate::domains::firmware::port::FirmwareRepository;
 use crate::domains::firmware::types::{FirmwareRecord, NewFirmwareBlobRecord, NewFirmwareRecord};
 use crate::domains::firmware_store::FirmwareObjectStore;
 use crate::error::AppError;
+use extrittio_backend_core::DeviceBlueprintApplication;
+use extrittio_backend_core::DeviceTypeApplication;
 
 #[cfg(test)]
 #[path = "firmware_creation_tests.rs"]
@@ -49,16 +49,13 @@ impl PreparedBlueprintFirmware {
 
 pub async fn prepare_blueprint_firmware(
     ctx: &RequestContext,
-    blueprints: &dyn DeviceBlueprintRepository,
-    device_types: &dyn DeviceTypeRepository,
+    blueprints: &DeviceBlueprintApplication,
+    device_types: &DeviceTypeApplication,
     revision_id: &str,
 ) -> Result<PreparedBlueprintFirmware, AppError> {
-    let revision = crate::domains::device_blueprints::blueprint_service::get_revision(
-        ctx,
-        blueprints,
-        revision_id,
-    )
-    .await?;
+    let revision = blueprints
+        .get_revision(&ctx.tenant_context(), revision_id)
+        .await?;
     let blueprint: extrittio_device_contract::DeviceBlueprint =
         serde_json::from_value(revision.document).map_err(|error| {
             AppError::Internal(format!(
@@ -74,9 +71,9 @@ pub async fn prepare_blueprint_firmware(
         .as_str()
         .map(ToOwned::to_owned);
     let compatibility = serde_json::to_value(firmware_definition.compatibility)?;
-    let compatibility_type =
-        crate::services::device_type_service::resolve_for_device_creation(ctx, device_types, None)
-            .await?;
+    let compatibility_type = device_types
+        .resolve_for_device_creation(&ctx.tenant_context(), None)
+        .await?;
 
     Ok(PreparedBlueprintFirmware {
         device_type_id: compatibility_type.id,

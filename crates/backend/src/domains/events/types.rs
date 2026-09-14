@@ -1,7 +1,7 @@
 use chrono::{DateTime, NaiveDateTime, Utc};
 use serde_json::Value;
 
-use crate::rule_engine::types::PendingAction;
+use extrittio_backend_core::rule_snapshots::DeviceRuleEvaluation;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MetricValue {
@@ -61,7 +61,7 @@ pub struct RecordDeviceEvent {
     pub received_at: DateTime<Utc>,
     pub payload: Value,
     pub metrics: Vec<DeviceMetricSample>,
-    pub pending_actions: Vec<PendingAction>,
+    pub rule_evaluation: DeviceRuleEvaluation,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

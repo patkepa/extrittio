@@ -1,7 +1,7 @@
 use chrono::NaiveDateTime;
 use serde_json::Value;
 
-use crate::rule_engine::types::PendingAction;
+use extrittio_backend_core::rule_snapshots::DeviceRuleEvaluation;
 
 #[derive(Debug, Clone)]
 pub struct TelemetryRecord {
@@ -56,7 +56,7 @@ pub struct TelemetryWrite {
     pub speed: Option<f32>,
     pub altitude: Option<f32>,
     pub heading: Option<f32>,
-    pub pending_actions: Vec<PendingAction>,
+    pub rule_evaluation: DeviceRuleEvaluation,
     pub observed_at: NaiveDateTime,
 }
 

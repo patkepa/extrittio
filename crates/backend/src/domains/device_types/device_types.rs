@@ -9,11 +9,10 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 use crate::auth::context::RequestContext;
-use crate::domains::device_types::types::DeviceTypeRecord;
 use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse, PaginationParams};
-use crate::services::device_type_service;
 use crate::state::AppState;
+use extrittio_backend_core::device_types::DeviceTypeRecord;
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct DeviceTypeResponse {
@@ -78,9 +77,11 @@ pub(crate) async fn list_device_types(
 ) -> Result<Json<PaginatedResponse<DeviceTypeResponse>>, AppError> {
     let (limit, offset) = pagination::clamp(params.limit, params.offset);
 
-    let (results, total) =
-        device_type_service::list(&ctx, state.persistence.device_types.as_ref(), limit, offset)
-            .await?;
+    let (results, total) = state
+        .application()
+        .device_types()
+        .list(&ctx.tenant_context(), limit, offset)
+        .await?;
     let data = results.into_iter().map(DeviceTypeResponse::from).collect();
     let response = PaginatedResponse::new(data, total, limit, offset);
 
@@ -104,14 +105,16 @@ pub(crate) async fn create_device_type(
     Extension(ctx): Extension<RequestContext>,
     Json(body): Json<NewDeviceTypeRequest>,
 ) -> Result<(StatusCode, Json<DeviceTypeResponse>), AppError> {
-    let created = device_type_service::create(
-        &ctx,
-        state.persistence.device_types.as_ref(),
-        &body.name,
-        body.icon.as_deref(),
-        body.color_hex.as_deref(),
-    )
-    .await?;
+    let created = state
+        .application()
+        .device_types()
+        .create(
+            &ctx.tenant_context(),
+            &body.name,
+            body.icon.as_deref(),
+            body.color_hex.as_deref(),
+        )
+        .await?;
     let response = DeviceTypeResponse::from(created);
 
     Ok((StatusCode::CREATED, Json(response)))
@@ -137,15 +140,17 @@ pub(crate) async fn update_device_type(
     Path(id): Path<i32>,
     Json(body): Json<UpdateDeviceTypeRequest>,
 ) -> Result<Json<DeviceTypeResponse>, AppError> {
-    let updated = device_type_service::update(
-        &ctx,
-        state.persistence.device_types.as_ref(),
-        id,
-        body.name.as_deref(),
-        body.icon.as_deref(),
-        body.color_hex.as_deref(),
-    )
-    .await?;
+    let updated = state
+        .application()
+        .device_types()
+        .update(
+            &ctx.tenant_context(),
+            id,
+            body.name.as_deref(),
+            body.icon.as_deref(),
+            body.color_hex.as_deref(),
+        )
+        .await?;
     let response = DeviceTypeResponse::from(updated);
 
     Ok(Json(response))
@@ -170,7 +175,11 @@ pub(crate) async fn delete_device_type(
     Extension(ctx): Extension<RequestContext>,
     Path(id): Path<i32>,
 ) -> Result<StatusCode, AppError> {
-    device_type_service::delete(&ctx, state.persistence.device_types.as_ref(), id).await?;
+    state
+        .application()
+        .device_types()
+        .delete(&ctx.tenant_context(), id)
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

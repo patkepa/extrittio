@@ -1427,7 +1427,6 @@ dependencies = [
  "extrittio-common",
  "extrittio-device-contract",
  "extrittio-openthread-runtime",
- "extrittio-rule-engine",
  "http-body-util",
  "include_dir",
  "jsonwebtoken",
@@ -1489,9 +1488,12 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "extrittio-device-contract",
+ "extrittio-rule-engine",
  "futures",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror",
  "uuid",
 ]

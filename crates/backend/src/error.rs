@@ -94,7 +94,10 @@ impl IntoResponse for AppError {
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, "not_found", msg.clone()),
             AppError::Conflict(msg) => (StatusCode::CONFLICT, "conflict", msg.clone()),
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, "bad_request", msg.clone()),
-            AppError::UnprocessableEntity(msg) => (
+            AppError::UnprocessableEntity(msg)
+            | AppError::Application(extrittio_backend_core::ApplicationError::InvalidOperation(
+                msg,
+            )) => (
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "unprocessable_entity",
                 msg.clone(),

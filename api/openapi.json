@@ -305,7 +305,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "Count of reactivated alerts; missing, invalid-status, and conflicting alerts are skipped",
             "content": {
               "application/json": {
                 "schema": {}
@@ -498,6 +498,9 @@
           },
           "404": {
             "description": ""
+          },
+          "409": {
+            "description": "Another alert is active or acknowledged for this rule and device"
           }
         },
         "security": [
@@ -1949,7 +1952,7 @@
           "certificates"
         ],
         "summary": "Download the device certificate bundle (cert + private key + CA cert).",
-        "description": "The private key is only returned once — after download the key is cleared\nfrom the database.  Subsequent calls will return 410 Gone if the key has\nalready been retrieved.  Use the `/regenerate` endpoint to issue a new\ncertificate if the key was lost.",
+        "description": "The private key is only returned once — after download the key is cleared\nfrom the database.  Subsequent calls will return 400 Bad Request if the key has\nalready been retrieved.  Use the `/regenerate` endpoint to issue a new\ncertificate if the key was lost.",
         "operationId": "get_device_certificate",
         "parameters": [
           {
@@ -6930,6 +6933,9 @@
       },
       "CurrentMetricsResponse": {
         "type": "object",
+        "required": [
+          "rule_snapshots"
+        ],
         "properties": {
           "app": {
             "oneOf": [
@@ -6940,6 +6946,9 @@
                 "$ref": "#/components/schemas/AppMetricsSnapshot"
               }
             ]
+          },
+          "rule_snapshots": {
+            "$ref": "#/components/schemas/RuleSnapshotMetrics"
           },
           "system": {
             "oneOf": [
@@ -9033,6 +9042,51 @@
           },
           "updated_at": {
             "type": "string"
+          }
+        }
+      },
+      "RuleSnapshotMetrics": {
+        "type": "object",
+        "required": [
+          "age_seconds",
+          "refresh_interval_seconds",
+          "reload_duration_seconds",
+          "reload_successes",
+          "reload_failures",
+          "definition_changes",
+          "ready"
+        ],
+        "properties": {
+          "age_seconds": {
+            "type": "number",
+            "format": "double"
+          },
+          "definition_changes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "ready": {
+            "type": "boolean"
+          },
+          "refresh_interval_seconds": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "reload_duration_seconds": {
+            "type": "number",
+            "format": "double"
+          },
+          "reload_failures": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "reload_successes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
           }
         }
       },

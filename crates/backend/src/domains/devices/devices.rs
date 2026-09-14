@@ -4,22 +4,16 @@ use axum::{
     http::{HeaderMap, StatusCode, header::HOST, uri::Authority},
     routing::{get, post},
 };
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::auth::context::RequestContext;
-use crate::domains::device_blueprints::blueprint_service;
-use crate::domains::devices::types::{
-    CreateDeviceRecord, DeviceDetails, DeviceListQuery, UpdateDeviceRecord,
-};
 use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse, PaginationParams};
-use crate::services::{
-    command_service, device_catalog_service, device_service, device_type_service, firmware_service,
-};
+use crate::services::{command_service, device_service, firmware_service};
 use crate::state::AppState;
+use extrittio_backend_core::devices::{DeviceDetails, DeviceListQuery, UpdateDeviceRecord};
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -199,8 +193,8 @@ fn bulk_target_selection<'a>(
     device_ids: Option<&'a [String]>,
     select_all: Option<bool>,
     filters: Option<&'a BulkDeviceFilters>,
-) -> device_catalog_service::DeviceTargetSelection<'a> {
-    device_catalog_service::DeviceTargetSelection {
+) -> extrittio_backend_core::DeviceTargetSelection<'a> {
+    extrittio_backend_core::DeviceTargetSelection {
         device_ids,
         select_all: select_all.unwrap_or(false),
         status: filters.and_then(|filter| filter.status.as_deref()),
@@ -302,18 +296,20 @@ pub(crate) async fn list_devices(
 ) -> Result<Json<PaginatedResponse<DeviceResponse>>, AppError> {
     let (limit, offset) = pagination::clamp(params.limit, params.offset);
 
-    let (results, total) = device_catalog_service::list(
-        &ctx,
-        state.persistence.devices.as_ref(),
-        DeviceListQuery {
-            status: params.status,
-            search: params.search,
-            fleet_id: params.fleet_id,
-            limit,
-            offset,
-        },
-    )
-    .await?;
+    let (results, total) = state
+        .application()
+        .devices()
+        .list(
+            &ctx.tenant_context(),
+            DeviceListQuery {
+                status: params.status,
+                search: params.search,
+                fleet_id: params.fleet_id,
+                limit,
+                offset,
+            },
+        )
+        .await?;
     let data = results.into_iter().map(to_device_response).collect();
     let response = PaginatedResponse::new(data, total, limit, offset);
 
@@ -338,7 +334,11 @@ pub(crate) async fn get_device(
     Path(id): Path<String>,
 ) -> Result<Json<DeviceResponse>, AppError> {
     let response = to_device_response(
-        device_catalog_service::get(&ctx, state.persistence.devices.as_ref(), &id).await?,
+        state
+            .application()
+            .devices()
+            .get(&ctx.tenant_context(), &id)
+            .await?,
     );
 
     Ok(Json(response))
@@ -363,10 +363,16 @@ pub(crate) async fn get_device_contract(
 ) -> Result<Json<DeviceContractResponse>, AppError> {
     // Ensure the device itself exists in this tenant so legacy devices and
     // unknown IDs have stable, tenant-safe not-found behavior.
-    device_catalog_service::get(&ctx, state.persistence.devices.as_ref(), &id).await?;
-    let contract =
-        device_catalog_service::assigned_contract(&ctx, state.persistence.devices.as_ref(), &id)
-            .await?;
+    state
+        .application()
+        .devices()
+        .get(&ctx.tenant_context(), &id)
+        .await?;
+    let contract = state
+        .application()
+        .devices()
+        .assigned_contract(&ctx.tenant_context(), &id)
+        .await?;
     Ok(Json(DeviceContractResponse {
         id: contract.id,
         device_id: contract.device_id,
@@ -399,43 +405,26 @@ pub(crate) async fn create_device(
     headers: HeaderMap,
     Json(body): Json<NewDeviceRequest>,
 ) -> Result<(StatusCode, Json<DeviceResponse>), AppError> {
-    if body.name.trim().is_empty() {
-        return Err(AppError::BadRequest("Device name must not be empty".into()));
-    }
-
-    let new_id = uuid::Uuid::new_v4().to_string();
-    let automatic_zenoh_endpoint =
-        automatic_zenoh_endpoint(&headers, state.zenoh_tls_enabled, state.zenoh_port);
-    let contract = blueprint_service::compile_device_contract(
-        &ctx,
-        state.persistence.device_blueprints.as_ref(),
-        &body.blueprint_revision_id,
-        uuid::Uuid::new_v4().to_string(),
-        new_id.clone(),
-        automatic_zenoh_endpoint,
-        body.configuration,
-    )
-    .await?;
-    let compatibility_type = device_type_service::resolve_for_device_creation(
-        &ctx,
-        state.persistence.device_types.as_ref(),
-        body.device_type_id,
-    )
-    .await?;
-    let created = device_catalog_service::create(
-        &ctx,
-        state.persistence.devices.as_ref(),
-        state.persistence.certificates.as_ref(),
-        CreateDeviceRecord {
-            id: new_id,
-            name: body.name,
-            device_type_id: compatibility_type.id,
-            fleet_id: body.fleet_id,
-            firmware: body.firmware.unwrap_or_else(|| "unknown".to_string()),
-            contract: Some(contract),
-        },
-    )
-    .await?;
+    let created = state
+        .application()
+        .devices()
+        .provision(
+            &ctx.tenant_context(),
+            extrittio_backend_core::ProvisionDevice {
+                name: body.name,
+                blueprint_revision_id: body.blueprint_revision_id,
+                device_type_id: body.device_type_id,
+                fleet_id: body.fleet_id,
+                firmware: body.firmware,
+                configuration: body.configuration,
+                automatic_zenoh_endpoint: automatic_zenoh_endpoint(
+                    &headers,
+                    state.zenoh_tls_enabled,
+                    state.zenoh_port,
+                ),
+            },
+        )
+        .await?;
     let response = to_device_response(created);
 
     Ok((StatusCode::CREATED, Json(response)))
@@ -506,25 +495,21 @@ pub(crate) async fn update_device(
     Path(id): Path<String>,
     Json(body): Json<UpdateDeviceRequest>,
 ) -> Result<Json<DeviceResponse>, AppError> {
-    if let Some(ref name) = body.name
-        && name.trim().is_empty()
-    {
-        return Err(AppError::BadRequest("Device name must not be empty".into()));
-    }
-
-    let updated = device_catalog_service::update(
-        &ctx,
-        state.persistence.devices.as_ref(),
-        &id,
-        UpdateDeviceRecord {
-            name: body.name,
-            device_type_id: body.device_type_id,
-            fleet_id: body.fleet_id,
-            firmware: body.firmware,
-            updated_at: Some(Utc::now()),
-        },
-    )
-    .await?;
+    let updated = state
+        .application()
+        .devices()
+        .update(
+            &ctx.tenant_context(),
+            &id,
+            UpdateDeviceRecord {
+                name: body.name,
+                device_type_id: body.device_type_id,
+                fleet_id: body.fleet_id,
+                firmware: body.firmware,
+                updated_at: None,
+            },
+        )
+        .await?;
     let response = to_device_response(updated);
 
     Ok(Json(response))
@@ -547,7 +532,11 @@ pub(crate) async fn delete_device(
     Extension(ctx): Extension<RequestContext>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
-    device_catalog_service::delete(&ctx, state.persistence.devices.as_ref(), &id).await?;
+    state
+        .application()
+        .devices()
+        .delete(&ctx.tenant_context(), &id)
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -630,23 +619,23 @@ pub(crate) async fn bulk_change_fleet(
         AppError::BadRequest("fleet_id is required (use null to unassign)".into())
     })?;
 
-    let ids = device_catalog_service::resolve_target_ids(
-        &ctx,
-        state.persistence.devices.as_ref(),
-        bulk_target_selection(
-            body.device_ids.as_deref(),
-            body.select_all,
-            body.filters.as_ref(),
-        ),
-    )
-    .await?;
-    let affected = device_catalog_service::bulk_assign_fleet(
-        &ctx,
-        state.persistence.devices.as_ref(),
-        ids,
-        target_fleet_id,
-    )
-    .await?;
+    let ids = state
+        .application()
+        .devices()
+        .resolve_target_ids(
+            &ctx.tenant_context(),
+            bulk_target_selection(
+                body.device_ids.as_deref(),
+                body.select_all,
+                body.filters.as_ref(),
+            ),
+        )
+        .await?;
+    let affected = state
+        .application()
+        .devices()
+        .bulk_assign_fleet(&ctx.tenant_context(), ids, target_fleet_id)
+        .await?;
     let response = BulkAffectedResponse {
         affected: affected as i64,
     };
@@ -664,18 +653,23 @@ pub(crate) async fn bulk_delete_devices(
     Extension(ctx): Extension<RequestContext>,
     Json(body): Json<BulkDeviceRequest>,
 ) -> Result<Json<BulkAffectedResponse>, AppError> {
-    let ids = device_catalog_service::resolve_target_ids(
-        &ctx,
-        state.persistence.devices.as_ref(),
-        bulk_target_selection(
-            body.device_ids.as_deref(),
-            body.select_all,
-            body.filters.as_ref(),
-        ),
-    )
-    .await?;
-    let deleted =
-        device_catalog_service::bulk_delete(&ctx, state.persistence.devices.as_ref(), ids).await?;
+    let ids = state
+        .application()
+        .devices()
+        .resolve_target_ids(
+            &ctx.tenant_context(),
+            bulk_target_selection(
+                body.device_ids.as_deref(),
+                body.select_all,
+                body.filters.as_ref(),
+            ),
+        )
+        .await?;
+    let deleted = state
+        .application()
+        .devices()
+        .bulk_delete(&ctx.tenant_context(), ids)
+        .await?;
     let response = BulkAffectedResponse {
         affected: deleted as i64,
     };
@@ -695,16 +689,18 @@ pub(crate) async fn bulk_restart_devices(
 ) -> Result<Json<BulkResultResponse>, AppError> {
     command_service::authorize_send_commands(&ctx)?;
 
-    let ids = device_catalog_service::resolve_target_ids(
-        &ctx,
-        state.persistence.devices.as_ref(),
-        bulk_target_selection(
-            body.device_ids.as_deref(),
-            body.select_all,
-            body.filters.as_ref(),
-        ),
-    )
-    .await?;
+    let ids = state
+        .application()
+        .devices()
+        .resolve_target_ids(
+            &ctx.tenant_context(),
+            bulk_target_selection(
+                body.device_ids.as_deref(),
+                body.select_all,
+                body.filters.as_ref(),
+            ),
+        )
+        .await?;
 
     let mut result = BulkResultResponse::default();
 
@@ -739,16 +735,18 @@ pub(crate) async fn bulk_trigger_ota(
     let firmware_update_id = body.firmware_update_id;
     device_service::authorize_deploy_firmware(&ctx)?;
 
-    let ids = device_catalog_service::resolve_target_ids(
-        &ctx,
-        state.persistence.devices.as_ref(),
-        bulk_target_selection(
-            body.device_ids.as_deref(),
-            body.select_all,
-            body.filters.as_ref(),
-        ),
-    )
-    .await?;
+    let ids = state
+        .application()
+        .devices()
+        .resolve_target_ids(
+            &ctx.tenant_context(),
+            bulk_target_selection(
+                body.device_ids.as_deref(),
+                body.select_all,
+                body.filters.as_ref(),
+            ),
+        )
+        .await?;
 
     let mut result = BulkResultResponse::default();
 

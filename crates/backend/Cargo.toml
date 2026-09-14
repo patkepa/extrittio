@@ -35,7 +35,6 @@ extrittio-backend-turso = { version = "0.1.0", path = "../backend-turso", option
 extrittio-common = { version = "0.1.0", path = "../common" }
 extrittio-device-contract = { version = "0.1.0", path = "../device-contract" }
 extrittio-openthread-runtime = { version = "0.1.0", path = "../openthread-runtime" }
-extrittio-rule-engine = { version = "0.1.0", path = "../rule-engine" }
 axum = { version = "0.8", features = ["multipart"] }
 tokio = { version = "1", features = ["fs", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-util = { version = "0.7", features = ["rt"] }

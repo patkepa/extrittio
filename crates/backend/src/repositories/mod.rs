@@ -1,9 +1,5 @@
-#[path = "../domains/alerts/alert_repo.rs"]
-pub mod alert_repo;
 #[path = "../domains/audit/audit_repo.rs"]
 pub mod audit_repo;
-#[path = "../domains/identity/cert_repo.rs"]
-pub mod cert_repo;
 #[path = "../domains/commands/command_repo.rs"]
 pub mod command_repo;
 #[path = "../domains/devices/device_repo.rs"]
@@ -14,10 +10,6 @@ pub mod device_type_repo;
 pub mod firmware_repo;
 #[path = "../domains/logs/log_repo.rs"]
 pub mod log_repo;
-#[path = "../domains/operations/rule_action_outbox_repo.rs"]
-pub mod rule_action_outbox_repo;
-#[path = "../domains/rules/rule_repo.rs"]
-pub mod rule_repo;
 #[path = "../domains/operations/server_metrics_repo.rs"]
 pub mod server_metrics_repo;
 #[path = "../domains/shadows/shadow_repo.rs"]

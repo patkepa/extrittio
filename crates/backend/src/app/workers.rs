@@ -90,6 +90,14 @@ fn spawn_shutdown_worker<F, Fut>(
 pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> WorkerSupervisor {
     let cancellation = CancellationToken::new();
     let mut workers = JoinSet::new();
+    let snapshots = state.rule_cache.clone();
+    spawn_worker(
+        &mut workers,
+        &cancellation,
+        &state.readiness,
+        "rule-snapshots",
+        async move { snapshots.run().await },
+    );
 
     if let Some(thread_runtime) = state.thread_runtime.clone() {
         let scan_runtime = thread_runtime.clone();
@@ -181,7 +189,6 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
     );
 
     let outbox_persistence = state.persistence.clone();
-    let outbox_cache = state.rule_cache.clone();
     let outbox_client = state.http_client.clone();
     let outbox_session = state.zenoh_session.clone();
     let outbox_metrics = state.zenoh_metrics.clone();
@@ -199,7 +206,6 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         async move {
             crate::rule_engine::actions::run_rule_action_outbox_worker(
                 outbox_persistence,
-                outbox_cache,
                 outbox_client,
                 outbox_session,
                 outbox_metrics,

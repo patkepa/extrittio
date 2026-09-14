@@ -7,10 +7,10 @@ use crate::auth::context::RequestContext;
 use crate::auth::policy::{self, Permission};
 use crate::domains::commands::port::CommandRepository;
 use crate::domains::commands::types::{CommandQuery, CommandRecord, NewCommandRecord};
-use crate::domains::devices::repository::DeviceRepository;
 use crate::error::AppError;
 use crate::state::ZenohMetrics;
 use crate::tenancy::DeviceIdentity;
+use extrittio_backend_core::devices::DeviceRepository;
 use extrittio_common::extrittio::DeviceCommand;
 
 pub fn authorize_send_commands(ctx: &RequestContext) -> Result<(), AppError> {

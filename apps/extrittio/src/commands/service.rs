@@ -82,7 +82,10 @@ pub(crate) async fn run_edge(args: RunArgs) -> Result<()> {
         let database = extrittio_backend::persistence::factory::create(&config.database).await?;
         backend_init::run_database_migrations(&database).await?;
         let persistence = database.repositories();
-        if !persistence.bootstrap.users_exist().await? {
+        if !backend_init::bootstrap_application(persistence)
+            .users_exist()
+            .await?
+        {
             backend_init::seed_persistence_local_owner(
                 persistence,
                 args.admin_username.clone(),

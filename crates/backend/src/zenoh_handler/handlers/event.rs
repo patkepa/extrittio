@@ -9,8 +9,6 @@ use tracing::{info, warn};
 
 use crate::domains::events::types::{DeviceMetricSample, MetricValue, RecordDeviceEvent};
 use crate::persistence::RepositorySet;
-use crate::rule_engine::cache::RuleCache;
-use crate::rule_engine::evaluate::evaluate_telemetry_for_tenant;
 use crate::rule_engine::types::TelemetryData;
 use crate::tenancy::DeviceIdentity;
 
@@ -31,7 +29,7 @@ pub async fn handle_event(
     identity: &DeviceIdentity,
     route_key: &str,
     bytes: &[u8],
-    rule_cache: &std::sync::RwLock<RuleCache>,
+    rule_cache: &crate::rule_snapshots::RuleSnapshotStore,
 ) -> usize {
     let envelope: DeviceEventEnvelope = match serde_json::from_slice(bytes) {
         Ok(envelope) => envelope,
@@ -168,34 +166,39 @@ pub async fn handle_event(
         }
     }
 
-    let pending_actions = match persistence.devices.ingress_context(identity).await {
+    let received_at = Utc::now();
+    let rule_evaluation = match persistence.device_ingress.ingress_context(identity).await {
         Ok(Some(context)) => {
-            let cache = match rule_cache.read() {
+            let cache = match rule_cache.snapshot() {
                 Ok(cache) => cache,
                 Err(error) => {
-                    warn!(device_id = identity.device_id(), %error, "Failed to read-lock rule cache");
+                    warn!(device_id = identity.device_id(), %error, "Failed to obtain rule snapshot");
                     return 0;
                 }
             };
-            evaluate_telemetry_for_tenant(
-                identity.tenant_id_str(),
-                identity.device_id(),
-                context.device_type_id,
-                context.fleet_id,
-                context.blueprint_id.as_deref(),
-                &TelemetryData {
-                    temperature: 0.0,
-                    humidity: 0.0,
-                    battery_level: 0.0,
-                    latitude: None,
-                    longitude: None,
-                    speed: 0.0,
-                    altitude: 0.0,
-                    heading: 0.0,
-                    metrics: rule_metrics,
+            extrittio_backend_core::rule_snapshots::DeviceRuleEvaluation {
+                snapshot: cache,
+                tenant: identity.tenant_id().clone(),
+                device_id: identity.device_id().to_owned(),
+                device_type_id: context.device_type_id,
+                fleet_id: context.fleet_id,
+                blueprint_id: context.blueprint_id,
+                input: extrittio_backend_core::rule_snapshots::RuleEvaluationInput::Telemetry {
+                    data: TelemetryData {
+                        temperature: 0.0,
+                        humidity: 0.0,
+                        battery_level: 0.0,
+                        latitude: None,
+                        longitude: None,
+                        speed: 0.0,
+                        altitude: 0.0,
+                        heading: 0.0,
+                        metrics: rule_metrics,
+                    },
+                    geofence: false,
                 },
-                &cache,
-            )
+                observed_at: received_at.naive_utc(),
+            }
         }
         Ok(None) => return 0,
         Err(error) => {
@@ -215,10 +218,10 @@ pub async fn handle_event(
                 contract_id: assigned.id,
                 route_key: route_key.to_string(),
                 occurred_at: envelope.occurred_at,
-                received_at: Utc::now(),
+                received_at,
                 payload: envelope.payload,
                 metrics,
-                pending_actions,
+                rule_evaluation,
             },
         )
         .await

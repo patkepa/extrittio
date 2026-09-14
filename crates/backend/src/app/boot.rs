@@ -1,4 +1,4 @@
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use anyhow::Context;
 use tracing::{info, warn};
@@ -7,7 +7,6 @@ use crate::config::AppConfig;
 use crate::domains::firmware_store::FirmwareObjectStore;
 use crate::init;
 use crate::rate_limit::{ApiKeyRateLimiter, RateLimiter, parse_trusted_proxies};
-use crate::services;
 use crate::state::{AppState, AppStateInput, MetricsAccumulator, ReadinessRegistry, ZenohMetrics};
 
 /// Initialize infrastructure and shared application state.
@@ -55,23 +54,22 @@ pub async fn initialize_state(
     let jwt_secret = init::init_persistence_jwt_secret(&persistence).await?;
     init::seed_persistence_admin_user(&persistence).await?;
     init::init_persistence_ca_certificate(&persistence).await?;
-    services::cert_service::encrypt_stored_private_keys(persistence.certificates.as_ref())
+    init::certificate_system(&persistence)
+        .encrypt_stored_private_keys()
         .await
         .context("Failed to encrypt stored certificate private keys")?;
     init::write_persistence_tls_certs(&persistence, &config.certs_dir).await?;
-    let device_certificate_ids = persistence
-        .certificates
-        .list_active_device_ids(chrono::Utc::now())
+    let device_certificate_ids = init::certificate_system(&persistence)
+        .active_device_ids(chrono::Utc::now())
         .await
         .context("Failed to load active device certificate IDs for Zenoh ACL")?;
 
-    let rule_cache = services::rule_service::build_cache_with_repositories(
-        persistence.rules.as_ref(),
-        persistence.rule_zone_snapshots.as_ref(),
+    let rule_cache = crate::rule_snapshots::RuleSnapshotStore::initialize(
+        persistence.rules.clone(),
+        std::time::Duration::from_secs(config.rule_snapshot_refresh_interval_secs),
     )
     .await
-    .context("Failed to build initial rule cache")?;
-    let rule_cache = Arc::new(RwLock::new(rule_cache));
+    .context("Failed to build initial rule snapshot")?;
 
     let http_client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(5))

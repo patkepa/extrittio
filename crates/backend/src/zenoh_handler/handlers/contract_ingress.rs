@@ -2,7 +2,6 @@ use extrittio_device_contract::{CompiledContractDocument, PayloadEncoding, Route
 use tracing::warn;
 
 use crate::persistence::RepositorySet;
-use crate::rule_engine::cache::RuleCache;
 use crate::tenancy::DeviceIdentity;
 
 /// Dispatch an arbitrary device address by matching it against the device's
@@ -12,7 +11,7 @@ pub async fn handle_contract_ingress(
     identity: &DeviceIdentity,
     topic: &str,
     payload: &[u8],
-    rule_cache: &std::sync::RwLock<RuleCache>,
+    rule_cache: &crate::rule_snapshots::RuleSnapshotStore,
 ) -> bool {
     let assigned = match persistence
         .devices

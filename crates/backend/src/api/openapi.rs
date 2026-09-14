@@ -278,6 +278,7 @@ use utoipa::{Modify, OpenApi};
         super::zones::ZoneResponse,
         // Server metrics
         super::server_metrics::CurrentMetricsResponse,
+        crate::rule_snapshots::RuleSnapshotMetrics,
         super::server_metrics::MetricsHistoryResponse,
         super::server_metrics::SystemMetricsSnapshot,
         super::server_metrics::AppMetricsSnapshot,

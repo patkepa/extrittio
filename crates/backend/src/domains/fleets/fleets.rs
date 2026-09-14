@@ -11,7 +11,6 @@ use utoipa::ToSchema;
 use crate::auth::context::RequestContext;
 use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse, PaginationParams};
-use crate::services::fleet_service;
 use crate::state::AppState;
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -57,8 +56,11 @@ pub(crate) async fn list_fleets(
     Query(params): Query<PaginationParams>,
 ) -> Result<Json<PaginatedResponse<FleetResponse>>, AppError> {
     let (limit, offset) = pagination::clamp(params.limit, params.offset);
-    let (enriched, total) =
-        fleet_service::list(&ctx, state.persistence.fleets.as_ref(), limit, offset).await?;
+    let (enriched, total) = state
+        .application()
+        .fleets()
+        .list(&ctx.tenant_context(), limit, offset)
+        .await?;
     let data = enriched
         .into_iter()
         .map(|fleet| FleetResponse {
@@ -89,8 +91,11 @@ pub(crate) async fn create_fleet(
     Extension(ctx): Extension<RequestContext>,
     Json(body): Json<NewFleetRequest>,
 ) -> Result<(StatusCode, Json<FleetResponse>), AppError> {
-    let created =
-        fleet_service::create(&ctx, state.persistence.fleets.as_ref(), &body.name).await?;
+    let created = state
+        .application()
+        .fleets()
+        .create(&ctx.tenant_context(), &body.name)
+        .await?;
     let response = FleetResponse {
         id: created.id,
         name: created.name,
@@ -120,8 +125,11 @@ pub(crate) async fn update_fleet(
     Path(id): Path<i32>,
     Json(body): Json<UpdateFleetRequest>,
 ) -> Result<Json<FleetResponse>, AppError> {
-    let updated =
-        fleet_service::rename(&ctx, state.persistence.fleets.as_ref(), id, &body.name).await?;
+    let updated = state
+        .application()
+        .fleets()
+        .rename(&ctx.tenant_context(), id, &body.name)
+        .await?;
     let response = FleetResponse {
         id: updated.id,
         name: updated.name,
@@ -148,7 +156,11 @@ pub(crate) async fn delete_fleet(
     Extension(ctx): Extension<RequestContext>,
     Path(id): Path<i32>,
 ) -> Result<StatusCode, AppError> {
-    fleet_service::delete(&ctx, state.persistence.fleets.as_ref(), id).await?;
+    state
+        .application()
+        .fleets()
+        .delete(&ctx.tenant_context(), id)
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
