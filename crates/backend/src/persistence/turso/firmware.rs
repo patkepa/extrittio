@@ -3,9 +3,9 @@ use turso::{Connection, Row, params};
 
 use crate::domains::firmware::port::FirmwareRepository;
 use crate::domains::firmware::types::{
-    CiIngestOutcome, CiIngestParams, FirmwareBlobRecord, FirmwarePage, FirmwareRecord,
-    GlobalOtaDeploymentPage, GlobalOtaDeploymentRecord, LegacyFirmwareBlob, NewFirmwareBlobRecord,
-    NewFirmwareRecord, OtaDeploymentPage, OtaDeploymentRecord, OtaStatusUpdate, TriggerOtaOutcome,
+    FirmwareBlobRecord, FirmwarePage, FirmwareRecord, GlobalOtaDeploymentPage,
+    GlobalOtaDeploymentRecord, LegacyFirmwareBlob, NewFirmwareBlobRecord, NewFirmwareRecord,
+    OtaDeploymentPage, OtaDeploymentRecord, OtaStatusUpdate, TriggerOtaOutcome,
 };
 use crate::persistence::PersistenceError;
 use crate::tenancy::{DeviceIdentity, TenantId};
@@ -117,84 +117,6 @@ async fn find_firmware(
 
 #[async_trait]
 impl FirmwareRepository for TursoAdapter {
-    async fn ingest_ci(
-        &self,
-        key_hash: &str,
-        p: CiIngestParams,
-    ) -> Result<CiIngestOutcome, PersistenceError> {
-        let mut w = self.database.writer().await;
-        let tx = w.transaction().await.map_err(row::error)?;
-        let mut rs = tx
-            .query(
-                "SELECT tenant_id,device_type_id FROM api_keys WHERE key_hash=?1",
-                params![key_hash],
-            )
-            .await
-            .map_err(row::error)?;
-        let Some(k) = rs.next().await.map_err(row::error)? else {
-            tx.rollback().await.map_err(row::error)?;
-            return Ok(CiIngestOutcome::Unauthorized);
-        };
-        let tenant: String = k.get(0).map_err(row::error)?;
-        let scope: Option<i64> = k.get(1).map_err(row::error)?;
-        drop(rs);
-        tx.execute(
-            "UPDATE api_keys SET last_used_at=?2 WHERE key_hash=?1",
-            params![key_hash, chrono::Utc::now().timestamp_micros()],
-        )
-        .await
-        .map_err(row::error)?;
-        let mut rs = tx
-            .query(
-                "SELECT id,name FROM device_types WHERE tenant_id=?1 AND name=?2",
-                params![tenant.clone(), p.device_type_name],
-            )
-            .await
-            .map_err(row::error)?;
-        let Some(dt) = rs.next().await.map_err(row::error)? else {
-            tx.commit().await.map_err(row::error)?;
-            return Ok(CiIngestOutcome::DeviceTypeNotFound);
-        };
-        let dt_id = row::i32(dt.get(0).map_err(row::error)?, "device_type.id")?;
-        let dt_name = dt.get(1).map_err(row::error)?;
-        drop(rs);
-        if let Some(scope) = scope
-            && row::i32(scope, "api_key.device_type_id")? != dt_id
-        {
-            tx.commit().await.map_err(row::error)?;
-            return Ok(CiIngestOutcome::Forbidden {
-                scoped_device_type_id: row::i32(scope, "api_key.device_type_id")?,
-            });
-        }
-        let version = p.version.clone();
-        let id = insert_firmware(
-            &tx,
-            &tenant,
-            NewFirmwareRecord {
-                device_type_id: dt_id,
-                version: p.version,
-                url: p.artifact_url,
-                sha256: p.sha256,
-                description: p.description,
-                commit_sha: p.commit_sha,
-                branch: p.branch,
-                ci_run_url: p.ci_run_url,
-                build_timestamp: p.build_timestamp,
-                changelog: p.changelog,
-                source: Some("ci".into()),
-                blueprint_revision_id: None,
-                compatibility: serde_json::json!({}),
-                update_strategy: None,
-            },
-        )
-        .await?;
-        tx.commit().await.map_err(row::error)?;
-        Ok(CiIngestOutcome::Created {
-            firmware_id: id,
-            version,
-            device_type_name: dt_name,
-        })
-    }
     async fn list(
         &self,
         t: &TenantId,

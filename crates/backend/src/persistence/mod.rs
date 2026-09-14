@@ -13,7 +13,6 @@ use crate::domains::devices::repository::DeviceRepository;
 use crate::domains::events::repository::DeviceEventRepository;
 use crate::domains::firmware::port::FirmwareRepository;
 use crate::domains::fleets::repository::FleetRepository;
-use crate::domains::identity::api_key_repository::ApiKeyRepository;
 use crate::domains::identity::certificate_repository::CertificateRepository;
 use crate::domains::logs::port::LogRepository;
 use crate::domains::operations::metrics_repository::MetricsRepository;
@@ -21,6 +20,7 @@ use crate::domains::operations::outbox_repository::OutboxRepository;
 use crate::domains::rules::port::RuleRepository;
 use crate::domains::shadows::repository::ShadowRepository;
 use crate::domains::telemetry::port::TelemetryRepository;
+use extrittio_backend_core::ApiKeyRepository;
 use extrittio_backend_core::{
     RoleRepository, RuleZoneSnapshotRepository, UserRepository, ZoneRepository,
 };
@@ -48,6 +48,7 @@ pub struct RepositorySet {
     pub activity: Arc<dyn ActivityRepository>,
     pub analytics: Arc<dyn AnalyticsRepository>,
     pub api_keys: Arc<dyn ApiKeyRepository>,
+    pub ci_ingest: Arc<dyn extrittio_backend_core::CiIngestRepository>,
     pub alerts: Arc<dyn AlertRepository>,
     pub audit: Arc<dyn AuditRepository>,
     pub bootstrap: Arc<dyn BootstrapRepository>,

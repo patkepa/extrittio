@@ -12,8 +12,8 @@ use utoipa::ToSchema;
 use crate::api_key_util;
 use crate::error::AppError;
 use crate::security;
-use crate::services::ci_pipeline_service::{self, CiIngestParams};
 use crate::state::AppState;
+use extrittio_backend_core::CiIngestParams;
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CiIngestRequest {
@@ -106,23 +106,25 @@ pub(crate) async fn ci_ingest(
         })
         .transpose()?;
 
-    let result = ci_pipeline_service::ingest(
-        state.persistence.firmware.as_ref(),
-        &key_hash,
-        CiIngestParams {
-            device_type_name: body.device_type.clone(),
-            version: body.version.clone(),
-            artifact_url: body.artifact_url.clone(),
-            sha256: body.sha256.clone(),
-            commit_sha: body.commit_sha.clone(),
-            branch: body.branch.clone(),
-            ci_run_url: body.ci_run_url.clone(),
-            build_timestamp: build_ts,
-            description: body.description.clone(),
-            changelog: body.changelog.clone(),
-        },
-    )
-    .await?;
+    let result = state
+        .application()
+        .ci_ingest()
+        .ingest(
+            &key_hash,
+            CiIngestParams {
+                device_type_name: body.device_type,
+                version: body.version,
+                artifact_url: body.artifact_url,
+                sha256: body.sha256,
+                commit_sha: body.commit_sha,
+                branch: body.branch,
+                ci_run_url: body.ci_run_url,
+                build_timestamp: build_ts.map(|value| value.and_utc()),
+                description: body.description,
+                changelog: body.changelog,
+            },
+        )
+        .await?;
 
     Ok((
         StatusCode::CREATED,

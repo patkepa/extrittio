@@ -2,7 +2,12 @@
 #![deny(clippy::disallowed_methods)]
 
 pub mod application;
+pub mod ci_ingest;
 pub mod context;
+pub use application::CiIngestApplication;
+pub use ci_ingest::{
+    CiIngestOutcome, CiIngestParams, CiIngestRepository, authorize_ci_device_type,
+};
 pub mod error;
 pub mod pagination;
 pub mod ports;

@@ -56,11 +56,13 @@ fn build_repositories(database: Arc<TursoDatabase>) -> RepositorySet {
     let roles = crate::database::turso_roles(&database);
     let users = crate::database::turso_users(&database);
     let api_keys = crate::database::turso_api_keys(&database);
+    let ci_ingest = crate::database::turso_ci_ingest(&database);
     let adapter = Arc::new(TursoAdapter::new(database));
     RepositorySet {
         activity: adapter.clone(),
         analytics: adapter.clone(),
         api_keys,
+        ci_ingest,
         alerts: adapter.clone(),
         audit: adapter.clone(),
         bootstrap: adapter.clone(),
@@ -128,8 +130,6 @@ mod tests {
     use crate::domains::firmware::types::{NewFirmwareRecord, TriggerOtaOutcome};
     use crate::domains::fleets::repository::FleetRepository;
     use crate::domains::fleets::types::CreateFleetRecord;
-    use crate::domains::identity::api_key_repository::ApiKeyRepository;
-    use crate::domains::identity::api_key_types::CreateApiKeyRecord;
     use crate::domains::identity::certificate_repository::CertificateRepository;
     use crate::domains::identity::certificate_types::{
         NewCaCertificateRecord, NewDeviceCertificateRecord, ReplaceCertificateOutcome,
@@ -147,6 +147,8 @@ mod tests {
     use crate::domains::telemetry::types::{TelemetryQuery, TelemetryWrite};
     use crate::persistence::{BootstrapOwner, BootstrapRepository, BuiltinDeviceType};
     use crate::tenancy::{DEFAULT_TENANT_ID as TEST_TENANT_ID, TenantId};
+    use extrittio_backend_core::ApiKeyRepository;
+    use extrittio_backend_core::CreateApiKeyRecord;
     use extrittio_backend_core::{CreateUserOutcome, EncodedPasswordHash, NewUser};
 
     async fn adapter() -> (tempfile::TempDir, TursoAdapter) {

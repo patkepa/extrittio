@@ -1,5 +1,10 @@
 # Backend Crate Architecture and Implementation Plan
 
+For the source-checked 2026-09-14 continuation order and verification gaps, see
+[Backend refactor continuation](backend-refactor-continuation.md). The dated
+status entries below are historical and require the evidence reconciliation
+described there before marking additional work packages complete.
+
 - **Status:** In progress — P0, the P2 zones walking skeleton, and the P3.1 roles/permissions slice are implemented; users/passwords is closing an authentication security correction
 - **Scope:** Refactor the current backend into a modular monolith with explicit compile-time boundaries
 - **Primary packages:** `extrittio-backend-core`, `extrittio-backend-postgres`, `extrittio-backend-turso`, and `extrittio-backend`
@@ -42,6 +47,29 @@ The shared management contract covers tenant filtering, exact names, list orderi
 hash uniqueness, and missing-delete behavior. Existing schema differences remain:
 Turso enforces tenant/name uniqueness for API keys, while PostgreSQL permits duplicate
 names. This extraction introduces no schema or stored-key-format changes.
+
+### Incremental update (2026-09-14)
+
+The existing API-key-authenticated firmware CI endpoint now calls core
+`Application::ci_ingest()`. Core owns the input/outcome types, device-type scope
+policy, repository port, and application error mapping. PostgreSQL and Turso own
+the combined key lookup/touch/device-type lookup/firmware insertion operation,
+constructed from the same pool or shared engine handles as the other repositories.
+The legacy firmware port no longer exposes `ingest_ci`; the host CI service and
+all API-key repository/type compatibility helpers have been deleted. The route's
+direct repository allowance has been removed.
+
+This is an ownership extraction: HTTP parsing, validation order, rate limiting,
+hashing, response schemas/messages, and stored formats are preserved. Turso retains
+one transaction, including committed touches on scope/not-found rejection and
+rollback on insert failure. PostgreSQL retains its best-effort touch outside the
+insert/read transaction. See ADR-009 for the compatibility boundary.
+
+Tests were explicitly skipped for this continuation. Authentication closure proof,
+shared ingest contracts, API-key CI test registration, nonce/rotation scope, and
+cross-engine semantic convergence remain open; this update does not declare P3.1
+or the full firmware slice complete. The next extraction is certificates/key
+protection, followed by bootstrap.
 
 ## 1. Executive decision
 

@@ -1,7 +1,5 @@
 #[path = "../domains/alerts/alert_repo.rs"]
 pub mod alert_repo;
-#[path = "../domains/identity/api_key_repo.rs"]
-pub mod api_key_repo;
 #[path = "../domains/audit/audit_repo.rs"]
 pub mod audit_repo;
 #[path = "../domains/identity/cert_repo.rs"]

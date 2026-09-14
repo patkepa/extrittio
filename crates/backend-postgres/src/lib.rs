@@ -3,6 +3,8 @@
 //! PostgreSQL persistence adapters for the backend application core.
 
 pub mod api_keys;
+mod ci_ingest;
+pub use ci_ingest::PostgresCiIngestRepository;
 pub mod executor;
 pub use api_keys::PostgresApiKeyRepository;
 pub mod migrations;

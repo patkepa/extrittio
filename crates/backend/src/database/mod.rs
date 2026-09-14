@@ -91,3 +91,19 @@ pub(crate) fn turso_users(
         database.shared_handles(),
     ))
 }
+
+#[cfg(feature = "postgres")]
+pub(crate) fn postgres_ci_ingest(
+    pool: &PostgresPool,
+) -> Arc<dyn extrittio_backend_core::CiIngestRepository> {
+    Arc::new(extrittio_backend_postgres::PostgresCiIngestRepository::from_pool(pool.clone()))
+}
+
+#[cfg(feature = "turso")]
+pub(crate) fn turso_ci_ingest(
+    database: &TursoDatabase,
+) -> Arc<dyn extrittio_backend_core::CiIngestRepository> {
+    Arc::new(
+        extrittio_backend_turso::TursoCiIngestRepository::from_handles(database.shared_handles()),
+    )
+}

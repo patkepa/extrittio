@@ -8,15 +8,13 @@ use crate::db::models::{
 };
 use crate::domains::firmware::port::FirmwareRepository;
 use crate::domains::firmware::types::{
-    CiIngestOutcome, CiIngestParams, FirmwareBlobRecord, FirmwarePage, FirmwareRecord,
-    GlobalOtaDeploymentPage, GlobalOtaDeploymentRecord, LegacyFirmwareBlob, NewFirmwareBlobRecord,
-    NewFirmwareRecord, OtaDeploymentPage, OtaDeploymentRecord, OtaStatusUpdate, TriggerOtaOutcome,
+    FirmwareBlobRecord, FirmwarePage, FirmwareRecord, GlobalOtaDeploymentPage,
+    GlobalOtaDeploymentRecord, LegacyFirmwareBlob, NewFirmwareBlobRecord, NewFirmwareRecord,
+    OtaDeploymentPage, OtaDeploymentRecord, OtaStatusUpdate, TriggerOtaOutcome,
 };
 use crate::error::AppError;
 use crate::persistence::PersistenceError;
-use crate::repositories::{
-    api_key_repo, device_repo, device_type_repo, firmware_repo, shadow_repo,
-};
+use crate::repositories::{device_repo, device_type_repo, firmware_repo, shadow_repo};
 use crate::tenancy::{DeviceIdentity, TenantId};
 
 use super::PostgresAdapter;
@@ -147,67 +145,6 @@ fn update_desired_shadow(
 
 #[async_trait]
 impl FirmwareRepository for PostgresAdapter {
-    async fn ingest_ci(
-        &self,
-        key_hash: &str,
-        params: CiIngestParams,
-    ) -> Result<CiIngestOutcome, PersistenceError> {
-        let key_hash = key_hash.to_string();
-        self.executor
-            .run(move |connection| {
-                let Some(api_key) = api_key_repo::find_api_key_by_hash(connection, &key_hash)
-                    .map_err(map_diesel_error)?
-                else {
-                    return Ok(CiIngestOutcome::Unauthorized);
-                };
-                let _ = api_key_repo::update_last_used(connection, api_key.id);
-                let Some(device_type) = device_type_repo::find_device_type_by_name(
-                    connection,
-                    &api_key.tenant_id,
-                    &params.device_type_name,
-                )
-                .map_err(map_diesel_error)?
-                else {
-                    return Ok(CiIngestOutcome::DeviceTypeNotFound);
-                };
-                if let Some(scoped_device_type_id) = api_key.device_type_id
-                    && scoped_device_type_id != device_type.id
-                {
-                    return Ok(CiIngestOutcome::Forbidden {
-                        scoped_device_type_id,
-                    });
-                }
-                let firmware = firmware_repo::insert_firmware_update(
-                    connection,
-                    &api_key.tenant_id,
-                    &NewFirmwareUpdate {
-                        tenant_id: api_key.tenant_id.clone(),
-                        device_type_id: device_type.id,
-                        version: params.version,
-                        url: params.artifact_url,
-                        description: params.description,
-                        sha256: params.sha256,
-                        commit_sha: params.commit_sha,
-                        branch: params.branch,
-                        ci_run_url: params.ci_run_url,
-                        build_timestamp: params.build_timestamp,
-                        changelog: params.changelog,
-                        source: Some("ci".to_string()),
-                        blueprint_revision_id: None,
-                        compatibility: serde_json::json!({}),
-                        update_strategy: None,
-                    },
-                )
-                .map_err(map_diesel_error)?;
-                Ok(CiIngestOutcome::Created {
-                    firmware_id: firmware.id,
-                    version: firmware.version,
-                    device_type_name: device_type.name,
-                })
-            })
-            .await
-    }
-
     async fn list(
         &self,
         tenant: &TenantId,

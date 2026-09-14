@@ -125,7 +125,6 @@ pub mod firmware {
     pub use crate::api::firmware_updates as api;
     #[cfg(feature = "postgres")]
     pub use crate::repositories::firmware_repo as repository;
-    pub use crate::services::ci_pipeline_service as ci_service;
     pub use crate::services::firmware_service as service;
 }
 
@@ -143,17 +142,13 @@ pub mod fleets {
 }
 
 pub mod identity {
-    #[path = "api_key_repository.rs"]
-    pub mod api_key_repository;
-    #[path = "api_key_types.rs"]
-    pub mod api_key_types;
     #[path = "certificate_repository.rs"]
     pub mod certificate_repository;
     #[path = "certificate_types.rs"]
     pub mod certificate_types;
     pub use crate::api::{api_keys, auth_routes, certificates, roles, users};
     #[cfg(feature = "postgres")]
-    pub use crate::repositories::{api_key_repo, cert_repo};
+    pub use crate::repositories::cert_repo;
     pub use crate::services::cert_service;
 }
 

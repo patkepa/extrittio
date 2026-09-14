@@ -158,31 +158,3 @@ pub struct GlobalOtaDeploymentPage {
     pub records: Vec<GlobalOtaDeploymentRecord>,
     pub total: i64,
 }
-
-#[derive(Debug, Clone)]
-pub struct CiIngestParams {
-    pub device_type_name: String,
-    pub version: String,
-    pub artifact_url: String,
-    pub sha256: Option<String>,
-    pub commit_sha: Option<String>,
-    pub branch: Option<String>,
-    pub ci_run_url: Option<String>,
-    pub build_timestamp: Option<NaiveDateTime>,
-    pub description: Option<String>,
-    pub changelog: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub enum CiIngestOutcome {
-    Unauthorized,
-    DeviceTypeNotFound,
-    Forbidden {
-        scoped_device_type_id: i32,
-    },
-    Created {
-        firmware_id: i32,
-        version: String,
-        device_type_name: String,
-    },
-}
