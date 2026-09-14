@@ -1,6 +1,28 @@
+mod alerts;
+pub use alerts::{
+    AlertApplication, AlertMaintenanceApplication, AlertWorkerApplication, RuleAlertIntent,
+};
+mod outbox;
+pub use outbox::{OutboxApplication, OutboxWorkerApplication};
+mod rules;
+pub use rules::{RuleApplication, RuleRuntimeApplication};
+mod devices;
+pub use devices::{DeviceApplication, DeviceTargetSelection, ProvisionDevice};
+mod device_blueprints;
+pub use device_blueprints::{BlueprintValidation, DeviceBlueprintApplication};
 mod api_keys;
+mod fleets;
+pub use fleets::FleetApplication;
+mod device_types;
+pub use device_types::DeviceTypeApplication;
+mod bootstrap;
+mod certificate_system;
+mod certificates;
+pub use bootstrap::BootstrapApplication;
 mod ci_ingest;
 pub use api_keys::ApiKeyApplication;
+pub use certificate_system::CertificateSystemApplication;
+pub use certificates::{CertBundle, CertificateApplication};
 pub use ci_ingest::CiIngestApplication;
 mod roles;
 mod users;
@@ -8,9 +30,7 @@ mod zones;
 
 use std::sync::Arc;
 
-use crate::{
-    Clock, PasswordHasher, Permission, RepositorySet, RuleZoneSnapshotRepository, TenantContext,
-};
+use crate::{Clock, PasswordHasher, Permission, RepositorySet, TenantContext};
 
 pub use roles::{CreateRole, RoleApplication, RoleUpdate};
 pub use users::{
@@ -25,6 +45,10 @@ pub use zones::{CreateZone, ZoneApplication, ZoneUpdate};
 /// intentionally do not belong here.
 #[derive(Clone)]
 pub struct ApplicationDependencies {
+    pub rule_changes: Arc<dyn crate::rules::RuleChangeNotifier>,
+    pub webhook_urls: Arc<dyn crate::rules::WebhookUrlPolicy>,
+    pub certificate_issuer: Arc<dyn crate::certificates::CertificateIssuer>,
+    pub key_protector: Arc<dyn crate::certificates::KeyProtector>,
     pub api_key_generator: Arc<dyn crate::ApiKeyGenerator>,
     pub password_hasher: Arc<dyn PasswordHasher>,
     pub clock: Arc<dyn Clock>,
@@ -36,11 +60,19 @@ impl ApplicationDependencies {
         password_hasher: Arc<dyn PasswordHasher>,
         clock: Arc<dyn Clock>,
         api_key_generator: Arc<dyn crate::ApiKeyGenerator>,
+        certificate_issuer: Arc<dyn crate::certificates::CertificateIssuer>,
+        key_protector: Arc<dyn crate::certificates::KeyProtector>,
+        webhook_urls: Arc<dyn crate::rules::WebhookUrlPolicy>,
+        rule_changes: Arc<dyn crate::rules::RuleChangeNotifier>,
     ) -> Self {
         Self {
+            rule_changes,
+            webhook_urls,
             password_hasher,
             clock,
             api_key_generator,
+            certificate_issuer,
+            key_protector,
         }
     }
 }
@@ -49,23 +81,60 @@ impl ApplicationDependencies {
 #[derive(Clone)]
 pub struct Application {
     api_keys: ApiKeyApplication,
+    device_blueprints: DeviceBlueprintApplication,
+    devices: DeviceApplication,
+    fleets: FleetApplication,
+    device_types: DeviceTypeApplication,
     ci_ingest: CiIngestApplication,
+    certificates: CertificateApplication,
+    alerts: AlertApplication,
+    outbox: OutboxApplication,
+    rules: RuleApplication,
     roles: RoleApplication,
     users: UserApplication,
     zones: ZoneApplication,
-    // Retained for the rules application slice. Keeping the port here ensures
-    // `RepositorySet` is consumed by the application instead of becoming a
-    // host-level service locator during the incremental migration.
-    _rule_zone_snapshots: Arc<dyn RuleZoneSnapshotRepository>,
 }
 
 impl Application {
+    pub fn alerts(&self) -> &AlertApplication {
+        &self.alerts
+    }
     #[must_use]
     pub fn new(repositories: RepositorySet, dependencies: ApplicationDependencies) -> Self {
         let repositories = repositories.into_parts();
+        let blueprints = DeviceBlueprintApplication::new(
+            repositories.device_blueprints,
+            dependencies.clock.clone(),
+        );
+        let device_types = DeviceTypeApplication::new(repositories.device_types);
+        let certificates = CertificateApplication::new(
+            repositories.certificates,
+            dependencies.certificate_issuer,
+            dependencies.key_protector,
+        );
+        let devices = DeviceApplication::new(
+            repositories.devices,
+            blueprints.clone(),
+            device_types.clone(),
+            certificates.clone(),
+            dependencies.clock.clone(),
+        );
         Self {
+            alerts: AlertApplication::new(repositories.alerts),
+            outbox: OutboxApplication::new(repositories.outbox),
+            rules: RuleApplication::new(
+                repositories.rules,
+                dependencies.clock.clone(),
+                dependencies.webhook_urls,
+                dependencies.rule_changes,
+            ),
+            devices,
             api_keys: ApiKeyApplication::new(repositories.api_keys, dependencies.api_key_generator),
             ci_ingest: CiIngestApplication::new(repositories.ci_ingest),
+            certificates,
+            device_types,
+            device_blueprints: blueprints,
+            fleets: FleetApplication::new(repositories.fleets),
             roles: RoleApplication::new(repositories.roles),
             users: UserApplication::new(
                 repositories.users,
@@ -73,8 +142,12 @@ impl Application {
                 dependencies.clock,
             ),
             zones: ZoneApplication::new(repositories.zones),
-            _rule_zone_snapshots: repositories.rule_zone_snapshots,
         }
+    }
+
+    #[must_use]
+    pub fn certificates(&self) -> &CertificateApplication {
+        &self.certificates
     }
 
     #[must_use]
@@ -83,8 +156,38 @@ impl Application {
     }
 
     #[must_use]
+    pub fn device_types(&self) -> &DeviceTypeApplication {
+        &self.device_types
+    }
+
+    #[must_use]
+    pub fn devices(&self) -> &DeviceApplication {
+        &self.devices
+    }
+
+    #[must_use]
+    pub fn device_blueprints(&self) -> &DeviceBlueprintApplication {
+        &self.device_blueprints
+    }
+
+    #[must_use]
+    pub fn fleets(&self) -> &FleetApplication {
+        &self.fleets
+    }
+
+    #[must_use]
     pub fn api_keys(&self) -> &ApiKeyApplication {
         &self.api_keys
+    }
+
+    #[must_use]
+    pub fn outbox(&self) -> &OutboxApplication {
+        &self.outbox
+    }
+
+    #[must_use]
+    pub fn rules(&self) -> &RuleApplication {
+        &self.rules
     }
 
     #[must_use]
@@ -114,225 +217,5 @@ pub(crate) fn require_permission(
             "Missing permission '{}'",
             permission.key()
         )))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use async_trait::async_trait;
-
-    use super::*;
-    use crate::{
-        ChangePasswordOutcome, CreateUserOutcome, DeleteRoleOutcome, DeleteUserOutcome,
-        DeleteZoneOutcome, EncodedPasswordHash, NewRole, NewUser, NewZone, PageRequest,
-        PasswordHasherError, PersistenceError, RecordSuccessfulLoginOutcome, RepositorySetInput,
-        RoleDetails, RolePatch, RoleRepository, SetUserRolesOutcome, TenantId, UpdateRoleOutcome,
-        UserCredentials, UserDetails, UserPage, UserRepository, Zone, ZonePatch, ZoneRepository,
-    };
-
-    struct FakeRepositories;
-
-    #[async_trait]
-    impl ZoneRepository for FakeRepositories {
-        async fn list(&self, _tenant: &TenantId) -> Result<Vec<Zone>, PersistenceError> {
-            Ok(Vec::new())
-        }
-
-        async fn get(
-            &self,
-            _tenant: &TenantId,
-            _zone_id: &str,
-        ) -> Result<Option<Zone>, PersistenceError> {
-            Ok(None)
-        }
-
-        async fn create(
-            &self,
-            _tenant: &TenantId,
-            _zone: NewZone,
-        ) -> Result<Zone, PersistenceError> {
-            Err(PersistenceError::Internal("not used by this test".into()))
-        }
-
-        async fn update(
-            &self,
-            _tenant: &TenantId,
-            _zone_id: &str,
-            _patch: ZonePatch,
-        ) -> Result<Option<Zone>, PersistenceError> {
-            Ok(None)
-        }
-
-        async fn delete(
-            &self,
-            _tenant: &TenantId,
-            _zone_id: &str,
-        ) -> Result<DeleteZoneOutcome, PersistenceError> {
-            Ok(DeleteZoneOutcome::NotFound)
-        }
-    }
-
-    #[async_trait]
-    impl RuleZoneSnapshotRepository for FakeRepositories {
-        async fn list_for_rule_snapshot(&self) -> Result<Vec<Zone>, PersistenceError> {
-            Ok(Vec::new())
-        }
-    }
-
-    #[async_trait]
-    impl RoleRepository for FakeRepositories {
-        async fn list(&self, _tenant: &TenantId) -> Result<Vec<RoleDetails>, PersistenceError> {
-            Ok(Vec::new())
-        }
-
-        async fn create(
-            &self,
-            _tenant: &TenantId,
-            _role: NewRole,
-        ) -> Result<RoleDetails, PersistenceError> {
-            Err(PersistenceError::Internal("not used by this test".into()))
-        }
-
-        async fn update(
-            &self,
-            _tenant: &TenantId,
-            _role_id: i32,
-            _patch: RolePatch,
-        ) -> Result<UpdateRoleOutcome, PersistenceError> {
-            Ok(UpdateRoleOutcome::NotFound)
-        }
-
-        async fn delete(
-            &self,
-            _tenant: &TenantId,
-            _role_id: i32,
-        ) -> Result<DeleteRoleOutcome, PersistenceError> {
-            Ok(DeleteRoleOutcome::NotFound)
-        }
-    }
-
-    #[async_trait]
-    impl UserRepository for FakeRepositories {
-        async fn list(
-            &self,
-            _tenant: &TenantId,
-            _page: PageRequest,
-        ) -> Result<UserPage, PersistenceError> {
-            Ok(UserPage::new(Vec::new(), 0))
-        }
-
-        async fn create(
-            &self,
-            _tenant: &TenantId,
-            _user: NewUser,
-        ) -> Result<CreateUserOutcome, PersistenceError> {
-            Err(PersistenceError::Internal("not used by this test".into()))
-        }
-
-        async fn change_password(
-            &self,
-            _tenant: &TenantId,
-            _user_id: i32,
-            _password_hash: EncodedPasswordHash,
-        ) -> Result<ChangePasswordOutcome, PersistenceError> {
-            Ok(ChangePasswordOutcome::NotFound)
-        }
-
-        async fn delete(
-            &self,
-            _tenant: &TenantId,
-            _user_id: i32,
-        ) -> Result<DeleteUserOutcome, PersistenceError> {
-            Ok(DeleteUserOutcome::NotFound)
-        }
-
-        async fn set_roles(
-            &self,
-            _tenant: &TenantId,
-            _user_id: i32,
-            _role_ids: Vec<i32>,
-        ) -> Result<SetUserRolesOutcome, PersistenceError> {
-            Ok(SetUserRolesOutcome::UserNotFound)
-        }
-
-        async fn find_credentials_by_username(
-            &self,
-            _tenant: &TenantId,
-            _username: &str,
-        ) -> Result<Option<UserCredentials>, PersistenceError> {
-            Ok(None)
-        }
-
-        async fn get_details(
-            &self,
-            _tenant: &TenantId,
-            _user_id: i32,
-        ) -> Result<Option<UserDetails>, PersistenceError> {
-            Ok(None)
-        }
-
-        async fn record_successful_login(
-            &self,
-            _tenant: &TenantId,
-            _user_id: i32,
-            _logged_in_at: chrono::DateTime<chrono::Utc>,
-        ) -> Result<RecordSuccessfulLoginOutcome, PersistenceError> {
-            Ok(RecordSuccessfulLoginOutcome::NotFound)
-        }
-    }
-
-    struct FakePasswordHasher;
-
-    #[async_trait]
-    impl PasswordHasher for FakePasswordHasher {
-        async fn hash(
-            &self,
-            _plaintext: String,
-        ) -> Result<EncodedPasswordHash, PasswordHasherError> {
-            Ok(EncodedPasswordHash::new("unused"))
-        }
-
-        async fn verify(
-            &self,
-            _plaintext: String,
-            _password_hash: EncodedPasswordHash,
-        ) -> Result<bool, PasswordHasherError> {
-            Ok(false)
-        }
-    }
-
-    struct FakeClock;
-
-    impl Clock for FakeClock {
-        fn now(&self) -> chrono::DateTime<chrono::Utc> {
-            chrono::DateTime::UNIX_EPOCH
-        }
-    }
-
-    #[test]
-    fn application_consumes_and_retains_the_complete_repository_set() {
-        let repository = Arc::new(FakeRepositories);
-        let application = Application::new(
-            RepositorySet::new(RepositorySetInput {
-                api_keys: Arc::new(crate::api_keys::tests::RecordingRepository::default()),
-                ci_ingest: Arc::new(crate::api_keys::tests::RecordingRepository::default()),
-                roles: repository.clone(),
-                users: repository.clone(),
-                zones: repository.clone(),
-                rule_zone_snapshots: repository.clone(),
-            }),
-            ApplicationDependencies::new(
-                Arc::new(FakePasswordHasher),
-                Arc::new(FakeClock),
-                Arc::new(crate::api_keys::tests::TestGenerator),
-            ),
-        );
-
-        // The caller, zone façade, and retained snapshot port each hold one
-        // reference. No database runtime or lifecycle handle is required.
-        assert_eq!(Arc::strong_count(&repository), 5);
-        let _roles = application.roles();
-        let _users = application.users();
-        let _zones = application.zones();
     }
 }

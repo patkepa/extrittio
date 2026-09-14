@@ -51,6 +51,9 @@ pub enum ApplicationError {
     Conflict(String),
     #[error("{0}")]
     InvalidInput(String),
+    /// Validly parsed input that violates an operation precondition.
+    #[error("{0}")]
+    InvalidOperation(String),
     #[error("Unauthorized")]
     Unauthorized,
     #[error("{0}")]

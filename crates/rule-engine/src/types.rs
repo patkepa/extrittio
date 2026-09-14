@@ -6,7 +6,7 @@ use serde_json::Value;
 // Cached rule structures (in-memory, populated from DB)
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct CachedRule {
     pub tenant_id: String,
     pub id: String,
@@ -19,7 +19,7 @@ pub struct CachedRule {
     pub actions: Vec<CachedAction>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct CachedCondition {
     pub field: String,
     pub operator: String,
@@ -27,7 +27,7 @@ pub struct CachedCondition {
     pub zone_id: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct CachedAction {
     pub action_type: String,
     pub config: serde_json::Value,
@@ -111,14 +111,14 @@ pub struct StatusChange {
 // Zone geometry types
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct CachedZone {
     pub id: String,
     pub name: String,
     pub geometry: ZoneGeometry,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub enum ZoneGeometry {
     Circle {
         center_lat: f64,

@@ -89,12 +89,13 @@ fn compare_f64(left: f64, right: f64, operator: ConditionOperator) -> bool {
 
 /// Returns `true` if the tenant's rule+device combination is currently within
 /// its cooldown window. A `cooldown_seconds` value of 0 means no cooldown.
-pub fn is_in_cooldown_for_tenant(
+pub fn is_in_cooldown_for_tenant_at(
     cache: &RuleCache,
     tenant_id: &str,
     rule_id: &str,
     device_id: &str,
     cooldown_seconds: i32,
+    now: chrono::NaiveDateTime,
 ) -> bool {
     if cooldown_seconds <= 0 {
         return false;
@@ -106,7 +107,6 @@ pub fn is_in_cooldown_for_tenant(
         device_id.to_string(),
     );
     if let Some(last_fired) = cache.cooldowns.get(&key) {
-        let now = Utc::now().naive_utc();
         let elapsed = now.signed_duration_since(*last_fired);
         elapsed.num_seconds() < cooldown_seconds as i64
     } else {
@@ -197,7 +197,7 @@ fn triggered_value_for(conditions: &[CachedCondition], data: &TelemetryData) -> 
 /// - If conditions are met and an active alert exists → `UpdateAlertValue`.
 /// - If conditions are NOT met but an active alert exists → `ResolveAlert`.
 /// - After firing, an `UpdateCooldown` is appended.
-pub fn evaluate_telemetry_for_tenant(
+pub fn evaluate_telemetry_for_tenant_at(
     tenant_id: &str,
     device_id: &str,
     device_type_id: i32,
@@ -205,6 +205,7 @@ pub fn evaluate_telemetry_for_tenant(
     blueprint_id: Option<&str>,
     data: &TelemetryData,
     cache: &RuleCache,
+    now: chrono::NaiveDateTime,
 ) -> Vec<PendingAction> {
     let device_type_str = device_type_id.to_string();
     let fleet_str = fleet_id.map(|f| f.to_string());
@@ -250,12 +251,13 @@ pub fn evaluate_telemetry_for_tenant(
                 }
             } else {
                 // Not yet active. Respect cooldown before creating.
-                if is_in_cooldown_for_tenant(
+                if is_in_cooldown_for_tenant_at(
                     cache,
                     &rule.tenant_id,
                     &rule.id,
                     device_id,
                     rule.cooldown_seconds,
+                    now,
                 ) {
                     continue;
                 }
@@ -293,7 +295,7 @@ pub fn evaluate_telemetry_for_tenant(
                                 .to_string();
                             let payload = json!({
                                 "event": "rule_triggered",
-                                "timestamp": chrono::Utc::now().to_rfc3339(),
+                                "timestamp": now.and_utc().to_rfc3339(),
                                 "rule": {
                                     "id": rule.id,
                                     "name": rule.name,
@@ -343,7 +345,7 @@ pub fn evaluate_telemetry_for_tenant(
                     tenant_id: rule.tenant_id.clone(),
                     rule_id: rule.id.clone(),
                     device_id: device_id.to_string(),
-                    fired_at: Utc::now().naive_utc(),
+                    fired_at: now,
                 });
             }
         } else {
@@ -369,7 +371,7 @@ pub fn evaluate_telemetry_for_tenant(
 
 /// Evaluates the tenant's applicable rules against a device status change and
 /// returns the list of `PendingAction`s that should be executed.
-pub fn evaluate_status_change_for_tenant(
+pub fn evaluate_status_change_for_tenant_at(
     tenant_id: &str,
     device_id: &str,
     device_type_id: i32,
@@ -377,6 +379,7 @@ pub fn evaluate_status_change_for_tenant(
     blueprint_id: Option<&str>,
     change: &StatusChange,
     cache: &RuleCache,
+    now: chrono::NaiveDateTime,
 ) -> Vec<PendingAction> {
     let device_type_str = device_type_id.to_string();
     let fleet_str = fleet_id.map(|f| f.to_string());
@@ -422,12 +425,13 @@ pub fn evaluate_status_change_for_tenant(
                 }
             } else {
                 // Respect cooldown.
-                if is_in_cooldown_for_tenant(
+                if is_in_cooldown_for_tenant_at(
                     cache,
                     &rule.tenant_id,
                     &rule.id,
                     device_id,
                     rule.cooldown_seconds,
+                    now,
                 ) {
                     continue;
                 }
@@ -463,7 +467,7 @@ pub fn evaluate_status_change_for_tenant(
                                 .to_string();
                             let payload = json!({
                                 "event": "rule_triggered",
-                                "timestamp": chrono::Utc::now().to_rfc3339(),
+                                "timestamp": now.and_utc().to_rfc3339(),
                                 "rule": {
                                     "id": rule.id,
                                     "name": rule.name,
@@ -510,7 +514,7 @@ pub fn evaluate_status_change_for_tenant(
                     tenant_id: rule.tenant_id.clone(),
                     rule_id: rule.id.clone(),
                     device_id: device_id.to_string(),
-                    fired_at: Utc::now().naive_utc(),
+                    fired_at: now,
                 });
             }
         } else {
@@ -546,13 +550,23 @@ fn point_in_zone(lat: f64, lon: f64, geometry: &ZoneGeometry) -> bool {
     }
 }
 
+/// Returns a finite, in-range location suitable for geofence evaluation.
+pub fn valid_location(data: &TelemetryData) -> Option<(f64, f64)> {
+    let (latitude, longitude) = (data.latitude?, data.longitude?);
+    (latitude.is_finite()
+        && longitude.is_finite()
+        && (-90.0..=90.0).contains(&latitude)
+        && (-180.0..=180.0).contains(&longitude))
+    .then_some((latitude, longitude))
+}
+
 /// Evaluates geofence rules against the current device location.
 ///
 /// For each rule with `trigger_type == "geofence"`, checks each condition's
 /// `zone_id` against the cached zone geometries.  Produces `PendingAction`s
 /// for zone entry/exit events.  Zone dwell mutations are returned as
 /// `UpdateZoneEntry` (deferred to the caller).
-pub fn evaluate_geofence_for_tenant(
+pub fn evaluate_geofence_for_tenant_at(
     tenant_id: &str,
     device_id: &str,
     device_type_id: i32,
@@ -560,17 +574,11 @@ pub fn evaluate_geofence_for_tenant(
     blueprint_id: Option<&str>,
     data: &TelemetryData,
     cache: &RuleCache,
+    now: chrono::NaiveDateTime,
 ) -> Vec<PendingAction> {
-    let (Some(latitude), Some(longitude)) = (data.latitude, data.longitude) else {
+    let Some((latitude, longitude)) = valid_location(data) else {
         return Vec::new();
     };
-    if !latitude.is_finite()
-        || !longitude.is_finite()
-        || !(-90.0..=90.0).contains(&latitude)
-        || !(-180.0..=180.0).contains(&longitude)
-    {
-        return Vec::new();
-    }
 
     let device_type_str = device_type_id.to_string();
     let fleet_str = fleet_id.map(|f| f.to_string());
@@ -623,7 +631,7 @@ pub fn evaluate_geofence_for_tenant(
                     tenant_id: rule.tenant_id.clone(),
                     rule_id: rule.id.clone(),
                     device_id: device_id.to_string(),
-                    entered_at: Some(Utc::now().naive_utc()),
+                    entered_at: Some(now),
                 });
             }
 
@@ -637,12 +645,13 @@ pub fn evaluate_geofence_for_tenant(
                     });
                 }
             } else {
-                if is_in_cooldown_for_tenant(
+                if is_in_cooldown_for_tenant_at(
                     cache,
                     &rule.tenant_id,
                     &rule.id,
                     device_id,
                     rule.cooldown_seconds,
+                    now,
                 ) {
                     continue;
                 }
@@ -688,7 +697,7 @@ pub fn evaluate_geofence_for_tenant(
                                 .to_string();
                             let payload = json!({
                                 "event": "geofence_entered",
-                                "timestamp": chrono::Utc::now().to_rfc3339(),
+                                "timestamp": now.and_utc().to_rfc3339(),
                                 "rule": {
                                     "id": rule.id,
                                     "name": rule.name,
@@ -735,7 +744,7 @@ pub fn evaluate_geofence_for_tenant(
                     tenant_id: rule.tenant_id.clone(),
                     rule_id: rule.id.clone(),
                     device_id: device_id.to_string(),
-                    fired_at: Utc::now().naive_utc(),
+                    fired_at: now,
                 });
             }
         } else {
@@ -769,6 +778,87 @@ pub fn evaluate_geofence_for_tenant(
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+// Convenience API for callers without an explicit observation time.
+pub fn is_in_cooldown_for_tenant(
+    cache: &RuleCache,
+    tenant_id: &str,
+    rule_id: &str,
+    device_id: &str,
+    cooldown_seconds: i32,
+) -> bool {
+    is_in_cooldown_for_tenant_at(
+        cache,
+        tenant_id,
+        rule_id,
+        device_id,
+        cooldown_seconds,
+        Utc::now().naive_utc(),
+    )
+}
+
+pub fn evaluate_telemetry_for_tenant(
+    tenant_id: &str,
+    device_id: &str,
+    device_type_id: i32,
+    fleet_id: Option<i32>,
+    blueprint_id: Option<&str>,
+    data: &TelemetryData,
+    cache: &RuleCache,
+) -> Vec<PendingAction> {
+    evaluate_telemetry_for_tenant_at(
+        tenant_id,
+        device_id,
+        device_type_id,
+        fleet_id,
+        blueprint_id,
+        data,
+        cache,
+        Utc::now().naive_utc(),
+    )
+}
+
+pub fn evaluate_status_change_for_tenant(
+    tenant_id: &str,
+    device_id: &str,
+    device_type_id: i32,
+    fleet_id: Option<i32>,
+    blueprint_id: Option<&str>,
+    change: &StatusChange,
+    cache: &RuleCache,
+) -> Vec<PendingAction> {
+    evaluate_status_change_for_tenant_at(
+        tenant_id,
+        device_id,
+        device_type_id,
+        fleet_id,
+        blueprint_id,
+        change,
+        cache,
+        Utc::now().naive_utc(),
+    )
+}
+
+pub fn evaluate_geofence_for_tenant(
+    tenant_id: &str,
+    device_id: &str,
+    device_type_id: i32,
+    fleet_id: Option<i32>,
+    blueprint_id: Option<&str>,
+    data: &TelemetryData,
+    cache: &RuleCache,
+) -> Vec<PendingAction> {
+    evaluate_geofence_for_tenant_at(
+        tenant_id,
+        device_id,
+        device_type_id,
+        fleet_id,
+        blueprint_id,
+        data,
+        cache,
+        Utc::now().naive_utc(),
+    )
+}
 
 #[cfg(test)]
 mod tests {
