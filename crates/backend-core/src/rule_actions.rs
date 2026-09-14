@@ -154,3 +154,15 @@ pub fn decode_event(event: &OutboxEventRecord) -> Result<PendingAction, crate::A
     }
     Ok(action)
 }
+
+/// Concrete destination validation, HTTP transport, and trace injection stay in the host.
+#[async_trait::async_trait]
+pub trait WebhookSender: Send + Sync {
+    async fn send(
+        &self,
+        url: &str,
+        headers: &std::collections::HashMap<String, String>,
+        payload: &serde_json::Value,
+        delivery_id: &str,
+    ) -> Result<(), String>;
+}

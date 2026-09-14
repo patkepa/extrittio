@@ -11,6 +11,16 @@ use crate::{
 
 pub const MIN_PASSWORD_LEN: usize = 12;
 
+/// Reject input that cannot be represented by both database text engines.
+pub(super) fn validate_username_characters(username: &str) -> Result<(), ApplicationError> {
+    if username.contains('\0') {
+        return Err(ApplicationError::InvalidInput(
+            "Username must not contain NUL characters".into(),
+        ));
+    }
+    Ok(())
+}
+
 /// Plaintext input for user creation.
 ///
 /// Deliberately does not implement `Debug`, `Clone`, or serialization so a
@@ -75,6 +85,7 @@ impl UserApplication {
                 "Username must not be empty".into(),
             ));
         }
+        validate_username_characters(&username)?;
         validate_password(&input.password)?;
         if input.role_ids.as_deref().is_some_and(<[i32]>::is_empty) {
             return Err(ApplicationError::InvalidInput(
@@ -188,6 +199,7 @@ impl UserApplication {
         username: &str,
         password: String,
     ) -> Result<AuthenticatedUser, ApplicationError> {
+        validate_username_characters(username).map_err(|_| ApplicationError::Unauthorized)?;
         let credentials = self
             .repository
             .find_credentials_by_username(tenant, username)

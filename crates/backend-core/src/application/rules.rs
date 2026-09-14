@@ -340,6 +340,7 @@ fn validate_rule(
 }
 
 /// System worker compatibility operations; never exposed through tenant routes.
+#[derive(Clone)]
 pub struct RuleRuntimeApplication {
     repository: std::sync::Arc<dyn crate::rules::RuleRepository>,
 }

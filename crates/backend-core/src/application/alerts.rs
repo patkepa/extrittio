@@ -182,6 +182,7 @@ impl AlertWorkerApplication {
 }
 
 /// System-scoped retention, separate from tenant-facing alert management.
+#[derive(Clone)]
 pub struct AlertMaintenanceApplication {
     alerts: Arc<dyn AlertRepository>,
     rules: Arc<dyn crate::rules::RuleRepository>,

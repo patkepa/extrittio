@@ -109,3 +109,44 @@ impl DeviceShadowApplication {
             .ok_or_else(|| missing(device_id))
     }
 }
+
+/// Report coordination preserves the committed shadow when OTA processing fails.
+#[derive(Clone)]
+pub struct DeviceReportApplication {
+    shadows: DeviceShadowApplication,
+    firmware: super::FirmwareReportApplication,
+}
+pub struct DeviceReportOutcome {
+    pub shadow: ShadowRecord,
+    pub firmware_error: Option<ApplicationError>,
+}
+impl DeviceReportApplication {
+    pub fn new(
+        shadows: DeviceShadowApplication,
+        firmware: super::FirmwareReportApplication,
+    ) -> Self {
+        Self { shadows, firmware }
+    }
+    pub async fn report(
+        &self,
+        identity: &crate::DeviceIdentity,
+        patch: Map<String, Value>,
+    ) -> Result<DeviceReportOutcome, ApplicationError> {
+        let reported = Value::Object(patch.clone());
+        let shadow = self
+            .shadows
+            .update_reported(identity.tenant_id(), identity.device_id(), patch)
+            .await?;
+        // Process only this report, not the merged stored state, to retain stale
+        // OTA report fencing. This remains a separate, best-effort transaction.
+        let firmware_error = self
+            .firmware
+            .process_report(identity, &reported)
+            .await
+            .err();
+        Ok(DeviceReportOutcome {
+            shadow,
+            firmware_error,
+        })
+    }
+}
