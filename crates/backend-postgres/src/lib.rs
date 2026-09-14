@@ -95,3 +95,20 @@ pub use device_ingress::PostgresDeviceIngressRepository;
 mod telemetry;
 pub use telemetry::PostgresTelemetryRepository;
 mod telemetry_sql;
+
+mod activity;
+pub use activity::PostgresActivityRepository;
+
+mod dashboard;
+pub use dashboard::PostgresDashboardRepository;
+
+mod analytics;
+pub use analytics::PostgresAnalyticsRepository;
+
+mod audit;
+pub use audit::PostgresAuditRepository;
+mod audit_sql;
+
+mod metrics;
+pub use metrics::PostgresMetricsRepository;
+mod metrics_sql;

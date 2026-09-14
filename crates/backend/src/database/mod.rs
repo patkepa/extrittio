@@ -34,11 +34,6 @@ pub use extrittio_backend_postgres::{PostgresExecutor, PostgresPool, models, sch
 #[cfg(feature = "turso")]
 mod turso;
 #[cfg(feature = "turso")]
-pub(crate) use extrittio_backend_turso::migration_bridge::{
-    connect as turso_connect, datetime as turso_datetime, i32 as turso_i32,
-    legacy_error as turso_error, lock_writer as turso_lock_writer,
-};
-#[cfg(feature = "turso")]
 pub use turso::{LogicalArchiveInfo, TursoBackupInfo, TursoDatabase, TursoDatabaseInfo};
 
 #[cfg(feature = "postgres")]
@@ -373,4 +368,79 @@ pub(crate) fn postgres_firmware(
     pool: &PostgresPool,
 ) -> Arc<dyn extrittio_backend_core::firmware::FirmwareRepository> {
     Arc::new(extrittio_backend_postgres::PostgresFirmwareRepository::from_pool(pool.clone()))
+}
+
+#[cfg(feature = "postgres")]
+pub(crate) fn postgres_activity(
+    pool: &PostgresPool,
+) -> Arc<dyn extrittio_backend_core::activity::ActivityRepository> {
+    Arc::new(extrittio_backend_postgres::PostgresActivityRepository::from_pool(pool.clone()))
+}
+#[cfg(feature = "turso")]
+pub(crate) fn turso_activity(
+    database: &TursoDatabase,
+) -> Arc<dyn extrittio_backend_core::activity::ActivityRepository> {
+    Arc::new(
+        extrittio_backend_turso::TursoActivityRepository::from_handles(database.shared_handles()),
+    )
+}
+
+#[cfg(feature = "postgres")]
+pub(crate) fn postgres_dashboard(
+    pool: &PostgresPool,
+) -> Arc<dyn extrittio_backend_core::dashboard::DashboardReadRepository> {
+    Arc::new(extrittio_backend_postgres::PostgresDashboardRepository::from_pool(pool.clone()))
+}
+#[cfg(feature = "turso")]
+pub(crate) fn turso_dashboard(
+    database: &TursoDatabase,
+) -> Arc<dyn extrittio_backend_core::dashboard::DashboardReadRepository> {
+    Arc::new(
+        extrittio_backend_turso::TursoDashboardRepository::from_handles(database.shared_handles()),
+    )
+}
+
+#[cfg(feature = "postgres")]
+pub(crate) fn postgres_analytics(
+    pool: &PostgresPool,
+) -> Arc<dyn extrittio_backend_core::analytics::AnalyticsRepository> {
+    Arc::new(extrittio_backend_postgres::PostgresAnalyticsRepository::from_pool(pool.clone()))
+}
+#[cfg(feature = "turso")]
+pub(crate) fn turso_analytics(
+    database: &TursoDatabase,
+) -> Arc<dyn extrittio_backend_core::analytics::AnalyticsRepository> {
+    Arc::new(
+        extrittio_backend_turso::TursoAnalyticsRepository::from_handles(database.shared_handles()),
+    )
+}
+
+#[cfg(feature = "postgres")]
+pub(crate) fn postgres_audit(
+    pool: &PostgresPool,
+) -> Arc<dyn extrittio_backend_core::audit::AuditRepository> {
+    Arc::new(extrittio_backend_postgres::PostgresAuditRepository::from_pool(pool.clone()))
+}
+#[cfg(feature = "turso")]
+pub(crate) fn turso_audit(
+    database: &TursoDatabase,
+) -> Arc<dyn extrittio_backend_core::audit::AuditRepository> {
+    Arc::new(extrittio_backend_turso::TursoAuditRepository::from_handles(
+        database.shared_handles(),
+    ))
+}
+
+#[cfg(feature = "postgres")]
+pub(crate) fn postgres_metrics(
+    pool: &PostgresPool,
+) -> Arc<dyn extrittio_backend_core::metrics::MetricsRepository> {
+    Arc::new(extrittio_backend_postgres::PostgresMetricsRepository::from_pool(pool.clone()))
+}
+#[cfg(feature = "turso")]
+pub(crate) fn turso_metrics(
+    database: &TursoDatabase,
+) -> Arc<dyn extrittio_backend_core::metrics::MetricsRepository> {
+    Arc::new(
+        extrittio_backend_turso::TursoMetricsRepository::from_handles(database.shared_handles()),
+    )
 }

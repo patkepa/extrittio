@@ -1,5 +1,15 @@
+mod metrics;
+pub use metrics::{MetricsApplication, MetricsWorkerApplication};
+mod audit;
+pub use audit::AuditApplication;
+mod analytics;
+pub use analytics::AnalyticsApplication;
+mod dashboard;
+pub use dashboard::DashboardApplication;
+mod activity;
+pub use activity::ActivityApplication;
 mod firmware;
-pub use firmware::{FirmwareApplication, FirmwareMigrationApplication};
+pub use firmware::{FirmwareApplication, FirmwareMigrationApplication, FirmwareReportApplication};
 mod telemetry;
 pub use telemetry::{
     TelemetryApplication, TelemetryIngressApplication, TelemetryMaintenanceApplication,
@@ -103,6 +113,11 @@ impl ApplicationDependencies {
 /// Curated application façade passed to transports.
 #[derive(Clone)]
 pub struct Application {
+    metrics: MetricsApplication,
+    audit: AuditApplication,
+    analytics: AnalyticsApplication,
+    dashboard: DashboardApplication,
+    activity: ActivityApplication,
     firmware: FirmwareApplication,
     telemetry: TelemetryApplication,
     events: EventApplication,
@@ -126,6 +141,25 @@ pub struct Application {
 }
 
 impl Application {
+    pub fn metrics(&self) -> &MetricsApplication {
+        &self.metrics
+    }
+    pub fn audit(&self) -> &AuditApplication {
+        &self.audit
+    }
+
+    pub fn analytics(&self) -> &AnalyticsApplication {
+        &self.analytics
+    }
+
+    pub fn dashboard(&self) -> &DashboardApplication {
+        &self.dashboard
+    }
+
+    pub fn activity(&self) -> &ActivityApplication {
+        &self.activity
+    }
+
     pub fn firmware(&self) -> &FirmwareApplication {
         &self.firmware
     }
@@ -172,6 +206,11 @@ impl Application {
             dependencies.clock.clone(),
         );
         Self {
+            metrics: MetricsApplication::new(repositories.metrics),
+            audit: AuditApplication::new(repositories.audit),
+            analytics: AnalyticsApplication::new(repositories.analytics),
+            dashboard: DashboardApplication::new(repositories.dashboard),
+            activity: ActivityApplication::new(repositories.activity),
             firmware: FirmwareApplication::new(repositories.firmware),
             telemetry: TelemetryApplication::new(repositories.telemetry),
             events: EventApplication::new(repositories.events),

@@ -9,8 +9,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use extrittio_backend_turso::TursoConnectionHandles;
-use tokio::sync::MutexGuard;
-use turso::Connection;
 
 use crate::persistence::{DatabaseHealth, LifecycleError, PersistenceError};
 
@@ -103,14 +101,6 @@ impl TursoDatabase {
         dry_run: bool,
     ) -> Result<LogicalArchiveInfo, PersistenceError> {
         self.adapter.import_logical(path, dry_run).await
-    }
-
-    pub(crate) fn connect(&self) -> Result<Connection, PersistenceError> {
-        crate::database::turso_connect(&self.handles)
-    }
-
-    pub(crate) async fn writer(&self) -> MutexGuard<'_, Connection> {
-        crate::database::turso_lock_writer(&self.handles).await
     }
 
     #[must_use]

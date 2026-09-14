@@ -1,31 +1,8 @@
-use std::sync::Arc;
-
 use crate::persistence::{DatabaseRuntime, RepositorySet};
 use executor::PostgresPool;
 
-mod activity;
-mod analytics;
-mod audit;
-mod dashboard;
 pub mod executor;
 pub(crate) mod lifecycle;
-mod metrics;
-
-/// Shared PostgreSQL adapter object. It implements multiple domain ports while
-/// owning one executor/pool boundary.
-#[derive(Clone)]
-pub struct PostgresAdapter {
-    executor: executor::PostgresExecutor,
-}
-
-impl PostgresAdapter {
-    #[must_use]
-    pub fn new(pool: PostgresPool) -> Self {
-        Self {
-            executor: executor::PostgresExecutor::new(pool),
-        }
-    }
-}
 
 #[must_use]
 pub fn create_repositories(pool: PostgresPool) -> RepositorySet {
@@ -59,21 +36,25 @@ fn build_repositories(pool: PostgresPool) -> RepositorySet {
     let device_types = crate::database::postgres_device_types(&pool);
     let bootstrap = crate::database::postgres_bootstrap(&pool);
     let certificates = crate::database::postgres_certificates(&pool);
+    let metrics = crate::database::postgres_metrics(&pool);
+    let audit = crate::database::postgres_audit(&pool);
+    let analytics = crate::database::postgres_analytics(&pool);
+    let dashboard = crate::database::postgres_dashboard(&pool);
+    let activity = crate::database::postgres_activity(&pool);
     let firmware = crate::database::postgres_firmware(&pool);
     let ci_ingest = crate::database::postgres_ci_ingest(&pool);
-    let adapter = Arc::new(PostgresAdapter::new(pool));
     RepositorySet {
-        activity: adapter.clone(),
-        analytics: adapter.clone(),
+        activity,
+        analytics,
         api_keys,
         ci_ingest,
         alerts,
-        audit: adapter.clone(),
+        audit,
         bootstrap,
         certificates,
         commands,
         configuration,
-        dashboard: adapter.clone(),
+        dashboard,
         device_blueprints,
         device_types,
         devices,
@@ -82,7 +63,7 @@ fn build_repositories(pool: PostgresPool) -> RepositorySet {
         fleets,
         firmware,
         logs,
-        metrics: adapter.clone(),
+        metrics,
         outbox,
         roles,
         rule_zone_snapshots,

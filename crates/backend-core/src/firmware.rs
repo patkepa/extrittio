@@ -294,3 +294,91 @@ impl VerifiedFirmwareDownload {
         self.firmware_id
     }
 }
+
+/// Signing inputs owned by core; the host selects the existing JWT encoding/key.
+pub struct FirmwareDownloadGrant {
+    pub tenant: TenantId,
+    pub firmware_id: i32,
+    pub audience: &'static str,
+    pub expires_at: u64,
+}
+impl FirmwareDownloadGrant {
+    pub fn new(
+        tenant: TenantId,
+        firmware_id: i32,
+        clock: &dyn crate::Clock,
+    ) -> Result<Self, crate::ApplicationError> {
+        let expires_at = clock
+            .now()
+            .timestamp()
+            .checked_add(7 * 24 * 3600)
+            .and_then(|value| u64::try_from(value).ok())
+            .ok_or_else(|| {
+                crate::ApplicationError::Internal("Failed to authorize firmware download".into())
+            })?;
+        Ok(Self {
+            tenant,
+            firmware_id,
+            audience: "extrittio:firmware-download",
+            expires_at,
+        })
+    }
+}
+pub trait FirmwareDownloadSigner: Send + Sync {
+    fn sign(&self, grant: &FirmwareDownloadGrant) -> Result<String, crate::ApplicationError>;
+}
+
+pub fn increment_firmware_version(version: &str) -> String {
+    let parts: Vec<&str> = version.split('.').collect();
+    if parts.len() == 3
+        && let Ok(patch) = parts[2].parse::<u32>()
+    {
+        return format!("{}.{}.{}", parts[0], parts[1], patch + 1);
+    }
+    format!("{version}.1")
+}
+
+/// Validated OTA artifact policy shared by transaction-owning adapters.
+pub struct PreparedOtaArtifact {
+    version: String,
+    url: String,
+    sha256: String,
+}
+impl PreparedOtaArtifact {
+    pub fn prepare(
+        version: &str,
+        hash: Option<&str>,
+        stored_url: &str,
+        grant_url: &str,
+    ) -> Option<Self> {
+        let url = if stored_url.starts_with("https://") {
+            stored_url
+        } else {
+            grant_url
+        };
+        if !valid_ota_artifact(version, hash, url) {
+            return None;
+        }
+        Some(Self {
+            version: version.into(),
+            url: url.into(),
+            sha256: hash?.into(),
+        })
+    }
+    pub fn desired_patch(
+        self,
+        firmware_id: i32,
+        deployment_id: i64,
+    ) -> serde_json::Map<String, Value> {
+        let mut patch = serde_json::Map::new();
+        patch.insert(
+            "ota".into(),
+            serde_json::json!({
+                "firmware_version": self.version, "firmware_url": self.url,
+                "firmware_update_id": firmware_id, "deployment_id": deployment_id,
+                "sha256": self.sha256,
+            }),
+        );
+        patch
+    }
+}

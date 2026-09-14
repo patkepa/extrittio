@@ -11,7 +11,6 @@ use utoipa::{IntoParams, ToSchema};
 use crate::auth::context::RequestContext;
 use crate::domains::operations::metrics_types::{AppMetricRecord, SystemMetricRecord};
 use crate::error::AppError;
-use crate::services::server_metrics;
 use crate::state::AppState;
 
 // ---------------------------------------------------------------------------
@@ -133,8 +132,11 @@ pub(crate) async fn get_current_metrics(
     Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<CurrentMetricsResponse>, AppError> {
-    let metrics =
-        server_metrics::get_current_metrics(&ctx, state.persistence.metrics.as_ref()).await?;
+    let metrics = state
+        .application()
+        .metrics()
+        .current(&ctx.tenant_context())
+        .await?;
     let response = CurrentMetricsResponse {
         rule_snapshots: state.rule_cache.metrics()?,
         system: metrics.system.map(SystemMetricsSnapshot::from),
@@ -162,17 +164,11 @@ pub(crate) async fn get_metrics_history(
 ) -> Result<Json<MetricsHistoryResponse>, AppError> {
     let since = parse_since(params.since.as_deref())?;
     let resolution = params.resolution.unwrap_or(10);
-    if resolution < 10 {
-        return Err(AppError::BadRequest("resolution must be >= 10".into()));
-    }
-
-    let history = server_metrics::get_metrics_history(
-        &ctx,
-        state.persistence.metrics.as_ref(),
-        since,
-        resolution,
-    )
-    .await?;
+    let history = state
+        .application()
+        .metrics()
+        .history(&ctx.tenant_context(), since, resolution)
+        .await?;
     let response = MetricsHistoryResponse {
         system: history
             .system

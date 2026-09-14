@@ -461,3 +461,19 @@ The inventory above records the original implementation. PI-07 raw telemetry now
 For the telemetry portion of PI-09, PostgreSQL now commits rollups, transactional partition operations, and retention deletion together; Turso retains its writer transaction. A stage failure rolls back the pass, and the worker retries the complete operation. Runtime rollback verification is deferred under the no-tests instruction. The short-retention/rollup-window overlap audit remains open, as do PI-09 differences outside telemetry.
 
 R08 follow-up resolves the retention overlap with a durable, monotonic pruning boundary, read and advanced inside the maintenance transaction. Core excludes every hour potentially affected by previous pruning, including after retention increases. Existing databases conservatively freeze pre-upgrade hours because earlier deletion history cannot be reconstructed; see the execution plan's migration/backfill limitations. PostgreSQL hour bucketing is explicitly UTC, and Turso floors negative epoch timestamps correctly. Typed event occurrence/receipt instants are truncated to microseconds in core before persistence, preventing adapter-specific rounding differences. Runtime/migration verification remains deferred.
+
+
+### R10 metrics retention update
+
+The metrics portion of PI-09 is implemented: PostgreSQL now encloses both `delete_before` table deletions in one transaction, matching Turso. Both delete strictly before the core-clock cutoff. Runtime rollback verification remains deferred. The core worker preserves a minimum one-hour retention and rejects unrepresentable time arithmetic before persistence. Host collection retains its original drain-before-insert/no-retry behavior. PI-03/PI-04/PI-05 metrics read differences remain open; the original inventory above records their baseline.
+
+
+### R10 metrics read-contract update
+
+ADR-015 supersedes baseline metrics PI-03/PI-04/PI-05 discrepancies: inclusive
+microsecond bounds, stable timestamp/ID ordering, UTC floor buckets, summed
+counters/deltas, max sampled p95, and integer-truncated gauge means are implemented.
+Raw history retains its per-stream 10,000-row cap; downsampled history stays sparse
+and uncapped. System/app reads intentionally have no joint snapshot. Integer/time
+bounds and floating tolerances are recorded in the ADR. Runtime acceptance remains
+deferred; this is not tested cross-engine parity evidence.

@@ -8,7 +8,6 @@ pub mod alerts {
 }
 
 pub mod analytics {
-    pub mod analytics_service;
     pub mod repository;
     pub mod types;
 
@@ -20,7 +19,6 @@ pub mod activity {
     pub mod types;
 
     pub use crate::api::activity as api;
-    pub use crate::services::activity_service as service;
 }
 
 pub mod audit {
@@ -30,9 +28,6 @@ pub mod audit {
     pub mod types;
 
     pub use crate::api::audit as api;
-    #[cfg(feature = "postgres")]
-    pub use crate::repositories::audit_repo as repository;
-    pub use crate::services::audit_service as service;
 }
 
 pub mod commands {
@@ -60,7 +55,6 @@ pub mod dashboard {
     pub mod types;
 
     pub use crate::api::dashboard as api;
-    pub use crate::services::dashboard_service as service;
 }
 
 pub mod devices {
@@ -129,8 +123,6 @@ pub mod operations {
     pub mod metrics_types;
 
     pub use crate::api::{health, outbox, server_metrics, system};
-    #[cfg(feature = "postgres")]
-    pub use crate::repositories::server_metrics_repo;
     pub use crate::services::{metrics_middleware, server_metrics as server_metrics_service};
 }
 

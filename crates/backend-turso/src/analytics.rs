@@ -1,15 +1,24 @@
 use async_trait::async_trait;
 use turso::params;
 
-use crate::domains::analytics::repository::AnalyticsRepository;
-use crate::domains::analytics::types::{
+use extrittio_backend_core::PersistenceError;
+use extrittio_backend_core::TenantId;
+use extrittio_backend_core::analytics::AnalyticsRepository;
+use extrittio_backend_core::analytics::{
     AnalyticsBlueprintRevision, AnalyticsBucket, AnalyticsDevice, AnalyticsQuery,
     AnalyticsQueryData,
 };
-use crate::persistence::PersistenceError;
-use crate::tenancy::TenantId;
 
-use super::{TursoAdapter, row};
+use crate::{TursoConnectionHandles, row};
+#[derive(Clone)]
+pub struct TursoAnalyticsRepository {
+    handles: TursoConnectionHandles,
+}
+impl TursoAnalyticsRepository {
+    pub fn from_handles(handles: TursoConnectionHandles) -> Self {
+        Self { handles }
+    }
+}
 
 const SCOPE_FILTER: &str = r#"
     d.tenant_id = ?1
@@ -19,12 +28,15 @@ const SCOPE_FILTER: &str = r#"
 "#;
 
 #[async_trait]
-impl AnalyticsRepository for TursoAdapter {
+impl AnalyticsRepository for TursoAnalyticsRepository {
     async fn blueprint_catalog(
         &self,
         tenant: &TenantId,
     ) -> Result<Vec<AnalyticsBlueprintRevision>, PersistenceError> {
-        let connection = self.database.connect()?;
+        let connection = self
+            .handles
+            .connect_raw()
+            .map_err(|error| PersistenceError::Unavailable(error.to_string()))?;
         let mut rows = connection
             .query(
                 r#"
@@ -40,21 +52,21 @@ impl AnalyticsRepository for TursoAdapter {
                       WHERE latest.tenant_id = b.tenant_id
                         AND latest.blueprint_id = b.id
                   )
-                ORDER BY b.name, b.id
+                ORDER BY b.name COLLATE BINARY, b.id COLLATE BINARY
                 "#,
                 params![tenant.as_str()],
             )
             .await
-            .map_err(row::error)?;
+            .map_err(row::legacy_error)?;
         let mut revisions = Vec::new();
-        while let Some(record) = rows.next().await.map_err(row::error)? {
-            let document: String = record.get(5).map_err(row::error)?;
+        while let Some(record) = rows.next().await.map_err(row::legacy_error)? {
+            let document: String = record.get(5).map_err(row::legacy_error)?;
             revisions.push(AnalyticsBlueprintRevision {
-                blueprint_id: record.get(0).map_err(row::error)?,
-                blueprint_key: record.get(1).map_err(row::error)?,
-                blueprint_name: record.get(2).map_err(row::error)?,
-                revision_id: record.get(3).map_err(row::error)?,
-                revision: record.get(4).map_err(row::error)?,
+                blueprint_id: record.get(0).map_err(row::legacy_error)?,
+                blueprint_key: record.get(1).map_err(row::legacy_error)?,
+                blueprint_name: record.get(2).map_err(row::legacy_error)?,
+                revision_id: record.get(3).map_err(row::legacy_error)?,
+                revision: record.get(4).map_err(row::legacy_error)?,
                 document: serde_json::from_str(&document).map_err(|error| {
                     PersistenceError::CorruptData(format!(
                         "stored blueprint revision document is invalid: {error}"
@@ -70,7 +82,14 @@ impl AnalyticsRepository for TursoAdapter {
         tenant: &TenantId,
         query: AnalyticsQuery,
     ) -> Result<AnalyticsQueryData, PersistenceError> {
-        let connection = self.database.connect()?;
+        let mut raw_connection = self
+            .handles
+            .connect_raw()
+            .map_err(|error| PersistenceError::Unavailable(error.to_string()))?;
+        let connection = raw_connection
+            .transaction()
+            .await
+            .map_err(row::legacy_error)?;
         let type_ids = serde_json::to_string(&query.scope.device_type_ids)
             .map_err(|error| PersistenceError::Internal(error.to_string()))?;
         let fleet_ids = serde_json::to_string(&query.scope.fleet_ids)
@@ -90,20 +109,21 @@ impl AnalyticsRepository for TursoAdapter {
                 ],
             )
             .await
-            .map_err(row::error)?;
+            .map_err(row::legacy_error)?;
         let selected_devices = count_rows
             .next()
             .await
-            .map_err(row::error)?
+            .map_err(row::legacy_error)?
             .ok_or(PersistenceError::NotFound)?
             .get::<i64>(0)
-            .map_err(row::error)
+            .map_err(row::legacy_error)
             .and_then(|value| {
                 usize::try_from(value).map_err(|_| {
                     PersistenceError::CorruptData("analytics device count is invalid".to_string())
                 })
             })?;
 
+        drop(count_rows);
         let compatible_sql = format!(
             r#"
             SELECT count(*)
@@ -134,14 +154,14 @@ impl AnalyticsRepository for TursoAdapter {
                 ],
             )
             .await
-            .map_err(row::error)?;
+            .map_err(row::legacy_error)?;
         let compatible_devices = compatible_rows
             .next()
             .await
-            .map_err(row::error)?
+            .map_err(row::legacy_error)?
             .ok_or(PersistenceError::NotFound)?
             .get::<i64>(0)
-            .map_err(row::error)
+            .map_err(row::legacy_error)
             .and_then(|value| {
                 usize::try_from(value).map_err(|_| {
                     PersistenceError::CorruptData(
@@ -167,7 +187,7 @@ impl AnalyticsRepository for TursoAdapter {
              AND r.id = c.blueprint_revision_id
             WHERE {SCOPE_FILTER}
               AND r.blueprint_id = ?5
-            ORDER BY d.name, d.id
+            ORDER BY d.name COLLATE BINARY, d.id COLLATE BINARY
             LIMIT ?6
             "#
         );
@@ -185,16 +205,18 @@ impl AnalyticsRepository for TursoAdapter {
                 ],
             )
             .await
-            .map_err(row::error)?;
+            .map_err(row::legacy_error)?;
         let mut devices = Vec::new();
-        while let Some(record) = device_rows.next().await.map_err(row::error)? {
+        while let Some(record) = device_rows.next().await.map_err(row::legacy_error)? {
             devices.push(AnalyticsDevice {
-                id: record.get(0).map_err(row::error)?,
-                name: record.get(1).map_err(row::error)?,
+                id: record.get(0).map_err(row::legacy_error)?,
+                name: record.get(1).map_err(row::legacy_error)?,
             });
         }
 
+        drop(device_rows);
         if compatible_devices > query.max_devices || devices.is_empty() {
+            connection.commit().await.map_err(row::legacy_error)?;
             return Ok(AnalyticsQueryData {
                 selected_devices,
                 compatible_devices,
@@ -228,22 +250,24 @@ impl AnalyticsRepository for TursoAdapter {
                 ],
             )
             .await
-            .map_err(row::error)?;
+            .map_err(row::legacy_error)?;
         let mut buckets = Vec::new();
-        while let Some(record) = rows.next().await.map_err(row::error)? {
-            let bucket_micros: i64 = record.get(2).map_err(row::error)?;
+        while let Some(record) = rows.next().await.map_err(row::legacy_error)? {
+            let bucket_micros: i64 = record.get(2).map_err(row::legacy_error)?;
             buckets.push(AnalyticsBucket {
-                device_id: record.get(0).map_err(row::error)?,
-                device_name: record.get(1).map_err(row::error)?,
+                device_id: record.get(0).map_err(row::legacy_error)?,
+                device_name: record.get(1).map_err(row::legacy_error)?,
                 bucket_start: row::datetime(bucket_micros)?.naive_utc(),
-                sample_count: record.get(3).map_err(row::error)?,
-                average: record.get(4).map_err(row::error)?,
-                minimum: record.get(5).map_err(row::error)?,
-                maximum: record.get(6).map_err(row::error)?,
-                latest: record.get(7).map_err(row::error)?,
+                sample_count: record.get(3).map_err(row::legacy_error)?,
+                average: record.get(4).map_err(row::legacy_error)?,
+                minimum: record.get(5).map_err(row::legacy_error)?,
+                maximum: record.get(6).map_err(row::legacy_error)?,
+                latest: record.get(7).map_err(row::legacy_error)?,
             });
         }
 
+        drop(rows);
+        connection.commit().await.map_err(row::legacy_error)?;
         Ok(AnalyticsQueryData {
             selected_devices,
             compatible_devices,
@@ -259,7 +283,7 @@ fn metric_samples_query() -> &'static str {
             SELECT
                 d.id AS device_id,
                 d.name AS device_name,
-                s.occurred_at - (s.occurred_at % ?5) AS bucket_start,
+                s.occurred_at - CASE WHEN s.occurred_at % ?5 < 0 THEN s.occurred_at % ?5 + ?5 ELSE s.occurred_at % ?5 END AS bucket_start,
                 coalesce(s.value_double, CAST(s.value_int AS REAL)) AS value,
                 s.occurred_at,
                 s.event_id
@@ -289,7 +313,7 @@ fn metric_samples_query() -> &'static str {
         ), ranked AS (
             SELECT *, row_number() OVER (
                 PARTITION BY device_id, bucket_start
-                ORDER BY occurred_at DESC, event_id DESC
+                ORDER BY occurred_at DESC, event_id COLLATE BINARY DESC
             ) AS latest_rank
             FROM bucketed
         )
@@ -304,7 +328,7 @@ fn metric_samples_query() -> &'static str {
             max(CASE WHEN latest_rank = 1 THEN value END) AS latest
         FROM ranked
         GROUP BY device_id, device_name, bucket_start
-        ORDER BY bucket_start, device_name, device_id
+        ORDER BY bucket_start, device_name COLLATE BINARY, device_id COLLATE BINARY
         LIMIT ?9
         "#
 }

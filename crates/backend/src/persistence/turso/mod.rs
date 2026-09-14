@@ -1,28 +1,10 @@
-mod activity;
-mod analytics;
-mod audit;
-mod dashboard;
 mod database;
-mod metrics;
-mod row;
 
 use std::sync::Arc;
 
 use crate::persistence::{DatabaseRuntime, RepositorySet};
 
 pub use database::{LogicalArchiveInfo, TursoBackupInfo, TursoDatabase, TursoDatabaseInfo};
-
-#[derive(Clone)]
-pub struct TursoAdapter {
-    database: Arc<TursoDatabase>,
-}
-
-impl TursoAdapter {
-    #[must_use]
-    pub fn new(database: Arc<TursoDatabase>) -> Self {
-        Self { database }
-    }
-}
 
 #[must_use]
 pub fn create_repositories(database: Arc<TursoDatabase>) -> RepositorySet {
@@ -56,21 +38,25 @@ fn build_repositories(database: Arc<TursoDatabase>) -> RepositorySet {
     let device_types = crate::database::turso_device_types(&database);
     let bootstrap = crate::database::turso_bootstrap(&database);
     let certificates = crate::database::turso_certificates(&database);
+    let metrics = crate::database::turso_metrics(&database);
+    let audit = crate::database::turso_audit(&database);
+    let analytics = crate::database::turso_analytics(&database);
+    let dashboard = crate::database::turso_dashboard(&database);
+    let activity = crate::database::turso_activity(&database);
     let firmware = crate::database::turso_firmware(&database);
     let ci_ingest = crate::database::turso_ci_ingest(&database);
-    let adapter = Arc::new(TursoAdapter::new(database));
     RepositorySet {
-        activity: adapter.clone(),
-        analytics: adapter.clone(),
+        activity,
+        analytics,
         api_keys,
         ci_ingest,
         alerts,
-        audit: adapter.clone(),
+        audit,
         bootstrap,
         certificates,
         commands,
         configuration,
-        dashboard: adapter.clone(),
+        dashboard,
         device_blueprints,
         device_types,
         devices,
@@ -79,7 +65,7 @@ fn build_repositories(database: Arc<TursoDatabase>) -> RepositorySet {
         fleets,
         firmware,
         logs,
-        metrics: adapter.clone(),
+        metrics,
         outbox,
         roles,
         rule_zone_snapshots,
@@ -88,95 +74,5 @@ fn build_repositories(database: Arc<TursoDatabase>) -> RepositorySet {
         telemetry,
         users,
         zones,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::domains::activity::{repository::ActivityRepository, types::ActivityQuery};
-    use crate::domains::audit::{port::AuditRepository, types::NewAuditEventRecord};
-    use crate::tenancy::{DEFAULT_TENANT_ID as TEST_TENANT_ID, TenantId};
-    use serde_json::json;
-    use std::time::Duration;
-
-    async fn adapter() -> (tempfile::TempDir, TursoAdapter) {
-        let directory = tempfile::tempdir().unwrap();
-        let database = TursoDatabase::open(
-            directory.path(),
-            &directory.path().join("extrittio.db"),
-            Duration::from_secs(1),
-        )
-        .await
-        .unwrap();
-        database.migrate().await.unwrap();
-        (directory, TursoAdapter::new(database))
-    }
-
-    #[tokio::test]
-    async fn activity_totals_remain_stable_beyond_the_final_page() {
-        let (_directory, adapter) = adapter().await;
-        let tenant = TenantId::new(TEST_TENANT_ID).unwrap();
-        for index in 1..=2 {
-            AuditRepository::record(
-                &adapter,
-                &tenant,
-                NewAuditEventRecord {
-                    id: format!("audit-{index}"),
-                    actor_type: "user".into(),
-                    actor_id: Some("owner".into()),
-                    action: "device.read".into(),
-                    resource_type: "device".into(),
-                    resource_id: Some(format!("device-{index}")),
-                    outcome: "success".into(),
-                    request_id: format!("request-{index}"),
-                    metadata: json!({}),
-                },
-            )
-            .await
-            .unwrap();
-        }
-
-        for (offset, expected_len, expected_total) in [(1, 1, 2), (2, 0, 2), (3, 0, 2)] {
-            let page = ActivityRepository::list(
-                &adapter,
-                &tenant,
-                ActivityQuery {
-                    source: Some("audit".into()),
-                    severity: None,
-                    category: None,
-                    device_id: None,
-                    search: None,
-                    since: None,
-                    until: None,
-                    limit: 1,
-                    offset,
-                },
-            )
-            .await
-            .unwrap();
-            assert_eq!(page.data.len(), expected_len);
-            assert_eq!(page.total, expected_total);
-        }
-
-        let empty = ActivityRepository::list(
-            &adapter,
-            &tenant,
-            ActivityQuery {
-                source: Some("alert".into()),
-                severity: None,
-                category: None,
-                device_id: None,
-                search: None,
-                since: None,
-                until: None,
-                limit: 1,
-                offset: 2,
-            },
-        )
-        .await
-        .unwrap();
-        assert!(empty.data.is_empty());
-        assert_eq!(empty.total, 0);
     }
 }

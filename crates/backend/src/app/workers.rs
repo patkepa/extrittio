@@ -216,7 +216,11 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         },
     );
 
-    let metrics_persistence = state.persistence.clone();
+    let metrics_worker = extrittio_backend_core::application::MetricsWorkerApplication::new(
+        state.persistence.metrics.clone(),
+        Arc::new(crate::auth::SystemClock),
+    );
+    let system_metrics_application = metrics_worker.clone();
     let metrics_interval = config.system_metrics_interval_secs;
     spawn_worker(
         &mut workers,
@@ -225,7 +229,7 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         "system-metrics",
         async move {
             services::server_metrics::run_system_metrics_collector(
-                metrics_persistence,
+                system_metrics_application,
                 metrics_interval,
             )
             .await;
@@ -234,6 +238,7 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
     );
 
     let app_metrics_state = state.clone();
+    let app_metrics_application = metrics_worker.clone();
     let app_metrics_interval = config.app_metrics_flush_interval_secs;
     spawn_worker(
         &mut workers,
@@ -243,6 +248,7 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         async move {
             services::server_metrics::run_app_metrics_flusher(
                 app_metrics_state,
+                app_metrics_application,
                 app_metrics_interval,
             )
             .await;
@@ -250,7 +256,7 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         },
     );
 
-    let metrics_retention_persistence = state.persistence.clone();
+    let metrics_retention_application = metrics_worker;
     let metrics_retention_hours = config.metrics_retention_hours;
     spawn_worker(
         &mut workers,
@@ -259,7 +265,7 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         "metrics-retention",
         async move {
             services::server_metrics::run_metrics_retention(
-                metrics_retention_persistence,
+                metrics_retention_application,
                 metrics_retention_hours,
             )
             .await;

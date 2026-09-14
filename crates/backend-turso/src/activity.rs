@@ -1,12 +1,21 @@
 use async_trait::async_trait;
 use turso::params;
 
-use crate::domains::activity::repository::ActivityRepository;
-use crate::domains::activity::types::{ActivityEventPage, ActivityEventRecord, ActivityQuery};
-use crate::persistence::PersistenceError;
-use crate::tenancy::TenantId;
+use extrittio_backend_core::PersistenceError;
+use extrittio_backend_core::TenantId;
+use extrittio_backend_core::activity::ActivityRepository;
+use extrittio_backend_core::activity::{ActivityEventPage, ActivityEventRecord, ActivityQuery};
 
-use super::{TursoAdapter, row};
+use crate::{TursoConnectionHandles, row};
+#[derive(Clone)]
+pub struct TursoActivityRepository {
+    handles: TursoConnectionHandles,
+}
+impl TursoActivityRepository {
+    pub fn from_handles(handles: TursoConnectionHandles) -> Self {
+        Self { handles }
+    }
+}
 
 const ACTIVITY_QUERY: &str = r#"
 WITH activity AS (
@@ -170,18 +179,21 @@ SELECT
     occurred_at,
     count(*) OVER () AS total_count
 FROM filtered
-ORDER BY occurred_at DESC, id DESC
+ORDER BY occurred_at DESC, id COLLATE BINARY DESC
 LIMIT ?9 OFFSET ?10
 "#;
 
 #[async_trait]
-impl ActivityRepository for TursoAdapter {
+impl ActivityRepository for TursoActivityRepository {
     async fn list(
         &self,
         tenant: &TenantId,
         query: ActivityQuery,
     ) -> Result<ActivityEventPage, PersistenceError> {
-        let connection = self.database.connect()?;
+        let connection = self
+            .handles
+            .connect_raw()
+            .map_err(|error| PersistenceError::Unavailable(error.to_string()))?;
         let search = query
             .search
             .map(|value| format!("%{}%", value.to_ascii_lowercase()));
@@ -202,28 +214,28 @@ impl ActivityRepository for TursoAdapter {
                 ],
             )
             .await
-            .map_err(row::error)?;
+            .map_err(row::legacy_error)?;
 
         let mut data = Vec::new();
         let mut total = 0;
-        while let Some(record) = rows.next().await.map_err(row::error)? {
-            total = record.get(13).map_err(row::error)?;
-            let metadata: String = record.get(11).map_err(row::error)?;
+        while let Some(record) = rows.next().await.map_err(row::legacy_error)? {
+            total = record.get(13).map_err(row::legacy_error)?;
+            let metadata: String = record.get(11).map_err(row::legacy_error)?;
             data.push(ActivityEventRecord {
-                id: record.get(0).map_err(row::error)?,
-                source: record.get(1).map_err(row::error)?,
-                severity: record.get(2).map_err(row::error)?,
-                event_type: record.get(3).map_err(row::error)?,
-                category: record.get(4).map_err(row::error)?,
-                message: record.get(5).map_err(row::error)?,
-                actor_type: record.get(6).map_err(row::error)?,
-                actor_id: record.get(7).map_err(row::error)?,
-                resource_type: record.get(8).map_err(row::error)?,
-                resource_id: record.get(9).map_err(row::error)?,
-                request_id: record.get(10).map_err(row::error)?,
+                id: record.get(0).map_err(row::legacy_error)?,
+                source: record.get(1).map_err(row::legacy_error)?,
+                severity: record.get(2).map_err(row::legacy_error)?,
+                event_type: record.get(3).map_err(row::legacy_error)?,
+                category: record.get(4).map_err(row::legacy_error)?,
+                message: record.get(5).map_err(row::legacy_error)?,
+                actor_type: record.get(6).map_err(row::legacy_error)?,
+                actor_id: record.get(7).map_err(row::legacy_error)?,
+                resource_type: record.get(8).map_err(row::legacy_error)?,
+                resource_id: record.get(9).map_err(row::legacy_error)?,
+                request_id: record.get(10).map_err(row::legacy_error)?,
                 metadata: serde_json::from_str(&metadata)
                     .map_err(|error| PersistenceError::Internal(error.to_string()))?,
-                occurred_at: row::datetime(record.get(12).map_err(row::error)?)?.naive_utc(),
+                occurred_at: row::datetime(record.get(12).map_err(row::legacy_error)?)?.naive_utc(),
             });
         }
         if data.is_empty() && query.offset > 0 {
@@ -244,9 +256,9 @@ impl ActivityRepository for TursoAdapter {
                     ],
                 )
                 .await
-                .map_err(row::error)?;
-            if let Some(record) = first_page.next().await.map_err(row::error)? {
-                total = record.get(13).map_err(row::error)?;
+                .map_err(row::legacy_error)?;
+            if let Some(record) = first_page.next().await.map_err(row::legacy_error)? {
+                total = record.get(13).map_err(row::legacy_error)?;
             }
         }
         Ok(ActivityEventPage { data, total })

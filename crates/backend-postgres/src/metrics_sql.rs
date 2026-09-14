@@ -6,8 +6,8 @@ use diesel::prelude::*;
 use diesel::sql_types::{BigInt, Float, Integer, Timestamptz};
 use serde::Serialize;
 
-use crate::db::models::{AppMetric, NewAppMetric, NewServerMetric, ServerMetric};
-use crate::db::schema::{app_metrics, server_metrics};
+use crate::models::{AppMetric, NewAppMetric, NewServerMetric, ServerMetric};
+use crate::schema::{app_metrics, server_metrics};
 
 // ---------------------------------------------------------------------------
 // Downsampled result types (used in API responses, hence Serialize)
@@ -95,7 +95,10 @@ pub fn get_latest_server_metric(
     conn: &mut PgConnection,
 ) -> Result<Option<ServerMetric>, diesel::result::Error> {
     server_metrics::table
-        .order(server_metrics::recorded_at.desc())
+        .order((
+            server_metrics::recorded_at.desc(),
+            server_metrics::id.desc(),
+        ))
         .select(ServerMetric::as_select())
         .first(conn)
         .optional()
@@ -105,7 +108,7 @@ pub fn get_latest_app_metric(
     conn: &mut PgConnection,
 ) -> Result<Option<AppMetric>, diesel::result::Error> {
     app_metrics::table
-        .order(app_metrics::recorded_at.desc())
+        .order((app_metrics::recorded_at.desc(), app_metrics::id.desc()))
         .select(AppMetric::as_select())
         .first(conn)
         .optional()
@@ -121,8 +124,8 @@ pub fn list_server_metrics(
     limit: i64,
 ) -> Result<Vec<ServerMetric>, diesel::result::Error> {
     server_metrics::table
-        .filter(server_metrics::recorded_at.gt(since))
-        .order(server_metrics::recorded_at.asc())
+        .filter(server_metrics::recorded_at.ge(since))
+        .order((server_metrics::recorded_at.asc(), server_metrics::id.asc()))
         .limit(limit)
         .select(ServerMetric::as_select())
         .load(conn)
@@ -134,8 +137,8 @@ pub fn list_app_metrics(
     limit: i64,
 ) -> Result<Vec<AppMetric>, diesel::result::Error> {
     app_metrics::table
-        .filter(app_metrics::recorded_at.gt(since))
-        .order(app_metrics::recorded_at.asc())
+        .filter(app_metrics::recorded_at.ge(since))
+        .order((app_metrics::recorded_at.asc(), app_metrics::id.asc()))
         .limit(limit)
         .select(AppMetric::as_select())
         .load(conn)
@@ -152,19 +155,19 @@ pub fn list_server_metrics_downsampled(
 ) -> Result<Vec<DownsampledServerMetric>, diesel::result::Error> {
     let sql = "\
         SELECT \
-            EXTRACT(EPOCH FROM date_bin(make_interval(secs => $1), recorded_at, TIMESTAMPTZ '1970-01-01'))::BIGINT AS bucket, \
-            AVG(cpu_usage_percent) AS cpu_usage_percent, \
-            AVG(memory_used_bytes) AS memory_used_bytes, \
-            AVG(memory_total_bytes) AS memory_total_bytes, \
-            AVG(disk_used_bytes) AS disk_used_bytes, \
-            AVG(disk_total_bytes) AS disk_total_bytes, \
-            SUM(network_rx_bytes_delta) AS network_rx_bytes_delta, \
-            SUM(network_tx_bytes_delta) AS network_tx_bytes_delta, \
-            AVG(load_avg_1m) AS load_avg_1m, \
-            AVG(load_avg_5m) AS load_avg_5m, \
-            AVG(load_avg_15m) AS load_avg_15m \
+            (FLOOR(EXTRACT(EPOCH FROM recorded_at) / $1::NUMERIC) * $1)::BIGINT AS bucket, \
+            AVG(cpu_usage_percent)::REAL AS cpu_usage_percent, \
+            (SUM(memory_used_bytes)::BIGINT / COUNT(*)) AS memory_used_bytes, \
+            (SUM(memory_total_bytes)::BIGINT / COUNT(*)) AS memory_total_bytes, \
+            (SUM(disk_used_bytes)::BIGINT / COUNT(*)) AS disk_used_bytes, \
+            (SUM(disk_total_bytes)::BIGINT / COUNT(*)) AS disk_total_bytes, \
+            SUM(network_rx_bytes_delta)::BIGINT AS network_rx_bytes_delta, \
+            SUM(network_tx_bytes_delta)::BIGINT AS network_tx_bytes_delta, \
+            AVG(load_avg_1m)::REAL AS load_avg_1m, \
+            AVG(load_avg_5m)::REAL AS load_avg_5m, \
+            AVG(load_avg_15m)::REAL AS load_avg_15m \
          FROM server_metrics \
-         WHERE recorded_at > $2 \
+         WHERE recorded_at >= $2 \
          GROUP BY bucket \
          ORDER BY bucket ASC";
 
@@ -181,17 +184,17 @@ pub fn list_app_metrics_downsampled(
 ) -> Result<Vec<DownsampledAppMetric>, diesel::result::Error> {
     let sql = "\
         SELECT \
-            EXTRACT(EPOCH FROM date_bin(make_interval(secs => $1), recorded_at, TIMESTAMPTZ '1970-01-01'))::BIGINT AS bucket, \
-            SUM(request_count) AS request_count, \
-            SUM(error_count) AS error_count, \
-            AVG(avg_latency_ms) AS avg_latency_ms, \
+            (FLOOR(EXTRACT(EPOCH FROM recorded_at) / $1::NUMERIC) * $1)::BIGINT AS bucket, \
+            SUM(request_count)::INTEGER AS request_count, \
+            SUM(error_count)::INTEGER AS error_count, \
+            AVG(avg_latency_ms)::REAL AS avg_latency_ms, \
             MAX(p95_latency_ms) AS p95_latency_ms, \
-            AVG(db_pool_active) AS db_pool_active, \
-            AVG(db_pool_idle) AS db_pool_idle, \
-            SUM(zenoh_messages_in) AS zenoh_messages_in, \
-            SUM(zenoh_messages_out) AS zenoh_messages_out \
+            (SUM(db_pool_active) / COUNT(*))::INTEGER AS db_pool_active, \
+            (SUM(db_pool_idle) / COUNT(*))::INTEGER AS db_pool_idle, \
+            SUM(zenoh_messages_in)::INTEGER AS zenoh_messages_in, \
+            SUM(zenoh_messages_out)::INTEGER AS zenoh_messages_out \
          FROM app_metrics \
-         WHERE recorded_at > $2 \
+         WHERE recorded_at >= $2 \
          GROUP BY bucket \
          ORDER BY bucket ASC";
 

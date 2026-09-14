@@ -17,6 +17,7 @@ This document resolves the behavior choices that must be stable before code move
 | ADR-006 | Tenant zone lists use binary `name ASC, id ASC` order | P2.4 |
 | ADR-007 | Roles use system-first binary order, atomic permission invalidation, and one timestamp update per successful mutation | P3.1 |
 | ADR-008 | Users use exact-tenant atomic role/password semantics, durable authentication epochs, and snapshot-consistent security reads | P3.1 |
+| ADR-015 | Operational metrics aggregation and time windows | R10 |
 
 ## ADR-001: Legacy missing-tenant mapping
 
@@ -1019,3 +1020,70 @@ commands now share current assigned-contract validation with user sends; this ca
 reject actions that the old raw command producer published without validation.
 No HTTP wire shape or stored history schema changed. Behavioral verification remains
 deferred under the user's test policy.
+
+
+## ADR-015: Operational metrics aggregation and time windows
+
+**Status:** Implemented in R10; behavioral verification deferred.
+
+Operational metrics remain server-wide diagnostics guarded by `ReadServerMetrics`.
+No response fields, endpoints, collection intervals, tenant scope, or schema change.
+This resolves PI-05 and the metrics portions of PI-03/PI-04.
+
+| Value | Bucket operation |
+|---|---|
+| Network RX/TX deltas; request, error, and Zenoh counts | Sum |
+| CPU/load and average latency | Arithmetic mean of stored samples |
+| Memory/disk bytes and pool counts | Integer sum/count, truncating toward zero |
+| Sampled p95 latency | Maximum stored p95 |
+
+PostgreSQL's counter and p95 choices are retained; Turso's averaging is corrected.
+Latency remains an unweighted mean of sample means. Maximum sampled p95 is not a
+recomputed percentile across all requests. Integer gauges avoid floating conversion
+of large byte counts. Supported intermediate integer sums must fit i64; final app
+counts must fit i32, and byte values i64. Overflow fails instead of wrapping or
+saturating, even if the mathematical average would fit. PostgreSQL now explicitly
+casts aggregate outputs to the SQL types declared by Diesel. Finite floating means
+return f32; deferred cross-engine acceptance should use absolute tolerance 1e-4 plus
+relative tolerance 1e-5. Exact bit equality and non-finite/corrupt legacy data parity
+are not promised; no sanitization or backfill is introduced.
+
+History includes `recorded_at >= since`. Core rounds sub-microsecond bounds upward,
+so truncation cannot include an earlier stored sample. Raw HTTP mode stays at ten
+seconds, returning the first 10,000 rows per stream in timestamp/ID ascending order.
+Latest uses both keys descending. Empty tables still return independent empty
+arrays or absent latest records.
+
+Downsampling filters before aggregating, then groups by UTC
+`floor(epoch / resolution) * resolution`. Negative epochs floor correctly and
+PostgreSQL buckets no longer depend on a timezone-sensitive origin literal. The
+first bucket may be partial and its label may precede `since`. There is no gap
+filling, upper bound, or downsampled bucket cap. Core rejects strides that cannot
+fit i64 microseconds. Unrepresentable bucket timestamps fail rather than silently
+becoming epoch zero; extreme strides and old dates can still produce such errors.
+
+System and app reads intentionally remain separate statements without a joint
+snapshot. They are independently sampled diagnostics and may observe different
+concurrent commits. Stored clocks remain PostgreSQL's database default and Turso's
+adapter UTC clock. Retention keeps strict `< cutoff` and atomic two-table deletion.
+Runtime numeric, boundary, timezone, overflow, and rollback acceptance is deferred;
+production compilation does not execute these SQL queries.
+
+
+### R10 analytics follow-up: stable reads and bucket membership
+
+Analytics adapter queries now use one database read snapshot for scope counts,
+compatible devices, and buckets (PostgreSQL read-only repeatable read; Turso read
+transaction). Catalog lookup is intentionally separate and resolves the latest
+immutable revision metadata visible at that lookup. Samples still span matching
+historical revisions of the selected blueprint; no latest-revision-only filter is
+introduced.
+
+Corrected differences are binary name/ID ordering, binary latest-event ID ties,
+flooring negative UTC epoch buckets in Turso, and stable ID ties for same-label
+core device series. Both `[start, end)` persistence bounds round upward to storage
+microseconds, preserving requested membership. Response bounds and point-budget
+calculations remain unchanged. Existing integer-to-f64 sample conversion and
+weighting/coverage algorithms are retained, including precision loss for large
+integers. Read snapshots can live for the duration of a bounded analytics query;
+no writer mutex is acquired for Turso reads. Runtime acceptance is deferred.

@@ -138,20 +138,6 @@ const DEFAULT_TENANT_ALLOWANCES: &[TokenAllowance] = &[
         "legacy token generation/claims behavior",
     ),
     TokenAllowance::new(
-        "crates/backend/src/middleware.rs",
-        "DEFAULT_TENANT_ID",
-        2,
-        "P1.2",
-        "audit middleware currently invents tenant scope",
-    ),
-    TokenAllowance::new(
-        "crates/backend/src/persistence/turso/mod.rs",
-        "DEFAULT_TENANT_ID",
-        4,
-        "P3.1",
-        "inline adapter test fixtures",
-    ),
-    TokenAllowance::new(
         "crates/backend/src/domains/identity/auth_routes.rs",
         "DEFAULT_TENANT_ID",
         2,
@@ -165,32 +151,7 @@ const DEFAULT_TENANT_ALLOWANCES: &[TokenAllowance] = &[
 /// Both field counts are capped independently so changing `state.persistence`
 /// to `state.repositories` cannot disguise a new direct repository access.
 /// Entries and caps may only be removed or reduced as vertical slices migrate.
-const APP_STATE_REPOSITORY_ACCESS_ALLOWANCES: &[AppStateRepositoryAccessAllowance] = &[
-    AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/activity/activity.rs", 1, 0),
-    AppStateRepositoryAccessAllowance::new(
-        "crates/backend/src/domains/analytics/analytics.rs",
-        2,
-        0,
-    ),
-    AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/audit/audit.rs", 1, 0),
-    AppStateRepositoryAccessAllowance::new(
-        "crates/backend/src/domains/dashboard/dashboard.rs",
-        1,
-        0,
-    ),
-    AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/devices/devices.rs", 2, 0),
-    AppStateRepositoryAccessAllowance::new(
-        "crates/backend/src/domains/operations/server_metrics_api.rs",
-        2,
-        0,
-    ),
-    AppStateRepositoryAccessAllowance::new(
-        "crates/backend/src/domains/operations/server_metrics_service.rs",
-        1,
-        0,
-    ),
-    AppStateRepositoryAccessAllowance::new("crates/backend/src/middleware.rs", 1, 0),
-];
+const APP_STATE_REPOSITORY_ACCESS_ALLOWANCES: &[AppStateRepositoryAccessAllowance] = &[];
 
 const APP_TURSO_ALLOWANCES: &[TokenAllowance] = &[TokenAllowance::new(
     "apps/extrittio/src/commands/service.rs",
@@ -246,6 +207,7 @@ struct AppStateRepositoryAccessAllowance {
     repositories: usize,
 }
 
+#[cfg(test)]
 impl AppStateRepositoryAccessAllowance {
     const fn new(path: &'static str, persistence: usize, repositories: usize) -> Self {
         Self {

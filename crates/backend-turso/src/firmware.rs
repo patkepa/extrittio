@@ -77,15 +77,6 @@ async fn scalar(
         .get(0)
         .map_err(row::legacy_error)
 }
-fn increment(v: &str) -> String {
-    let p: Vec<_> = v.split('.').collect();
-    if p.len() == 3
-        && let Ok(n) = p[2].parse::<u32>()
-    {
-        return format!("{}.{}.{}", p[0], p[1], n + 1);
-    }
-    format!("{v}.1")
-}
 fn blob(r: &Row) -> Result<FirmwareBlobRecord, PersistenceError> {
     Ok(FirmwareBlobRecord {
         data: r.get(0).map_err(row::legacy_error)?,
@@ -266,7 +257,10 @@ impl FirmwareRepository for TursoFirmwareRepository {
             .map_err(row::legacy_error)?
             .map(|r| r.get::<String>(0).map_err(row::legacy_error))
             .transpose()?
-            .map_or_else(|| "1.0.0".into(), |v| increment(&v)))
+            .map_or_else(
+                || "1.0.0".into(),
+                |v| extrittio_backend_core::firmware::increment_firmware_version(&v),
+            ))
     }
     async fn next_blueprint_version(
         &self,
@@ -281,7 +275,10 @@ impl FirmwareRepository for TursoFirmwareRepository {
             .map_err(row::legacy_error)?
             .map(|r| r.get::<String>(0).map_err(row::legacy_error))
             .transpose()?
-            .map_or_else(|| "1.0.0".into(), |v| increment(&v)))
+            .map_or_else(
+                || "1.0.0".into(),
+                |v| extrittio_backend_core::firmware::increment_firmware_version(&v),
+            ))
     }
     async fn get_blob(
         &self,
@@ -468,18 +465,15 @@ impl FirmwareRepository for TursoFirmwareRepository {
             tx.rollback().await.map_err(row::legacy_error)?;
             return Ok(TriggerOtaOutcome::Incompatible);
         }
-        if !extrittio_backend_core::firmware::valid_ota_artifact(
+        let Some(artifact) = extrittio_backend_core::firmware::PreparedOtaArtifact::prepare(
             &version,
             hash.as_deref(),
-            if raw_url.starts_with("https://") {
-                &raw_url
-            } else {
-                public_url
-            },
-        ) {
+            &raw_url,
+            public_url,
+        ) else {
             tx.rollback().await.map_err(row::legacy_error)?;
             return Ok(TriggerOtaOutcome::InvalidArtifact);
-        }
+        };
         let shadow = crate::shadows::get_from(&tx, t, device)
             .await?
             .ok_or(PersistenceError::NotFound)?;
@@ -487,17 +481,7 @@ impl FirmwareRepository for TursoFirmwareRepository {
         tx.execute("UPDATE ota_deployments SET status='failed',error_message='Superseded by a new deployment',completed_at=?3 WHERE tenant_id=?1 AND device_id=?2 AND status NOT IN ('success','failed')",params![t.as_str(),device,now]).await.map_err(row::legacy_error)?;
         tx.execute("INSERT INTO ota_deployments(tenant_id,device_id,firmware_update_id,status,initiated_at)VALUES(?1,?2,?3,'pending',?4)",params![t.as_str(),device,id,now]).await.map_err(row::legacy_error)?;
         let deployment_id = scalar(&tx, "SELECT last_insert_rowid()", ()).await?;
-        let url = if raw_url.starts_with("https://") {
-            raw_url
-        } else {
-            public_url.to_string()
-        };
-        let mut ota = serde_json::json!({"firmware_version":version,"firmware_url":url,"firmware_update_id":id,"deployment_id":deployment_id});
-        if let Some(v) = hash {
-            ota["sha256"] = serde_json::Value::String(v)
-        }
-        let mut patch = serde_json::Map::new();
-        patch.insert("ota".into(), ota);
+        let patch = artifact.desired_patch(id, deployment_id);
         let updated = extrittio_backend_core::shadows::apply_desired_patch(
             shadow,
             &patch,

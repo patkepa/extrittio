@@ -103,3 +103,18 @@ pub use device_ingress::TursoDeviceIngressRepository;
 
 mod telemetry;
 pub use telemetry::TursoTelemetryRepository;
+
+mod activity;
+pub use activity::TursoActivityRepository;
+
+mod dashboard;
+pub use dashboard::TursoDashboardRepository;
+
+mod analytics;
+pub use analytics::TursoAnalyticsRepository;
+
+mod audit;
+pub use audit::TursoAuditRepository;
+
+mod metrics;
+pub use metrics::TursoMetricsRepository;
