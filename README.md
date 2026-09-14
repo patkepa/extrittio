@@ -92,7 +92,9 @@ radio and IPv6 path.
 | `apps/extrittio` | Server, Edge runtime, and administrative CLI |
 | `apps/frontend` | React/TypeScript operations console |
 | `apps/mobile-app-ios` | Native SwiftUI companion app |
-| `crates/backend` | HTTP API, domains, persistence adapters, workers, and Zenoh ingestion |
+| `crates/backend` | HTTP/Zenoh transport, runtime composition, workers, and outbound integrations |
+| `crates/backend-core` | Business applications, policy, and persistence ports |
+| `crates/backend-postgres`, `crates/backend-turso` | Database repositories, SQL, migrations, and lifecycle operations |
 | `crates/device-contract` | Blueprint validation and deterministic contract compilation |
 | `crates/common` | Shared Protobuf messages and Zenoh topic helpers |
 | `clients` | Native, embedded, Arduino, and simulator clients |
