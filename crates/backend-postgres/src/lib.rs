@@ -62,7 +62,6 @@ mod alerts;
 pub use alerts::PostgresAlertRepository;
 mod alerts_sql;
 
-#[cfg(feature = "migration-bridge")]
 mod rule_runtime;
 #[cfg(feature = "migration-bridge")]
 #[doc(hidden)]
@@ -87,3 +86,13 @@ pub use shadows::{lock_in_transaction, store_in_transaction};
 
 mod logs;
 pub use logs::PostgresLogRepository;
+
+mod events;
+pub use events::PostgresEventRepository;
+
+mod device_ingress;
+pub use device_ingress::PostgresDeviceIngressRepository;
+
+mod telemetry;
+pub use telemetry::PostgresTelemetryRepository;
+mod telemetry_sql;

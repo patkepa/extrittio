@@ -8,5 +8,3 @@ pub mod device_type_repo;
 pub mod firmware_repo;
 #[path = "../domains/operations/server_metrics_repo.rs"]
 pub mod server_metrics_repo;
-#[path = "../domains/telemetry/telemetry_repo.rs"]
-pub mod telemetry_repo;

@@ -453,3 +453,11 @@ adapter-loaded runtime state and immutable definitions. `rule_zone_entries`
 migrations and logical backup inclusion provide persisted entry/exit state;
 cooldown and entry mutations commit with ingestion/outbox. Legacy queued runtime
 updates and unused local-map plumbing remain open. No migrations or tests ran.
+
+### R08 implementation update: telemetry time and maintenance
+
+The inventory above records the original implementation. PI-07 raw telemetry now uses a core-supplied, UTC-microsecond receipt instant fixed across retries in both adapters. Per-attempt server observation time remains separate for presence/rules. Typed event occurrence time remains device-supplied; the raw protobuf device timestamp remains in the payload with its existing uninterpreted behavior. No telemetry message identity or deduplication has been invented.
+
+For the telemetry portion of PI-09, PostgreSQL now commits rollups, transactional partition operations, and retention deletion together; Turso retains its writer transaction. A stage failure rolls back the pass, and the worker retries the complete operation. Runtime rollback verification is deferred under the no-tests instruction. The short-retention/rollup-window overlap audit remains open, as do PI-09 differences outside telemetry.
+
+R08 follow-up resolves the retention overlap with a durable, monotonic pruning boundary, read and advanced inside the maintenance transaction. Core excludes every hour potentially affected by previous pruning, including after retention increases. Existing databases conservatively freeze pre-upgrade hours because earlier deletion history cannot be reconstructed; see the execution plan's migration/backfill limitations. PostgreSQL hour bucketing is explicitly UTC, and Turso floors negative epoch timestamps correctly. Typed event occurrence/receipt instants are truncated to microseconds in core before persistence, preventing adapter-specific rounding differences. Runtime/migration verification remains deferred.

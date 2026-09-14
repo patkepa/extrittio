@@ -178,7 +178,7 @@ const APP_STATE_REPOSITORY_ACCESS_ALLOWANCES: &[AppStateRepositoryAccessAllowanc
         1,
         0,
     ),
-    AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/devices/devices.rs", 4, 0),
+    AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/devices/devices.rs", 3, 0),
     AppStateRepositoryAccessAllowance::new(
         "crates/backend/src/domains/firmware/firmware_updates.rs",
         10,
@@ -192,11 +192,6 @@ const APP_STATE_REPOSITORY_ACCESS_ALLOWANCES: &[AppStateRepositoryAccessAllowanc
     AppStateRepositoryAccessAllowance::new(
         "crates/backend/src/domains/operations/server_metrics_service.rs",
         1,
-        0,
-    ),
-    AppStateRepositoryAccessAllowance::new(
-        "crates/backend/src/domains/telemetry/telemetry.rs",
-        4,
         0,
     ),
     AppStateRepositoryAccessAllowance::new("crates/backend/src/middleware.rs", 1, 0),

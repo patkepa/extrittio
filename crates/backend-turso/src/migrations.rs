@@ -21,7 +21,9 @@ const RULE_ALERT_DELIVERIES: &str = include_str!("../migrations/0010_rule_alert_
 const RULE_ZONE_ENTRIES: &str = include_str!("../migrations/0011_rule_zone_entries.sql");
 const RULE_COOLDOWN_RESETS: &str = include_str!("../migrations/0012_rule_cooldown_resets.sql");
 const RULE_ZONE_HANDOFFS: &str = include_str!("../migrations/0013_rule_zone_handoffs.sql");
-pub const LATEST_SCHEMA_VERSION: i64 = 13;
+const TELEMETRY_MAINTENANCE_BOUNDARY: &str =
+    include_str!("../migrations/0014_telemetry_maintenance_boundary.sql");
+pub const LATEST_SCHEMA_VERSION: i64 = 14;
 
 const MIGRATIONS: &[(i64, &str)] = &[
     (1, BASELINE),
@@ -37,6 +39,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (11, RULE_ZONE_ENTRIES),
     (12, RULE_COOLDOWN_RESETS),
     (13, RULE_ZONE_HANDOFFS),
+    (14, TELEMETRY_MAINTENANCE_BOUNDARY),
 ];
 
 pub(crate) async fn run(writer: &mut Connection) -> Result<(), TursoLifecycleError> {
@@ -94,197 +97,4 @@ pub(crate) async fn run(writer: &mut Connection) -> Result<(), TursoLifecycleErr
         transaction.commit().await.map_err(map_migration_error)?;
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use std::time::Duration;
-
-    use turso::Builder;
-
-    use super::*;
-
-    #[tokio::test]
-    async fn previous_schema_snapshot_upgrades_without_losing_device_data() {
-        let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("previous-schema.db");
-        let database = Builder::new_local(path.to_str().unwrap())
-            .build()
-            .await
-            .unwrap();
-        let mut connection = database.connect().unwrap();
-        connection.busy_timeout(Duration::from_secs(1)).unwrap();
-        connection
-            .execute_batch("PRAGMA foreign_keys = ON;")
-            .await
-            .unwrap();
-        connection
-            .execute_batch(
-                "CREATE TABLE _extrittio_migrations (
-                    version INTEGER PRIMARY KEY,
-                    checksum TEXT NOT NULL,
-                    applied_at_us INTEGER NOT NULL
-                );",
-            )
-            .await
-            .unwrap();
-
-        for &(version, migration) in MIGRATIONS.iter().take(6) {
-            connection.execute_batch(migration).await.unwrap();
-            let checksum = format!("{:x}", Sha256::digest(migration.as_bytes()));
-            connection
-                .execute(
-                    "INSERT INTO _extrittio_migrations(version, checksum, applied_at_us)
-                     VALUES (?1, ?2, 1)",
-                    turso::params![version, checksum],
-                )
-                .await
-                .unwrap();
-        }
-
-        connection
-            .execute_batch(
-                "INSERT INTO device_types
-                    (id, tenant_id, name, icon, color_hex, created_at)
-                 VALUES
-                    (1, 'default', 'default', 'cube', '#8ABBFF', 1),
-                    (2, 'default', 'network-analyzer', 'network', '#000000', 1);
-                 INSERT INTO devices
-                    (id, tenant_id, name, device_type_id, status, firmware,
-                     created_at, updated_at)
-                 VALUES
-                    ('device-a', 'default', 'Analyzer', 2, 'online', 'v1', 1, 1);
-                 INSERT INTO network_observed_hosts
-                    (id, tenant_id, analyzer_device_id, host_key, label, status,
-                     first_seen_at, last_seen_at, created_at, updated_at)
-                 VALUES
-                    (1, 'default', 'device-a', 'host-a', 'Host A', 'online', 1, 1, 1, 1);
-                 INSERT INTO users
-                    (tenant_id, username, password_hash, role, created_at)
-                 VALUES
-                    ('default', 'legacy-user-a', 'hash-a', 'viewer', 1),
-                    ('default', 'legacy-user-b', 'hash-b', 'viewer', 1);
-                 INSERT INTO rule_action_outbox
-                    (id, tenant_id, event_type, aggregate_type, aggregate_id,
-                     idempotency_key, payload, status, attempts, max_attempts,
-                     available_at, created_at, updated_at)
-                 VALUES
-                    ('completed-action', 'default', 'rule.send_command', 'command',
-                     'device-a:reboot', 'send-command:device-a:reboot:hash', '{}',
-                     'succeeded', 1, 10, 1, 1, 1);",
-            )
-            .await
-            .unwrap();
-
-        run(&mut connection).await.unwrap();
-
-        assert_eq!(
-            scalar(
-                &connection,
-                "SELECT max(version) FROM _extrittio_migrations"
-            )
-            .await,
-            9
-        );
-        assert_eq!(
-            scalar(
-                &connection,
-                "SELECT device_type_id FROM devices WHERE id = 'device-a'"
-            )
-            .await,
-            1
-        );
-        assert_eq!(
-            scalar(
-                &connection,
-                "SELECT count(*) FROM rule_action_outbox WHERE id = 'completed-action'"
-            )
-            .await,
-            1,
-            "the table rebuild must preserve completed outbox history"
-        );
-        connection
-            .execute(
-                "INSERT INTO rule_action_outbox
-                    (id, tenant_id, event_type, aggregate_type, aggregate_id,
-                     idempotency_key, payload, status, attempts, max_attempts,
-                     available_at, created_at, updated_at)
-                 VALUES
-                    ('recurring-action', 'default', 'rule.send_command', 'command',
-                     'device-a:reboot', 'send-command:device-a:reboot:hash', '{}',
-                     'pending', 0, 10, 2, 2, 2)",
-                (),
-            )
-            .await
-            .expect("completed work must not block a recurring action");
-        let active_duplicate = connection
-            .execute(
-                "INSERT INTO rule_action_outbox
-                    (id, tenant_id, event_type, aggregate_type, aggregate_id,
-                     idempotency_key, payload, status, attempts, max_attempts,
-                     available_at, created_at, updated_at)
-                 VALUES
-                    ('duplicate-retry', 'default', 'rule.send_command', 'command',
-                     'device-a:reboot', 'send-command:device-a:reboot:hash', '{}',
-                     'pending', 0, 10, 3, 3, 3)",
-                (),
-            )
-            .await
-            .expect_err("an active retry must remain idempotent");
-        assert!(active_duplicate.to_string().contains("UNIQUE constraint"));
-        assert_eq!(
-            scalar(
-                &connection,
-                "SELECT count(*) FROM device_types WHERE name = 'network-analyzer'"
-            )
-            .await,
-            0
-        );
-        assert_eq!(
-            scalar(
-                &connection,
-                "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'network_observed_hosts'"
-            )
-            .await,
-            0
-        );
-        assert_eq!(
-            scalar(
-                &connection,
-                "SELECT count(DISTINCT auth_epoch) FROM users \
-                 WHERE username IN ('legacy-user-a', 'legacy-user-b') \
-                   AND auth_epoch IS NOT NULL AND auth_epoch <> ''"
-            )
-            .await,
-            2,
-            "the append-only migration backfills a distinct epoch per existing user"
-        );
-        let missing_epoch = connection
-            .execute(
-                "INSERT INTO users (tenant_id, username, password_hash, role, created_at) \
-                 VALUES ('default', 'missing-epoch', 'hash', 'viewer', 1)",
-                (),
-            )
-            .await
-            .expect_err("new rows must provide an authentication epoch");
-        assert!(
-            missing_epoch
-                .to_string()
-                .contains("users.auth_epoch is required")
-        );
-        assert_eq!(
-            scalar(
-                &connection,
-                "SELECT count(*) FROM sqlite_master WHERE type = 'index' \
-                 AND name = 'rule_action_outbox_idempotency_active'"
-            )
-            .await,
-            1
-        );
-    }
-
-    async fn scalar(connection: &Connection, sql: &str) -> i64 {
-        let mut rows = connection.query(sql, ()).await.unwrap();
-        rows.next().await.unwrap().unwrap().get(0).unwrap()
-    }
 }

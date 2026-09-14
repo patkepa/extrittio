@@ -1,3 +1,13 @@
+mod telemetry;
+pub use telemetry::{
+    TelemetryApplication, TelemetryIngressApplication, TelemetryMaintenanceApplication,
+};
+mod device_ingress;
+pub use device_ingress::DeviceIngressApplication;
+mod events;
+pub use events::{
+    ContractIngressApplication, ContractIngressRoute, EventApplication, EventIngressApplication,
+};
 mod logs;
 pub use logs::{LogApplication, LogIngressApplication};
 mod commands;
@@ -91,6 +101,8 @@ impl ApplicationDependencies {
 /// Curated application façade passed to transports.
 #[derive(Clone)]
 pub struct Application {
+    telemetry: TelemetryApplication,
+    events: EventApplication,
     logs: LogApplication,
     commands: CommandApplication,
     api_keys: ApiKeyApplication,
@@ -111,6 +123,12 @@ pub struct Application {
 }
 
 impl Application {
+    pub fn telemetry(&self) -> &TelemetryApplication {
+        &self.telemetry
+    }
+    pub fn events(&self) -> &EventApplication {
+        &self.events
+    }
     pub fn logs(&self) -> &LogApplication {
         &self.logs
     }
@@ -147,6 +165,8 @@ impl Application {
             dependencies.clock.clone(),
         );
         Self {
+            telemetry: TelemetryApplication::new(repositories.telemetry),
+            events: EventApplication::new(repositories.events),
             logs: LogApplication::new(repositories.logs),
             commands: CommandApplication::new(
                 repositories.commands,

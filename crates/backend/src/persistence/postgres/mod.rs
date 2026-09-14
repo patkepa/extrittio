@@ -7,14 +7,10 @@ mod activity;
 mod analytics;
 mod audit;
 mod dashboard;
-mod devices;
-mod events;
 pub mod executor;
 mod firmware;
 pub(crate) mod lifecycle;
 mod metrics;
-mod outbox;
-mod telemetry;
 
 /// Shared PostgreSQL adapter object. It implements multiple domain ports while
 /// owning one executor/pool boundary.
@@ -48,6 +44,9 @@ fn build_repositories(pool: PostgresPool) -> RepositorySet {
     let roles = crate::database::postgres_roles(&pool);
     let users = crate::database::postgres_users(&pool);
     let api_keys = crate::database::postgres_api_keys(&pool);
+    let telemetry = crate::database::postgres_telemetry(&pool);
+    let device_ingress = crate::database::postgres_device_ingress(&pool);
+    let events = crate::database::postgres_events(&pool);
     let logs = crate::database::postgres_logs(&pool);
     let commands = crate::database::postgres_commands(&pool);
     let configuration = crate::database::postgres_configuration(&pool);
@@ -78,8 +77,8 @@ fn build_repositories(pool: PostgresPool) -> RepositorySet {
         device_blueprints,
         device_types,
         devices,
-        device_ingress: adapter.clone(),
-        events: adapter.clone(),
+        device_ingress,
+        events,
         fleets,
         firmware: adapter.clone(),
         logs,
@@ -89,7 +88,7 @@ fn build_repositories(pool: PostgresPool) -> RepositorySet {
         rule_zone_snapshots,
         rules,
         shadows,
-        telemetry: adapter.clone(),
+        telemetry,
         users,
         zones,
     }

@@ -1,11 +1,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use chrono::Timelike;
 use tracing::{info, warn};
 
 use crate::persistence::RepositorySet;
-use crate::services::device_ingress_service;
 
 /// Compute a backoff sleep duration based on consecutive failures.
 /// Doubles each failure from `base` up to `max`.
@@ -33,14 +31,11 @@ pub async fn run_offline_checker(
         };
         tokio::time::sleep(sleep_dur).await;
 
-        #[allow(clippy::cast_possible_wrap)]
-        let cutoff =
-            chrono::Utc::now().naive_utc() - chrono::TimeDelta::seconds(timeout_secs as i64);
-        let result = device_ingress_service::mark_offline_devices(
-            persistence.device_ingress.as_ref(),
-            cutoff,
-            &rule_cache,
+        let result = extrittio_backend_core::DeviceIngressApplication::new(
+            persistence.device_ingress.clone(),
+            std::sync::Arc::new(crate::auth::SystemClock),
         )
+        .mark_offline_devices(timeout_secs, rule_cache.as_ref())
         .await;
 
         match result {
@@ -237,18 +232,12 @@ pub async fn run_telemetry_rollup_and_retention(persistence: RepositorySet, rete
         };
         tokio::time::sleep(sleep_dur).await;
 
-        let now = chrono::Utc::now().naive_utc();
-        let current_hour = now
-            - chrono::Duration::minutes(i64::from(now.minute()))
-            - chrono::Duration::seconds(i64::from(now.second()))
-            - chrono::Duration::nanoseconds(i64::from(now.nanosecond()));
-        let since = current_hour - chrono::Duration::hours(25);
-        #[allow(clippy::cast_possible_wrap)]
-        let cutoff = now - chrono::Duration::days(retention_days as i64);
-        let result = persistence
-            .telemetry
-            .maintain(since, current_hour, cutoff)
-            .await;
+        let result = extrittio_backend_core::TelemetryMaintenanceApplication::new(
+            persistence.telemetry.clone(),
+            std::sync::Arc::new(crate::auth::SystemClock),
+        )
+        .maintain(retention_days)
+        .await;
 
         match result {
             Ok(outcome) => {

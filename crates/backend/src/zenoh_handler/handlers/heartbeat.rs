@@ -2,7 +2,6 @@ use prost::Message;
 use tracing::{info, warn};
 
 use crate::persistence::RepositorySet;
-use crate::services::device_ingress_service;
 use crate::tenancy::DeviceIdentity;
 
 use extrittio_common::extrittio::DeviceHeartbeat;
@@ -38,8 +37,11 @@ pub async fn handle_heartbeat(
         }
     };
 
-    match device_ingress_service::apply_heartbeat(
-        persistence.device_ingress.as_ref(),
+    match extrittio_backend_core::DeviceIngressApplication::new(
+        persistence.device_ingress.clone(),
+        std::sync::Arc::new(crate::auth::SystemClock),
+    )
+    .apply_heartbeat(
         identity,
         &heartbeat.status,
         &heartbeat.firmware,

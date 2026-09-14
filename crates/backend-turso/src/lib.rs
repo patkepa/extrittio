@@ -72,7 +72,6 @@ pub use outbox::TursoOutboxRepository;
 mod alerts;
 pub use alerts::TursoAlertRepository;
 
-#[cfg(feature = "migration-bridge")]
 mod rule_runtime;
 #[cfg(feature = "migration-bridge")]
 #[doc(hidden)]
@@ -97,3 +96,12 @@ pub use shadows::{get_from as read_shadow_in_transaction, store as store_shadow_
 
 mod logs;
 pub use logs::TursoLogRepository;
+
+mod events;
+pub use events::TursoEventRepository;
+
+mod device_ingress;
+pub use device_ingress::TursoDeviceIngressRepository;
+
+mod telemetry;
+pub use telemetry::TursoTelemetryRepository;

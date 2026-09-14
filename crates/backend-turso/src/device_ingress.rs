@@ -1,11 +1,25 @@
-use super::{TursoAdapter, row};
-use crate::domains::devices::repository::DeviceIngressRepository;
-use crate::domains::devices::types::*;
-use crate::persistence::PersistenceError;
-use crate::rule_engine::types::PendingAction;
-use crate::tenancy::DeviceIdentity;
+use crate::{TursoConnectionHandles, row};
+#[derive(Clone)]
+pub struct TursoDeviceIngressRepository {
+    handles: TursoConnectionHandles,
+}
+impl TursoDeviceIngressRepository {
+    pub fn from_handles(handles: TursoConnectionHandles) -> Self {
+        Self { handles }
+    }
+    fn connect(&self) -> Result<turso::Connection, PersistenceError> {
+        self.handles
+            .connect_raw()
+            .map_err(|error| PersistenceError::Unavailable(error.to_string()))
+    }
+}
 use async_trait::async_trait;
 use chrono::Utc;
+use extrittio_backend_core::DeviceIdentity;
+use extrittio_backend_core::PersistenceError;
+use extrittio_backend_core::device_ingress::DeviceIngressRepository;
+use extrittio_backend_core::device_ingress::*;
+use extrittio_backend_core::rule_engine::types::PendingAction;
 use turso::{Connection, Row, params};
 const INGRESS_SELECT: &str = "SELECT d.tenant_id, d.id, d.device_type_id, d.fleet_id, d.status,
        (SELECT revision.blueprint_id
@@ -21,19 +35,22 @@ const INGRESS_SELECT: &str = "SELECT d.tenant_id, d.id, d.device_type_id, d.flee
   FROM devices d";
 
 fn ingress(record: &Row) -> Result<DeviceIngressContext, PersistenceError> {
-    let tenant_id: String = record.get(0).map_err(row::error)?;
-    let device_id: String = record.get(1).map_err(row::error)?;
+    let tenant_id: String = record.get(0).map_err(row::legacy_error)?;
+    let device_id: String = record.get(1).map_err(row::legacy_error)?;
     Ok(DeviceIngressContext {
         identity: DeviceIdentity::new(tenant_id, device_id)
             .map_err(|error| PersistenceError::CorruptData(error.to_string()))?,
-        device_type_id: row::i32(record.get(2).map_err(row::error)?, "devices.device_type_id")?,
+        device_type_id: row::i32(
+            record.get(2).map_err(row::legacy_error)?,
+            "devices.device_type_id",
+        )?,
         fleet_id: record
             .get::<Option<i64>>(3)
-            .map_err(row::error)?
+            .map_err(row::legacy_error)?
             .map(|id| row::i32(id, "devices.fleet_id"))
             .transpose()?,
-        blueprint_id: record.get(5).map_err(row::error)?,
-        status: record.get(4).map_err(row::error)?,
+        blueprint_id: record.get(5).map_err(row::legacy_error)?,
+        status: record.get(4).map_err(row::legacy_error)?,
     })
 }
 
@@ -41,30 +58,30 @@ pub(super) async fn enqueue(
     connection: &Connection,
     actions: &[PendingAction],
 ) -> Result<usize, PersistenceError> {
-    crate::database::turso_enqueue_actions(connection, actions).await
+    crate::outbox::enqueue_actions_in_transaction(connection, actions).await
 }
 
 #[async_trait]
-impl DeviceIngressRepository for TursoAdapter {
+impl DeviceIngressRepository for TursoDeviceIngressRepository {
     async fn resolve_identity(
         &self,
         device_id: &str,
     ) -> Result<Option<DeviceIdentity>, PersistenceError> {
-        let connection = self.database.connect()?;
+        let connection = self.connect()?;
         let mut rows = connection
             .query(
                 "SELECT tenant_id, id FROM devices WHERE id = ?1",
                 params![device_id],
             )
             .await
-            .map_err(row::error)?;
+            .map_err(row::legacy_error)?;
         rows.next()
             .await
-            .map_err(row::error)?
+            .map_err(row::legacy_error)?
             .map(|record| {
                 DeviceIdentity::new(
-                    record.get::<String>(0).map_err(row::error)?,
-                    record.get::<String>(1).map_err(row::error)?,
+                    record.get::<String>(0).map_err(row::legacy_error)?,
+                    record.get::<String>(1).map_err(row::legacy_error)?,
                 )
                 .map_err(|error| PersistenceError::CorruptData(error.to_string()))
             })
@@ -75,17 +92,17 @@ impl DeviceIngressRepository for TursoAdapter {
         &self,
         identity: &DeviceIdentity,
     ) -> Result<Option<DeviceIngressContext>, PersistenceError> {
-        let connection = self.database.connect()?;
+        let connection = self.connect()?;
         let mut rows = connection
             .query(
                 &format!("{INGRESS_SELECT} WHERE d.tenant_id = ?1 AND d.id = ?2"),
                 params![identity.tenant_id_str(), identity.device_id()],
             )
             .await
-            .map_err(row::error)?;
+            .map_err(row::legacy_error)?;
         rows.next()
             .await
-            .map_err(row::error)?
+            .map_err(row::legacy_error)?
             .map(|record| ingress(&record))
             .transpose()
     }
@@ -95,15 +112,15 @@ impl DeviceIngressRepository for TursoAdapter {
         identity: &DeviceIdentity,
         write: HeartbeatWrite,
     ) -> Result<DeviceWriteOutcome, PersistenceError> {
-        let mut writer = self.database.writer().await;
-        let transaction = writer.transaction().await.map_err(row::error)?;
+        let mut writer = self.handles.lock_writer().await;
+        let transaction = writer.transaction().await.map_err(row::legacy_error)?;
         let count = transaction.execute(
             "UPDATE devices SET status = ?4, firmware = ?5, uptime_seconds = ?6, last_seen = ?7, updated_at = ?7
              WHERE tenant_id = ?1 AND id = ?2 AND status = ?3",
             params![identity.tenant_id_str(), identity.device_id(), write.expected_status.clone(), write.status.clone(), write.firmware, i64::from(write.uptime_seconds), write.observed_at.and_utc().timestamp_micros()],
-        ).await.map_err(row::error)?;
+        ).await.map_err(row::legacy_error)?;
         if count == 0 {
-            transaction.rollback().await.map_err(row::error)?;
+            transaction.rollback().await.map_err(row::legacy_error)?;
             return Ok(DeviceWriteOutcome {
                 applied: false,
                 actions_enqueued: 0,
@@ -113,9 +130,9 @@ impl DeviceIngressRepository for TursoAdapter {
             transaction.execute(
                 "INSERT INTO device_logs (tenant_id, device_id, level, message, created_at) VALUES (?1, ?2, 'INFO', ?3, ?4)",
                 params![identity.tenant_id_str(), identity.device_id(), format!("Device status changed from {} to {}", write.expected_status, write.status), write.observed_at.and_utc().timestamp_micros()],
-            ).await.map_err(row::error)?;
+            ).await.map_err(row::legacy_error)?;
         }
-        let actions = crate::database::turso_ingress_rules(
+        let actions = crate::rule_runtime::evaluate_rules_in_transaction(
             &transaction,
             identity.tenant_id_str(),
             identity.device_id(),
@@ -123,7 +140,7 @@ impl DeviceIngressRepository for TursoAdapter {
         )
         .await?;
         let actions_enqueued = enqueue(&transaction, &actions).await?;
-        transaction.commit().await.map_err(row::error)?;
+        transaction.commit().await.map_err(row::legacy_error)?;
         Ok(DeviceWriteOutcome {
             applied: true,
             actions_enqueued,
@@ -134,7 +151,7 @@ impl DeviceIngressRepository for TursoAdapter {
         &self,
         cutoff: chrono::NaiveDateTime,
     ) -> Result<Vec<DeviceIngressContext>, PersistenceError> {
-        let connection = self.database.connect()?;
+        let connection = self.connect()?;
         let mut rows = connection
             .query(
                 &format!(
@@ -144,9 +161,9 @@ impl DeviceIngressRepository for TursoAdapter {
                 params![cutoff.and_utc().timestamp_micros()],
             )
             .await
-            .map_err(row::error)?;
+            .map_err(row::legacy_error)?;
         let mut result = Vec::new();
-        while let Some(record) = rows.next().await.map_err(row::error)? {
+        while let Some(record) = rows.next().await.map_err(row::legacy_error)? {
             result.push(ingress(&record)?);
         }
         Ok(result)
@@ -168,8 +185,8 @@ impl DeviceIngressRepository for TursoAdapter {
                     b.context.identity.device_id(),
                 ))
         });
-        let mut writer = self.database.writer().await;
-        let transaction = writer.transaction().await.map_err(row::error)?;
+        let mut writer = self.handles.lock_writer().await;
+        let transaction = writer.transaction().await.map_err(row::legacy_error)?;
         let mut devices_updated = 0;
         let mut actions_enqueued = 0;
         for transition in transitions {
@@ -177,14 +194,14 @@ impl DeviceIngressRepository for TursoAdapter {
             let count = transaction.execute(
                 "UPDATE devices SET status = 'offline' WHERE tenant_id = ?1 AND id = ?2 AND status = ?3 AND status <> 'offline' AND last_seen < ?4",
                 params![identity.tenant_id_str(), identity.device_id(), transition.context.status, cutoff.and_utc().timestamp_micros()],
-            ).await.map_err(row::error)?;
+            ).await.map_err(row::legacy_error)?;
             if count > 0 {
                 devices_updated += 1;
                 transaction.execute(
                     "INSERT INTO device_logs (tenant_id, device_id, level, message, created_at) VALUES (?1, ?2, 'WARN', 'Device went offline (no heartbeat)', ?3)",
                     params![identity.tenant_id_str(), identity.device_id(), Utc::now().timestamp_micros()],
-                ).await.map_err(row::error)?;
-                let actions = crate::database::turso_ingress_rules(
+                ).await.map_err(row::legacy_error)?;
+                let actions = crate::rule_runtime::evaluate_rules_in_transaction(
                     &transaction,
                     identity.tenant_id_str(),
                     identity.device_id(),
@@ -194,7 +211,7 @@ impl DeviceIngressRepository for TursoAdapter {
                 actions_enqueued += enqueue(&transaction, &actions).await?;
             }
         }
-        transaction.commit().await.map_err(row::error)?;
+        transaction.commit().await.map_err(row::legacy_error)?;
         Ok(OfflineWriteOutcome {
             devices_updated,
             actions_enqueued,

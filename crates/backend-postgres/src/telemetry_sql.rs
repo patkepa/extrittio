@@ -8,8 +8,8 @@ use diesel::sql_types::{
     BigInt, Bytea, Float4, Float8, Integer, Jsonb, Nullable, Text, Timestamptz,
 };
 
-use crate::db::models::{NewTelemetryRecord, TelemetryRecord, TelemetryRollupHourly};
-use crate::db::schema::{telemetry, telemetry_rollups_hourly};
+use crate::models::{NewTelemetryRecord, TelemetryRecord, TelemetryRollupHourly};
+use crate::schema::{telemetry, telemetry_rollups_hourly};
 
 #[derive(QueryableByName)]
 pub struct PartitionMaintenanceResult {
@@ -33,7 +33,7 @@ pub fn list_telemetry(
         .into_boxed();
 
     if let Some(since_dt) = since {
-        query = query.filter(telemetry::received_at.gt(since_dt));
+        query = query.filter(telemetry::received_at.ge(since_dt));
     }
 
     if let Some(before_dt) = before {
@@ -41,7 +41,7 @@ pub fn list_telemetry(
     }
 
     query
-        .order(telemetry::received_at.desc())
+        .order((telemetry::received_at.desc(), telemetry::id.desc()))
         .limit(limit)
         .select(TelemetryRecord::as_select())
         .load(conn)
@@ -93,13 +93,13 @@ pub fn get_latest_location(
     tenant_id_filter: &str,
     dev_id: &str,
 ) -> QueryResult<Option<TelemetryRecord>> {
-    use crate::db::schema::telemetry::dsl::*;
+    use crate::schema::telemetry::dsl::*;
     telemetry
         .filter(tenant_id.eq(tenant_id_filter))
         .filter(device_id.eq(dev_id))
         .filter(latitude.is_not_null())
         .filter(longitude.is_not_null())
-        .order(received_at.desc())
+        .order((received_at.desc(), id.desc()))
         .select(TelemetryRecord::as_select())
         .first(conn)
         .optional()
@@ -108,9 +108,10 @@ pub fn get_latest_location(
 pub fn insert_telemetry(
     conn: &mut PgConnection,
     record: &NewTelemetryRecord,
+    received_at: NaiveDateTime,
 ) -> Result<(i64, NaiveDateTime), diesel::result::Error> {
     diesel::insert_into(telemetry::table)
-        .values(record)
+        .values((record, telemetry::received_at.eq(received_at)))
         .returning((telemetry::id, telemetry::received_at))
         .get_result(conn)
 }
@@ -190,7 +191,7 @@ pub fn upsert_hourly_rollups(
         SELECT
             tenant_id,
             device_id,
-            date_trunc('hour', received_at) AS bucket_start,
+            (date_trunc('hour', received_at AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') AS bucket_start,
             count(*) AS sample_count,
             avg(temperature)::real AS avg_temperature,
             min(temperature)::real AS min_temperature,
@@ -205,7 +206,7 @@ pub fn upsert_hourly_rollups(
         FROM telemetry
         WHERE received_at >= $1
           AND received_at < $2
-        GROUP BY tenant_id, device_id, date_trunc('hour', received_at)
+        GROUP BY tenant_id, device_id, (date_trunc('hour', received_at AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')
         ON CONFLICT (tenant_id, device_id, bucket_start) DO UPDATE SET
             sample_count = EXCLUDED.sample_count,
             avg_temperature = EXCLUDED.avg_temperature,
@@ -247,4 +248,29 @@ pub fn maintain_partitions(
     .bind::<Integer, _>(months_ahead)
     .bind::<Timestamptz, _>(cutoff)
     .get_result(conn)
+}
+
+#[derive(QueryableByName)]
+struct MaintenanceBoundary {
+    #[diesel(sql_type = Nullable<Timestamptz>)]
+    pruned_before: Option<NaiveDateTime>,
+}
+
+pub fn lock_maintenance_boundary(
+    conn: &mut PgConnection,
+) -> Result<Option<NaiveDateTime>, diesel::result::Error> {
+    diesel::sql_query(
+        "SELECT pruned_before FROM telemetry_maintenance_state WHERE singleton = 1 FOR UPDATE",
+    )
+    .get_result::<MaintenanceBoundary>(conn)
+    .map(|row| row.pruned_before)
+}
+
+pub fn advance_maintenance_boundary(
+    conn: &mut PgConnection,
+    cutoff: NaiveDateTime,
+) -> Result<usize, diesel::result::Error> {
+    diesel::sql_query("UPDATE telemetry_maintenance_state SET pruned_before = GREATEST(pruned_before, $1) WHERE singleton = 1")
+        .bind::<Timestamptz, _>(cutoff)
+        .execute(conn)
 }

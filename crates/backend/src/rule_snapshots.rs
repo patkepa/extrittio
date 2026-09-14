@@ -168,3 +168,18 @@ impl extrittio_backend_core::rules::RuleChangeNotifier for RuleSnapshotStore {
         self.invalidate();
     }
 }
+
+impl extrittio_backend_core::rule_snapshots::RuleSnapshotProvider for RuleSnapshotStore {
+    fn snapshot(
+        &self,
+    ) -> Result<
+        extrittio_backend_core::rule_snapshots::RuleEvaluationSnapshot,
+        extrittio_backend_core::ApplicationError,
+    > {
+        RuleSnapshotStore::snapshot(self).map_err(|error| {
+            extrittio_backend_core::ApplicationError::Internal(format!(
+                "failed to obtain rule snapshot: {error}"
+            ))
+        })
+    }
+}

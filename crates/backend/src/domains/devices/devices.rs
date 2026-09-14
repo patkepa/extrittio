@@ -847,9 +847,9 @@ pub(crate) async fn get_device_latest_location(
     Path(device_id): Path<String>,
 ) -> Result<Json<Option<LocationResponse>>, AppError> {
     let result = state
-        .persistence
-        .telemetry
-        .latest_location(ctx.tenant_id(), &device_id)
+        .application()
+        .telemetry()
+        .latest_location(&ctx.tenant_context(), &device_id)
         .await?
         .map(|r| LocationResponse {
             latitude: r.latitude.unwrap_or(0.0),

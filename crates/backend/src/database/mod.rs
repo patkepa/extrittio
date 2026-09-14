@@ -251,16 +251,6 @@ pub(crate) fn turso_alerts(
 }
 
 #[cfg(feature = "postgres")]
-pub(crate) use extrittio_backend_postgres::evaluate_rules_in_transaction as postgres_ingress_rules;
-#[cfg(feature = "turso")]
-pub(crate) use extrittio_backend_turso::evaluate_rules_in_transaction as turso_ingress_rules;
-
-#[cfg(feature = "postgres")]
-pub(crate) use extrittio_backend_postgres::enqueue_actions_in_transaction as postgres_enqueue_actions;
-#[cfg(feature = "turso")]
-pub(crate) use extrittio_backend_turso::enqueue_actions_in_transaction as turso_enqueue_actions;
-
-#[cfg(feature = "postgres")]
 pub(crate) fn postgres_shadows(
     pool: &PostgresPool,
 ) -> Arc<dyn extrittio_backend_core::shadows::ShadowRepository> {
@@ -330,4 +320,51 @@ pub(crate) fn turso_logs(
     Arc::new(extrittio_backend_turso::TursoLogRepository::from_handles(
         database.shared_handles(),
     ))
+}
+
+#[cfg(feature = "postgres")]
+pub(crate) fn postgres_events(
+    pool: &PostgresPool,
+) -> Arc<dyn extrittio_backend_core::events::DeviceEventRepository> {
+    Arc::new(extrittio_backend_postgres::PostgresEventRepository::from_pool(pool.clone()))
+}
+#[cfg(feature = "turso")]
+pub(crate) fn turso_events(
+    database: &TursoDatabase,
+) -> Arc<dyn extrittio_backend_core::events::DeviceEventRepository> {
+    Arc::new(extrittio_backend_turso::TursoEventRepository::from_handles(
+        database.shared_handles(),
+    ))
+}
+
+#[cfg(feature = "postgres")]
+pub(crate) fn postgres_device_ingress(
+    pool: &PostgresPool,
+) -> Arc<dyn extrittio_backend_core::device_ingress::DeviceIngressRepository> {
+    Arc::new(extrittio_backend_postgres::PostgresDeviceIngressRepository::from_pool(pool.clone()))
+}
+#[cfg(feature = "turso")]
+pub(crate) fn turso_device_ingress(
+    database: &TursoDatabase,
+) -> Arc<dyn extrittio_backend_core::device_ingress::DeviceIngressRepository> {
+    Arc::new(
+        extrittio_backend_turso::TursoDeviceIngressRepository::from_handles(
+            database.shared_handles(),
+        ),
+    )
+}
+
+#[cfg(feature = "postgres")]
+pub(crate) fn postgres_telemetry(
+    pool: &PostgresPool,
+) -> Arc<dyn extrittio_backend_core::telemetry::TelemetryRepository> {
+    Arc::new(extrittio_backend_postgres::PostgresTelemetryRepository::from_pool(pool.clone()))
+}
+#[cfg(feature = "turso")]
+pub(crate) fn turso_telemetry(
+    database: &TursoDatabase,
+) -> Arc<dyn extrittio_backend_core::telemetry::TelemetryRepository> {
+    Arc::new(
+        extrittio_backend_turso::TursoTelemetryRepository::from_handles(database.shared_handles()),
+    )
 }
