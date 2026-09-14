@@ -1,0 +1,3 @@
+DROP TABLE rule_zone_entries;
+DROP INDEX rule_zone_entries_rules_tenant_ref;
+DROP INDEX rule_zone_entries_devices_tenant_ref;
