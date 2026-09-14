@@ -4,7 +4,7 @@
 - **Created:** 2026-09-14.
 - **Purpose:** Executable work packages for completing the remaining backend ownership refactor.
 - **Current execution preference:** Skip running, compiling, adding, and repairing tests for now. Remove tests made invalid by the refactor; keep unaffected tests. Continue production compilation, formatting, and architecture checks.
-- **Next package:** R08 — ingress and time series. R01–R07 are implemented; behavioral verification remains deferred.
+- **Next package:** R09 — remaining firmware, object storage, and OTA. R01–R08 are implemented; behavioral verification remains deferred.
 
 ## 1. Scope and authority
 
@@ -439,8 +439,8 @@ with a generic “done.” List individual PRs if a package is split.
 | R05 | Implemented | Deferred | Core rules/evaluation, consistent reads, immutable host snapshots, polling/readiness/metrics; ADR-005 |
 | R06 | Implemented | Deferred | Core policy/runtime, adapter-owned outbox and durable transitions; ADR-014 |
 | R07 | Implemented | Deferred | Existing shadow/configuration behavior, commands/DeviceBus, shared OTA shadow mutation; no new config protocol |
-| R08 | In progress | Deferred | Logs, events, and presence extracted; raw telemetry and final ingress audit next |
-| R09 | CI ingest only | Deferred | Remaining metadata/blob/OTA work |
+| R08 | Implemented | Deferred | Core ingress/read/maintenance policy, both adapters, explicit timestamps and durable pruning boundary |
+| R09 | In progress | Deferred | Core firmware values/port and both adapters extracted; application workflows next |
 | R10 | Not started | Deferred | Projections, audit, metrics |
 | R11 | Partial through completed slices | Deferred | Continue thinning each migrated entry point |
 | R12 | Foundations already exist | Deferred | Finish after last legacy domain moves |
@@ -753,3 +753,63 @@ This closes the implementation items left open in the preceding R05 notes.
 - Legacy databases have no reliable pruning history. When telemetry or rollups already exist, migrations initialize a conservative boundary at migration time; old aggregates remain unchanged and no automatic historical backfill is attempted. The hour containing that boundary is also frozen if it is partial. Fresh databases initialize without a boundary. This cannot repair aggregates damaged before migration. Deploy the migrations with old maintenance workers quiesced; rolling back the migration loses the recorded boundary and restores the old risk.
 - Raw retention keeps its exact cutoff, including zero-day retention; the implementation does not promise complete hourly aggregates after raw samples have been removed before their hour closes. Hour buckets are explicitly UTC in PostgreSQL regardless of connection timezone; Turso uses mathematical floor for negative epoch timestamps as well as positive timestamps.
 - Removed the invalid `previous_schema_snapshot_upgrades_without_losing_device_data` test and its private fixture helper/imports: it asserted schema version 9 after applying all migrations. No test was repaired, added, compiled, or run. No migrations were executed.
+
+### R08 implementation audit
+
+- Identity, contract classification/validation, typed field extraction, raw telemetry normalization, log normalization, heartbeat/offline policy, and retry intent are core-owned (`application/{device_ingress,events,telemetry,logs}.rs`). Host consumers decode/authenticate/map/log and use the applications. OTA report translation remains explicitly assigned to R09.
+- PostgreSQL/Turso own events, telemetry, logs, presence, atomic rule/outbox participants, read SQL, and maintenance storage. Raw ingestion continues using device/write transactions; typed events preserve their existing deduplication behavior. No deduplication or configuration acknowledgement protocol was added.
+- Read windows are raw receipt-time `[since, before)`, hourly bucket `[since, before)`, typed occurrence-time `[since, before)`, and log creation-time inclusive `since`. Raw/latest/location use descending receipt time and numeric ID; metrics use explicit binary text tie ordering; hourly bucket keys are unique per device; logs use descending creation time and ID.
+- PI-07 has explicit raw receipt versus evaluation times and device occurrence semantics; typed occurrence and receipt times now normalize to microseconds in core. PI-09 telemetry has atomic maintenance and a durable pruning boundary, with migration and historical completeness limitations documented above. Other PI-09 domains remain assigned to later packages.
+- Deleted superseded host services/SQL/adapter modules in the recorded R08 slices. Compatibility type re-exports and composition aliases remain for final R12 cleanup. R08 behavioral acceptance remains deferred in full under the user's test policy; compilation does not prove database rollback, migration execution, or concurrency behavior.
+
+- Final R08 production checks passed: host without default features, PostgreSQL-only, Turso-only, and combined PostgreSQL/Turso; independent adapters; formatting and whitespace. Architecture passed with 22 direct accesses across 9 files and 9 tracked exceptions. No tests or migrations were run. R08 implementation is complete under the deferred-verification policy; R09 is next and the full objective remains active.
+
+
+### R09 firmware boundary and Turso persistence
+
+- Moved firmware/blob/deployment values and the existing `FirmwareRepository` port into core. Core owns artifact validation and forward-only OTA transition/terminal-state policy with the same accepted values and case handling. Host types/port re-export the core definitions during migration.
+- Moved Turso firmware metadata, blob, version, deployment, and legacy blob migration SQL into `backend-turso::TursoFirmwareRepository`, composed from the existing shared connection handles. Existing writer transactions, compatibility checks, stale-report rejection, supersession, and conditional shadow cleanup are preserved. No CI-ingest transaction or object key changed.
+- OTA shadow participants now call adapter-internal shadow helpers directly in the enclosing Turso transaction. Removed the unused Turso shadow transaction exports and host composition aliases; PostgreSQL equivalents remain until its firmware extraction.
+- R09 remains in progress for PostgreSQL SQL extraction and core application ownership of metadata, object orchestration, download grants, OTA planning/status, and legacy migration operations. No tests were added, repaired, compiled, run, or removed for this slice; no migrations were added or executed.
+- Validation passed: independent Turso adapter production compilation and combined PostgreSQL/Turso host production compilation, including removal of the transaction exports. Formatting, whitespace, and architecture passed (22 direct accesses across 9 files; 9 tracked exceptions). These checks do not establish runtime OTA or object-storage behavior; that acceptance remains deferred.
+
+
+### R09 PostgreSQL firmware persistence
+
+- Moved remaining PostgreSQL firmware metadata/blob/deployment/legacy-migration persistence to `PostgresFirmwareRepository` and adapter-private `firmware_sql`. Composition reuses the existing pool. Replaced host error dependencies with a local transaction error preserving database/persistence mapping.
+- Preserved the enclosing create/delete/OTA transactions, tenant-scoped lookups, blueprint/device-type compatibility, artifact checks, supersession, and stale/terminal report rejection. Shadow locking still precedes deployment mutation; shared shadow helpers now run directly inside the adapter transaction.
+- Deleted the superseded host firmware adapter and SQL module, domain/repository aliases, and PostgreSQL shadow transaction bridge exports. Removed the unused `find_firmware_blob` SQL helper; active reads retain the optional blob lookup and original not-found mapping at application level. No CI-ingest behavior changed.
+- Both adapters now own firmware persistence. R09 remains open for core application policy and object/download/OTA orchestration; these host services have not yet been claimed complete. Existing port signatures and host type re-exports remain compatible, and source inspection found no test directly calling the removed SQL helper. No tests were added, repaired, compiled, run, or removed; no migrations were introduced or executed.
+- Validation passed: combined PostgreSQL/Turso host production compilation, independent PostgreSQL adapter production compilation, formatting, whitespace, and architecture (22 direct accesses across 9 files; 9 tracked exceptions). Runtime transaction/OTA acceptance remains deferred.
+
+### R09 firmware metadata application
+
+- Added core `FirmwareApplication` and wired its narrow repository through core composition. Moved firmware/deployment listing, metadata creation/deletion, blob lookup, and version suggestion authorization/error mapping from the host service into core. HTTP handlers invoke the application directly; upload/delete object wrappers now call it for metadata operations.
+- Preserved permission choices (`ReadFirmware`, `ManageFirmware`, and `ReadDevices` for device deployment history), duplicate-version conflict text, not-found outcomes, pagination inputs, and object-before-metadata / metadata-before-cleanup ordering. Object storage, blueprint preparation, grants, and OTA dispatch remain host workflows pending the next R09 slices.
+- Removed obsolete wrapper functions and the three invalid firmware creation tests: `upload_failure_removes_the_object_and_preserves_the_database_error`, `successful_upload_retains_object_until_metadata_deletion`, and `backend_mismatch_keeps_the_object_but_does_not_fail_metadata_deletion`, together with their private repository mock/support. Their old repository-argument entry points no longer exist. No tests were repaired, added, compiled, or run.
+- Tightened architecture allowances: removed firmware HTTP repository access entirely and reduced device handlers to the two remaining OTA dispatch accesses.
+- Validation passed: combined PostgreSQL/Turso host production compilation, formatting, whitespace, and architecture. Direct handler-to-repository accesses fell from 22 across 9 files to 11 across 8 files; 9 tracked migration exceptions remain. Behavioral verification remains deferred. R09 and the full objective remain in progress.
+
+### R09 object upload/delete orchestration
+
+- Added the core `FirmwareObjectStorage` capability with backend identity, key allocation, object write, and delete operations. The existing host `FirmwareObjectStore` implements it using unchanged filesystem/S3 storage and key construction; storage errors are logged there.
+- `FirmwareApplication::upload` now owns object-first write, metadata creation, and best-effort compensation. Metadata/authorization failure remains the returned error even if cleanup fails. The host wrapper retains SHA-256 calculation, as allowed by the plan. Existing upload authorization ordering and file-size conversion are preserved in this extraction.
+- `FirmwareApplication::delete_stored` commits metadata deletion before best-effort cleanup. A configured-backend mismatch returns only a diagnostic for host logging; cleanup failure does not turn successful metadata deletion into an HTTP error. The host wrappers now translate/log rather than orchestrating storage and persistence.
+- Blueprint preparation, download grants/reads, OTA planning/status, and legacy blob migration orchestration remain for subsequent R09 slices. No tests were added, repaired, compiled, run, or removed; no migrations were added or executed.
+- Validation passed: combined PostgreSQL/Turso host production compilation, formatting, whitespace, and architecture (11 direct accesses across 8 files; 9 tracked exceptions). Runtime storage-failure/compensation acceptance remains deferred. R09 remains in progress.
+
+### R09 blueprint preparation and legacy migration
+
+- Moved `PreparedBlueprintFirmware` and blueprint preparation into core `FirmwareApplication`. Both firmware HTTP creation paths call it directly. Existing blueprint/type application permissions and call order remain; missing firmware behavior maps through core `InvalidOperation` to the existing HTTP 422 response. Compatibility, update strategy, and record defaults are unchanged.
+- Added narrow global `FirmwareMigrationApplication::migrate_next`. It reads one legacy blob, writes the deterministic host-generated object key, and conditionally marks metadata migrated. On metadata failure, the object remains for retry; concurrent workers retain the existing conditional-update behavior. No object deletion or new migration transaction was introduced.
+- The host worker now schedules that operation: 300 seconds when idle, 30 seconds after failure, immediate continuation after a migrated/already-migrated result. Storage SDK/key construction and logging remain host-owned. No direct legacy firmware repository operations remain in the host worker.
+- Downloads/grants and OTA orchestration remain outstanding in R09. No tests were added, repaired, compiled, run, or removed; no database migrations were added or executed.
+- Validation passed: combined PostgreSQL/Turso host production compilation after both changes, formatting, whitespace, and architecture (11 direct accesses across 8 files; 9 tracked exceptions). Runtime migration/retry and firmware compatibility checks remain deferred. The next download slice must also remove the special `firmware_download_repository()` host accessor, which bypasses the ordinary handler access counter.
+
+### R09 firmware download application
+
+- Added core download operations for authenticated users and verified device grants. Core now selects legacy inline bytes before object storage, rejects backend mismatch/missing locations, checks the stored byte count, and preserves the existing user/device not-found messages and safe storage errors.
+- Added a host object-read capability and a core `VerifiedFirmwareDownload` domain scope. The host must verify the token signature, audience, and expiry before constructing that scope; construction validates tenant and positive firmware ID but is explicitly not raw-token verification. The existing JWT format, audience, expiry checks, route, and keys remain unchanged.
+- Both HTTP download handlers now call core. Removed `AppState::firmware_download_repository()` and its direct repository path. Filename/header sanitization, private/no-store headers, content length, and HTTP body construction remain host-owned and unchanged.
+- Grant issuance policy and OTA orchestration remain outstanding in R09. Existing JWT tests still target unchanged signing/verification functions and are retained; none were run, compiled, added, repaired, or removed. No migrations were added or executed.
+- Validation passed: combined PostgreSQL/Turso host production compilation, formatting, whitespace, and architecture (11 counted direct accesses across 8 files; 9 tracked exceptions). The removed special download accessor was outside that count. Runtime download/grant behavior remains deferred; R09 is still in progress.

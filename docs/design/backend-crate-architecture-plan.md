@@ -1439,3 +1439,5 @@ After that closure, continue one reviewable sub-slice at a time in this order: A
 Do not begin P3.2 until all identity/bootstrap operations have left the legacy aggregate, both adapters pass the shared P3.1 contracts, and core can still be built and tested without any runtime or database SDK.
 
 R07 scope clarification: the user requested preserving existing configuration behavior, not adding configuration versions or device acknowledgements. Existing device-contract convergence stays in event ingestion.
+
+R08 implementation is complete: core owns identity/presence, contract routing/events, telemetry/log ingress and reads, and maintenance planning. Both adapters own transaction participants and SQL. Telemetry maintenance uses an atomic, monotonic pruning boundary to protect frozen rollups; additive migrations conservatively freeze legacy hours with unknown completeness. Explicit UTC/microsecond contracts and migration limitations are recorded in the execution plan. Behavioral verification remains deferred; R09 firmware/OTA extraction is next.

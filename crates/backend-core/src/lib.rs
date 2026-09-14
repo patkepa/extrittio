@@ -2,6 +2,7 @@
 #![deny(clippy::disallowed_methods)]
 
 pub mod application;
+pub mod firmware;
 pub mod fleets;
 pub use application::FleetApplication;
 pub mod device_types;

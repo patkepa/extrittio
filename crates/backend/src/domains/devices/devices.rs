@@ -803,14 +803,11 @@ pub(crate) async fn list_ota_deployments(
 ) -> Result<Json<PaginatedResponse<OtaDeploymentResponse>>, AppError> {
     let (limit, offset) = pagination::clamp(params.limit, params.offset);
 
-    let page = firmware_service::list_device_deployments_with_repository(
-        &ctx,
-        state.persistence.firmware.as_ref(),
-        &id,
-        limit,
-        offset,
-    )
-    .await?;
+    let page = state
+        .application()
+        .firmware()
+        .list_device_deployments(&ctx.tenant_context(), &id, limit, offset)
+        .await?;
     let data = page
         .records
         .into_iter()

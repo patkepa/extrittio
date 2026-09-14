@@ -1,3 +1,5 @@
+mod firmware;
+pub use firmware::{FirmwareApplication, FirmwareMigrationApplication};
 mod telemetry;
 pub use telemetry::{
     TelemetryApplication, TelemetryIngressApplication, TelemetryMaintenanceApplication,
@@ -101,6 +103,7 @@ impl ApplicationDependencies {
 /// Curated application façade passed to transports.
 #[derive(Clone)]
 pub struct Application {
+    firmware: FirmwareApplication,
     telemetry: TelemetryApplication,
     events: EventApplication,
     logs: LogApplication,
@@ -123,6 +126,10 @@ pub struct Application {
 }
 
 impl Application {
+    pub fn firmware(&self) -> &FirmwareApplication {
+        &self.firmware
+    }
+
     pub fn telemetry(&self) -> &TelemetryApplication {
         &self.telemetry
     }
@@ -165,6 +172,7 @@ impl Application {
             dependencies.clock.clone(),
         );
         Self {
+            firmware: FirmwareApplication::new(repositories.firmware),
             telemetry: TelemetryApplication::new(repositories.telemetry),
             events: EventApplication::new(repositories.events),
             logs: LogApplication::new(repositories.logs),

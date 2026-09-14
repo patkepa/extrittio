@@ -99,8 +99,6 @@ pub mod firmware {
     pub use super::firmware_store as storage;
     pub use crate::api::ci_pipeline as ci_api;
     pub use crate::api::firmware_updates as api;
-    #[cfg(feature = "postgres")]
-    pub use crate::repositories::firmware_repo as repository;
     pub use crate::services::firmware_service as service;
 }
 

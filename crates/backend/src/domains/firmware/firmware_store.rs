@@ -148,56 +148,22 @@ impl FirmwareObjectStore {
 /// is deterministic so concurrent application replicas can safely converge on
 /// the same object and conditional database update.
 pub async fn run_legacy_blob_migrator(persistence: RepositorySet, store: FirmwareObjectStore) {
+    let application = extrittio_backend_core::application::FirmwareMigrationApplication::new(
+        persistence.firmware.clone(),
+    );
     loop {
-        let next_blob = persistence.firmware.next_legacy_blob().await;
-
-        let blob = match next_blob {
-            Ok(Some(blob)) => blob,
-            Ok(None) => {
-                tokio::time::sleep(std::time::Duration::from_secs(300)).await;
-                continue;
-            }
-            Err(error) => {
-                tracing::warn!(%error, "Failed to query legacy firmware blobs");
-                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-                continue;
-            }
-        };
-
-        let key = store.legacy_key(&blob.tenant_id, blob.firmware_update_id, &blob.filename);
-        if let Err(error) = store.put(&key, blob.data).await {
-            tracing::warn!(
-                %error,
-                firmware_update_id = blob.firmware_update_id,
-                "Failed to migrate legacy firmware object"
-            );
-            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-            continue;
-        }
-
-        let tenant_id = blob.tenant_id;
-        let backend = store.backend();
-        let firmware_update_id = blob.firmware_update_id;
-        let result = persistence
-            .firmware
-            .mark_blob_migrated(&tenant_id, firmware_update_id, backend, &key)
-            .await;
-
-        match result {
-            Ok(true) => tracing::info!(
+        match application.migrate_next(&store).await {
+            Ok(None) => tokio::time::sleep(std::time::Duration::from_secs(300)).await,
+            Ok(Some((firmware_update_id, true))) => tracing::info!(
                 firmware_update_id,
-                backend,
+                backend = store.backend(),
                 "Migrated legacy firmware blob to object storage"
             ),
-            Ok(false) => {
-                tracing::debug!(firmware_update_id, "Firmware blob was already migrated");
+            Ok(Some((firmware_update_id, false))) => {
+                tracing::debug!(firmware_update_id, "Firmware blob was already migrated")
             }
             Err(error) => {
-                tracing::warn!(
-                    %error,
-                    firmware_update_id,
-                    "Firmware object stored but metadata migration failed"
-                );
+                tracing::warn!(%error, "Legacy firmware blob migration failed; retaining data for retry");
                 tokio::time::sleep(std::time::Duration::from_secs(30)).await;
             }
         }
@@ -280,5 +246,40 @@ mod tests {
             store.legacy_key("tenant/acme", 42, "../device firmware.bin"),
             "tenants/tenant_acme/firmware/legacy-42/___device_firmware_bin"
         );
+    }
+}
+
+#[async_trait::async_trait]
+impl extrittio_backend_core::firmware::FirmwareObjectStorage for FirmwareObjectStore {
+    fn backend(&self) -> &str {
+        FirmwareObjectStore::backend(self)
+    }
+    fn allocate_key(&self, tenant: &extrittio_backend_core::TenantId, filename: &str) -> String {
+        FirmwareObjectStore::allocate_key(self, tenant.as_str(), filename)
+    }
+    fn legacy_key(&self, tenant: &str, firmware_update_id: i32, filename: &str) -> String {
+        FirmwareObjectStore::legacy_key(self, tenant, firmware_update_id, filename)
+    }
+    async fn get(&self, key: &str) -> Result<Vec<u8>, String> {
+        FirmwareObjectStore::get(self, key).await.map_err(|error| {
+            tracing::error!(%error, "Firmware object download failed");
+            error.to_string()
+        })
+    }
+    async fn put(&self, key: &str, data: Vec<u8>) -> Result<(), String> {
+        FirmwareObjectStore::put(self, key, data)
+            .await
+            .map_err(|error| {
+                tracing::error!(%error, "Firmware object upload failed");
+                error.to_string()
+            })
+    }
+    async fn delete(&self, key: &str) -> Result<(), String> {
+        FirmwareObjectStore::delete(self, key)
+            .await
+            .map_err(|error| {
+                tracing::error!(%error, "Failed to clean up unreferenced firmware object");
+                error.to_string()
+            })
     }
 }
