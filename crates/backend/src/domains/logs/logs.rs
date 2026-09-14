@@ -8,10 +8,10 @@ use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::auth::context::RequestContext;
-use crate::domains::logs::types::{LogQuery, LogRecord};
 use crate::error::AppError;
 use crate::state::AppState;
 use crate::util;
+use extrittio_backend_core::logs::{LogQuery, LogRecord};
 
 // ---------------------------------------------------------------------------
 // Request / Response types

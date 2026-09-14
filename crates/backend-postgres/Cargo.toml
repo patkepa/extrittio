@@ -10,7 +10,6 @@ publish.workspace = true
 
 [features]
 default = []
-migration-bridge = []
 
 [dependencies]
 extrittio-backend-core = { version = "0.1.0", path = "../backend-core" }

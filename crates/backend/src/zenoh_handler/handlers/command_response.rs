@@ -1,15 +1,15 @@
 use prost::Message;
 use tracing::{info, warn};
 
-use crate::persistence::RepositorySet;
 use crate::tenancy::DeviceIdentity;
+use extrittio_backend_core::CommandWorkerApplication;
 
 use extrittio_common::extrittio::DeviceCommandResponse;
 
 /// Decode a `DeviceCommandResponse` protobuf message and update the corresponding
 /// command record's status and response payload.
-pub async fn handle_command_response(
-    persistence: &RepositorySet,
+pub(crate) async fn handle_command_response(
+    application: &CommandWorkerApplication,
     identity: &DeviceIdentity,
     topic_device_id: &str,
     payload: &[u8],
@@ -36,18 +36,15 @@ pub async fn handle_command_response(
         Some(response.payload.as_str())
     };
 
-    match extrittio_backend_core::CommandWorkerApplication::new(
-        persistence.commands.clone(),
-        std::sync::Arc::new(crate::auth::SystemClock),
-    )
-    .handle_response(
-        identity.tenant_id(),
-        identity.device_id(),
-        &response.correlation_id,
-        &response.status,
-        response_payload.map(ToOwned::to_owned),
-    )
-    .await
+    match application
+        .handle_response(
+            identity.tenant_id(),
+            identity.device_id(),
+            &response.correlation_id,
+            &response.status,
+            response_payload.map(ToOwned::to_owned),
+        )
+        .await
     {
         Ok(Some(new_status)) => {
             info!(

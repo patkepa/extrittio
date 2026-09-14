@@ -10,9 +10,6 @@ publish.workspace = true
 
 [features]
 default = []
-# Temporary surface used by unmigrated host repositories. Remove after the
-# final Turso domain slice moves into this crate.
-migration-bridge = []
 
 [dependencies]
 async-trait = "0.1"

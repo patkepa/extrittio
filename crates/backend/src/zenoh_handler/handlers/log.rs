@@ -1,16 +1,16 @@
 use prost::Message;
 use tracing::{info, warn};
 
-use crate::persistence::RepositorySet;
 use crate::tenancy::DeviceIdentity;
+use extrittio_backend_core::LogIngressApplication;
 
 use extrittio_common::extrittio::DeviceLog;
 
 /// Decode a `DeviceLog` protobuf message and insert it into the database.
 ///
 /// Logs and drops messages from unregistered devices or malformed payloads.
-pub async fn handle_device_log(
-    persistence: &RepositorySet,
+pub(crate) async fn handle_device_log(
+    application: &LogIngressApplication,
     identity: &DeviceIdentity,
     topic_device_id: &str,
     payload: &[u8],
@@ -26,17 +26,14 @@ pub async fn handle_device_log(
         return;
     }
 
-    match extrittio_backend_core::LogIngressApplication::new(
-        persistence.logs.clone(),
-        std::sync::Arc::new(crate::auth::SystemClock),
-    )
-    .record(
-        identity.tenant_id(),
-        identity.device_id(),
-        &log_msg.level,
-        &log_msg.message,
-    )
-    .await
+    match application
+        .record(
+            identity.tenant_id(),
+            identity.device_id(),
+            &log_msg.level,
+            &log_msg.message,
+        )
+        .await
     {
         Ok(false) => {
             warn!(

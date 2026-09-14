@@ -1,5 +1,11 @@
 # Backend refactor continuation — 2026-09-14
 
+Historical record. Retired paths, feature flags, test targets, and unfinished-task
+statements below describe their captured revision. Use the
+[current execution plan](backend-refactor-execution-plan.md) and
+[operational guide](../deployment/backend-refactor.md) for the implemented layout
+and deferred verification.
+
 The [backend refactor execution plan](backend-refactor-execution-plan.md) now
 provides the detailed work packages for the full remaining backlog. This document
 retains the initial inspection and CI-ingest continuation history.

@@ -1,28 +1,29 @@
 # Backend persistence contract inventory
 
-Current implementation updates for R01–R05: certificate and bootstrap ports now
-live in core with adapter-owned implementations (ADR-010/011), as do device types
-and fleets (ADR-012). PI-06 rotation behavior, PI-14 global-ID scope, and PI-15
-bootstrap role preconditions have implementation decisions; verification is deferred.
-PI-04 catalog lists now use explicit binary name/ID ordering. Older detailed rows
-below remain historical evidence until their behavioral contract suites are resumed.
-Blueprint and device catalog ports now live in core, with SQL in both adapter crates.
-ADR-013 defines PI-12 duplicate counts, PI-13 publication retries, and atomic initial
-configuration/contract/credential provisioning. Ingress remains an explicit host port
-until R08. These are implementation decisions; behavioral evidence remains deferred.
-R05 is implemented: rule records/port/application and both adapters have moved.
-PI-11 now uses one database snapshot including zones (PostgreSQL repeatable read;
-Turso transaction). The immutable host store, independent polling, core evaluation,
-post-commit invalidation,
-and readiness/metrics parts of ADR-005 are implemented. Mutable runtime maps remain
-transitional until R06; behavioral evidence remains deferred.
+For current PI-16/PI-17 implementation and deferred evidence, see
+[Backend identity closure](backend-identity-closure.md). The dated extraction notes
+below are historical; the execution plan records current ownership.
 
+## Current ownership
 
-- **Status:** P0-A implementation inventory
-- **Architecture plan:** `docs/design/backend-crate-architecture-plan.md`, P0.3
-- **Inspected revision:** `a75ff73c187e1ae9bae04fd9f1377e8662886242` plus the working tree as of 2026-08-31
-- **Scope:** the 25 ports stored in `crates/backend/src/persistence/mod.rs::Persistence`
-- **Coverage:** all 139 operations declared by those ports, including `BootstrapRepository`
+R01–R13 implementation is complete under the current test deferral. Core owns
+business applications, records, and ports; PostgreSQL and Turso own SQL, rows,
+transactions, migrations, and database lifecycle operations. The host composes
+shared handles and owns transport, runtime supervision, and outbound integrations.
+There are no host business repository implementations or migration bridges.
+
+Rules use immutable definition snapshots with database-authoritative mutable state.
+Ingress/time-series, firmware/OTA, projections/audit/metrics, and configuration have
+moved through their recorded application boundaries. Configuration retains its
+existing reads and atomic JSON merge behavior; no version/acknowledgement protocol
+was introduced. Runtime evidence remains deferred rather than inferred from builds.
+
+See the [execution ledger](backend-refactor-execution-plan.md),
+[boundary audit](backend-boundary-audit.md), and
+[operational guide](../deployment/backend-refactor.md) for current evidence.
+The detailed baseline inventory below records the pre-extraction state and the
+original gap register; dated rows are historical unless explicitly updated.
+
 
 ## 1. Purpose
 
@@ -389,8 +390,8 @@ The following items must be resolved before their old port is removed. “Resolv
 | PI-13 | Blueprint publish has optimistic draft checking but no stable retry/idempotency contract. | P3.2 | Concurrent publisher and lost-response retry tests. |
 | PI-14 | Certificate ACL and ingress identity APIs return/resolve globally unique device IDs without tenant input. | P1.2/P3.1/P3.5 | Explicit global-ID invariant or migration to `DeviceIdentity`. |
 | PI-15 | Bootstrap owner role preconditions and global-versus-tenant emptiness differ or remain implicit. | P3.1 | Bootstrap ADR and empty/non-empty multi-tenant tests. |
-| PI-16 | Embedded NUL in a username remains a cross-engine input gap: PostgreSQL `text` rejects it while Turso/SQLite text can retain it, and core currently performs no NUL validation. The shared user contract intentionally has no NUL fixture. | P3.1 identity compatibility closure | Choose and document either a stable core invalid-input rejection or one portable stored representation, then add create/login/duplicate fixtures on both adapters and the unchanged public-error check. |
-| PI-17 | **Resolved in design by ADR-008; implementation proof pending:** tenant + numeric user ID + `permission_version` does not identify a durable principal because Turso/SQLite can reuse a deleted maximum row ID, and unsnapshotted credential/session hydration can combine principal revisions. | P3.1 users/passwords security closure | Adapter migrations backfill/enforce distinct random `auth_epoch` values; new JWTs bind to tenant + ID + version + epoch; pre-epoch JWTs fail closed; credential/session reads use one snapshot; shared/core/host tests prove Turso ID reuse and same-ID/same-version replacement non-revival. |
+| PI-16 | Implemented: core rejects embedded-NUL create/bootstrap input with InvalidInput and login input with Unauthorized. No stored representation or migration added. | R13 implementation complete; R14 evidence deferred | Execute create/bootstrap/login and unchanged non-NUL behavior on both adapters once tests resume. |
+| PI-17 | Implemented: random persisted epochs, bound JWTs, fail-closed epoch checks, and snapshot-consistent security reads. See backend-identity-closure.md for source evidence. | R13 reconciliation complete; R14 evidence deferred | Execute migration/backfill, same-ID/same-version replacement, host authentication, and concurrent security-read cases. |
 
 ## 7. Shared contract-suite implications
 

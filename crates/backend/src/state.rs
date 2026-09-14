@@ -139,10 +139,9 @@ impl Default for MetricsAccumulator {
 /// public API. Boot code and external integration tests use this input instead
 /// of coupling themselves to the state container's internal layout.
 pub struct AppStateInput {
-    /// Sole persistence composition source. `AppState::new` derives both the
-    /// temporary legacy repository bridge and the core application ports from
-    /// this runtime, preventing mismatched handles.
-    pub database: crate::persistence::DatabaseRuntime,
+    /// Paired repository/lifecycle construction result, consumed once into
+    /// applications and operational state without retaining business ports.
+    pub database: crate::persistence::DatabaseComposition,
     pub zenoh_session: Arc<zenoh::Session>,
     pub zenoh_tls_enabled: bool,
     pub zenoh_port: u16,
@@ -157,7 +156,6 @@ pub struct AppStateInput {
     pub metrics_accumulator: MetricsAccumulator,
     pub zenoh_metrics: Arc<ZenohMetrics>,
     pub rule_cache: Arc<crate::rule_snapshots::RuleSnapshotStore>,
-    pub http_client: reqwest::Client,
     pub firmware_store: crate::domains::firmware_store::FirmwareObjectStore,
     pub readiness: Arc<ReadinessRegistry>,
     /// Host-local Thread runtime. It can rediscover an RCP connected after
@@ -165,69 +163,118 @@ pub struct AppStateInput {
     pub thread_runtime: Option<Arc<extrittio_openthread_runtime::ThreadRuntime>>,
 }
 
+/// Lifecycle and diagnostics shared by operational routes and the supervisor.
+/// Business repository ports are never retained here.
+pub(crate) struct OperationalState {
+    database: crate::persistence::DatabaseRuntime,
+    health_token: Option<String>,
+    readiness: Arc<ReadinessRegistry>,
+    thread_runtime: Option<Arc<extrittio_openthread_runtime::ThreadRuntime>>,
+}
+
+impl OperationalState {
+    pub(crate) fn database(&self) -> &crate::persistence::DatabaseRuntime {
+        &self.database
+    }
+    pub(crate) fn readiness(&self) -> &Arc<ReadinessRegistry> {
+        &self.readiness
+    }
+    pub(crate) fn thread_runtime(
+        &self,
+    ) -> &Option<Arc<extrittio_openthread_runtime::ThreadRuntime>> {
+        &self.thread_runtime
+    }
+    pub(crate) fn health_token(&self) -> Option<&str> {
+        self.health_token.as_deref()
+    }
+}
+
+pub(crate) struct HttpState {
+    jwt_secret: String,
+    public_url: String,
+    cookie_secure: bool,
+    api_rate_limiter: RateLimiter,
+    login_rate_limiter: RateLimiter,
+    trusted_proxies: Vec<TrustedProxy>,
+    ci_rate_limiter: ApiKeyRateLimiter,
+}
+
+impl HttpState {
+    pub(crate) fn jwt_secret(&self) -> &String {
+        &self.jwt_secret
+    }
+    pub(crate) fn public_url(&self) -> &String {
+        &self.public_url
+    }
+    pub(crate) fn cookie_secure(&self) -> bool {
+        self.cookie_secure
+    }
+    pub(crate) fn api_rate_limiter(&self) -> &RateLimiter {
+        &self.api_rate_limiter
+    }
+    pub(crate) fn login_rate_limiter(&self) -> &RateLimiter {
+        &self.login_rate_limiter
+    }
+    pub(crate) fn trusted_proxies(&self) -> &Vec<TrustedProxy> {
+        &self.trusted_proxies
+    }
+    pub(crate) fn ci_rate_limiter(&self) -> &ApiKeyRateLimiter {
+        &self.ci_rate_limiter
+    }
+}
+
+pub(crate) struct MessagingState {
+    zenoh_session: Arc<zenoh::Session>,
+    zenoh_tls_enabled: bool,
+    zenoh_port: u16,
+    zenoh_metrics: Arc<ZenohMetrics>,
+}
+
+impl MessagingState {
+    pub(crate) fn zenoh_session(&self) -> &Arc<zenoh::Session> {
+        &self.zenoh_session
+    }
+    pub(crate) fn zenoh_tls_enabled(&self) -> bool {
+        self.zenoh_tls_enabled
+    }
+    pub(crate) fn zenoh_port(&self) -> u16 {
+        self.zenoh_port
+    }
+    pub(crate) fn zenoh_metrics(&self) -> &Arc<ZenohMetrics> {
+        &self.zenoh_metrics
+    }
+}
+
+pub(crate) struct ObservabilityState {
+    metrics_accumulator: MetricsAccumulator,
+}
+
+impl ObservabilityState {
+    pub(crate) fn metrics_accumulator(&self) -> &MetricsAccumulator {
+        &self.metrics_accumulator
+    }
+}
+
 pub struct AppState {
+    observability: ObservabilityState,
+    messaging: MessagingState,
+    http: HttpState,
+    runtime: OperationalState,
     application: extrittio_backend_core::Application,
-    /// Temporary legacy repository escape hatch. Existing host handlers use
-    /// it while their vertical slices move behind `Application`.
-    pub(crate) persistence: crate::persistence::RepositorySet,
-    pub(crate) database: crate::persistence::DatabaseRuntime,
-    pub(crate) zenoh_session: Arc<zenoh::Session>,
-    pub(crate) zenoh_tls_enabled: bool,
-    pub(crate) zenoh_port: u16,
-    pub(crate) jwt_secret: String,
-    pub(crate) public_url: String,
-    pub(crate) cookie_secure: bool,
-    pub(crate) health_token: Option<String>,
-    pub(crate) api_rate_limiter: RateLimiter,
-    pub(crate) login_rate_limiter: RateLimiter,
-    pub(crate) trusted_proxies: Vec<TrustedProxy>,
-    pub(crate) ci_rate_limiter: ApiKeyRateLimiter,
-    pub(crate) metrics_accumulator: MetricsAccumulator,
-    pub(crate) zenoh_metrics: Arc<ZenohMetrics>,
-    pub(crate) rule_cache: Arc<crate::rule_snapshots::RuleSnapshotStore>,
-    pub(crate) http_client: reqwest::Client,
-    pub(crate) firmware_store: crate::domains::firmware_store::FirmwareObjectStore,
-    pub(crate) readiness: Arc<ReadinessRegistry>,
-    pub(crate) thread_runtime: Option<Arc<extrittio_openthread_runtime::ThreadRuntime>>,
+    workers: crate::app::workers::WorkerApplications,
+    rule_cache: Arc<crate::rule_snapshots::RuleSnapshotStore>,
+    firmware_store: crate::domains::firmware_store::FirmwareObjectStore,
 }
 
 impl AppState {
     #[must_use]
     pub fn new(input: AppStateInput) -> Self {
-        let persistence = input.database.repositories().clone();
+        let (persistence, database) = input.database.into_parts();
         let crypto = Arc::new(crate::outbound::certificates::CertificateCrypto::new(
             crate::config::certificate_encryption_secret(),
         ));
         let application = extrittio_backend_core::Application::new(
-            extrittio_backend_core::RepositorySet::new(
-                extrittio_backend_core::RepositorySetInput {
-                    metrics: persistence.metrics.clone(),
-                    audit: persistence.audit.clone(),
-                    analytics: persistence.analytics.clone(),
-                    dashboard: persistence.dashboard.clone(),
-                    activity: persistence.activity.clone(),
-                    firmware: persistence.firmware.clone(),
-                    telemetry: persistence.telemetry.clone(),
-                    events: persistence.events.clone(),
-                    logs: persistence.logs.clone(),
-                    commands: persistence.commands.clone(),
-                    configuration: persistence.configuration.clone(),
-                    shadows: persistence.shadows.clone(),
-                    alerts: persistence.alerts.clone(),
-                    outbox: persistence.outbox.clone(),
-                    rules: persistence.rules.clone(),
-                    devices: persistence.devices.clone(),
-                    device_blueprints: persistence.device_blueprints.clone(),
-                    api_keys: persistence.api_keys.clone(),
-                    fleets: persistence.fleets.clone(),
-                    device_types: persistence.device_types.clone(),
-                    ci_ingest: persistence.ci_ingest.clone(),
-                    certificates: persistence.certificates.clone(),
-                    roles: persistence.roles.clone(),
-                    users: persistence.users.clone(),
-                    zones: persistence.zones.clone(),
-                },
-            ),
+            extrittio_backend_core::RepositorySet::new(persistence.clone()),
             extrittio_backend_core::ApplicationDependencies::new(
                 Arc::new(crate::auth::Argon2PasswordHasher),
                 Arc::new(crate::auth::SystemClock),
@@ -243,33 +290,72 @@ impl AppState {
             ),
         );
 
+        let workers = crate::app::workers::WorkerApplications::new(
+            &persistence,
+            &input.zenoh_session,
+            &input.zenoh_metrics,
+        );
         Self {
+            messaging: MessagingState {
+                zenoh_session: input.zenoh_session,
+                zenoh_tls_enabled: input.zenoh_tls_enabled,
+                zenoh_port: input.zenoh_port,
+                zenoh_metrics: input.zenoh_metrics,
+            },
+            observability: ObservabilityState {
+                metrics_accumulator: input.metrics_accumulator,
+            },
+            http: HttpState {
+                jwt_secret: input.jwt_secret,
+                public_url: input.public_url,
+                cookie_secure: input.cookie_secure,
+                api_rate_limiter: input.api_rate_limiter,
+                login_rate_limiter: input.login_rate_limiter,
+                trusted_proxies: input.trusted_proxies,
+                ci_rate_limiter: input.ci_rate_limiter,
+            },
             application,
-            persistence,
-            database: input.database,
-            zenoh_session: input.zenoh_session,
-            zenoh_tls_enabled: input.zenoh_tls_enabled,
-            zenoh_port: input.zenoh_port,
-            jwt_secret: input.jwt_secret,
-            public_url: input.public_url,
-            cookie_secure: input.cookie_secure,
-            health_token: input.health_token,
-            api_rate_limiter: input.api_rate_limiter,
-            login_rate_limiter: input.login_rate_limiter,
-            trusted_proxies: input.trusted_proxies,
-            ci_rate_limiter: input.ci_rate_limiter,
-            metrics_accumulator: input.metrics_accumulator,
-            zenoh_metrics: input.zenoh_metrics,
+            workers,
+            runtime: OperationalState {
+                database,
+                readiness: input.readiness,
+                thread_runtime: input.thread_runtime,
+                health_token: input.health_token,
+            },
             rule_cache: input.rule_cache,
-            http_client: input.http_client,
             firmware_store: input.firmware_store,
-            readiness: input.readiness,
-            thread_runtime: input.thread_runtime,
         }
     }
 
-    /// Curated application boundary for transport handlers. More use cases are
-    /// added here as their vertical slices leave the legacy persistence host.
+    pub(crate) fn http(&self) -> &HttpState {
+        &self.http
+    }
+
+    pub(crate) fn messaging(&self) -> &MessagingState {
+        &self.messaging
+    }
+
+    pub(crate) fn observability(&self) -> &ObservabilityState {
+        &self.observability
+    }
+
+    pub(crate) fn workers(&self) -> &crate::app::workers::WorkerApplications {
+        &self.workers
+    }
+
+    pub(crate) fn rule_cache(&self) -> &Arc<crate::rule_snapshots::RuleSnapshotStore> {
+        &self.rule_cache
+    }
+
+    pub(crate) fn firmware_store(&self) -> &crate::domains::firmware_store::FirmwareObjectStore {
+        &self.firmware_store
+    }
+
+    pub(crate) fn runtime(&self) -> &OperationalState {
+        &self.runtime
+    }
+
+    /// Application boundary for transport handlers.
     #[must_use]
     pub fn application(&self) -> &extrittio_backend_core::Application {
         &self.application

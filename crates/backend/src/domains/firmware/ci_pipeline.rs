@@ -70,7 +70,7 @@ pub(crate) async fn ci_ingest(
     let key_hash = api_key_util::hash_api_key(&plaintext_key);
 
     // 2. Rate limit by API key
-    if !state.ci_rate_limiter.check(&key_hash) {
+    if !state.http().ci_rate_limiter().check(&key_hash) {
         return Err(AppError::TooManyRequests);
     }
 

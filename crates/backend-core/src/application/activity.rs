@@ -1,6 +1,7 @@
 use super::require_permission;
 use crate::activity::{ActivityEventPage, ActivityQuery, ActivityRepository};
 use crate::{ApplicationError, Permission, TenantContext};
+use chrono::Timelike;
 #[derive(Clone)]
 pub struct ActivityApplication {
     repository: std::sync::Arc<dyn ActivityRepository>,
@@ -53,6 +54,30 @@ impl ActivityApplication {
             ));
         }
 
+        query.limit = query.limit.clamp(1, 200);
+        query.offset = query.offset.clamp(0, 100_000);
+        query.since = query
+            .since
+            .map(|time| {
+                let remainder = time.nanosecond() % 1_000;
+                if remainder == 0 {
+                    Some(time)
+                } else {
+                    time.checked_add_signed(chrono::TimeDelta::nanoseconds(i64::from(
+                        1_000 - remainder,
+                    )))
+                }
+                .ok_or_else(|| {
+                    ApplicationError::InvalidInput(
+                        "Activity timestamp exceeds the supported range".into(),
+                    )
+                })
+            })
+            .transpose()?;
+        query.until = query.until.map(|time| {
+            time.with_nanosecond(time.nanosecond() / 1_000 * 1_000)
+                .expect("microsecond truncation is valid")
+        });
         Ok(self.repository.list(ctx.tenant_id(), query).await?)
     }
 }

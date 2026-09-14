@@ -256,9 +256,9 @@ pub async fn run_cleanup_worker(state: Arc<AppState>) {
     let mut interval = tokio::time::interval(Duration::from_secs(60));
     loop {
         interval.tick().await;
-        state.api_rate_limiter.cleanup();
-        state.login_rate_limiter.cleanup();
-        state.ci_rate_limiter.cleanup();
+        state.http().api_rate_limiter().cleanup();
+        state.http().login_rate_limiter().cleanup();
+        state.http().ci_rate_limiter().cleanup();
     }
 }
 
@@ -274,14 +274,14 @@ pub async fn rate_limit_middleware(
         return next.run(request).await;
     }
 
-    let ip = extract_client_ip(&request, &state.trusted_proxies);
+    let ip = extract_client_ip(&request, state.http().trusted_proxies());
 
     // Stricter limit for login, general limit for everything else
     let (limiter, key) = if path == "/api/v1/auth/login" {
-        (&state.login_rate_limiter, format!("ip:{ip}"))
+        (state.http().login_rate_limiter(), format!("ip:{ip}"))
     } else {
-        let key = general_rate_limit_key(&mut request, ip, &state.jwt_secret);
-        (&state.api_rate_limiter, key)
+        let key = general_rate_limit_key(&mut request, ip, state.http().jwt_secret());
+        (state.http().api_rate_limiter(), key)
     };
 
     if limiter.check(&key) {

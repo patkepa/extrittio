@@ -26,6 +26,9 @@ impl AuditApplication {
         offset: i64,
     ) -> Result<Vec<AuditEventRecord>, ApplicationError> {
         require_permission(ctx, Permission::ReadServerMetrics)?;
-        Ok(self.repository.list(ctx.tenant_id(), limit, offset).await?)
+        Ok(self
+            .repository
+            .list(ctx.tenant_id(), limit.clamp(1, 200), offset.max(0))
+            .await?)
     }
 }

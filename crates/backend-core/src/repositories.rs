@@ -7,7 +7,12 @@ use crate::{RoleRepository, UserRepository, ZoneRepository};
 /// Adapters construct this value after they have created their concrete
 /// repositories. Database connection, migration, health, backup, and other
 /// lifecycle capabilities intentionally do not belong here.
+#[derive(Clone)]
 pub struct RepositorySetInput {
+    /// Bootstrap capability used only by host initialization.
+    pub bootstrap: Arc<dyn crate::bootstrap::BootstrapRepository>,
+    /// Device ingress capability used when composing system applications.
+    pub device_ingress: Arc<dyn crate::device_ingress::DeviceIngressRepository>,
     pub api_keys: Arc<dyn crate::ApiKeyRepository>,
     pub device_blueprints: Arc<dyn crate::device_blueprints::DeviceBlueprintRepository>,
     pub devices: Arc<dyn crate::devices::DeviceRepository>,

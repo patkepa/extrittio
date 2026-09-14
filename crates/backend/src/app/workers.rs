@@ -90,21 +90,21 @@ fn spawn_shutdown_worker<F, Fut>(
 pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> WorkerSupervisor {
     let cancellation = CancellationToken::new();
     let mut workers = JoinSet::new();
-    let snapshots = state.rule_cache.clone();
+    let snapshots = state.rule_cache().clone();
     spawn_worker(
         &mut workers,
         &cancellation,
-        &state.readiness,
+        state.runtime().readiness(),
         "rule-snapshots",
         async move { snapshots.run().await },
     );
 
-    if let Some(thread_runtime) = state.thread_runtime.clone() {
+    if let Some(thread_runtime) = state.runtime().thread_runtime().clone() {
         let scan_runtime = thread_runtime.clone();
         spawn_shutdown_worker(
             &mut workers,
             &cancellation,
-            &state.readiness,
+            state.runtime().readiness(),
             "thread-scanner",
             move |cancellation| async move { run_thread_scanner(scan_runtime, cancellation).await },
         );
@@ -121,7 +121,7 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
             spawn_shutdown_worker(
                 &mut workers,
                 &cancellation,
-                &state.readiness,
+                state.runtime().readiness(),
                 "thread-dns-sd",
                 move |cancellation| async move {
                     run_thread_dns_sd_advertiser(thread_runtime, service, listen_host, cancellation)
@@ -131,20 +131,20 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         }
     }
 
-    let subscriber_persistence = state.persistence.clone();
-    let subscriber_session = state.zenoh_session.clone();
-    let subscriber_metrics = state.zenoh_metrics.clone();
-    let sub_cache = state.rule_cache.clone();
+    let subscriber_applications = state.workers().subscriber_applications.clone();
+    let subscriber_session = state.messaging().zenoh_session().clone();
+    let subscriber_metrics = state.messaging().zenoh_metrics().clone();
+    let sub_cache = state.rule_cache().clone();
     let max_zenoh_payload_size_bytes = config.max_zenoh_payload_size_bytes;
     spawn_worker(
         &mut workers,
         &cancellation,
-        &state.readiness,
+        state.runtime().readiness(),
         "zenoh-subscriber",
         async move {
             zenoh_handler::subscriber::run_subscriber(
                 subscriber_session,
-                subscriber_persistence,
+                subscriber_applications,
                 subscriber_metrics,
                 sub_cache,
                 max_zenoh_payload_size_bytes,
@@ -154,12 +154,12 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         },
     );
 
-    let firmware_readiness_store = state.firmware_store.clone();
-    let firmware_readiness = state.readiness.clone();
+    let firmware_readiness_store = state.firmware_store().clone();
+    let firmware_readiness = state.runtime().readiness().clone();
     spawn_worker(
         &mut workers,
         &cancellation,
-        &state.readiness,
+        state.runtime().readiness(),
         "firmware-object-store",
         async move {
             crate::domains::firmware_store::run_readiness_monitor(
@@ -171,16 +171,16 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         },
     );
 
-    let firmware_migration_persistence = state.persistence.clone();
-    let firmware_store = state.firmware_store.clone();
+    let firmware_migration_application = state.workers().firmware_migration_application.clone();
+    let firmware_store = state.firmware_store().clone();
     spawn_worker(
         &mut workers,
         &cancellation,
-        &state.readiness,
+        state.runtime().readiness(),
         "firmware-object-migrator",
         async move {
             crate::domains::firmware_store::run_legacy_blob_migrator(
-                firmware_migration_persistence,
+                firmware_migration_application,
                 firmware_store,
             )
             .await;
@@ -188,10 +188,8 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         },
     );
 
-    let outbox_persistence = state.persistence.clone();
-    let outbox_client = state.http_client.clone();
-    let outbox_session = state.zenoh_session.clone();
-    let outbox_metrics = state.zenoh_metrics.clone();
+    let outbox_application = state.workers().outbox_application.clone();
+    let rule_delivery = state.workers().rule_delivery.clone();
     let outbox_config = crate::rule_engine::actions::OutboxWorkerConfig {
         batch_size: config.outbox_batch_size,
         concurrency: config.outbox_concurrency,
@@ -201,14 +199,12 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
     spawn_worker(
         &mut workers,
         &cancellation,
-        &state.readiness,
+        state.runtime().readiness(),
         "rule-action-outbox",
         async move {
             crate::rule_engine::actions::run_rule_action_outbox_worker(
-                outbox_persistence,
-                outbox_client,
-                outbox_session,
-                outbox_metrics,
+                outbox_application,
+                rule_delivery,
                 outbox_config,
             )
             .await;
@@ -216,16 +212,13 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         },
     );
 
-    let metrics_worker = extrittio_backend_core::application::MetricsWorkerApplication::new(
-        state.persistence.metrics.clone(),
-        Arc::new(crate::auth::SystemClock),
-    );
+    let metrics_worker = state.workers().metrics_worker.clone();
     let system_metrics_application = metrics_worker.clone();
     let metrics_interval = config.system_metrics_interval_secs;
     spawn_worker(
         &mut workers,
         &cancellation,
-        &state.readiness,
+        state.runtime().readiness(),
         "system-metrics",
         async move {
             services::server_metrics::run_system_metrics_collector(
@@ -243,7 +236,7 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
     spawn_worker(
         &mut workers,
         &cancellation,
-        &state.readiness,
+        state.runtime().readiness(),
         "app-metrics",
         async move {
             services::server_metrics::run_app_metrics_flusher(
@@ -261,7 +254,7 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
     spawn_worker(
         &mut workers,
         &cancellation,
-        &state.readiness,
+        state.runtime().readiness(),
         "metrics-retention",
         async move {
             services::server_metrics::run_metrics_retention(
@@ -273,70 +266,70 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         },
     );
 
-    let checker_persistence = state.persistence.clone();
-    let checker_cache = state.rule_cache.clone();
+    let checker_application = state.workers().checker_application.clone();
+    let checker_cache = state.rule_cache().clone();
     let offline_timeout = config.offline_timeout_secs;
     spawn_worker(
         &mut workers,
         &cancellation,
-        &state.readiness,
+        state.runtime().readiness(),
         "offline-checker",
         async move {
-            background::run_offline_checker(checker_persistence, offline_timeout, checker_cache)
+            background::run_offline_checker(checker_application, offline_timeout, checker_cache)
                 .await;
             Ok(())
         },
     );
 
-    let retention_persistence = state.persistence.clone();
+    let retention_application = state.workers().retention_application.clone();
     let retention_days = config.alert_retention_days;
     spawn_worker(
         &mut workers,
         &cancellation,
-        &state.readiness,
+        state.runtime().readiness(),
         "alert-retention",
         async move {
-            background::run_alert_retention(retention_persistence, retention_days).await;
+            background::run_alert_retention(retention_application, retention_days).await;
             Ok(())
         },
     );
 
-    let log_retention_persistence = state.persistence.clone();
+    let log_retention_application = state.workers().log_retention_application.clone();
     let log_retention_days = config.log_retention_days;
     spawn_worker(
         &mut workers,
         &cancellation,
-        &state.readiness,
+        state.runtime().readiness(),
         "log-retention",
         async move {
-            background::run_log_retention(log_retention_persistence, log_retention_days).await;
+            background::run_log_retention(log_retention_application, log_retention_days).await;
             Ok(())
         },
     );
 
-    let command_persistence = state.persistence.clone();
+    let command_application = state.workers().command_application.clone();
     let command_timeout = config.command_timeout_secs;
     spawn_worker(
         &mut workers,
         &cancellation,
-        &state.readiness,
+        state.runtime().readiness(),
         "command-timeout",
         async move {
-            background::run_command_timeout_checker(command_persistence, command_timeout).await;
+            background::run_command_timeout_checker(command_application, command_timeout).await;
             Ok(())
         },
     );
 
-    let telemetry_persistence = state.persistence.clone();
+    let telemetry_application = state.workers().telemetry_application.clone();
     let telemetry_retention_days = config.telemetry_retention_days;
     spawn_worker(
         &mut workers,
         &cancellation,
-        &state.readiness,
+        state.runtime().readiness(),
         "telemetry-retention",
         async move {
             background::run_telemetry_rollup_and_retention(
-                telemetry_persistence,
+                telemetry_application,
                 telemetry_retention_days,
             )
             .await;
@@ -348,7 +341,7 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
     spawn_worker(
         &mut workers,
         &cancellation,
-        &state.readiness,
+        state.runtime().readiness(),
         "rate-limit-cleanup",
         async move {
             crate::rate_limit::run_cleanup_worker(rate_limit_state).await;
@@ -357,16 +350,17 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
     );
 
     if !state
-        .database
+        .runtime()
+        .database()
         .descriptor()
         .capabilities
         .partitioned_telemetry
     {
-        let maintenance = state.database.clone();
+        let maintenance = state.runtime().database().clone();
         spawn_worker(
             &mut workers,
             &cancellation,
-            &state.readiness,
+            state.runtime().readiness(),
             "database-checkpoint",
             async move {
                 let mut interval = tokio::time::interval(std::time::Duration::from_secs(15 * 60));
@@ -383,7 +377,7 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
     }
 
     let monitor_cancellation = cancellation.clone();
-    let readiness = state.readiness.clone();
+    let readiness = state.runtime().readiness().clone();
     let worker_names = readiness
         .snapshot()
         .workers
@@ -420,7 +414,7 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
     WorkerSupervisor {
         cancellation,
         monitor,
-        database: state.database.clone(),
+        database: state.runtime().database().clone(),
     }
 }
 
@@ -752,4 +746,125 @@ fn valid_dns_sd_label(value: &str) -> bool {
 fn zenoh_listener_accepts(listen_host: &str, address: std::net::Ipv6Addr) -> bool {
     let listen_host = listen_host.trim();
     listen_host == "::" || listen_host.parse::<std::net::Ipv6Addr>() == Ok(address)
+}
+
+/// Precomposed worker capabilities; runtime scheduling needs no persistence ports.
+pub(crate) struct WorkerApplications {
+    subscriber_applications: crate::zenoh_handler::DeviceMessageApplications,
+    firmware_migration_application:
+        extrittio_backend_core::application::FirmwareMigrationApplication,
+    outbox_application: extrittio_backend_core::OutboxWorkerApplication,
+    rule_delivery: extrittio_backend_core::application::RuleDeliveryApplication,
+    metrics_worker: extrittio_backend_core::application::MetricsWorkerApplication,
+    checker_application: extrittio_backend_core::DeviceIngressApplication,
+    retention_application: extrittio_backend_core::AlertMaintenanceApplication,
+    log_retention_application: extrittio_backend_core::LogIngressApplication,
+    command_application: extrittio_backend_core::CommandWorkerApplication,
+    telemetry_application: extrittio_backend_core::TelemetryMaintenanceApplication,
+}
+impl WorkerApplications {
+    pub(crate) fn new(
+        persistence: &extrittio_backend_core::RepositorySetInput,
+        session: &Arc<zenoh::Session>,
+        metrics: &Arc<crate::state::ZenohMetrics>,
+    ) -> Self {
+        let subscriber_applications = crate::zenoh_handler::DeviceMessageApplications {
+            identity: extrittio_backend_core::DeviceIngressApplication::new(
+                persistence.device_ingress.clone(),
+                Arc::new(crate::auth::SystemClock),
+            ),
+            telemetry: extrittio_backend_core::TelemetryIngressApplication::new(
+                persistence.telemetry.clone(),
+                persistence.device_ingress.clone(),
+                Arc::new(crate::auth::SystemClock),
+            ),
+            events: extrittio_backend_core::EventIngressApplication::new(
+                persistence.events.clone(),
+                persistence.devices.clone(),
+                persistence.device_ingress.clone(),
+                Arc::new(crate::auth::SystemClock),
+            ),
+            contracts: extrittio_backend_core::application::ContractIngressApplication::new(
+                persistence.devices.clone(),
+            ),
+            logs: extrittio_backend_core::LogIngressApplication::new(
+                persistence.logs.clone(),
+                Arc::new(crate::auth::SystemClock),
+            ),
+            commands: extrittio_backend_core::CommandWorkerApplication::new(
+                persistence.commands.clone(),
+                Arc::new(crate::auth::SystemClock),
+            ),
+            shadows: extrittio_backend_core::DeviceShadowApplication::new(
+                persistence.shadows.clone(),
+                Arc::new(crate::auth::SystemClock),
+            ),
+            reports: extrittio_backend_core::application::DeviceReportApplication::new(
+                extrittio_backend_core::DeviceShadowApplication::new(
+                    persistence.shadows.clone(),
+                    Arc::new(crate::auth::SystemClock),
+                ),
+                extrittio_backend_core::application::FirmwareReportApplication::new(
+                    persistence.firmware.clone(),
+                    Arc::new(crate::auth::SystemClock),
+                ),
+            ),
+        };
+        let firmware_migration_application =
+            extrittio_backend_core::application::FirmwareMigrationApplication::new(
+                persistence.firmware.clone(),
+            );
+        let outbox_application =
+            extrittio_backend_core::OutboxWorkerApplication::new(persistence.outbox.clone());
+        let rule_delivery = extrittio_backend_core::application::RuleDeliveryApplication::new(
+            outbox_application.clone(),
+            extrittio_backend_core::AlertWorkerApplication::new(persistence.alerts.clone()),
+            extrittio_backend_core::CommandApplication::new(
+                persistence.commands.clone(),
+                persistence.devices.clone(),
+                Arc::new(crate::outbound::device_bus::ZenohDeviceBus::new(
+                    session.clone(),
+                    metrics.clone(),
+                )),
+            ),
+            extrittio_backend_core::RuleRuntimeApplication::new(persistence.rules.clone()),
+            Arc::new(crate::outbound::webhook::HttpWebhookSender),
+        );
+        let metrics_worker = extrittio_backend_core::application::MetricsWorkerApplication::new(
+            persistence.metrics.clone(),
+            Arc::new(crate::auth::SystemClock),
+        );
+        let checker_application = extrittio_backend_core::DeviceIngressApplication::new(
+            persistence.device_ingress.clone(),
+            Arc::new(crate::auth::SystemClock),
+        );
+        let retention_application = extrittio_backend_core::AlertMaintenanceApplication::new(
+            persistence.alerts.clone(),
+            persistence.rules.clone(),
+        );
+        let log_retention_application = extrittio_backend_core::LogIngressApplication::new(
+            persistence.logs.clone(),
+            Arc::new(crate::auth::SystemClock),
+        );
+        let command_application = extrittio_backend_core::CommandWorkerApplication::new(
+            persistence.commands.clone(),
+            Arc::new(crate::auth::SystemClock),
+        );
+        let telemetry_application = extrittio_backend_core::TelemetryMaintenanceApplication::new(
+            persistence.telemetry.clone(),
+            Arc::new(crate::auth::SystemClock),
+        );
+        Self {
+            subscriber_applications,
+            firmware_migration_application,
+            outbox_application,
+            rule_delivery,
+            metrics_worker,
+            checker_application,
+            retention_application,
+            log_retention_application,
+            command_application,
+            telemetry_application,
+        }
+    }
 }

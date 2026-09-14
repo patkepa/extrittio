@@ -1,16 +1,16 @@
 use prost::Message;
 use tracing::{info, warn};
 
-use crate::persistence::RepositorySet;
 use crate::tenancy::DeviceIdentity;
+use extrittio_backend_core::TelemetryIngressApplication;
 use extrittio_backend_core::telemetry::TelemetryInput;
 
 use extrittio_common::extrittio::DeviceTelemetry;
 
 /// Decode and atomically persist telemetry, latest state, device projections,
 /// and resulting durable rule actions through the core application.
-pub async fn handle_telemetry(
-    persistence: &RepositorySet,
+pub(crate) async fn handle_telemetry(
+    application: &TelemetryIngressApplication,
     identity: &DeviceIdentity,
     topic_device_id: &str,
     payload: &[u8],
@@ -40,14 +40,7 @@ pub async fn handle_telemetry(
         altitude: telemetry.altitude,
         heading: telemetry.heading,
     };
-    match extrittio_backend_core::TelemetryIngressApplication::new(
-        persistence.telemetry.clone(),
-        persistence.device_ingress.clone(),
-        std::sync::Arc::new(crate::auth::SystemClock),
-    )
-    .record(identity, input, rule_cache)
-    .await
-    {
+    match application.record(identity, input, rule_cache).await {
         Ok(outcome) if outcome.recorded => {
             info!(
                 "Recorded telemetry from device {}: temp={}, humidity={}, battery={}",

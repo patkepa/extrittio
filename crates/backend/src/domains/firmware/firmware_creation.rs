@@ -1,10 +1,10 @@
 use sha2::{Digest, Sha256};
 
 use crate::auth::context::RequestContext;
-use crate::domains::firmware::types::{FirmwareRecord, NewFirmwareRecord};
 use crate::domains::firmware_store::FirmwareObjectStore;
 use crate::error::AppError;
 use extrittio_backend_core::application::FirmwareApplication;
+use extrittio_backend_core::firmware::{FirmwareRecord, NewFirmwareRecord};
 
 pub async fn upload_blueprint_firmware(
     ctx: &RequestContext,

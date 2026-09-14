@@ -8,15 +8,15 @@ use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::auth::context::RequestContext;
-use crate::domains::events::types::{
-    DeviceMetricQuery as PortDeviceMetricQuery, DeviceMetricRecord, MetricValue,
-};
-use crate::domains::telemetry::types::{
-    TelemetryQuery as PortTelemetryQuery, TelemetryRecord, TelemetryRollup,
-};
 use crate::error::AppError;
 use crate::state::AppState;
 use crate::util;
+use extrittio_backend_core::events::{
+    DeviceMetricQuery as PortDeviceMetricQuery, DeviceMetricRecord, MetricValue,
+};
+use extrittio_backend_core::telemetry::{
+    TelemetryQuery as PortTelemetryQuery, TelemetryRecord, TelemetryRollup,
+};
 
 // ---------------------------------------------------------------------------
 // Request / Response types

@@ -58,7 +58,7 @@ pub(crate) async fn ready(
     headers: HeaderMap,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ReadyResponse>, (StatusCode, Json<ReadyResponse>)> {
-    if !ready_token_authorized(&headers, state.health_token.as_deref()) {
+    if !ready_token_authorized(&headers, state.runtime().health_token()) {
         return Err((
             StatusCode::UNAUTHORIZED,
             Json(ReadyResponse {
@@ -72,13 +72,14 @@ pub(crate) async fn ready(
     }
 
     let database_ready = state
-        .database
+        .runtime()
+        .database()
         .health()
         .await
         .is_ok_and(|health| health.reachable);
-    let mut snapshot = state.readiness.snapshot();
+    let mut snapshot = state.runtime().readiness().snapshot();
     let snapshot_ready = state
-        .rule_cache
+        .rule_cache()
         .metrics()
         .is_ok_and(|metrics| metrics.ready);
     let worker_ready = snapshot

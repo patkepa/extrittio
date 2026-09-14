@@ -18,9 +18,9 @@ use tracing_opentelemetry::OpenTelemetrySpanExt;
 use crate::auth::context::{MappedUserClaims, RequestContext, map_validated_user_claims};
 use crate::auth::policy::Permission;
 use crate::auth::validate_token;
-use crate::domains::audit::types::NewAuditEventRecord;
 use crate::error::AppError;
 use crate::state::AppState;
+use extrittio_backend_core::audit::NewAuditEventRecord;
 
 #[derive(Debug, Clone)]
 pub struct RequestId(pub String);
@@ -210,7 +210,7 @@ pub async fn auth_middleware(
     let mapped_claims = match request.extensions().get::<MappedUserClaims>().cloned() {
         Some(mapped_claims) => mapped_claims,
         None => {
-            let claims = validate_token(&token, &state.jwt_secret).map_err(|error| {
+            let claims = validate_token(&token, state.http().jwt_secret()).map_err(|error| {
                 tracing::warn!(path, %error, "security.authentication_rejected");
                 AppError::Unauthorized
             })?;

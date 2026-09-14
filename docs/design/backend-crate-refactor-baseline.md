@@ -1,5 +1,11 @@
 # Backend crate refactor implementation baseline
 
+Historical record. Retired paths, feature flags, test targets, and unfinished-task
+statements below describe their captured revision. Use the
+[current execution plan](backend-refactor-execution-plan.md) and
+[operational guide](../deployment/backend-refactor.md) for the implemented layout
+and deferred verification.
+
 - **Status:** P0-A baseline
 - **Captured:** 2026-08-31
 - **Source revision:** `a75ff73c187e1ae9bae04fd9f1377e8662886242`

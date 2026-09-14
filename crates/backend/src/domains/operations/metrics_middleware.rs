@@ -15,6 +15,9 @@ pub async fn metrics_middleware(
     let response = next.run(request).await;
     let latency_micros = start.elapsed().as_micros() as u64;
     let is_error = response.status().is_client_error() || response.status().is_server_error();
-    state.metrics_accumulator.record(latency_micros, is_error);
+    state
+        .observability()
+        .metrics_accumulator()
+        .record(latency_micros, is_error);
     response
 }

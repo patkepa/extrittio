@@ -1,15 +1,15 @@
 use prost::Message;
 use tracing::{info, warn};
 
-use crate::persistence::RepositorySet;
 use crate::tenancy::DeviceIdentity;
+use extrittio_backend_core::DeviceIngressApplication;
 
 use extrittio_common::extrittio::DeviceHeartbeat;
 
 /// Decode a heartbeat and commit device state, transition log, and resulting
 /// rule actions through one backend-neutral write set.
-pub async fn handle_heartbeat(
-    persistence: &RepositorySet,
+pub(crate) async fn handle_heartbeat(
+    application: &DeviceIngressApplication,
     resolved_identity: Option<DeviceIdentity>,
     topic_device_id: &str,
     payload: &[u8],
@@ -37,18 +37,15 @@ pub async fn handle_heartbeat(
         }
     };
 
-    match extrittio_backend_core::DeviceIngressApplication::new(
-        persistence.device_ingress.clone(),
-        std::sync::Arc::new(crate::auth::SystemClock),
-    )
-    .apply_heartbeat(
-        identity,
-        &heartbeat.status,
-        &heartbeat.firmware,
-        heartbeat.uptime_seconds,
-        rule_cache,
-    )
-    .await
+    match application
+        .apply_heartbeat(
+            identity,
+            &heartbeat.status,
+            &heartbeat.firmware,
+            heartbeat.uptime_seconds,
+            rule_cache,
+        )
+        .await
     {
         Ok(enqueued) => {
             info!(

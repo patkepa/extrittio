@@ -1,22 +1,18 @@
-use crate::persistence::{DatabaseRuntime, RepositorySet};
-use executor::PostgresPool;
-
-pub mod executor;
-pub(crate) mod lifecycle;
+use crate::database::PostgresPool;
+use crate::persistence::{DatabaseComposition, DatabaseRuntime};
+use extrittio_backend_core::RepositorySetInput;
 
 #[must_use]
-pub fn create_repositories(pool: PostgresPool) -> RepositorySet {
-    build_repositories(pool)
+pub(crate) fn create_runtime(pool: PostgresPool) -> DatabaseComposition {
+    let lifecycle = crate::database::PostgresLifecycle::new(pool.clone());
+    DatabaseComposition::new(
+        build_repositories(pool),
+        DatabaseRuntime::postgres(lifecycle),
+    )
 }
 
-#[must_use]
-pub fn create_runtime(pool: PostgresPool) -> DatabaseRuntime {
-    let lifecycle = lifecycle::PostgresLifecycle::new(pool.clone());
-    DatabaseRuntime::postgres(build_repositories(pool), lifecycle)
-}
-
-fn build_repositories(pool: PostgresPool) -> RepositorySet {
-    let (zones, rule_zone_snapshots) = crate::database::postgres_zones(&pool);
+fn build_repositories(pool: PostgresPool) -> RepositorySetInput {
+    let zones = crate::database::postgres_zones(&pool);
     let roles = crate::database::postgres_roles(&pool);
     let users = crate::database::postgres_users(&pool);
     let api_keys = crate::database::postgres_api_keys(&pool);
@@ -43,7 +39,7 @@ fn build_repositories(pool: PostgresPool) -> RepositorySet {
     let activity = crate::database::postgres_activity(&pool);
     let firmware = crate::database::postgres_firmware(&pool);
     let ci_ingest = crate::database::postgres_ci_ingest(&pool);
-    RepositorySet {
+    RepositorySetInput {
         activity,
         analytics,
         api_keys,
@@ -66,7 +62,6 @@ fn build_repositories(pool: PostgresPool) -> RepositorySet {
         metrics,
         outbox,
         roles,
-        rule_zone_snapshots,
         rules,
         shadows,
         telemetry,

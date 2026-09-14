@@ -1,24 +1,18 @@
-mod database;
-
 use std::sync::Arc;
 
-use crate::persistence::{DatabaseRuntime, RepositorySet};
+use crate::persistence::{DatabaseComposition, DatabaseRuntime};
+use extrittio_backend_core::RepositorySetInput;
 
-pub use database::{LogicalArchiveInfo, TursoBackupInfo, TursoDatabase, TursoDatabaseInfo};
-
-#[must_use]
-pub fn create_repositories(database: Arc<TursoDatabase>) -> RepositorySet {
-    build_repositories(database)
-}
+use crate::database::TursoDatabase;
 
 #[must_use]
-pub fn create_runtime(database: Arc<TursoDatabase>) -> DatabaseRuntime {
+pub(crate) fn create_runtime(database: Arc<TursoDatabase>) -> DatabaseComposition {
     let repositories = build_repositories(database.clone());
-    DatabaseRuntime::turso(repositories, database)
+    DatabaseComposition::new(repositories, DatabaseRuntime::turso(database))
 }
 
-fn build_repositories(database: Arc<TursoDatabase>) -> RepositorySet {
-    let (zones, rule_zone_snapshots) = crate::database::turso_zones(&database);
+fn build_repositories(database: Arc<TursoDatabase>) -> RepositorySetInput {
+    let zones = crate::database::turso_zones(&database);
     let roles = crate::database::turso_roles(&database);
     let users = crate::database::turso_users(&database);
     let api_keys = crate::database::turso_api_keys(&database);
@@ -45,7 +39,7 @@ fn build_repositories(database: Arc<TursoDatabase>) -> RepositorySet {
     let activity = crate::database::turso_activity(&database);
     let firmware = crate::database::turso_firmware(&database);
     let ci_ingest = crate::database::turso_ci_ingest(&database);
-    RepositorySet {
+    RepositorySetInput {
         activity,
         analytics,
         api_keys,
@@ -68,7 +62,6 @@ fn build_repositories(database: Arc<TursoDatabase>) -> RepositorySet {
         metrics,
         outbox,
         roles,
-        rule_zone_snapshots,
         rules,
         shadows,
         telemetry,

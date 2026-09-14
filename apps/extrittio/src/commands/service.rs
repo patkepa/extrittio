@@ -1,14 +1,10 @@
 use anyhow::{Context, Result};
 use extrittio_backend::{
-    app,
     config::{AppConfig, DatabaseConfig, DeploymentProfile, FirmwareStorageConfig},
-    init as backend_init, observability,
+    observability,
 };
 use serde::Serialize;
 use tracing::info;
-
-#[cfg(feature = "edge")]
-use tracing::warn;
 
 use crate::{
     args::{DatabaseArgs, DatabaseCommand, InitArgs, RunArgs, ServeArgs, ServiceConfigArgs},
@@ -51,7 +47,17 @@ pub(crate) async fn run_edge(args: RunArgs) -> Result<()> {
             .public_url
             .clone()
             .unwrap_or_else(|| format!("http://localhost:{}", args.port));
-        let thread_runtime = start_edge_thread_runtime(&args, &data_dir)?;
+        let thread_runtime = extrittio_backend::service::start_edge_thread(
+            extrittio_backend::service::EdgeThreadOptions {
+                enabled: args.thread_enabled,
+                required: args.thread_required,
+                rcp_device: args.thread_rcp.clone(),
+                agent_path: args.thread_otbr_agent.clone(),
+                baud_rate: args.thread_rcp_baud,
+                infrastructure_interface: args.thread_infra_interface.clone(),
+                data_dir: data_dir.clone(),
+            },
+        )?;
         let zenoh_listen_host = args
             .zenoh_listen_host
             .clone()
@@ -79,41 +85,29 @@ pub(crate) async fn run_edge(args: RunArgs) -> Result<()> {
         config.serve_ui = true;
         config.ui_dir = None;
 
-        let database = extrittio_backend::persistence::factory::create(&config.database).await?;
-        backend_init::run_database_migrations(&database).await?;
-        let persistence = database.repositories();
-        if !backend_init::bootstrap_application(persistence)
-            .users_exist()
-            .await?
+        if extrittio_backend::service::provision_local_owner(
+            &config.database,
+            args.admin_username.clone(),
+            args.admin_password.clone(),
+        )
+        .await?
         {
-            backend_init::seed_persistence_local_owner(
-                persistence,
-                args.admin_username.clone(),
-                args.admin_password.clone(),
-            )
-            .await?;
             eprintln!("\nExtrittio owner account created");
             eprintln!("  Username: {}", args.admin_username);
             eprintln!("  Password: {}", args.admin_password);
             eprintln!("  Change this password after signing in.");
             eprintln!();
         }
-        drop(database);
 
-        if args.thread_seed_default_dataset
-            && let Some(runtime) = thread_runtime.as_ref()
-            && runtime.snapshot().available
+        if extrittio_backend::service::seed_default_thread_dataset(
+            thread_runtime.as_ref(),
+            args.thread_seed_default_dataset,
+        )
+        .await?
         {
-            let runtime = runtime.clone();
-            let seeded =
-                tokio::task::spawn_blocking(move || runtime.ensure_default_development_network())
-                    .await
-                    .context("Thread default-dataset task failed")??;
-            if seeded {
-                eprintln!(
-                    "Created the built-in Thread development network (extrittio-c6-dev). \\\n+                     Use --thread-seed-default-dataset false to disable this on future empty RCPs.\n"
-                );
-            }
+            eprintln!(
+                "Created the built-in Thread development network (extrittio-c6-dev). \\\n+                     Use --thread-seed-default-dataset false to disable this on future empty RCPs.\n"
+            );
         }
 
         eprintln!("Extrittio web UI: {public_url}");
@@ -128,59 +122,17 @@ pub(crate) async fn run_edge(args: RunArgs) -> Result<()> {
     }
 }
 
-#[cfg(feature = "edge")]
-fn start_edge_thread_runtime(
-    args: &RunArgs,
-    data_dir: &std::path::Path,
-) -> Result<Option<std::sync::Arc<extrittio_openthread_runtime::ThreadRuntime>>> {
-    use extrittio_openthread_runtime::{
-        ThreadRuntime, ThreadRuntimeConfig, default_infrastructure_interface,
-    };
-
-    if !args.thread_enabled {
-        info!("Extrittio Edge OpenThread runtime disabled");
-        return Ok(None);
-    }
-
-    let runtime = std::sync::Arc::new(ThreadRuntime::new(ThreadRuntimeConfig {
-        rcp_device: args.thread_rcp.clone(),
-        agent_path: args.thread_otbr_agent.clone(),
-        baud_rate: args.thread_rcp_baud,
-        thread_interface: "wpan0".to_string(),
-        infrastructure_interface: args
-            .thread_infra_interface
-            .clone()
-            .unwrap_or_else(default_infrastructure_interface),
-        data_path: data_dir.join("thread"),
-    }));
-    let snapshot = runtime.refresh();
-    if !snapshot.available {
-        let message = snapshot
-            .message
-            .as_deref()
-            .unwrap_or("Thread runtime is unavailable");
-        if args.thread_required {
-            anyhow::bail!("OpenThread is required but unavailable: {message}");
-        }
-        warn!(%message, "OpenThread runtime is waiting for an RCP");
-    }
-    Ok(Some(runtime))
-}
-
 async fn serve_config(
     config: AppConfig,
-    thread_runtime: Option<std::sync::Arc<extrittio_openthread_runtime::ThreadRuntime>>,
+    thread_runtime: Option<extrittio_backend::service::ThreadHandle>,
 ) -> Result<()> {
     let observability = observability::init("extrittio", "extrittio=info,extrittio_backend=info")?;
     info!("Starting extrittio on port {}", config.port);
 
-    let state = app::boot::initialize_state(&config, thread_runtime).await?;
-    let supervisor = app::workers::spawn_background_tasks(&config, state.clone());
-    let server_result = app::http::serve(&config, state, supervisor.cancellation_token()).await;
-    let worker_result = supervisor.shutdown().await;
+    let service = extrittio_backend::service::Service::start(config, thread_runtime).await?;
+    let service_result = service.run().await;
     let observability_result = observability.shutdown();
-    server_result?;
-    worker_result?;
+    service_result?;
     observability_result
 }
 
@@ -204,8 +156,7 @@ pub(crate) async fn migrate(args: DatabaseArgs, output_format: OutputFormat) -> 
         telemetry_retention_days: None,
     })?;
 
-    let database = extrittio_backend::persistence::factory::create(&config.database).await?;
-    backend_init::run_database_migrations(&database).await?;
+    extrittio_backend::service::migrate(&config.database).await?;
 
     let result = ServiceCommandResult {
         status: "ok",
@@ -226,14 +177,7 @@ pub(crate) async fn init(args: InitArgs, output_format: OutputFormat) -> Result<
         config.certs_dir = certs_dir;
     }
     config.validate()?;
-    let database = extrittio_backend::persistence::factory::create(&config.database).await?;
-    backend_init::run_database_migrations(&database).await?;
-    let persistence = database.repositories();
-    backend_init::seed_persistence_device_types(persistence).await?;
-    backend_init::init_persistence_jwt_secret(persistence).await?;
-    backend_init::seed_persistence_admin_user(persistence).await?;
-    backend_init::init_persistence_ca_certificate(persistence).await?;
-    backend_init::write_persistence_tls_certs(persistence, &config.certs_dir).await?;
+    extrittio_backend::service::initialize(&config).await?;
 
     let result = InitCommandResult {
         status: "ok",
@@ -265,96 +209,65 @@ pub(crate) async fn database(args: DatabaseCommand, output_format: OutputFormat)
         alert_retention_days: None,
         telemetry_retention_days: None,
     })?;
-    let DatabaseConfig::Turso {
-        data_dir,
-        database_path,
-        busy_timeout,
-        ..
-    } = config.database
-    else {
+    if !matches!(config.database, DatabaseConfig::Turso { .. }) {
         anyhow::bail!("database maintenance commands require --database-backend turso")
-    };
-
+    }
     #[cfg(feature = "turso")]
     {
-        use extrittio_backend::persistence::turso::TursoDatabase;
-
-        if let DatabaseSubcommand::VerifyBackup { backup } = &args.command {
-            let result = TursoDatabase::verify_backup(backup).await?;
-            return output(output_format, &result, || {
+        use extrittio_backend::service::maintenance::{Action, Outcome};
+        let action = match args.command {
+            DatabaseSubcommand::Info => Action::Info,
+            DatabaseSubcommand::Integrity => Action::Integrity,
+            DatabaseSubcommand::Checkpoint => Action::Checkpoint,
+            DatabaseSubcommand::Backup { path } => Action::Backup(path),
+            DatabaseSubcommand::VerifyBackup { backup } => Action::VerifyBackup(backup),
+            DatabaseSubcommand::Restore { backup, force } => Action::Restore { backup, force },
+            DatabaseSubcommand::Export { path } => Action::Export(path),
+            DatabaseSubcommand::Import { path, dry_run } => Action::Import { path, dry_run },
+        };
+        match extrittio_backend::service::maintenance::execute(&config.database, action).await? {
+            Outcome::Info(result) => output(output_format, &result, || {
+                format!(
+                    "Turso database: {} ({} bytes, schema {}, integrity {})",
+                    result.path.display(),
+                    result.size_bytes,
+                    result.schema_version,
+                    result.integrity
+                )
+            }),
+            Outcome::Integrity => output(output_format, &StatusResult { status: "ok" }, || {
+                "Database integrity check passed".to_string()
+            }),
+            Outcome::Checkpoint => output(output_format, &StatusResult { status: "ok" }, || {
+                "Database checkpoint completed".to_string()
+            }),
+            Outcome::Backup(result) => output(output_format, &result, || {
+                format!("Database backup created ({})", result.path.display())
+            }),
+            Outcome::VerifyBackup(result) => output(output_format, &result, || {
                 format!("Backup verified ({})", result.path.display())
-            });
-        }
-        if let DatabaseSubcommand::Restore { backup, force } = &args.command {
-            let result =
-                TursoDatabase::restore_backup(&data_dir, &database_path, backup, *force).await?;
-            return output(output_format, &result, || {
+            }),
+            Outcome::Restore(result) => output(output_format, &result, || {
                 format!("Database restored ({})", result.path.display())
-            });
-        }
-
-        let database = TursoDatabase::open(&data_dir, &database_path, busy_timeout).await?;
-        database.migrate().await?;
-        match args.command {
-            DatabaseSubcommand::Info => {
-                let result = database.info().await?;
-                output(output_format, &result, || {
-                    format!(
-                        "Turso database: {} ({} bytes, schema {}, integrity {})",
-                        result.path.display(),
-                        result.size_bytes,
-                        result.schema_version,
-                        result.integrity
-                    )
-                })
-            }
-            DatabaseSubcommand::Integrity => {
-                database.integrity_check().await?;
-                output(output_format, &StatusResult { status: "ok" }, || {
-                    "Database integrity check passed".to_string()
-                })
-            }
-            DatabaseSubcommand::Checkpoint => {
-                database.checkpoint().await?;
-                output(output_format, &StatusResult { status: "ok" }, || {
-                    "Database checkpoint completed".to_string()
-                })
-            }
-            DatabaseSubcommand::Backup { path } => {
-                let result = database.backup(&path).await?;
-                output(output_format, &result, || {
-                    format!("Database backup created ({})", result.path.display())
-                })
-            }
-            DatabaseSubcommand::Export { path } => {
-                let result = database.export_logical(&path).await?;
-                output(output_format, &result, || {
-                    format!("Logical archive exported ({})", result.path.display())
-                })
-            }
-            DatabaseSubcommand::Import { path, dry_run } => {
-                let result = database.import_logical(&path, dry_run).await?;
-                output(output_format, &result, || {
-                    if dry_run {
-                        format!("Logical archive validated ({})", result.path.display())
-                    } else {
-                        format!("Logical archive imported ({})", result.path.display())
-                    }
-                })
-            }
-            DatabaseSubcommand::VerifyBackup { .. } => unreachable!(),
-            DatabaseSubcommand::Restore { .. } => unreachable!(),
+            }),
+            Outcome::Export(result) => output(output_format, &result, || {
+                format!("Logical archive exported ({})", result.path.display())
+            }),
+            Outcome::Import {
+                info: result,
+                dry_run,
+            } => output(output_format, &result, || {
+                if dry_run {
+                    format!("Logical archive validated ({})", result.path.display())
+                } else {
+                    format!("Logical archive imported ({})", result.path.display())
+                }
+            }),
         }
     }
     #[cfg(not(feature = "turso"))]
     {
-        let _ = (
-            data_dir,
-            database_path,
-            busy_timeout,
-            args.command,
-            output_format,
-        );
+        let _ = (args.command, output_format);
         anyhow::bail!("database maintenance requires a binary built with the `turso` feature")
     }
 }

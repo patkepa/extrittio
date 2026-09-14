@@ -33,6 +33,10 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY crates/common/Cargo.toml crates/common/Cargo.toml
 COPY crates/backend/Cargo.toml crates/backend/Cargo.toml
+COPY crates/backend-core/Cargo.toml crates/backend-core/Cargo.toml
+COPY crates/backend-postgres/Cargo.toml crates/backend-postgres/Cargo.toml
+COPY crates/backend-turso/Cargo.toml crates/backend-turso/Cargo.toml
+COPY crates/backend-adapter-tests/Cargo.toml crates/backend-adapter-tests/Cargo.toml
 COPY crates/device-contract/Cargo.toml crates/device-contract/Cargo.toml
 COPY crates/openthread-runtime/Cargo.toml crates/openthread-runtime/Cargo.toml
 COPY crates/rule-engine/Cargo.toml crates/rule-engine/Cargo.toml
@@ -48,7 +52,11 @@ COPY tools/xtask/Cargo.toml tools/xtask/Cargo.toml
 # Create dummy source files to pre-build dependencies
 RUN mkdir -p crates/common/src && echo "fn main() {}" > crates/common/src/lib.rs && \
     mkdir -p crates/common/src/protos && \
-    mkdir -p crates/backend/src && echo "fn main() {}" > crates/backend/src/main.rs && echo "" > crates/backend/src/lib.rs && \
+    mkdir -p crates/backend/src/bin && echo "" > crates/backend/src/lib.rs && echo "fn main() {}" > crates/backend/src/bin/openapi.rs && \
+    mkdir -p crates/backend-core/src && echo "" > crates/backend-core/src/lib.rs && \
+    mkdir -p crates/backend-postgres/src && echo "" > crates/backend-postgres/src/lib.rs && \
+    mkdir -p crates/backend-turso/src && echo "" > crates/backend-turso/src/lib.rs && \
+    mkdir -p crates/backend-adapter-tests/src && echo "" > crates/backend-adapter-tests/src/lib.rs && \
     mkdir -p crates/device-contract/src && echo "" > crates/device-contract/src/lib.rs && \
     mkdir -p crates/openthread-runtime/src && echo "" > crates/openthread-runtime/src/lib.rs && \
     mkdir -p crates/rule-engine/src && echo "" > crates/rule-engine/src/lib.rs && \
@@ -77,6 +85,9 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 # Copy actual source code
 COPY crates/common/ crates/common/
 COPY crates/backend/ crates/backend/
+COPY crates/backend-core/ crates/backend-core/
+COPY crates/backend-postgres/ crates/backend-postgres/
+COPY crates/backend-turso/ crates/backend-turso/
 COPY crates/device-contract/ crates/device-contract/
 COPY crates/openthread-runtime/ crates/openthread-runtime/
 COPY crates/rule-engine/ crates/rule-engine/
@@ -84,7 +95,8 @@ COPY apps/extrittio/ apps/extrittio/
 
 # Touch source files to invalidate the dummy build artifacts
 RUN touch crates/common/src/lib.rs crates/common/build.rs \
-    crates/backend/src/main.rs crates/backend/src/lib.rs crates/backend/build.rs \
+    crates/backend/src/lib.rs crates/backend/build.rs \
+    crates/backend-core/src/lib.rs crates/backend-postgres/src/lib.rs crates/backend-turso/src/lib.rs \
     crates/device-contract/src/lib.rs crates/openthread-runtime/src/lib.rs \
     crates/rule-engine/src/lib.rs apps/extrittio/src/main.rs apps/extrittio/src/lib.rs
 

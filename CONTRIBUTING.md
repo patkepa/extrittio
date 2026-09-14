@@ -68,8 +68,15 @@ Commit `api/openapi.json` and `apps/frontend/src/types/openapi.ts` together.
   through the established migration workflow instead of hand-editing it.
 - Prefer additive API and device-protocol evolution. Explain unavoidable
   compatibility or rollback limits in the pull request.
-- Keep HTTP parsing in route modules, policy and orchestration in domain
-  services, and database-specific work in persistence adapters.
+- Keep HTTP/Zenoh parsing and runtime scheduling in `crates/backend`, policy
+  and business orchestration in `crates/backend-core`, and SQL, rows, migrations,
+  and database lifecycle operations in the PostgreSQL/Turso adapter crates.
+- `apps/extrittio` owns the service executable (`extrittio serve` / `extrittio run`).
+  The host crate is a library with an explicit `openapi` generator; it has no
+  standalone service binary. Native allocator selection belongs to the CLI.
+- Run `cargo xtask architecture` to check package boundaries and production/edge
+  dependency isolation. The current refactor's test deferral and outstanding
+  verification are tracked in [the execution plan](docs/design/backend-refactor-execution-plan.md).
 
 ## Pull requests
 

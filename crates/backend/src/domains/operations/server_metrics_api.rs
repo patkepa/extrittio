@@ -9,9 +9,9 @@ use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::auth::context::RequestContext;
-use crate::domains::operations::metrics_types::{AppMetricRecord, SystemMetricRecord};
 use crate::error::AppError;
 use crate::state::AppState;
+use extrittio_backend_core::metrics::{AppMetricRecord, SystemMetricRecord};
 
 // ---------------------------------------------------------------------------
 // Response types
@@ -138,7 +138,7 @@ pub(crate) async fn get_current_metrics(
         .current(&ctx.tenant_context())
         .await?;
     let response = CurrentMetricsResponse {
-        rule_snapshots: state.rule_cache.metrics()?,
+        rule_snapshots: state.rule_cache().metrics()?,
         system: metrics.system.map(SystemMetricsSnapshot::from),
         app: metrics.app.map(AppMetricsSnapshot::from),
     };

@@ -12,17 +12,19 @@ use crate::state::{AppState, AppStateInput, MetricsAccumulator, ReadinessRegistr
 /// Initialize infrastructure and shared application state.
 pub async fn initialize_state(
     config: &AppConfig,
-    thread_runtime: Option<Arc<extrittio_openthread_runtime::ThreadRuntime>>,
+    thread_runtime: Option<crate::service::ThreadHandle>,
 ) -> anyhow::Result<Arc<AppState>> {
+    let thread_runtime = thread_runtime.map(|handle| handle.0);
     init::install_crypto_provider();
     let database = crate::persistence::factory::create(&config.database).await?;
     let persistence = database.repositories().clone();
     info!(
-        backend = database.descriptor().kind.as_str(),
+        backend = database.runtime().descriptor().kind.as_str(),
         "Database opened"
     );
-    if database.descriptor().kind == crate::persistence::BackendKind::Turso {
+    if database.runtime().descriptor().kind == crate::persistence::BackendKind::Turso {
         let database_path_label = database
+            .runtime()
             .descriptor()
             .local_file
             .as_deref()
@@ -35,7 +37,7 @@ pub async fn initialize_state(
         );
     }
 
-    init::run_database_migrations(&database).await?;
+    init::run_database_migrations(database.runtime()).await?;
     if let crate::config::DatabaseConfig::Turso {
         database_path,
         size_warning_bytes,
@@ -70,12 +72,6 @@ pub async fn initialize_state(
     )
     .await
     .context("Failed to build initial rule snapshot")?;
-
-    let http_client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(5))
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .context("Failed to create HTTP client")?;
 
     let firmware_store = FirmwareObjectStore::from_config(&config.firmware_storage)
         .context("Failed to initialize firmware object storage")?;
@@ -119,7 +115,6 @@ pub async fn initialize_state(
         metrics_accumulator: MetricsAccumulator::new(),
         zenoh_metrics,
         rule_cache,
-        http_client,
         firmware_store,
         readiness: Arc::new(ReadinessRegistry::new(true, true)),
         thread_runtime,

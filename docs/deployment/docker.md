@@ -1,5 +1,8 @@
 # Docker production deployment
 
+Refactor-specific migration ordering and rollback limits are documented in
+[Backend ownership and upgrade notes](backend-refactor.md).
+
 The supported server topology is
 `deploy/docker/docker-compose.production.yml`. It runs PostgreSQL, the combined
 Extrittio API/UI image, and an nginx HTTP edge proxy. The development Compose

@@ -4,7 +4,7 @@
 - **Created:** 2026-09-14.
 - **Purpose:** Executable work packages for completing the remaining backend ownership refactor.
 - **Current execution preference:** Skip running, compiling, adding, and repairing tests for now. Remove tests made invalid by the refactor; keep unaffected tests. Continue production compilation, formatting, and architecture checks.
-- **Next package:** R10 — projections, audit, and operational metrics. R01–R09 are implemented; behavioral verification remains deferred.
+- **Status:** Implementation phase complete: R01–R13 and R15 documentation/static artifact work. R14, executable behavioral acceptance, release measurements, and EX-001 rollout retirement remain explicitly deferred.
 
 ## 1. Scope and authority
 
@@ -396,7 +396,7 @@ Reinspect each gap before editing; the inventory is partly historical.
 | PI-13 blueprint publication | R04 | Concurrency and lost-response retry contract |
 | PI-14 global device identity | R01/R04/R08 | Explicit uniqueness invariant or tenant-qualified boundary |
 | PI-15 bootstrap | R02 | Global emptiness and owner-role preconditions |
-| PI-16 username NUL | R13 | Portable validation/storage decision |
+| PI-16 username NUL | R13 | Core rejects creation/bootstrap with invalid-input and login with unauthorized; runtime verification deferred |
 | PI-17 session identity | R13/R14 | Reconcile implementation and prove ADR-008 closure |
 
 ## 6. Compilation and static checks while tests are skipped
@@ -441,12 +441,12 @@ with a generic “done.” List individual PRs if a package is split.
 | R07 | Implemented | Deferred | Existing shadow/configuration behavior, commands/DeviceBus, shared OTA shadow mutation; no new config protocol |
 | R08 | Implemented | Deferred | Core ingress/read/maintenance policy, both adapters, explicit timestamps and durable pruning boundary |
 | R09 | Implemented | Deferred | Core firmware/object/OTA applications, both adapters, source preservation audit; host signing/storage/transport |
-| R10 | In progress | Deferred | Projection/audit applications and metrics read boundary extracted; semantic audit and worker boundaries remain |
-| R11 | Partial through completed slices | Deferred | Continue thinning each migrated entry point |
-| R12 | Foundations already exist | Deferred | Finish after last legacy domain moves |
-| R13 | Existing implementation needs reconciliation | Deferred | Inspect proof and decide remaining gaps |
+| R10 | Implemented | Deferred | Projection/audit/metrics applications and adapters; explicit ordering, time, numeric and snapshot contracts |
+| R11 | Implemented; source-audited | Deferred | See backend-boundary-audit.md |
+| R12 | Implemented; source-audited | Deferred; EX-001 rollout criterion pending | See backend-boundary-audit.md |
+| R13 | Implemented and reconciled | Deferred | See backend-identity-closure.md; runtime proof remains R14 |
 | R14 | Postponed in full | Deferred by user | No test additions, repairs, runner expansion, or execution |
-| R15 | Not started | Deferred | Final docs/artifacts/release evidence |
+| R15 | Documentation and static artifact reconciliation complete | Release/runtime evidence deferred | Operational guide and closure audit below |
 
 For each completed PR append: moved behavior, deleted paths, decisions made,
 remaining compatibility bridges, architecture count before/after, compilation
@@ -920,3 +920,225 @@ This closes the implementation items left open in the preceding R05 notes.
 - Source review retains conversion of integer samples to f64, which can lose precision above 2^53, and existing equal-device/sample weighting. No numeric backfill or new aggregation semantics were added. Runtime floating, concurrency, and exact-boundary acceptance remains deferred.
 - R10 remains open for activity filtering/message rendering/page consistency and the final audit review. Tests remain skipped; none were changed or invalidated in this slice. No migrations were added or run.
 - Validation: combined PostgreSQL/Turso production build, formatting, whitespace, and architecture checks passed (seven tracked exceptions). These checks do not execute projection SQL or establish runtime snapshot/parity behavior.
+
+
+### R10 activity query consistency and search
+
+- Activity list and empty-page fallback count now use one database snapshot (PostgreSQL read-only repeatable read; Turso dedicated read transaction). A concurrent write cannot change the fallback total relative to that page's snapshot. Separate page requests remain independent.
+- Search retains `%` and `_` SQL wildcards, trims surrounding whitespace, and matches ASCII letters case-insensitively. PostgreSQL now explicitly translates ASCII case and uses binary LIKE with no escape character, matching Turso's existing ASCII lower/LIKE behavior. Non-ASCII text is matched exactly and backslash is literal. This intentionally replaces locale-dependent PostgreSQL ILIKE and its implicit backslash escape.
+- Audit message metadata uses nonempty string method/path values only. Other JSON types fall back. Both adapters use the second dot-delimited action segment as the fallback method (empty without a dot); Turso no longer includes later segments or the whole undelimited action. Source-specific message and severity mappings otherwise remain unchanged.
+- Legacy filter normalization, including lowercasing device IDs and treating `all` as unset, remains deliberately unchanged. Correcting that product contract is outside this compatibility slice; mixed-case IDs can still be awkward to filter. Activity time-boundary precision and final audit review remain before closing R10.
+- Tests remain skipped. No tests or migrations were added or executed.
+
+
+### R10 activity precision and final audit review
+
+- Activity retains inclusive `[since, until]`: core ceilings the lower bound and floors the upper bound to microseconds, preserving membership for timestamps with finer precision. Core enforces existing activity/audit pagination clamps for non-HTTP callers too. Separate HTTP pages remain independent snapshots.
+- Turso activity embeds command params/response payload as JSON values instead of escaped JSON strings, matching PostgreSQL's projection. Invalid stored JSON fails the query; no repair or backfill is attempted.
+- Source audit confirms tenant-qualified writes/reads, ReadServerMetrics audit permission, timestamp/ID descending ordering, original response preservation after audit failure, unauthenticated structured logging without a fabricated tenant, query-free path metadata, and OTA download-token redaction. Database-default PostgreSQL and adapter-clock Turso audit timestamps intentionally remain storage times. No new audit event or public response schema is added.
+- R10 implementation is complete subject to the explicitly deferred runtime acceptance and documented compatibility decisions. R11 transport/worker ownership is next; the overall goal remains active.
+- Validation: combined PostgreSQL/Turso production build, formatting, whitespace, and architecture checks passed (seven tracked exceptions). Runtime acceptance stays deferred. R11 inspection found broad repository collection arguments in all five background maintenance loops, plus firmware migration, outbox, and subscriber composition; narrow application injection is the next implementation step.
+
+
+### R11 maintenance and outbox application injection
+
+- The five background maintenance loops now receive their owning application capabilities from host composition instead of the entire repository collection. Applications are constructed once per worker, retaining the same ports/clock. Intervals, capped backoff, failure counters, logs, first-run timing, supervisor cancellation, and shutdown remain host-owned and unchanged.
+- Firmware blob migration receives `FirmwareMigrationApplication` directly. Idle/error sleeps and object-store diagnostics remain in the host.
+- Core `RuleDeliveryApplication` now owns pending-action decoding, action dispatch, and outbox success/failure completion. It composes existing alert, command, rule-runtime, and outbox applications. Decode errors remain permanent; execution failures remain retryable; superseded claim completion remains a no-op. Existing durable delivery IDs, legacy cooldown/zone-entry behavior, and command publication ordering are preserved.
+- The host outbox worker now only claims/schedules bounded concurrent deliveries, carries tracing spans, sleeps, and logs outcomes. The new `WebhookSender` port keeps concrete HTTP transport out of core. `outbound/webhook.rs` retains HTTPS validation, public-address validation, pinned DNS results, disabled redirects, ten-second timeouts, caller headers, idempotency/event headers, and optional OTLP propagation. The formerly unused generic HTTP-client argument was removed.
+- No tests or migrations were changed or executed. R11 remains open for subscriber/message-handler boundaries and remaining entry-point orchestration; R12/R13/R15 still remain.
+- Combined and OTLP-enabled production builds, formatting, whitespace, and architecture passed (seven tracked exceptions). Removed the now-unused generic HTTP client from AppState/input and boot construction; webhook requests retain their own validated, DNS-pinned clients. Subscriber handlers still receive broad repository collections and reconstruct applications per message; that is the next R11 slice.
+
+
+### R11 subscriber applications and shadow-report coordination
+
+- Host worker composition constructs device ingress, contract routing, events, telemetry, logs, command responses, and shadow/report applications once. The subscriber carries an application-only dependency bundle; individual handlers receive only their required capabilities. No subscriber or handler imports the repository collection or constructs an application per message.
+- Core `DeviceReportApplication` owns reported-shadow merge followed by fresh-report OTA processing. Shadow failure stops processing; OTA failure is returned as a separate diagnostic while retaining the committed shadow. It deliberately does not merge the two transactions or process stale merged OTA data. The host retains protobuf/JSON decoding, identity checks, version mismatch diagnostics, and delta publication. Report/version logs now follow completion of the coordinated operation rather than preceding OTA processing.
+- Topic patterns, declaration order, payload limits, identity mismatch checks, message accounting, tracing, subscription task ownership, failure propagation, and supervisor cancellation remain unchanged. Contract routing still selects a core route and dispatches the matching host decoder.
+- Architecture checks now forbid repository collection/database imports in migrated subscriber handlers and worker loops, while allowing construction in the host composition root.
+- No tests or migrations were changed or run. R11 still needs its final entry-point/compatibility audit before closure; R12 composition and bridge removal remains next.
+- Validation: combined PostgreSQL/Turso production build, formatting, whitespace, and the strengthened architecture check passed (seven remaining exceptions). Source search confirms no repository collection imports or per-message application construction in the subscriber tree. Runtime protocol/cancellation behavior remains unverified under the test deferral.
+
+
+### R11 bulk coordination and R12 worker state
+
+- Core application operations now combine target resolution with fleet assignment/deletion and sequential restart/OTA dispatch. Existing authorization ordering is retained: restart/deploy permission precedes target resolution; fleet/delete still resolve targets before mutation permission. Empty-target, duplicate-ID, size-limit, and per-device partial-success behavior is retained.
+- Bulk OTA uses an injected `DesiredDeltaPublisher` after each successful committed update. Host publication retains its best-effort logs/metrics and does not convert transport failure into a failed mutation. HTTP handlers now map outcomes to the existing response instead of coordinating device operations; the standalone host deploy-authorization helper was removed.
+- AppState no longer exposes or retains the legacy repository field. A private-field `WorkerApplications` substate holds the precomposed capabilities required by the supervisor. Composition constructs them from shared adapter ports; runtime worker setup only clones capabilities. DatabaseRuntime still retains the legacy collection for boot/composition and will be separated in the remaining R12 work.
+- No tests or migrations were added, changed, or run. R11/R12 remain in progress pending the final ownership audit and database/CLI/bridge cleanup.
+- Validation: combined production build, formatting, whitespace, and architecture passed (seven tracked exceptions). Source search confirms the AppState persistence field and all state.persistence references are gone. Remaining legacy aggregate consumers are boot/init/database composition and CLI provisioning; those require the next R12 changes.
+
+
+### R12 canonical repository inputs and lifecycle separation
+
+- Removed the duplicate host `RepositorySet` struct and its domain-port re-export imports. Adapter composition now produces the core `RepositorySetInput`, which also names device ingress for worker composition. Core inputs are cloneable during boot; runtime consumers receive applications rather than these inputs.
+- `DatabaseRuntime` now contains only lifecycle handles and backend capabilities. It has no repository collection or repository accessor. A private-field `DatabaseComposition` pairs the canonical input with its matching runtime until AppState consumes it, preserving use of the same PostgreSQL pool/Turso shared handles without reopening databases.
+- Boot, init helpers, CLI migration/provisioning paths, and worker composition were updated to the construction pair. The CLI still uses construction-time inputs for provisioning; a narrower host command facade and direct Turso/OpenThread shell cleanup remain for subsequent R12 work.
+- Removed unused public repository-only construction helpers. No tests or migrations were changed or run.
+- Combined CLI and no-adapter production builds, formatting, whitespace, and architecture passed after lifecycle separation. Removed the unused host PostgreSQL executor/error-mapping compatibility module and moved pool construction into backend-postgres, retaining pool size, five-second connection timeout, 300-second idle timeout, and the host error context.
+- The combined CLI build and architecture check also passed after PostgreSQL foundation cleanup (seven tracked exceptions); the now-unused host PostgresExecutor re-export was removed. Tests and runtime database operations remain deferred.
+
+
+### R12 host provisioning and database-maintenance facade
+
+- CLI migration, initialization, and edge local-owner provisioning now call host service operations. Repository inputs and bootstrap/certificate coordination stay inside backend; the construction pair's repository accessor is now crate-private. Seed ordering, preexisting-user checks, owner output decisions, and certificate export remain unchanged.
+- CLI database subcommands map to host maintenance actions and format typed outcomes. The host owns Turso open/migrate/maintenance sequencing; verify and restore return before opening or migrating the target, while other actions open and migrate first. Existing error strings, text output, JSON record types, paths, force flags, and dry-run semantics are retained.
+- Removed the process-shell TursoDatabase architecture allowance. Direct OpenThread process-shell ownership remains for the next slice. No database operations, tests, or migrations were executed during this refactor.
+- Validation: combined PostgreSQL/Turso, edge, and no-default CLI production builds passed, along with formatting, whitespace, and architecture (six tracked exceptions). No maintenance or provisioning operation was executed. OpenThread command-layer ownership remains next.
+
+
+### R12 OpenThread host ownership
+
+- Host service operations now own OpenThread runtime construction, infrastructure-interface defaults, RCP refresh/required checks, and optional default-dataset seeding. The CLI maps its unchanged flags into host options and formats output, passing an opaque ThreadHandle into boot.
+- Preserved startup ordering (runtime refresh before configuration/provisioning, dataset seeding after owner provisioning), optional/required behavior, IPv6 listener selection when a runtime exists, unavailable-RCP warnings, wpan0/data-directory defaults, blocking-task error context, and all command output strings.
+- Removed the CLI's direct openthread-runtime manifest/lockfile dependency and the final legacy package-edge exception. Removed only the invalidated `identifies_only_known_legacy_workspace_edges` test and its obsolete helper. No tests were added, repaired, compiled, or run; no runtime or RCP action was executed.
+- R12 remains open for compatibility bridge/features and remaining state/manifest cleanup; R13 identity reconciliation and R15 documentation/artifact closure still remain.
+- Validation: edge, combined PostgreSQL/Turso, and no-default CLI production builds passed; formatting, whitespace, and architecture passed with five remaining identity-related exceptions. The next bridge audit found legacy device/device-type SQL modules still exported by the host, plus migration-bridge features and direct engine dependencies to inspect/remove.
+
+
+### R12 retired host SQL and migration bridges
+
+- Deleted the unused host device/device-type SQL modules, their repository exports, and the host models/schema bridge. Workspace Rust source inspection found no callers beyond the deleted compatibility exports.
+- PostgreSQL models/schema are now adapter-private. Removed both adapters' migration-bridge features, the Turso raw connection/writer bridge, and temporary transaction-helper exports. Adapter-internal transaction functions remain unchanged.
+- Removed the host's direct Turso engine dependency. The architecture verifier now rejects retired bridge features and consumers instead of requiring host opt-in. PostgreSQL lifecycle SQL, migration embedding, and unused Diesel error variants remain for the next cleanup before removing the host's direct Diesel dependencies.
+- No tests were changed or executed; no database or migration operation was run. R12 remains in progress.
+- Validation: combined PostgreSQL/Turso CLI production check, formatting, whitespace, and architecture passed (five identity-related exceptions). Removed the verifier metadata field made unused by retiring the bridge rules.
+
+
+### R12 PostgreSQL lifecycle ownership
+
+- Moved PostgreSQL health SQL, migration execution, blocking pool acquisition, and connection-count reporting into adapter-owned PostgresLifecycle. The host retains only neutral result/error mapping and shares the existing pool with business repositories.
+- Preserved SELECT 1 validation, migration error payloads, blocking-task errors, connection-count conversion, and the same adapter migration directory. Removed duplicate host migration embedding and unused Diesel-specific AppError variants; source inspection found no remaining callers.
+- Removed host Diesel and diesel_migrations dependencies. The package verifier now forbids direct database engine dependencies in both the host and CLI. No tests were invalidated by source inspection, changed, or executed; no database operations or migrations ran.
+- Validation: combined PostgreSQL/Turso, edge, and no-adapter CLI production checks passed. The PostgreSQL host wrapper now lives in database/postgres.rs alongside the Turso composition wrapper; the combined build passed again after that move. Formatting, whitespace, and architecture checks passed with five identity-related exceptions. R12 still requires final state/public-surface and manifest reconciliation; R11/R13/R15 remain open.
+
+
+### R12 private construction and operational state
+
+- Made adapter composition modules and factory crate-private now that the CLI uses host service operations. Removed the last Turso compatibility re-export file and the unused PostgresAdapter alias. Zone composition returns only the consumed core ZoneRepository port rather than constructing a discarded snapshot-port clone.
+- Grouped database lifecycle, readiness, health-token configuration, and Thread runtime handles into private OperationalState. Routes and the supervisor borrow explicit accessors; existing shared handles, worker registration order, health authorization, and lifecycle calls are unchanged. Public construction inputs remain unchanged.
+- Source inspection found no tests referencing the removed construction exports or aliases. No tests were modified, compiled, or executed.
+- Manifest audit found that backend still has an automatically discovered src/main.rs executable in addition to the explicit OpenAPI generator. Reconcile that duplicate service entry point against command/deployment consumers before R12 closure. Remaining AppState transport fields and R11 final entry-point audit also remain open.
+- Validation: combined PostgreSQL/Turso and no-adapter CLI production checks, formatting, whitespace, and architecture passed (five remaining identity-related exceptions). Runtime acceptance remains deferred.
+
+
+### R12 executable ownership and R15 Docker layout
+
+- Removed the automatically discovered backend service binary. Backend now disables automatic binary discovery and retains its explicit OpenAPI generator; apps/extrittio owns the supported serve/run commands. Repository source/script/deployment searches found no consumers of the retired service target. Native jemalloc selection remains in the CLI; removed the unused host allocator dependency/feature.
+- Added a Cargo-metadata architecture rule rejecting host service binary targets. Updated contributor ownership guidance and the README package map.
+- Fixed Docker dependency-cache layers missing the four extracted backend workspace manifests and dummy library targets, plus real core/PostgreSQL/Turso source copies. Removed stale dummy/touch references to backend/src/main.rs while retaining the explicit OpenAPI dummy target.
+- Validation: combined and production CLI checks, standalone no-adapter OpenAPI compilation, formatting, whitespace, and architecture passed (five identity exceptions). Recreated the Docker manifest/dummy-source layer in a temporary directory and ran offline cargo metadata: all 17 workspace packages resolve and openapi is the host's only binary. This is manifest/layout evidence, not an image build or runtime check. No tests, Docker images, databases, migrations, or RCP operations were run.
+- R11 final ownership audit, R12 remaining transport-state/public-surface reconciliation, R13 identity decisions, and R15 final runbooks/artifacts remain open; R14 stays postponed.
+
+
+### R12 private transport state
+
+- AppState now has no exposed fields. HTTP credentials/configuration/rate limiters, messaging session/configuration/counters, and HTTP metric accumulation live in separate private-field substates. The existing operational substate remains unchanged. Worker capabilities, immutable rule snapshots, and firmware storage are accessed through explicit crate-local accessors.
+- Updated middleware, rate limiting, HTTP routes, and supervisor composition to borrow those handles. Construction inputs and values, shared Arc ownership, JWT signer inputs, limiter selection, firmware-store dispatch, and metric counter/drain operations remain unchanged. No transport contract or business policy was changed by this slice.
+- Combined PostgreSQL/Turso and no-adapter CLI production checks, formatting, whitespace, and architecture passed (five identity exceptions). No tests were changed or executed.
+- Remaining compatibility audit found host domain repository/type re-export files; inspect consumers before deleting the temporary aliases. R13 inspection confirmed create/bootstrap trim usernames while authentication uses exact input, and existing session resolution checks auth_epoch. Embedded-NUL input policy and final identity evidence reconciliation remain open.
+
+
+### R12 domain aliases and R13 portable username input
+
+- Removed 26 host domain repository/type compatibility files. Their remaining route/middleware consumers now import the same types directly from core; no DTO fields or persistence interfaces changed. Domain modules retain transport/service entry points only.
+- PI-16 now rejects U+0000 in core before hashing or persistence. Creation retains permission-before-validation, trimming, and empty-name checks; bootstrap retains its existing empty-name check and local admin exception. Both return InvalidInput("Username must not contain NUL characters"). Login rejects NUL input as generic Unauthorized before credential lookup. All other exact-name login behavior and existing session-epoch resolution remain unchanged. The decision and existing-Turso-row compatibility implications are recorded in ADR-008 before implementation.
+- Removed the obsolete host turso_phase0 target and its dedicated phase0-turso feature: it imports the direct Turso engine removed from the host during R12. No runner references exist. Historical baseline commands describe the retired target; adapter contracts remain untouched. No tests were added, repaired, compiled, or executed.
+- Validation: combined PostgreSQL/Turso CLI production compilation passed after alias removal and username validation. Final static checks are recorded below; behavioral verification remains deferred. R13 epoch/evidence and API-key reconciliation remain open.
+- Independent core compilation, formatting, whitespace, and architecture checks passed (five identity-related exceptions). No database operations or migrations were executed.
+
+
+### R13 identity and API-key reconciliation
+
+- Added backend-identity-closure.md with source-backed status for epoch migrations, creation/bootstrap, JWT issuance, session equality, security-read snapshots, existing test source, and missing behavioral evidence. Epoch infrastructure is already implemented; no duplicate protocol or migrations were added.
+- Corrected the shared JWT mapper to reject missing/empty epochs before preliminary tenant mapping. Those claims already failed authentication and used IP rate-limit fallback; they no longer increment the missing-tenant compatibility counter. Persisted epoch matching remains in core after tenant selection. Existing mapper fixtures supply epochs and remain unchanged.
+- Recorded API-key create/list/delete as existing behavior; nonce/rotation flow remains deferred product scope. Retained API-key name-uniqueness and CI-ingest transaction differences. PI-16 implementation and compatibility implications are reconciled with ADR-008.
+- R13 implementation reconciliation is complete; migration, host, concurrency, and replacement-principal runtime evidence remains postponed with R14. EX-001 branch retirement requires rollout telemetry not available here and is explicitly deferred, preserving the existing epoch-bound compatibility behavior.
+- Validation: combined PostgreSQL/Turso production compilation, formatting, whitespace, and architecture passed (five identity-related exceptions). Tests and migrations were neither changed nor executed. R11/R12 final ownership review and R15 documentation/artifact closure remain open.
+
+
+### R12 service lifecycle facade and R15 operational guide
+
+- CLI serving now starts an opaque host Service, then runs it. The host owns boot, worker startup, HTTP serving, worker drain, and database shutdown checkpoint. The CLI still owns log initialization/output and observability shutdown. Boot errors return before explicit observability shutdown as before; after serving, workers shut down before observability and server errors retain precedence over worker/observability errors.
+- Added docs/deployment/backend-refactor.md with the final ownership diagram, feature profiles, configuration variables, maintenance migration ordering, per-slice rollback boundaries, and explicit artifact/runtime evidence limitations. Linked Docker and Edge runbooks.
+- Source review confirmed Turso maintenance opens/migrates before all actions except verify/restore, including import dry-run. The guide distinguishes pre-upgrade backup creation from newer-binary maintenance. No maintenance operation was executed.
+- Internal app boot/HTTP/supervision modules are now crate-private; the CLI uses Service. Source inspection found no remaining external consumers or invalidated test references. Combined and edge CLI compilation passed before that visibility tightening; the no-adapter check below covers the final public surface.
+- Final no-adapter compilation, formatting, whitespace, and architecture checks passed (five identity-related exceptions). Tests, databases, migrations, images, and runtime probes were not executed.
+
+
+### R12 final boundary guard and obsolete token helper
+
+- Extended the direct-database/repository-collection source guard to every host domain module, in addition to subscribers and workers. Its recursive filesystem walk includes source paths ignored by generic search tools; domain transport code has no direct persistence/database/adapter imports.
+- Removed unused auth::create_token, which synthesized the default tenant and was called only by its own test. Removed that invalidated test without replacing or running it. Actual login continues to call create_token_with_scopes with persisted tenant/version/epoch; no production token behavior changed.
+- Reduced the JWT mapper allowance cap from three to its two actual constant references. Remaining default-tenant locations are the definition, bootstrap, explicit login selection, and the bounded compatibility mapper. Architecture output now calls these boundary allowances rather than counting all intentional locations as migration exceptions.
+- Reconciled the historical EX register against current structural ownership, while keeping EX-001 rollout retirement and R14 behavioral evidence deferred. Combined PostgreSQL/Turso compilation passed; final architecture results follow.
+- Final formatting, whitespace, and expanded architecture checks passed with four bounded default-tenant locations. Only the mapper location represents deferred compatibility retirement; definition/bootstrap/login remain intentional behavior. No tests were run.
+
+
+### R11/R12 implementation closure audit
+
+- backend-boundary-audit.md maps each R11/R12 requirement to current source, guards, and recorded build evidence. Transport entry points, worker capabilities, bulk/report/delivery coordination, service lifecycle, private substates, bridge removal, and executable/dependency ownership satisfy the implementation boundaries.
+- Marked R11/R12 implemented under the existing test deferral. This does not close their deferred runtime acceptance or assert that the EX-001 deployment-telemetry retirement criterion has passed. R15 final document/artifact reconciliation remains the next package.
+- Final production CLI compilation and whitespace check passed after the boundary audit. Previous combined/edge/no-adapter/OpenAPI and architecture evidence is recorded above. No tests or runtime operations were executed.
+
+
+## Final implementation-phase audit (2026-09-14)
+
+This is completion of the authorized implementation phase with tests skipped. It
+is not the plan's final verified-release exit. Earlier chronological notes saying
+“next” or “remaining” describe their point in the migration; this table and the
+ledger supersede them.
+
+| Package | Implementation evidence and final disposition |
+| --- | --- |
+| R01 | Core certificates/certificate_system applications, adapter certificate repositories, and host outbound crypto are wired. One-time key semantics and global device identity decisions are in ADR-010 and the R01 record. Implemented. |
+| R02 | Core bootstrap application and both adapter bootstrap repositories are invoked after migrations by host initialization/service operations. ADR-011 records global emptiness and owner-role preconditions. Implemented. |
+| R03 | Device-type/fleet applications and both repositories own catalog behavior; old host SQL is removed. ADR-012 and R03 record describe ordering/tenancy decisions. Implemented. |
+| R04 | Blueprint and device applications coordinate publication/provisioning through adapter transaction operations. ADR-013 and R04 record cover duplicate counts, retry behavior, and atomic related writes. Implemented. |
+| R05 | Core rule applications and RuleSnapshots use adapter-loaded definitions; host immutable store provides polling, invalidation, readiness, and last-good behavior. R05/ADR-005 record captures the source contract. Implemented. |
+| R06 | Core alert/outbox/delivery applications and adapter transaction code own durable intent, receipts, claims, cooldown/zone state, and stale-action fencing. Migrations retain authority across workers. R06 record documents concurrency design and legacy readers. Implemented. |
+| R07 | Core command/shadow/configuration applications and adapter operations own state transitions. Configuration reads/atomic merges remain the existing behavior; version/acknowledgement flows were explicitly excluded. Implemented. |
+| R08 | Core event/log/telemetry/device-ingress applications and both adapters own validation and transactional ingestion/maintenance. Received-time and durable pruning-boundary decisions are recorded in R08. Implemented. |
+| R09 | Core firmware application and adapters own metadata/blob/OTA/report transitions; host retains object transport, signing, and publication. Native/client invariants were source-audited in R09. Implemented. |
+| R10 | Core activity/dashboard/analytics/audit/metrics applications and adapter queries own projections and retention. Time bounds, ordering, snapshots, search, aggregation, and partial-failure decisions are recorded in R10/ADR-015. Implemented. |
+| R11 | Complete requirement mapping in backend-boundary-audit.md; domain/subscriber/worker source guards reject direct database access, and business orchestration is application-owned. Implemented. |
+| R12 | Shared adapter composition, private runtime substates, host Service facade, one executable owner, no migration bridges or host engine dependencies. Complete mapping in backend-boundary-audit.md. Implemented; EX-001 retirement remains a rollout action. |
+| R13 | backend-identity-closure.md reconciles existing epochs/security snapshots, username correction, API-key behavior, retained differences, and missing proof. Implemented. |
+| R14 | Postponed in full by user instruction. Invalidated tests were removed; unaffected tests were retained. No tests, new suites, or runner expansion were executed as part of this phase. |
+| R15 | Contributor/README ownership, operational diagram/profile/environment/CLI guide, migration ordering, rollback boundaries, historical-document labels, and Docker source layers are updated. Static artifact evidence is recorded below. Implemented within the explicit deferred-release policy. |
+
+### Final artifact and documentation evidence
+
+- The no-adapter OpenAPI generator was built and run into a temporary file. Parsed
+  JSON exactly equals checked-in api/openapi.json: 89 paths and 131 schemas. No
+  checked-in OpenAPI or generated TypeScript update is required. No protocol input
+  was changed by these closure slices, so protocol artifacts were not regenerated.
+- Production, combined-adapter, edge, no-adapter CLI, standalone core, and no-adapter
+  OpenAPI compilation passed in the recorded slices. The final production check
+  passed after R11/R12 closure; this does not claim every unrelated workspace target.
+- Architecture passes with four bounded default-tenant locations: definition,
+  bootstrap, explicit login, and the epoch-bound compatibility mapper. Engine
+  isolation, retired bridges, executable ownership, core/adapter dependency rules,
+  and domain/subscriber/worker boundaries are enforced without new blanket allowances.
+- Docker manifest/dummy-source inspection resolved all 17 workspace packages, with
+  only openapi as the host binary. No Docker image was built or deployed.
+- Thirty-nine local documentation links were inspected and all targets exist.
+  Formatting and git diff whitespace checks passed. Historical baseline paths and
+  retired test commands remain labeled as historical rather than presented as live
+  instructions.
+
+### Deferred work and limits
+
+Resume R14 only when tests are requested. Behavioral parity, rollback/concurrency,
+malformed messages, migrations, restored backups, CLI/HTTP/device smoke coverage,
+clean-checkout builds, and comparable release binary size/linkage/startup/runtime
+measurements are not proven by compilation or this source audit. These are the
+existing deferred acceptance/release tasks, not passing checks.
+
+Keep EX-001 until ADR-001 telemetry demonstrates its retirement criterion. No
+external-issuer policy was invented and no production observation was assumed.
+The authorized current phase preserves the epoch-bound compatibility branch.
+API-key nonce/rotation and configuration acknowledgement/version flows are not
+implemented product behavior and were not added by the refactor.
+
+The current changes remain uncommitted; this phase did not publish or deploy them.

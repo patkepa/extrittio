@@ -55,6 +55,7 @@ impl BootstrapApplication {
                 "Bootstrap admin username must not be empty".into(),
             ));
         }
+        super::users::validate_username_characters(&username)?;
         validate_password(&password).map_err(|error| {
             ApplicationError::InvalidInput(format!("Invalid bootstrap admin password: {error}"))
         })?;

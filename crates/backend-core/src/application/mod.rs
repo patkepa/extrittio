@@ -1,3 +1,7 @@
+mod bulk_devices;
+pub use bulk_devices::{DesiredDeltaPublisher, DeviceBatchOutcomes};
+mod rule_delivery;
+pub use rule_delivery::RuleDeliveryApplication;
 mod metrics;
 pub use metrics::{MetricsApplication, MetricsWorkerApplication};
 mod audit;
@@ -27,7 +31,9 @@ pub use commands::{CommandApplication, CommandWorkerApplication};
 mod configuration;
 pub use configuration::ConfigurationApplication;
 mod shadows;
-pub use shadows::{DeviceShadowApplication, ShadowApplication};
+pub use shadows::{
+    DeviceReportApplication, DeviceReportOutcome, DeviceShadowApplication, ShadowApplication,
+};
 mod alerts;
 pub use alerts::{
     AlertApplication, AlertMaintenanceApplication, AlertWorkerApplication, RuleAlertIntent,
