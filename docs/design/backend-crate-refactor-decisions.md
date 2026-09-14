@@ -181,6 +181,17 @@ For P3.4, PostgreSQL's status vocabulary is canonical for both adapters: `sent`,
 - Device acknowledgements and terminal responses have the same transitions in both adapters.
 - Both adapters can read pre-normalization Turso command states during rollout.
 
+### R07 implementation note: command states and persistence
+
+Command persistence now resides in both adapters behind the core-owned port.
+Core maps device responses; atomic updates accept only active statuses and retain
+terminal rows. Turso maps historical pending/completed/timeout values to
+sent/succeeded/timed_out without rewriting rows, and new writes use canonical
+states. Historical pending rows remain eligible for response and timeout updates.
+Timeout cutoffs use checked arithmetic and one clock sample. This closes the
+status-vocabulary correction, but the host DeviceBus/application dispatch and
+rule-action retry integration remain unfinished. Behavioral verification is deferred.
+
 ## ADR-004: Firmware object/metadata compensation
 
 - **Status:** Accepted with an explicit crash-consistency limitation
@@ -678,7 +689,7 @@ compatibility, and database execution evidence remain deferred to R14.
 
 ## ADR-014: Durable outbox claim ownership and alert transaction boundaries
 
-- **Status:** Outbox and alert extraction implemented; database-authoritative rule evaluation/duplicate prevention remains in progress in R06. Behavioral verification deferred by instruction.
+- **Status:** R06 implemented, including database-authoritative runtime state and worker/maintenance ownership. Behavioral verification deferred by instruction.
 - **Owner work package:** R06 / P3.3; PI-02, alert portion of PI-03/PI-04, and PI-10.
 
 Core owns alert records, transition preconditions, tenant-facing authorization,
@@ -974,3 +985,37 @@ Approved target composition paths such as host `database`, `boot`, and `maintena
 - Each pull request removes its owned exception rows from the architecture allowlist when the removal condition is met.
 - P6 fails if any EX-002 through EX-015 temporary exception remains. EX-001 must be removed unless ADR-001's external-issuer policy is separately approved and the exact compatibility mapper is reclassified as target behavior; exact bootstrap/login allowlist locations may remain as target behavior.
 - The unresolved stronger guarantees identified here—compliance audit, durable command dispatch, crash-safe firmware workflow, and partition-safe rule propagation—require separate approval because they change product/data semantics rather than crate ownership.
+
+
+### R06 final ownership and stale-definition closure
+
+Core worker applications now handle alert outcomes and legacy cooldown application;
+core maintenance owns checked cutoffs and explicit global resolved-alert retention.
+Adapter transaction participants exclude missing/disabled candidate rules before
+evaluation, with PostgreSQL key-share locks protecting surviving identities and
+Turso's write transaction protecting the same interval. This prevents deleted rule
+snapshots from creating runtime foreign-key failures; it does not strengthen the
+snapshot freshness guarantee for definition edits.
+
+Both adapters now own outbox insertion SQL as well as claims and outcomes. Host
+ingress delegates through transaction participants until R08 migrates the enclosing
+operations. R06 implementation is complete; database, migration, concurrency, and
+external-delivery behavior remain unverified under the current test policy.
+
+
+### ADR-003 implementation follow-up: core dispatch connected
+
+User command creation/history and restart routes now invoke core `CommandApplication`.
+The host `ZenohDeviceBus` owns protocol encoding, topics, publication, and metrics.
+The core communication error maps to the existing safe 502 response; a publication
+failure retains the recorded sent row, and ordinary user sends do not retry.
+
+Durable rule-action delivery is a separate core operation: it checks any existing
+stable-ID row for exact tenant/device/command/parameter identity and reuses it.
+A competing insert is accepted only after reading a matching row. Delivered or
+terminal rows skip publication; sent rows may republish through outbox retries.
+Concurrent deliveries are still at least once externally. New/retried sent rule
+commands now share current assigned-contract validation with user sends; this can
+reject actions that the old raw command producer published without validation.
+No HTTP wire shape or stored history schema changed. Behavioral verification remains
+deferred under the user's test policy.

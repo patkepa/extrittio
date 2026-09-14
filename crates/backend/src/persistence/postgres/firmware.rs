@@ -4,7 +4,6 @@ use diesel::{Connection, OptionalExtension, QueryableByName, RunQueryDsl};
 
 use crate::db::models::{
     FirmwareBlob, FirmwareUpdate, NewFirmwareBlob, NewFirmwareUpdate, NewOtaDeployment,
-    UpdateShadow,
 };
 use crate::domains::firmware::port::FirmwareRepository;
 use crate::domains::firmware::types::{
@@ -14,7 +13,7 @@ use crate::domains::firmware::types::{
 };
 use crate::error::AppError;
 use crate::persistence::PersistenceError;
-use crate::repositories::{device_repo, device_type_repo, firmware_repo, shadow_repo};
+use crate::repositories::{device_repo, device_type_repo, firmware_repo};
 use crate::tenancy::{DeviceIdentity, TenantId};
 
 use super::PostgresAdapter;
@@ -109,38 +108,13 @@ fn update_desired_shadow(
     device_id: &str,
     patch: &serde_json::Map<String, serde_json::Value>,
 ) -> Result<(serde_json::Value, i32), AppError> {
-    use extrittio_common::shadow::{compute_delta, merge_json};
-
-    let shadow = shadow_repo::lock_shadow(connection, tenant_id, device_id)?;
-    let desired = if shadow.desired.is_object() {
-        shadow.desired
-    } else {
-        serde_json::json!({})
-    };
-    let reported = if shadow.reported.is_object() {
-        shadow.reported
-    } else {
-        serde_json::json!({})
-    };
-    let desired = merge_json(desired, patch);
-    let delta = compute_delta(&desired, &reported);
-    let version = shadow
-        .version
-        .checked_add(1)
-        .ok_or_else(|| AppError::Internal("shadow version overflow".to_string()))?;
-    shadow_repo::update_shadow(
-        connection,
-        tenant_id,
-        device_id,
-        &UpdateShadow {
-            desired: Some(desired),
-            delta: Some(delta.clone()),
-            version: Some(version),
-            updated_at: Some(chrono::Utc::now().naive_utc()),
-            ..Default::default()
-        },
-    )?;
-    Ok((delta, version))
+    let current = crate::database::postgres_lock_shadow(connection, tenant_id, device_id)?
+        .ok_or(PersistenceError::NotFound)?;
+    let updated =
+        extrittio_backend_core::shadows::apply_desired_patch(current, patch, chrono::Utc::now())
+            .map_err(|error| PersistenceError::CorruptData(error.to_string()))?;
+    crate::database::postgres_store_shadow(connection, tenant_id, &updated)?;
+    Ok((updated.delta, updated.version))
 }
 
 #[async_trait]
@@ -405,7 +379,10 @@ impl FirmwareRepository for PostgresAdapter {
                     .transaction::<_, AppError, _>(|connection| {
                         use crate::db::schema::ota_deployments;
                         use diesel::prelude::*;
-                        let shadow = shadow_repo::lock_shadow(connection, &tenant_id, &device_id)?;
+                        let shadow = crate::database::postgres_lock_shadow(
+                            connection, &tenant_id, &device_id,
+                        )?
+                        .ok_or(PersistenceError::NotFound)?;
                         let previous = ota_deployments::table
                             .filter(ota_deployments::tenant_id.eq(&tenant_id))
                             .filter(ota_deployments::device_id.eq(&device_id))
@@ -432,17 +409,19 @@ impl FirmwareRepository for PostgresAdapter {
                             update.error_message.as_deref(),
                             update.completed_at,
                         )?;
-                        if extrittio_common::ota::status::is_terminal(&update.status)
-                            && shadow.desired["ota"]["deployment_id"].as_i64()
-                                == Some(i64::from(update.deployment_id))
-                        {
-                            let patch = serde_json::json!({"ota": null});
-                            update_desired_shadow(
-                                connection,
-                                &tenant_id,
-                                &device_id,
-                                patch.as_object().unwrap(),
-                            )?;
+                        if extrittio_common::ota::status::is_terminal(&update.status) {
+                            if let Some(updated) =
+                                extrittio_backend_core::shadows::clear_ota_for_deployment(
+                                    shadow,
+                                    i64::from(update.deployment_id),
+                                    chrono::Utc::now(),
+                                )
+                                .map_err(|error| PersistenceError::CorruptData(error.to_string()))?
+                            {
+                                crate::database::postgres_store_shadow(
+                                    connection, &tenant_id, &updated,
+                                )?;
+                            }
                         }
                         Ok(true)
                     })
@@ -545,7 +524,8 @@ impl FirmwareRepository for PostgresAdapter {
                         ) {
                             return Ok(TriggerOtaOutcome::InvalidArtifact);
                         }
-                        shadow_repo::lock_shadow(connection, &tenant_id, &device_id)?;
+                        crate::database::postgres_lock_shadow(connection, &tenant_id, &device_id)?
+                            .ok_or(PersistenceError::NotFound)?;
                         use crate::db::schema::ota_deployments;
                         use diesel::prelude::*;
                         diesel::update(

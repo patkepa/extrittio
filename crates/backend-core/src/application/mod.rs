@@ -1,3 +1,11 @@
+mod logs;
+pub use logs::{LogApplication, LogIngressApplication};
+mod commands;
+pub use commands::{CommandApplication, CommandWorkerApplication};
+mod configuration;
+pub use configuration::ConfigurationApplication;
+mod shadows;
+pub use shadows::{DeviceShadowApplication, ShadowApplication};
 mod alerts;
 pub use alerts::{
     AlertApplication, AlertMaintenanceApplication, AlertWorkerApplication, RuleAlertIntent,
@@ -45,6 +53,7 @@ pub use zones::{CreateZone, ZoneApplication, ZoneUpdate};
 /// intentionally do not belong here.
 #[derive(Clone)]
 pub struct ApplicationDependencies {
+    pub device_bus: Arc<dyn crate::commands::DeviceBus>,
     pub rule_changes: Arc<dyn crate::rules::RuleChangeNotifier>,
     pub webhook_urls: Arc<dyn crate::rules::WebhookUrlPolicy>,
     pub certificate_issuer: Arc<dyn crate::certificates::CertificateIssuer>,
@@ -64,8 +73,10 @@ impl ApplicationDependencies {
         key_protector: Arc<dyn crate::certificates::KeyProtector>,
         webhook_urls: Arc<dyn crate::rules::WebhookUrlPolicy>,
         rule_changes: Arc<dyn crate::rules::RuleChangeNotifier>,
+        device_bus: Arc<dyn crate::commands::DeviceBus>,
     ) -> Self {
         Self {
+            device_bus,
             rule_changes,
             webhook_urls,
             password_hasher,
@@ -80,6 +91,8 @@ impl ApplicationDependencies {
 /// Curated application façade passed to transports.
 #[derive(Clone)]
 pub struct Application {
+    logs: LogApplication,
+    commands: CommandApplication,
     api_keys: ApiKeyApplication,
     device_blueprints: DeviceBlueprintApplication,
     devices: DeviceApplication,
@@ -87,6 +100,8 @@ pub struct Application {
     device_types: DeviceTypeApplication,
     ci_ingest: CiIngestApplication,
     certificates: CertificateApplication,
+    configuration: ConfigurationApplication,
+    shadows: ShadowApplication,
     alerts: AlertApplication,
     outbox: OutboxApplication,
     rules: RuleApplication,
@@ -96,6 +111,18 @@ pub struct Application {
 }
 
 impl Application {
+    pub fn logs(&self) -> &LogApplication {
+        &self.logs
+    }
+    pub fn commands(&self) -> &CommandApplication {
+        &self.commands
+    }
+    pub fn configuration(&self) -> &ConfigurationApplication {
+        &self.configuration
+    }
+    pub fn shadows(&self) -> &ShadowApplication {
+        &self.shadows
+    }
     pub fn alerts(&self) -> &AlertApplication {
         &self.alerts
     }
@@ -113,13 +140,24 @@ impl Application {
             dependencies.key_protector,
         );
         let devices = DeviceApplication::new(
-            repositories.devices,
+            repositories.devices.clone(),
             blueprints.clone(),
             device_types.clone(),
             certificates.clone(),
             dependencies.clock.clone(),
         );
         Self {
+            logs: LogApplication::new(repositories.logs),
+            commands: CommandApplication::new(
+                repositories.commands,
+                repositories.devices,
+                dependencies.device_bus,
+            ),
+            configuration: ConfigurationApplication::new(
+                repositories.configuration,
+                dependencies.clock.clone(),
+            ),
+            shadows: ShadowApplication::new(repositories.shadows, dependencies.clock.clone()),
             alerts: AlertApplication::new(repositories.alerts),
             outbox: OutboxApplication::new(repositories.outbox),
             rules: RuleApplication::new(

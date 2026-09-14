@@ -21,6 +21,7 @@ pub mod pagination;
 pub mod ports;
 mod repositories;
 pub mod roles;
+pub mod shadows;
 pub mod users;
 pub mod zones;
 
@@ -76,3 +77,16 @@ pub use application::{
 };
 
 pub use application::RuleRuntimeApplication;
+
+pub use application::{DeviceShadowApplication, ShadowApplication};
+
+pub mod configuration;
+pub use application::ConfigurationApplication;
+
+pub mod commands;
+pub use application::CommandWorkerApplication;
+
+pub use application::CommandApplication;
+
+pub mod logs;
+pub use application::{LogApplication, LogIngressApplication};

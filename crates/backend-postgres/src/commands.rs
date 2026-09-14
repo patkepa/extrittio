@@ -1,17 +1,27 @@
 use async_trait::async_trait;
 use diesel::prelude::*;
 
-use crate::db::models::{CommandRecord as PgCommandRecord, NewCommandRecord as PgNewCommandRecord};
-use crate::db::schema::{command_history, devices};
-use crate::domains::commands::port::CommandRepository;
-use crate::domains::commands::types::{CommandQuery, CommandRecord, NewCommandRecord};
-use crate::persistence::PersistenceError;
-use crate::tenancy::{DeviceIdentity, TenantId};
+use crate::models::{CommandRecord as PgCommandRecord, NewCommandRecord as PgNewCommandRecord};
+use crate::schema::{command_history, devices};
+use extrittio_backend_core::PersistenceError;
+use extrittio_backend_core::TenantId;
+use extrittio_backend_core::commands::CommandRepository;
+use extrittio_backend_core::commands::{CommandQuery, CommandRecord, NewCommandRecord};
 
-use super::PostgresAdapter;
-use super::executor::map_diesel_error;
-
-const TERMINAL_STATUSES: &[&str] = &["succeeded", "failed", "timed_out"];
+use crate::{PostgresExecutor, PostgresPool};
+use extrittio_backend_core::commands::ACTIVE_STATUSES;
+#[derive(Clone)]
+pub struct PostgresCommandRepository {
+    executor: PostgresExecutor,
+}
+impl PostgresCommandRepository {
+    pub fn from_pool(pool: PostgresPool) -> Self {
+        Self {
+            executor: PostgresExecutor::new(pool),
+        }
+    }
+}
+use crate::error::map_diesel_error;
 
 fn to_record(record: PgCommandRecord) -> CommandRecord {
     CommandRecord {
@@ -27,7 +37,28 @@ fn to_record(record: PgCommandRecord) -> CommandRecord {
 }
 
 #[async_trait]
-impl CommandRepository for PostgresAdapter {
+impl CommandRepository for PostgresCommandRepository {
+    async fn find(
+        &self,
+        tenant: &TenantId,
+        id: &str,
+    ) -> Result<Option<CommandRecord>, PersistenceError> {
+        let tenant = tenant.as_str().to_owned();
+        let id = id.to_owned();
+        self.executor
+            .run(move |connection| {
+                command_history::table
+                    .filter(command_history::tenant_id.eq(tenant))
+                    .filter(command_history::id.eq(id))
+                    .select(PgCommandRecord::as_select())
+                    .first::<PgCommandRecord>(connection)
+                    .optional()
+                    .map(|row| row.map(to_record))
+                    .map_err(map_diesel_error)
+            })
+            .await
+    }
+
     async fn create(
         &self,
         tenant: &TenantId,
@@ -94,7 +125,10 @@ impl CommandRepository for PostgresAdapter {
                     statement = statement.filter(command_history::status.eq(status));
                 }
                 let records = statement
-                    .order(command_history::created_at.desc())
+                    .order((
+                        command_history::created_at.desc(),
+                        command_history::id.desc(),
+                    ))
                     .limit(query.limit)
                     .select(PgCommandRecord::as_select())
                     .load::<PgCommandRecord>(connection)
@@ -109,48 +143,29 @@ impl CommandRepository for PostgresAdapter {
 
     async fn apply_response(
         &self,
-        identity: &DeviceIdentity,
+        tenant: &TenantId,
+        device_id: &str,
         correlation_id: String,
-        device_status: String,
+        status: extrittio_backend_core::commands::CommandResponseStatus,
         payload: Option<String>,
+        updated_at: chrono::NaiveDateTime,
     ) -> Result<Option<String>, PersistenceError> {
-        let tenant_id = identity.tenant_id_str().to_string();
-        let device_id = identity.device_id().to_string();
+        let tenant_id = tenant.as_str().to_owned();
+        let device_id = device_id.to_owned();
+        let new_status = status.as_str().to_owned();
         self.executor
             .run(move |connection| {
-                let command = command_history::table
-                    .filter(command_history::tenant_id.eq(&tenant_id))
-                    .filter(command_history::id.eq(&correlation_id))
-                    .select(PgCommandRecord::as_select())
-                    .first::<PgCommandRecord>(connection)
-                    .optional()
-                    .map_err(map_diesel_error)?;
-                let Some(command) = command else {
-                    return Ok(None);
-                };
-                if command.device_id != device_id
-                    || TERMINAL_STATUSES.contains(&command.status.as_str())
-                {
-                    return Ok(None);
-                }
-
-                let new_status = match device_status.as_str() {
-                    "ack" => "delivered",
-                    "succeeded" | "failed" => device_status.as_str(),
-                    _ => "delivered",
-                }
-                .to_string();
                 diesel::update(
                     command_history::table
                         .filter(command_history::tenant_id.eq(&tenant_id))
                         .filter(command_history::id.eq(&correlation_id))
                         .filter(command_history::device_id.eq(&device_id))
-                        .filter(command_history::status.ne_all(TERMINAL_STATUSES)),
+                        .filter(command_history::status.eq_any(ACTIVE_STATUSES)),
                 )
                 .set((
                     command_history::status.eq(&new_status),
                     command_history::response_payload.eq(payload.as_deref()),
-                    command_history::updated_at.eq(chrono::Utc::now().naive_utc()),
+                    command_history::updated_at.eq(updated_at),
                 ))
                 .execute(connection)
                 .map_err(map_diesel_error)
@@ -168,7 +183,7 @@ impl CommandRepository for PostgresAdapter {
             .run(move |connection| {
                 diesel::update(
                     command_history::table
-                        .filter(command_history::status.eq_any(&["sent", "delivered"]))
+                        .filter(command_history::status.eq_any(ACTIVE_STATUSES))
                         .filter(command_history::created_at.lt(cutoff)),
                 )
                 .set((

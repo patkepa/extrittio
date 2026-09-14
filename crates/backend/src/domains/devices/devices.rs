@@ -11,7 +11,7 @@ use utoipa::{IntoParams, ToSchema};
 use crate::auth::context::RequestContext;
 use crate::error::AppError;
 use crate::pagination::{self, PaginatedResponse, PaginationParams};
-use crate::services::{command_service, device_service, firmware_service};
+use crate::services::{device_service, firmware_service};
 use crate::state::AppState;
 use extrittio_backend_core::devices::{DeviceDetails, DeviceListQuery, UpdateDeviceRecord};
 
@@ -558,17 +558,11 @@ pub(crate) async fn restart_device(
     Extension(ctx): Extension<RequestContext>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
-    command_service::send_command_as_user_with_repository(
-        &ctx,
-        state.persistence.commands.as_ref(),
-        state.persistence.devices.as_ref(),
-        &state.zenoh_session,
-        &id,
-        "restart",
-        serde_json::json!({}),
-        &state.zenoh_metrics,
-    )
-    .await?;
+    state
+        .application()
+        .commands()
+        .send(&ctx.tenant_context(), &id, "restart", serde_json::json!({}))
+        .await?;
     Ok(StatusCode::OK)
 }
 
@@ -687,7 +681,10 @@ pub(crate) async fn bulk_restart_devices(
     Extension(ctx): Extension<RequestContext>,
     Json(body): Json<BulkDeviceRequest>,
 ) -> Result<Json<BulkResultResponse>, AppError> {
-    command_service::authorize_send_commands(&ctx)?;
+    state
+        .application()
+        .commands()
+        .authorize_send(&ctx.tenant_context())?;
 
     let ids = state
         .application()
@@ -705,18 +702,17 @@ pub(crate) async fn bulk_restart_devices(
     let mut result = BulkResultResponse::default();
 
     for device_id in &ids {
-        let outcome = command_service::send_command_as_user_with_repository(
-            &ctx,
-            state.persistence.commands.as_ref(),
-            state.persistence.devices.as_ref(),
-            &state.zenoh_session,
-            device_id,
-            "restart",
-            serde_json::json!({}),
-            &state.zenoh_metrics,
-        )
-        .await;
-        result.record(device_id, outcome);
+        let outcome = state
+            .application()
+            .commands()
+            .send(
+                &ctx.tenant_context(),
+                device_id,
+                "restart",
+                serde_json::json!({}),
+            )
+            .await;
+        result.record(device_id, outcome.map_err(AppError::from));
     }
 
     Ok(Json(result))
@@ -762,7 +758,7 @@ pub(crate) async fn bulk_trigger_ota(
             &state.zenoh_metrics,
         )
         .await;
-        result.record(device_id, outcome);
+        result.record(device_id, outcome.map_err(AppError::from));
     }
 
     Ok(Json(result))

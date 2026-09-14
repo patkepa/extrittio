@@ -2,7 +2,6 @@ use prost::Message;
 use tracing::{info, warn};
 
 use crate::persistence::RepositorySet;
-use crate::services::log_service;
 use crate::tenancy::DeviceIdentity;
 
 use extrittio_common::extrittio::DeviceLog;
@@ -27,9 +26,13 @@ pub async fn handle_device_log(
         return;
     }
 
-    match log_service::record_with_repository(
-        persistence.logs.as_ref(),
-        identity,
+    match extrittio_backend_core::LogIngressApplication::new(
+        persistence.logs.clone(),
+        std::sync::Arc::new(crate::auth::SystemClock),
+    )
+    .record(
+        identity.tenant_id(),
+        identity.device_id(),
         &log_msg.level,
         &log_msg.message,
     )

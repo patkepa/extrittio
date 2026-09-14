@@ -94,7 +94,11 @@ pub(crate) async fn get_shadow(
     Extension(ctx): Extension<RequestContext>,
     Path(id): Path<String>,
 ) -> Result<Json<ShadowResponse>, AppError> {
-    let shadow = shadow_service::get_shadow(&ctx, state.persistence.shadows.as_ref(), &id).await?;
+    let shadow = state
+        .application()
+        .shadows()
+        .get(&ctx.tenant_context(), &id)
+        .await?;
     let response = to_shadow_response(shadow);
 
     Ok(Json(response))
@@ -120,15 +124,19 @@ pub(crate) async fn update_desired(
     Path(id): Path<String>,
     Json(body): Json<UpdateShadowRequest>,
 ) -> Result<Json<ShadowResponse>, AppError> {
-    let updated = shadow_service::update_desired(
-        &ctx,
-        state.persistence.shadows.as_ref(),
+    let updated = state
+        .application()
+        .shadows()
+        .update_desired(&ctx.tenant_context(), &id, body.state)
+        .await?;
+    shadow_service::publish_delta_if_nonempty(
         &state.zenoh_session,
         &id,
-        &body.state,
+        &updated.delta,
+        updated.version,
         &state.zenoh_metrics,
     )
-    .await?;
+    .await;
     let response = to_shadow_response(updated);
 
     Ok(Json(response))
@@ -154,9 +162,11 @@ pub(crate) async fn update_reported(
     Path(id): Path<String>,
     Json(body): Json<UpdateShadowRequest>,
 ) -> Result<Json<ShadowResponse>, AppError> {
-    let updated =
-        shadow_service::update_reported(&ctx, state.persistence.shadows.as_ref(), &id, &body.state)
-            .await?;
+    let updated = state
+        .application()
+        .shadows()
+        .update_reported(&ctx.tenant_context(), &id, body.state)
+        .await?;
     let response = to_shadow_response(updated);
 
     Ok(Json(response))
@@ -180,7 +190,11 @@ pub(crate) async fn delete_shadow(
     Extension(ctx): Extension<RequestContext>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
-    shadow_service::delete_shadow(&ctx, state.persistence.shadows.as_ref(), &id).await?;
+    state
+        .application()
+        .shadows()
+        .reset(&ctx.tenant_context(), &id)
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

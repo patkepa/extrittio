@@ -1,17 +1,13 @@
 mod activity;
 mod analytics;
 mod audit;
-mod commands;
-mod configuration;
 mod dashboard;
 mod database;
 mod devices;
 mod events;
 mod firmware;
-mod logs;
 mod metrics;
 mod row;
-mod shadows;
 mod telemetry;
 
 use std::sync::Arc;
@@ -48,6 +44,10 @@ fn build_repositories(database: Arc<TursoDatabase>) -> RepositorySet {
     let roles = crate::database::turso_roles(&database);
     let users = crate::database::turso_users(&database);
     let api_keys = crate::database::turso_api_keys(&database);
+    let logs = crate::database::turso_logs(&database);
+    let commands = crate::database::turso_commands(&database);
+    let configuration = crate::database::turso_configuration(&database);
+    let shadows = crate::database::turso_shadows(&database);
     let fleets = crate::database::turso_fleets(&database);
     let device_blueprints = crate::database::turso_device_blueprints(&database);
     let alerts = crate::database::turso_alerts(&database);
@@ -68,8 +68,8 @@ fn build_repositories(database: Arc<TursoDatabase>) -> RepositorySet {
         audit: adapter.clone(),
         bootstrap,
         certificates,
-        commands: adapter.clone(),
-        configuration: adapter.clone(),
+        commands,
+        configuration,
         dashboard: adapter.clone(),
         device_blueprints,
         device_types,
@@ -78,13 +78,13 @@ fn build_repositories(database: Arc<TursoDatabase>) -> RepositorySet {
         events: adapter.clone(),
         fleets,
         firmware: adapter.clone(),
-        logs: adapter.clone(),
+        logs,
         metrics: adapter.clone(),
         outbox,
         roles,
         rule_zone_snapshots,
         rules,
-        shadows: adapter.clone(),
+        shadows,
         telemetry: adapter.clone(),
         users,
         zones,

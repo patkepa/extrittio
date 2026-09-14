@@ -6,18 +6,14 @@ use executor::PostgresPool;
 mod activity;
 mod analytics;
 mod audit;
-mod commands;
-mod configuration;
 mod dashboard;
 mod devices;
 mod events;
 pub mod executor;
 mod firmware;
 pub(crate) mod lifecycle;
-mod logs;
 mod metrics;
 mod outbox;
-mod shadows;
 mod telemetry;
 
 /// Shared PostgreSQL adapter object. It implements multiple domain ports while
@@ -52,6 +48,10 @@ fn build_repositories(pool: PostgresPool) -> RepositorySet {
     let roles = crate::database::postgres_roles(&pool);
     let users = crate::database::postgres_users(&pool);
     let api_keys = crate::database::postgres_api_keys(&pool);
+    let logs = crate::database::postgres_logs(&pool);
+    let commands = crate::database::postgres_commands(&pool);
+    let configuration = crate::database::postgres_configuration(&pool);
+    let shadows = crate::database::postgres_shadows(&pool);
     let fleets = crate::database::postgres_fleets(&pool);
     let device_blueprints = crate::database::postgres_device_blueprints(&pool);
     let alerts = crate::database::postgres_alerts(&pool);
@@ -72,8 +72,8 @@ fn build_repositories(pool: PostgresPool) -> RepositorySet {
         audit: adapter.clone(),
         bootstrap,
         certificates,
-        commands: adapter.clone(),
-        configuration: adapter.clone(),
+        commands,
+        configuration,
         dashboard: adapter.clone(),
         device_blueprints,
         device_types,
@@ -82,13 +82,13 @@ fn build_repositories(pool: PostgresPool) -> RepositorySet {
         events: adapter.clone(),
         fleets,
         firmware: adapter.clone(),
-        logs: adapter.clone(),
+        logs,
         metrics: adapter.clone(),
         outbox,
         roles,
         rule_zone_snapshots,
         rules,
-        shadows: adapter.clone(),
+        shadows,
         telemetry: adapter.clone(),
         users,
         zones,

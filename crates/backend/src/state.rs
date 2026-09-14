@@ -201,6 +201,10 @@ impl AppState {
         let application = extrittio_backend_core::Application::new(
             extrittio_backend_core::RepositorySet::new(
                 extrittio_backend_core::RepositorySetInput {
+                    logs: persistence.logs.clone(),
+                    commands: persistence.commands.clone(),
+                    configuration: persistence.configuration.clone(),
+                    shadows: persistence.shadows.clone(),
                     alerts: persistence.alerts.clone(),
                     outbox: persistence.outbox.clone(),
                     rules: persistence.rules.clone(),
@@ -224,6 +228,10 @@ impl AppState {
                 crypto,
                 Arc::new(crate::security::PublicWebhookUrlPolicy),
                 input.rule_cache.clone(),
+                Arc::new(crate::outbound::device_bus::ZenohDeviceBus::new(
+                    input.zenoh_session.clone(),
+                    input.zenoh_metrics.clone(),
+                )),
             ),
         );
 

@@ -4,7 +4,7 @@
 - **Created:** 2026-09-14.
 - **Purpose:** Executable work packages for completing the remaining backend ownership refactor.
 - **Current execution preference:** Skip running, compiling, adding, and repairing tests for now. Remove tests made invalid by the refactor; keep unaffected tests. Continue production compilation, formatting, and architecture checks.
-- **Next package:** R06 — alerts and durable actions/outbox. R01–R05 are implemented; behavioral verification remains deferred.
+- **Next package:** R07 — commands, shadows, and configuration. R01–R06 are implemented; behavioral verification remains deferred.
 
 ## 1. Scope and authority
 
@@ -437,9 +437,9 @@ with a generic “done.” List individual PRs if a package is split.
 | R03 | Implemented | Deferred | Core catalogs and both adapters; ADR-012 |
 | R04 | Implemented | Deferred | Core blueprints/devices, atomic provisioning, both adapters; ADR-013 |
 | R05 | Implemented | Deferred | Core rules/evaluation, consistent reads, immutable host snapshots, polling/readiness/metrics; ADR-005 |
-| R06 | In progress | Deferred | Alert/outbox extraction done; finish authoritative runtime state and duplicate prevention |
-| R07 | Not started | Deferred | Shadows/configuration, then commands |
-| R08 | Not started | Deferred | Ingress and time-series contracts |
+| R06 | Implemented | Deferred | Core policy/runtime, adapter-owned outbox and durable transitions; ADR-014 |
+| R07 | In progress | Deferred | Shadow/configuration, commands, and shared OTA shadow mutation connected; config version/ack next |
+| R08 | In progress | Deferred | Device-log slice; remaining presence/events/telemetry transactions next |
 | R09 | CI ingest only | Deferred | Remaining metadata/blob/OTA work |
 | R10 | Not started | Deferred | Projections, audit, metrics |
 | R11 | Partial through completed slices | Deferred | Continue thinning each migrated entry point |
@@ -599,3 +599,75 @@ This closes the implementation items left open in the preceding R05 notes.
 - Legacy zone-entry delivery uses the core system façade and retained outbox metadata. Live observation wins over any later-delivered legacy update regardless of clock skew; old producers must be quiesced during rollout. Before handoff, the legacy ordering policy is deterministic on both databases.
 - R06 still needs a final ownership audit (including worker transition/retention façades) and review of stale definition snapshots versus new runtime foreign keys before it is marked complete. Tests remain deferred; no new invalid tests were found in this slice.
 - Validation passed: independent core/adapters, all four host profiles, combined-adapter CLI compilation, formatting, whitespace, and architecture checks (41 direct accesses across 14 files, 9 migration exceptions). Source search found no host runtime-map API or field access. No tests or migrations ran. Changes remain uncommitted.
+
+
+### R06 final ownership audit
+
+- Core worker operations now own alert update/resolve and legacy cooldown application. Core maintenance computes checked retention cutoffs and explicitly prunes resolved alerts across all tenants; the host owns scheduling and delivery clients.
+- Transaction participants filter snapshot candidates against surviving enabled rules before evaluating. PostgreSQL holds key-share locks on surviving rule identities through commit; Turso uses its existing write transaction. Deleted snapshot rules cannot introduce runtime foreign-key violations. Definition edits still follow the documented snapshot freshness window.
+- Outbox insertion SQL now lives in both adapter crates. Host ingress wrappers only delegate inside the existing outer transaction; their removal belongs to R08. No second connection or independent commit was introduced.
+- The seven R06 implementation requirements are connected: core decisions, database-authoritative runtime state, adapter-owned outbox, claim-token conditional outcomes, versioned legacy-readable payloads, explicit retention/time/order semantics, and host transport/scheduling. External delivery remains at least once; migration and behavioral evidence remain deferred.
+- Validation passed: independent core/adapters, all production host feature profiles, combined-adapter CLI compilation, formatting, whitespace, and architecture checks. Architecture reports 41 direct accesses across 14 files and 9 tracked exceptions. No tests or migrations ran. R06 is implemented, not behaviorally verified.
+
+### R07 initial shadow boundary
+
+- Moved shadow records, the repository port, checked version increments, desired/reported merge and delta decisions, and reset policy into core. Existing host imports temporarily re-export these definitions while application and adapter ownership migrate.
+- Preserved shallow patch semantics: null removes a key, nested values replace whole values, and delta contains only desired keys differing from reported. Core contains the pure JSON operations so it does not depend on the transport/common crate; common's public helpers remain available to existing consumers.
+- Existing pure mutation tests moved unchanged with the implementation; they were not compiled or run. No tests became obsolete in this move. PostgreSQL row locking and Turso transaction behavior are unchanged.
+- R07 remains in progress: move shadow application operations and SQL ownership next, then configuration and command transitions/dispatch under ADR-003.
+
+- Shadow repository SQL moved into `backend-postgres::PostgresShadowRepository` and `backend-turso::TursoShadowRepository`; composition uses the existing pool/shared handles. Deleted the superseded host adapter modules. PostgreSQL still locks the shadow row through mutation/commit; Turso still serializes its writer transaction. Host service authorization/publication and legacy OTA transaction helpers remain to migrate in R07.
+- Validation passed for this R07 slice: independent core/adapters, all four production host feature profiles, formatting, whitespace, and architecture checks (41 direct accesses across 14 files, 9 tracked exceptions). No tests were compiled or run. Changes remain uncommitted.
+
+
+### R07 shadow applications and configuration extraction
+
+- Core `ShadowApplication` owns read/manage authorization, reserved `ota` desired-key rejection, missing-record outcomes, and clock-based mutations. `DeviceShadowApplication` offers only tenant-scoped reads/reported updates for authenticated ingress. HTTP and device message handlers now invoke these operations. The host publishes desired deltas only after a committed result, preserving best-effort publication and metrics.
+- Removed the four obsolete shadow service tests (`passes_tenant_identity_to_reads_reports_and_resets`, `reported_update_requires_manage_permission_before_persistence`, `every_user_shadow_mutation_requires_manage_permission`, `shadow_management_cannot_inject_or_remove_ota_commands`), which called deleted service/authorization functions. Pure shadow mutation tests remain unchanged and unexecuted. The remaining host shadow service contains delta transport and OTA report translation pending shared OTA migration.
+- Core configuration now owns records, outcomes, shallow merge policy, read/manage authorization, missing-device errors, and the clock. Both adapters own configuration SQL and retain device-row/write-transaction serialization for atomic read/merge/upsert. HTTP uses the application façade; the old host service and adapter modules were removed.
+- Removed the obsolete configuration service tests `passes_tenant_identity_to_get_and_atomic_merge` and `authorization_happens_before_persistence`, whose entry points were deleted. Pure configuration merge tests moved unchanged to core. No tests were run, compiled, added, or repaired.
+- Source inspection found no configuration version or acknowledgement message in the current common protocol or configuration records/port. The plan explicitly requires those semantics, so their design/implementation remains open; this extraction does not claim to satisfy that requirement. Shadow OTA mutation unification and command validation/state/dispatch also remain open. R07 is still in progress.
+- Validation passed: independent core/adapters, all four production host profiles, combined-adapter CLI, formatting, whitespace, and architecture checks. Direct handler-to-repository access decreased from 41 across 14 files to 35 across 12 files; 9 tracked exceptions remain. No tests or migrations ran. Changes remain uncommitted.
+
+
+### R07 command persistence and response transitions
+
+- Moved command records/query/creation values and the business repository port into core; PostgreSQL and Turso command SQL now live in their adapter crates using existing shared handles. Removed superseded host adapter modules and the unused PostgreSQL `command_repo` helper module/exports.
+- Core `CommandWorkerApplication` interprets device responses using the approved PostgreSQL behavior: `succeeded` and `failed` are terminal, while `ack` and all other strings mean `delivered`. It captures one clock time for each response or timeout pass and rejects unrepresentable timeout durations instead of wrapping an unsigned value.
+- Both adapters apply tenant/device/ID-scoped responses through conditional SQL updates restricted to active states; terminal outcomes cannot be overwritten. PostgreSQL no longer performs a redundant pre-read. Timeout remains system-scoped and uses strict `created_at < cutoff`. PostgreSQL history gains an ID descending tie-breaker matching Turso.
+- PI-01 correction: Turso writes `sent`, `delivered`, `succeeded`, `failed`, and `timed_out`. Its adapter maps historical `pending`/`completed`/`timeout` on reads and filters; pending remains eligible for responses/timeouts, historical terminal rows remain terminal. No data migration is needed. Previously unrecognized PostgreSQL stored statuses are now excluded from response transitions rather than treated as active; no supported status is affected.
+- Response consumers and timeout scheduling now invoke core directly. User dispatch/list authorization, validation, `DeviceBus`, shared rule-action dispatch, and OTA integration remain pending. In particular, rule-action command retries currently call non-idempotent creation with a stable delivery ID; resolve that in shared dispatch without adding automatic retries to ordinary user sends.
+- Source inspection found no tests directly using the changed command repository/worker interface. No tests were removed, added, repaired, compiled, or run for this slice. R07 remains in progress.
+- Validation passed: independent core/adapters, all four production host profiles, formatting, whitespace, and architecture checks (35 direct accesses across 12 files, 9 tracked exceptions). No tests or migrations ran. Changes remain uncommitted; continue with core command dispatch and the host DeviceBus.
+
+
+### R07 core dispatch and host DeviceBus
+
+- `CommandApplication` now owns user authorization, nonempty command/object input checks, assigned-contract decoding, command/schema/route validation, dispatch creation, publication sequencing, and command history access. Single command, restart, and bulk restart routes call the application; the old command service was removed. Empty-command HTTP error precedence remains before authorization; contract failures retain 422 semantics.
+- Core's `DeviceBus` receives domain command values plus an optional contract address. The host `ZenohDeviceBus` owns default topic construction, string-valued protobuf parameter conversion, encoding, publication, and transport metrics/logging. Core asks the bus which contract protocols it supports; it does not import Zenoh or generated wire types.
+- ADR-003 is connected end to end: persistence returns a recorded `sent` attempt before publication, storage failure prevents publication, and synchronous bus failure maps through the existing HTTP 502 `device_communication_error` response without deleting/updating the row or exposing raw transport errors. Ordinary user sends have no automatic republish path.
+- Rule actions invoke the same validation and bus through a separate durable-ID operation. Exact matching existing rows can be reused, including after a competing insertion; tenant/device/command/parameter mismatch cannot publish. Delivered/terminal records skip publication, while `sent` records may republish under the outbox's existing retry policy. Historical rule-action string-valued parameter storage is preserved. Concurrent deliveries may still publish twice: external delivery remains at least once. A retry of a sent action validates against the currently assigned contract, so changed/incompatible contracts can prevent retry publication.
+- Added tenant-scoped adapter command lookup for durable retry identity checks. No database migration or HTTP response shape changed. The removed service had no inline tests; source searches found no additional invalid command fixtures. No tests were added, repaired, compiled, or run.
+- R07 remains open for shared OTA/shadow mutation and configuration versions/acknowledgements. The full R01–R15 objective is not complete.
+- Validation passed: independent core/adapters, all four production host profiles, combined-adapter CLI compilation, formatting, whitespace, and architecture checks. Direct handler-to-repository access fell from 35 across 12 files to 28 across 11 files; 9 tracked exceptions remain. No tests or migrations ran. All changes remain uncommitted.
+
+
+### R07 shared OTA/shadow mutation
+
+- OTA trigger and terminal cleanup now use the same core desired-patch/version/delta policy as ordinary shadow changes. Core `clear_ota_for_deployment` removes the reserved command only when its deployment ID matches, so late terminal reports cannot clear a newer command.
+- PostgreSQL shadow row locking/storage and Turso shadow decoding/storage are shared adapter transaction participants. Both the ordinary shadow repositories and legacy OTA transactions call those helpers using their existing connections; no new pool, independent commit, or separately committed OTA shadow mutation was introduced. PostgreSQL retains shadow-before-deployment locking, and Turso retains the enclosing writer transaction.
+- Removed duplicate host shadow SQL and the unused PostgreSQL `shadow_repo` module. The firmware persistence modules now contain no direct shadow queries or separate merge/delta implementation. Their wider OTA orchestration/firmware SQL still moves in R09.
+- Turso terminal cleanup now checks the supported i32 shadow version before incrementing, matching core and PostgreSQL behavior; overflow or out-of-range persisted versions fail and roll back the whole OTA status transaction instead of writing an unusable version. Core object normalization now also persists normalized reported state through the shared store when existing state is non-object. No schema/wire change was introduced.
+- No tests became invalid by source inspection, and none were run, compiled, added, or repaired. R07 remains in progress for configuration versions/acknowledgements; the remaining packages remain active.
+- PostgreSQL shared storage returns the persisted row, preserving database timestamp precision for ordinary shadow mutation responses. The full production feature matrix and architecture checks passed before this precision review; the affected adapter/combined-host builds also passed after the precision adjustment. Architecture remains 28 direct accesses across 11 files and 9 tracked exceptions.
+
+
+### R08 device logs (independent work while R07 scope is clarified)
+
+- R07 configuration versions/acknowledgements require a scope decision: no such flow exists in the current configuration API/protocol, while the plan also excludes adding a new API. Asked whether to add that behavior or constrain the refactor to existing behavior. No configuration feature or protocol change has been made pending that answer. R08 log work is independent of that decision.
+- Moved log records, query/ingress/retention ports, user read authorization, query limit/level normalization, severity fallback, and checked retention arithmetic into core. The host handles timestamp parsing, protobuf/topic/identity checks, scheduling/backoff, and logs outcomes.
+- Both adapter crates now own direct device-log insertion, listing, and global retention SQL. PostgreSQL inserts from a tenant/device-qualified, key-share-locked device selection in one statement, eliminating the prior separate existence-check/insert window. Turso keeps its serialized writer insert-if-device-exists statement. Core supplies ingress observation time rather than selecting a separate database/adapter clock.
+- Resolved log PI-03/PI-04: both engines use inclusive `since` and descending creation time/ID ordering. Retention remains global with strict `created_at < cutoff`. Duplicate delivery still creates duplicate logs because the wire protocol has no event ID; this is not an exactly-once log feature.
+- HTTP, device-message handling, and retention scheduling invoke the core operations. Removed host log service/adapter modules and unused PostgreSQL `log_repo` helpers. Presence/heartbeat log inserts remain part of their atomic transactions and will move with those operations; this slice does not split their write sets.
+- Source inspection found no affected repository mocks or direct service tests to remove. Tests were not added, repaired, compiled, or run. R08 remains in progress; R07 remains open pending the configuration decision.
+- Validation passed: independent core/adapters, all four production host profiles, formatting, whitespace, and architecture checks. Direct handler-to-repository access fell from 28 across 11 files to 27 across 10 files; 9 tracked exceptions remain. No tests or migrations ran. Changes remain uncommitted.

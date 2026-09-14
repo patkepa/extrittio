@@ -71,3 +71,19 @@ pub use rule_runtime::evaluate_rules_in_transaction;
 #[cfg(feature = "migration-bridge")]
 #[doc(hidden)]
 pub use outbox::enqueue_actions_in_transaction;
+
+mod shadows;
+pub use shadows::PostgresShadowRepository;
+
+mod configuration;
+pub use configuration::PostgresConfigurationRepository;
+
+mod commands;
+pub use commands::PostgresCommandRepository;
+
+#[cfg(feature = "migration-bridge")]
+#[doc(hidden)]
+pub use shadows::{lock_in_transaction, store_in_transaction};
+
+mod logs;
+pub use logs::PostgresLogRepository;

@@ -81,3 +81,19 @@ pub use rule_runtime::evaluate_rules_in_transaction;
 #[cfg(feature = "migration-bridge")]
 #[doc(hidden)]
 pub use outbox::enqueue_actions_in_transaction;
+
+mod shadows;
+pub use shadows::TursoShadowRepository;
+
+mod configuration;
+pub use configuration::TursoConfigurationRepository;
+
+mod commands;
+pub use commands::TursoCommandRepository;
+
+#[cfg(feature = "migration-bridge")]
+#[doc(hidden)]
+pub use shadows::{get_from as read_shadow_in_transaction, store as store_shadow_in_transaction};
+
+mod logs;
+pub use logs::TursoLogRepository;

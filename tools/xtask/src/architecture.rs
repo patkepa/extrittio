@@ -173,24 +173,17 @@ const APP_STATE_REPOSITORY_ACCESS_ALLOWANCES: &[AppStateRepositoryAccessAllowanc
         0,
     ),
     AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/audit/audit.rs", 1, 0),
-    AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/commands/commands.rs", 3, 0),
-    AppStateRepositoryAccessAllowance::new(
-        "crates/backend/src/domains/configuration/configs.rs",
-        2,
-        0,
-    ),
     AppStateRepositoryAccessAllowance::new(
         "crates/backend/src/domains/dashboard/dashboard.rs",
         1,
         0,
     ),
-    AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/devices/devices.rs", 8, 0),
+    AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/devices/devices.rs", 4, 0),
     AppStateRepositoryAccessAllowance::new(
         "crates/backend/src/domains/firmware/firmware_updates.rs",
         10,
         0,
     ),
-    AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/logs/logs.rs", 1, 0),
     AppStateRepositoryAccessAllowance::new(
         "crates/backend/src/domains/operations/server_metrics_api.rs",
         2,
@@ -201,7 +194,6 @@ const APP_STATE_REPOSITORY_ACCESS_ALLOWANCES: &[AppStateRepositoryAccessAllowanc
         1,
         0,
     ),
-    AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/shadows/shadows.rs", 4, 0),
     AppStateRepositoryAccessAllowance::new(
         "crates/backend/src/domains/telemetry/telemetry.rs",
         4,

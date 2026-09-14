@@ -2,7 +2,6 @@ use prost::Message;
 use tracing::{info, warn};
 
 use crate::persistence::RepositorySet;
-use crate::services::command_service;
 use crate::tenancy::DeviceIdentity;
 
 use extrittio_common::extrittio::DeviceCommandResponse;
@@ -37,12 +36,16 @@ pub async fn handle_command_response(
         Some(response.payload.as_str())
     };
 
-    match command_service::handle_response_with_repository(
-        persistence.commands.as_ref(),
-        identity,
+    match extrittio_backend_core::CommandWorkerApplication::new(
+        persistence.commands.clone(),
+        std::sync::Arc::new(crate::auth::SystemClock),
+    )
+    .handle_response(
+        identity.tenant_id(),
+        identity.device_id(),
         &response.correlation_id,
         &response.status,
-        response_payload,
+        response_payload.map(ToOwned::to_owned),
     )
     .await
     {
