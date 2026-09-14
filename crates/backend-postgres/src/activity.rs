@@ -56,9 +56,9 @@ WITH activity AS (
         audit.action AS event_type,
         audit.resource_type AS category,
         concat(
-            COALESCE(NULLIF(audit.metadata->>'method', ''), upper(split_part(audit.action, '.', 2))),
+            COALESCE(NULLIF(CASE WHEN jsonb_typeof(audit.metadata->'method') = 'string' THEN audit.metadata->>'method' END, ''), upper(split_part(audit.action, '.', 2))),
             ' ',
-            COALESCE(NULLIF(audit.metadata->>'path', ''), audit.resource_type)
+            COALESCE(NULLIF(CASE WHEN jsonb_typeof(audit.metadata->'path') = 'string' THEN audit.metadata->>'path' END, ''), audit.resource_type)
         ) AS message,
         audit.actor_type,
         audit.actor_id,
@@ -164,12 +164,12 @@ WITH activity AS (
       AND ($7 IS NULL OR occurred_at <= $7)
       AND (
           $8 IS NULL
-          OR message ILIKE $8
-          OR event_type ILIKE $8
-          OR category ILIKE $8
-          OR COALESCE(actor_id, '') ILIKE $8
-          OR COALESCE(resource_id, '') ILIKE $8
-          OR COALESCE(request_id, '') ILIKE $8
+          OR translate(message, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz') COLLATE "C" LIKE $8 ESCAPE ''
+          OR translate(event_type, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz') COLLATE "C" LIKE $8 ESCAPE ''
+          OR translate(category, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz') COLLATE "C" LIKE $8 ESCAPE ''
+          OR translate(COALESCE(actor_id, ''), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz') COLLATE "C" LIKE $8 ESCAPE ''
+          OR translate(COALESCE(resource_id, ''), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz') COLLATE "C" LIKE $8 ESCAPE ''
+          OR translate(COALESCE(request_id, ''), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz') COLLATE "C" LIKE $8 ESCAPE ''
       )
 )
 SELECT
@@ -232,63 +232,83 @@ impl ActivityRepository for PostgresActivityRepository {
         query: ActivityQuery,
     ) -> Result<ActivityEventPage, PersistenceError> {
         let tenant_id = tenant.as_str().to_string();
-        let search = query.search.map(|value| format!("%{value}%"));
+        let search = query
+            .search
+            .map(|value| format!("%{}%", value.to_ascii_lowercase()));
         self.executor
             .run(move |connection| {
-                let rows = diesel::sql_query(ACTIVITY_QUERY)
-                    .bind::<Text, _>(tenant_id.clone())
-                    .bind::<Nullable<Text>, _>(query.source.clone())
-                    .bind::<Nullable<Text>, _>(query.severity.clone())
-                    .bind::<Nullable<Text>, _>(query.category.clone())
-                    .bind::<Nullable<Text>, _>(query.device_id.clone())
-                    .bind::<Nullable<Timestamptz>, _>(query.since)
-                    .bind::<Nullable<Timestamptz>, _>(query.until)
-                    .bind::<Nullable<Text>, _>(search.clone())
-                    .bind::<BigInt, _>(query.limit)
-                    .bind::<BigInt, _>(query.offset)
-                    .load::<ActivityRow>(connection)
-                    .map_err(map_diesel_error)?;
-                let total = if let Some(row) = rows.first() {
-                    row.total_count
-                } else if query.offset > 0 {
-                    diesel::sql_query(ACTIVITY_QUERY)
-                        .bind::<Text, _>(tenant_id)
-                        .bind::<Nullable<Text>, _>(query.source)
-                        .bind::<Nullable<Text>, _>(query.severity)
-                        .bind::<Nullable<Text>, _>(query.category)
-                        .bind::<Nullable<Text>, _>(query.device_id)
-                        .bind::<Nullable<Timestamptz>, _>(query.since)
-                        .bind::<Nullable<Timestamptz>, _>(query.until)
-                        .bind::<Nullable<Text>, _>(search)
-                        .bind::<BigInt, _>(1_i64)
-                        .bind::<BigInt, _>(0_i64)
-                        .load::<ActivityRow>(connection)
-                        .map_err(map_diesel_error)?
-                        .first()
-                        .map_or(0, |row| row.total_count)
-                } else {
-                    0
-                };
-                let data = rows
-                    .into_iter()
-                    .map(|row| ActivityEventRecord {
-                        id: row.id,
-                        source: row.source,
-                        severity: row.severity,
-                        event_type: row.event_type,
-                        category: row.category,
-                        message: row.message,
-                        actor_type: row.actor_type,
-                        actor_id: row.actor_id,
-                        resource_type: row.resource_type,
-                        resource_id: row.resource_id,
-                        request_id: row.request_id,
-                        metadata: row.metadata,
-                        occurred_at: row.occurred_at,
+                connection
+                    .build_transaction()
+                    .read_only()
+                    .repeatable_read()
+                    .run::<_, ActivityReadError, _>(|connection| {
+                        let rows = diesel::sql_query(ACTIVITY_QUERY)
+                            .bind::<Text, _>(tenant_id.clone())
+                            .bind::<Nullable<Text>, _>(query.source.clone())
+                            .bind::<Nullable<Text>, _>(query.severity.clone())
+                            .bind::<Nullable<Text>, _>(query.category.clone())
+                            .bind::<Nullable<Text>, _>(query.device_id.clone())
+                            .bind::<Nullable<Timestamptz>, _>(query.since)
+                            .bind::<Nullable<Timestamptz>, _>(query.until)
+                            .bind::<Nullable<Text>, _>(search.clone())
+                            .bind::<BigInt, _>(query.limit)
+                            .bind::<BigInt, _>(query.offset)
+                            .load::<ActivityRow>(connection)
+                            .map_err(map_diesel_error)?;
+                        let total = if let Some(row) = rows.first() {
+                            row.total_count
+                        } else if query.offset > 0 {
+                            diesel::sql_query(ACTIVITY_QUERY)
+                                .bind::<Text, _>(tenant_id)
+                                .bind::<Nullable<Text>, _>(query.source)
+                                .bind::<Nullable<Text>, _>(query.severity)
+                                .bind::<Nullable<Text>, _>(query.category)
+                                .bind::<Nullable<Text>, _>(query.device_id)
+                                .bind::<Nullable<Timestamptz>, _>(query.since)
+                                .bind::<Nullable<Timestamptz>, _>(query.until)
+                                .bind::<Nullable<Text>, _>(search)
+                                .bind::<BigInt, _>(1_i64)
+                                .bind::<BigInt, _>(0_i64)
+                                .load::<ActivityRow>(connection)
+                                .map_err(map_diesel_error)?
+                                .first()
+                                .map_or(0, |row| row.total_count)
+                        } else {
+                            0
+                        };
+                        let data = rows
+                            .into_iter()
+                            .map(|row| ActivityEventRecord {
+                                id: row.id,
+                                source: row.source,
+                                severity: row.severity,
+                                event_type: row.event_type,
+                                category: row.category,
+                                message: row.message,
+                                actor_type: row.actor_type,
+                                actor_id: row.actor_id,
+                                resource_type: row.resource_type,
+                                resource_id: row.resource_id,
+                                request_id: row.request_id,
+                                metadata: row.metadata,
+                                occurred_at: row.occurred_at,
+                            })
+                            .collect();
+                        Ok(ActivityEventPage { data, total })
                     })
-                    .collect();
-                Ok(ActivityEventPage { data, total })
+                    .map_err(|error| match error {
+                        ActivityReadError::Diesel(error) => map_diesel_error(error),
+                        ActivityReadError::Persistence(error) => error,
+                    })
             })
             .await
     }
+}
+
+#[derive(Debug, thiserror::Error)]
+enum ActivityReadError {
+    #[error(transparent)]
+    Diesel(#[from] diesel::result::Error),
+    #[error(transparent)]
+    Persistence(#[from] PersistenceError),
 }

@@ -32,33 +32,6 @@ pub use roles::TursoRoleRepository;
 pub use users::TursoUserRepository;
 pub use zones::TursoZoneRepository;
 
-/// Temporary compatibility exports for host repositories that still compile
-/// outside this adapter. New code must use adapter-owned repositories instead.
-#[cfg(feature = "migration-bridge")]
-#[doc(hidden)]
-pub mod migration_bridge {
-    use extrittio_backend_core::PersistenceError;
-    use tokio::sync::MutexGuard;
-    use turso::Connection;
-
-    pub use crate::TursoConnectionHandles;
-    pub use crate::row::{datetime, i32, legacy_error};
-
-    /// Open a legacy-host connection from the adapter-owned engine.
-    pub fn connect(handles: &TursoConnectionHandles) -> Result<Connection, PersistenceError> {
-        handles
-            .connect_raw()
-            .map_err(|error| PersistenceError::Unavailable(error.to_string()))
-    }
-
-    /// Borrow the adapter-owned serialized writer for an unmigrated host
-    /// repository. The guard cannot outlive the handle that owns the process
-    /// lock.
-    pub async fn lock_writer(handles: &TursoConnectionHandles) -> MutexGuard<'_, Connection> {
-        handles.lock_writer().await
-    }
-}
-
 mod device_blueprints;
 pub use device_blueprints::TursoDeviceBlueprintRepository;
 
@@ -75,13 +48,6 @@ mod alerts;
 pub use alerts::TursoAlertRepository;
 
 mod rule_runtime;
-#[cfg(feature = "migration-bridge")]
-#[doc(hidden)]
-pub use rule_runtime::evaluate_rules_in_transaction;
-
-#[cfg(feature = "migration-bridge")]
-#[doc(hidden)]
-pub use outbox::enqueue_actions_in_transaction;
 
 mod shadows;
 pub use shadows::TursoShadowRepository;

@@ -49,8 +49,10 @@ WITH activity AS (
         CASE WHEN audit.outcome = 'success' THEN 'info' ELSE 'error' END AS severity,
         audit.action AS event_type,
         audit.resource_type AS category,
-        COALESCE(NULLIF(json_extract(audit.metadata, '$.method'), ''), upper(substr(audit.action, instr(audit.action, '.') + 1)))
-            || ' ' || COALESCE(NULLIF(json_extract(audit.metadata, '$.path'), ''), audit.resource_type) AS message,
+        COALESCE(NULLIF(CASE WHEN json_type(audit.metadata, '$.method') = 'text' THEN json_extract(audit.metadata, '$.method') END, ''), upper(CASE WHEN instr(audit.action, '.') = 0 THEN ''
+                ELSE substr(substr(audit.action, instr(audit.action, '.') + 1), 1,
+                    instr(substr(audit.action, instr(audit.action, '.') + 1) || '.', '.') - 1) END))
+            || ' ' || COALESCE(NULLIF(CASE WHEN json_type(audit.metadata, '$.path') = 'text' THEN json_extract(audit.metadata, '$.path') END, ''), audit.resource_type) AS message,
         audit.actor_type AS actor_type,
         audit.actor_id AS actor_id,
         audit.resource_type AS resource_type,
@@ -110,9 +112,9 @@ WITH activity AS (
         NULL AS request_id,
         json_object(
             'command', command.command,
-            'params', command.params,
+            'params', json(command.params),
             'status', command.status,
-            'response_payload', command.response_payload
+            'response_payload', json(command.response_payload)
         ) AS metadata,
         command.updated_at AS occurred_at
     FROM command_history command
@@ -190,10 +192,14 @@ impl ActivityRepository for TursoActivityRepository {
         tenant: &TenantId,
         query: ActivityQuery,
     ) -> Result<ActivityEventPage, PersistenceError> {
-        let connection = self
+        let mut raw_connection = self
             .handles
             .connect_raw()
             .map_err(|error| PersistenceError::Unavailable(error.to_string()))?;
+        let connection = raw_connection
+            .transaction()
+            .await
+            .map_err(row::legacy_error)?;
         let search = query
             .search
             .map(|value| format!("%{}%", value.to_ascii_lowercase()));
@@ -238,6 +244,7 @@ impl ActivityRepository for TursoActivityRepository {
                 occurred_at: row::datetime(record.get(12).map_err(row::legacy_error)?)?.naive_utc(),
             });
         }
+        drop(rows);
         if data.is_empty() && query.offset > 0 {
             let mut first_page = connection
                 .query(
@@ -261,6 +268,7 @@ impl ActivityRepository for TursoActivityRepository {
                 total = record.get(13).map_err(row::legacy_error)?;
             }
         }
+        connection.commit().await.map_err(row::legacy_error)?;
         Ok(ActivityEventPage { data, total })
     }
 }

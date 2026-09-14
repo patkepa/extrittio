@@ -47,3 +47,16 @@ impl PostgresExecutor {
         )
     }
 }
+
+/// Construct the adapter's shared pool with the established host defaults.
+pub fn open_pool(
+    database_url: &str,
+    pool_size: u32,
+) -> Result<PostgresPool, diesel::r2d2::PoolError> {
+    let manager = ConnectionManager::<PgConnection>::new(database_url);
+    Pool::builder()
+        .max_size(pool_size)
+        .connection_timeout(std::time::Duration::from_secs(5))
+        .idle_timeout(Some(std::time::Duration::from_secs(300)))
+        .build(manager)
+}
