@@ -2,16 +2,35 @@ use async_trait::async_trait;
 use diesel::prelude::*;
 use diesel::sql_types::{BigInt, Bool, Float8, Jsonb, Nullable, Text, Timestamptz};
 
-use crate::domains::events::repository::DeviceEventRepository;
-use crate::domains::events::types::{
+use extrittio_backend_core::events::DeviceEventRepository;
+use extrittio_backend_core::events::{
     DeviceMetricQuery, DeviceMetricRecord, MetricValue, RecordDeviceEvent, RecordDeviceEventOutcome,
 };
-use crate::error::AppError;
-use crate::persistence::PersistenceError;
-use crate::tenancy::TenantId;
 
-use super::PostgresAdapter;
-use super::outbox::enqueue_pending_actions;
+use extrittio_backend_core::PersistenceError;
+use extrittio_backend_core::TenantId;
+
+use crate::{PostgresExecutor, PostgresPool};
+#[derive(Clone)]
+pub struct PostgresEventRepository {
+    executor: PostgresExecutor,
+}
+impl PostgresEventRepository {
+    pub fn from_pool(pool: PostgresPool) -> Self {
+        Self {
+            executor: PostgresExecutor::new(pool),
+        }
+    }
+}
+#[derive(Debug, thiserror::Error)]
+enum EventTransactionError {
+    #[error(transparent)]
+    Diesel(#[from] diesel::result::Error),
+    #[error(transparent)]
+    Persistence(#[from] PersistenceError),
+}
+
+use crate::outbox::enqueue_actions_in_transaction as enqueue_pending_actions;
 
 #[derive(diesel::QueryableByName)]
 struct ExistsRow {
@@ -71,7 +90,7 @@ fn decode_metric(row: MetricRow) -> Result<DeviceMetricRecord, PersistenceError>
 }
 
 #[async_trait]
-impl DeviceEventRepository for PostgresAdapter {
+impl DeviceEventRepository for PostgresEventRepository {
     async fn record(
         &self,
         tenant: &TenantId,
@@ -81,8 +100,8 @@ impl DeviceEventRepository for PostgresAdapter {
         self.executor
             .run(move |connection| {
                 connection
-                    .transaction::<_, AppError, _>(|connection| {
-                        use crate::db::schema::devices;
+                    .transaction::<_, EventTransactionError, _>(|connection| {
+                        use crate::schema::devices;
                         devices::table
                             .filter(devices::tenant_id.eq(&tenant_id))
                             .filter(devices::id.eq(&event.device_id))
@@ -170,7 +189,7 @@ impl DeviceEventRepository for PostgresAdapter {
                             .bind::<Timestamptz, _>(event.occurred_at)
                             .execute(connection)?;
                         }
-                        let actions = crate::database::postgres_ingress_rules(
+                        let actions = crate::rule_runtime::evaluate_rules_in_transaction(
                             connection,
                             &tenant_id,
                             &event.device_id,
@@ -222,7 +241,7 @@ impl DeviceEventRepository for PostgresAdapter {
                        AND ($4::text IS NULL OR field_path = $4)
                        AND ($5::timestamptz IS NULL OR occurred_at >= $5)
                        AND ($6::timestamptz IS NULL OR occurred_at < $6)
-                     ORDER BY occurred_at DESC, event_id DESC, stream_key, field_path
+                     ORDER BY occurred_at DESC, event_id COLLATE \"C\" DESC, stream_key COLLATE \"C\", field_path COLLATE \"C\"
                      LIMIT $7",
                 )
                 .bind::<Text, _>(&tenant_id)

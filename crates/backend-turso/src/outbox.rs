@@ -178,7 +178,6 @@ impl OutboxRepository for TursoOutboxRepository {
 }
 
 /// Participate in the caller's ingress transaction; never commits independently.
-#[cfg(feature = "migration-bridge")]
 pub async fn enqueue_actions_in_transaction(
     connection: &Connection,
     actions: &[extrittio_backend_core::rule_engine::types::PendingAction],

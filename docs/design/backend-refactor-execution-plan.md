@@ -4,7 +4,7 @@
 - **Created:** 2026-09-14.
 - **Purpose:** Executable work packages for completing the remaining backend ownership refactor.
 - **Current execution preference:** Skip running, compiling, adding, and repairing tests for now. Remove tests made invalid by the refactor; keep unaffected tests. Continue production compilation, formatting, and architecture checks.
-- **Next package:** R07 — commands, shadows, and configuration. R01–R06 are implemented; behavioral verification remains deferred.
+- **Next package:** R08 — ingress and time series. R01–R07 are implemented; behavioral verification remains deferred.
 
 ## 1. Scope and authority
 
@@ -223,8 +223,8 @@ message consumers, timeout worker, and OTA callers sharing these operations.
 
 **Implementation:**
 
-- Move shadow merge/delta policy, configuration versions/acknowledgements, command validation, and command transition rules into core.
-- Define atomic shadow mutation and command/configuration transitions with expected-version or equivalent compare-and-set operations. Preserve PostgreSQL shadow locking added by the recent OTA fixes.
+- Move shadow merge/delta policy, existing configuration reads/atomic JSON merges, command validation, and command transition rules into core.
+- Preserve atomic shadow/configuration mutations through their existing transaction locks, and use conditional command-state updates. Preserve PostgreSQL shadow locking added by the recent OTA fixes; do not introduce a configuration version or acknowledgement protocol.
 - Implement ADR-003: authorize and validate, persist a `sent` dispatch attempt, publish through host `DeviceBus`, retain the row and return the existing 502 mapping on synchronous publish failure. Do not add automatic republishing.
 - Resolve PI-01 using the approved status vocabulary: `sent`, `delivered`, `succeeded`, `failed`, `timed_out`. Keep historical Turso statuses readable through adapter mapping or an additive migration.
 - Keep generated wire messages, topic construction, subscriptions, and Zenoh transport errors in the host. Pass domain values through the bus port.
@@ -232,7 +232,7 @@ message consumers, timeout worker, and OTA callers sharing these operations.
 
 **Implemented exit:** handlers and consumers invoke application operations; database failure prevents publication; state transitions and atomic mutation semantics are adapter-independent where ADR-003 requires convergence.
 
-**Deferred acceptance:** concurrent desired updates, stale acknowledgements, terminal-state transitions, timeout eligibility, legacy states, retained dispatch row on 502, and no publication on validation/database failure.
+**Deferred acceptance:** concurrent desired/configuration updates, stale OTA reports, terminal-state transitions, timeout eligibility, legacy states, retained dispatch row on 502, and no publication on validation/database failure.
 
 ### R08 — Device ingress and time-series behavior
 
@@ -438,8 +438,8 @@ with a generic “done.” List individual PRs if a package is split.
 | R04 | Implemented | Deferred | Core blueprints/devices, atomic provisioning, both adapters; ADR-013 |
 | R05 | Implemented | Deferred | Core rules/evaluation, consistent reads, immutable host snapshots, polling/readiness/metrics; ADR-005 |
 | R06 | Implemented | Deferred | Core policy/runtime, adapter-owned outbox and durable transitions; ADR-014 |
-| R07 | In progress | Deferred | Shadow/configuration, commands, and shared OTA shadow mutation connected; config version/ack next |
-| R08 | In progress | Deferred | Device-log slice; remaining presence/events/telemetry transactions next |
+| R07 | Implemented | Deferred | Existing shadow/configuration behavior, commands/DeviceBus, shared OTA shadow mutation; no new config protocol |
+| R08 | In progress | Deferred | Logs, events, and presence extracted; raw telemetry and final ingress audit next |
 | R09 | CI ingest only | Deferred | Remaining metadata/blob/OTA work |
 | R10 | Not started | Deferred | Projections, audit, metrics |
 | R11 | Partial through completed slices | Deferred | Continue thinning each migrated entry point |
@@ -626,7 +626,7 @@ This closes the implementation items left open in the preceding R05 notes.
 - Removed the four obsolete shadow service tests (`passes_tenant_identity_to_reads_reports_and_resets`, `reported_update_requires_manage_permission_before_persistence`, `every_user_shadow_mutation_requires_manage_permission`, `shadow_management_cannot_inject_or_remove_ota_commands`), which called deleted service/authorization functions. Pure shadow mutation tests remain unchanged and unexecuted. The remaining host shadow service contains delta transport and OTA report translation pending shared OTA migration.
 - Core configuration now owns records, outcomes, shallow merge policy, read/manage authorization, missing-device errors, and the clock. Both adapters own configuration SQL and retain device-row/write-transaction serialization for atomic read/merge/upsert. HTTP uses the application façade; the old host service and adapter modules were removed.
 - Removed the obsolete configuration service tests `passes_tenant_identity_to_get_and_atomic_merge` and `authorization_happens_before_persistence`, whose entry points were deleted. Pure configuration merge tests moved unchanged to core. No tests were run, compiled, added, or repaired.
-- Source inspection found no configuration version or acknowledgement message in the current common protocol or configuration records/port. The plan explicitly requires those semantics, so their design/implementation remains open; this extraction does not claim to satisfy that requirement. Shadow OTA mutation unification and command validation/state/dispatch also remain open. R07 is still in progress.
+- Source inspection found no configuration version or acknowledgement message in the current common protocol or configuration records/port. The user subsequently confirmed that configuration must preserve existing behavior; no versioning or acknowledgement work is required. At this stage, shadow OTA mutation unification and command validation/state/dispatch remained open; see the R07 completion entry below.
 - Validation passed: independent core/adapters, all four production host profiles, combined-adapter CLI, formatting, whitespace, and architecture checks. Direct handler-to-repository access decreased from 41 across 14 files to 35 across 12 files; 9 tracked exceptions remain. No tests or migrations ran. Changes remain uncommitted.
 
 
@@ -648,7 +648,7 @@ This closes the implementation items left open in the preceding R05 notes.
 - ADR-003 is connected end to end: persistence returns a recorded `sent` attempt before publication, storage failure prevents publication, and synchronous bus failure maps through the existing HTTP 502 `device_communication_error` response without deleting/updating the row or exposing raw transport errors. Ordinary user sends have no automatic republish path.
 - Rule actions invoke the same validation and bus through a separate durable-ID operation. Exact matching existing rows can be reused, including after a competing insertion; tenant/device/command/parameter mismatch cannot publish. Delivered/terminal records skip publication, while `sent` records may republish under the outbox's existing retry policy. Historical rule-action string-valued parameter storage is preserved. Concurrent deliveries may still publish twice: external delivery remains at least once. A retry of a sent action validates against the currently assigned contract, so changed/incompatible contracts can prevent retry publication.
 - Added tenant-scoped adapter command lookup for durable retry identity checks. No database migration or HTTP response shape changed. The removed service had no inline tests; source searches found no additional invalid command fixtures. No tests were added, repaired, compiled, or run.
-- R07 remains open for shared OTA/shadow mutation and configuration versions/acknowledgements. The full R01–R15 objective is not complete.
+- At this stage, R07 remained open for shared OTA/shadow mutation. Configuration versions/acknowledgements are excluded by the subsequent user scope correction. The full R01–R15 objective is not complete.
 - Validation passed: independent core/adapters, all four production host profiles, combined-adapter CLI compilation, formatting, whitespace, and architecture checks. Direct handler-to-repository access fell from 35 across 12 files to 28 across 11 files; 9 tracked exceptions remain. No tests or migrations ran. All changes remain uncommitted.
 
 
@@ -658,16 +658,98 @@ This closes the implementation items left open in the preceding R05 notes.
 - PostgreSQL shadow row locking/storage and Turso shadow decoding/storage are shared adapter transaction participants. Both the ordinary shadow repositories and legacy OTA transactions call those helpers using their existing connections; no new pool, independent commit, or separately committed OTA shadow mutation was introduced. PostgreSQL retains shadow-before-deployment locking, and Turso retains the enclosing writer transaction.
 - Removed duplicate host shadow SQL and the unused PostgreSQL `shadow_repo` module. The firmware persistence modules now contain no direct shadow queries or separate merge/delta implementation. Their wider OTA orchestration/firmware SQL still moves in R09.
 - Turso terminal cleanup now checks the supported i32 shadow version before incrementing, matching core and PostgreSQL behavior; overflow or out-of-range persisted versions fail and roll back the whole OTA status transaction instead of writing an unusable version. Core object normalization now also persists normalized reported state through the shared store when existing state is non-object. No schema/wire change was introduced.
-- No tests became invalid by source inspection, and none were run, compiled, added, or repaired. R07 remains in progress for configuration versions/acknowledgements; the remaining packages remain active.
+- No tests became invalid by source inspection, and none were run, compiled, added, or repaired. The subsequent user scope correction excludes configuration versions/acknowledgements and closes R07; the remaining packages remain active.
 - PostgreSQL shared storage returns the persisted row, preserving database timestamp precision for ordinary shadow mutation responses. The full production feature matrix and architecture checks passed before this precision review; the affected adapter/combined-host builds also passed after the precision adjustment. Architecture remains 28 direct accesses across 11 files and 9 tracked exceptions.
 
 
 ### R08 device logs (independent work while R07 scope is clarified)
 
-- R07 configuration versions/acknowledgements require a scope decision: no such flow exists in the current configuration API/protocol, while the plan also excludes adding a new API. Asked whether to add that behavior or constrain the refactor to existing behavior. No configuration feature or protocol change has been made pending that answer. R08 log work is independent of that decision.
+- At this stage, configuration scope was awaiting clarification because no versioning/acknowledgement flow exists in the current API/protocol. The user subsequently chose to preserve existing behavior, as recorded below. No new configuration feature or protocol change is required.
 - Moved log records, query/ingress/retention ports, user read authorization, query limit/level normalization, severity fallback, and checked retention arithmetic into core. The host handles timestamp parsing, protobuf/topic/identity checks, scheduling/backoff, and logs outcomes.
 - Both adapter crates now own direct device-log insertion, listing, and global retention SQL. PostgreSQL inserts from a tenant/device-qualified, key-share-locked device selection in one statement, eliminating the prior separate existence-check/insert window. Turso keeps its serialized writer insert-if-device-exists statement. Core supplies ingress observation time rather than selecting a separate database/adapter clock.
 - Resolved log PI-03/PI-04: both engines use inclusive `since` and descending creation time/ID ordering. Retention remains global with strict `created_at < cutoff`. Duplicate delivery still creates duplicate logs because the wire protocol has no event ID; this is not an exactly-once log feature.
 - HTTP, device-message handling, and retention scheduling invoke the core operations. Removed host log service/adapter modules and unused PostgreSQL `log_repo` helpers. Presence/heartbeat log inserts remain part of their atomic transactions and will move with those operations; this slice does not split their write sets.
-- Source inspection found no affected repository mocks or direct service tests to remove. Tests were not added, repaired, compiled, or run. R08 remains in progress; R07 remains open pending the configuration decision.
+- Source inspection found no affected repository mocks or direct service tests to remove. Tests were not added, repaired, compiled, or run. R08 remains in progress; the R07 configuration decision was subsequently resolved below.
 - Validation passed: independent core/adapters, all four production host profiles, formatting, whitespace, and architecture checks. Direct handler-to-repository access fell from 28 across 11 files to 27 across 10 files; 9 tracked exceptions remain. No tests or migrations ran. Changes remain uncommitted.
+
+
+### R07 scope correction approved by the user
+
+- The user chose: “Keep existing behavior; correct the plan.” Configuration scope is existing reads and atomic JSON merges. Do not add configuration versions, device acknowledgements, transport messages, or endpoints. Earlier open-item notes about those features are superseded by this decision.
+- Updated R07 implementation/deferred acceptance and the architecture plan accordingly. Existing device-contract assignment convergence on valid events remains existing behavior and belongs to R08 event ingestion; it is distinct from a new configuration acknowledgement protocol.
+- R07 implementation audit: core owns shadow merge/reset/conditional OTA cleanup, existing configuration policy, command validation/status/dispatch; adapters own their persistence; HTTP/consumers/workers invoke core; DeviceBus owns wire/Zenoh publication; durable rule actions reuse matching command identities; terminal/active outcomes use conditional writes. Shared OTA shadow participants retain their enclosing transaction and PostgreSQL row locking. Old paths are removed, with documented transaction bridges awaiting full firmware migration in R09. Production builds/static checks passed in the recorded slices; behavioral verification remains deferred. R07 is implemented under the clarified scope.
+
+
+### R08 typed-event persistence and metric reads
+
+- Moved typed event/metric records, the event repository port, and both persistence implementations into core/adapter ownership. Event insert, existing contract-assignment convergence, typed metric inserts, rule runtime decisions, and outbox insertion remain in the same enclosing transaction. Duplicate event IDs still exit without repeating those writes.
+- Adapter rule-runtime/outbox transaction participants now compile internally for standalone adapter builds as well as the host migration bridge. Their public bridge exports remain feature-gated; event persistence directly calls its own adapter modules rather than host aliases or helpers.
+- Core `EventApplication` owns typed-metric read authorization, limit normalization, and missing-device outcomes. The HTTP handler retains timestamp parsing and response conversion. Both adapters preserve `[since, before)` timestamps and deterministic occurred-time/event/stream/field ordering.
+- Removed the obsolete host event service and event adapter modules. Event envelope/contract validation and typed extraction remain in the host ingress handler and must move next; R08 is not complete. Raw telemetry and presence transactions are also still pending.
+- No tests became invalid by source inspection. No tests were added, repaired, compiled, or run. No migrations were introduced or applied. The prior R07 configuration scope question is resolved by the user's instruction to preserve existing behavior.
+- Validation passed: independent core/adapters, all four production host profiles, formatting, whitespace, and architecture checks. Direct handler-to-repository access fell from 27 to 26 across 10 files; 9 tracked exceptions remain. No tests or migrations ran. Changes remain uncommitted.
+
+
+### R08 core event validation and extraction
+
+- `EventIngressApplication` now owns envelope version/UUID validation, assigned-contract/hash checks, contract identity and size checks, route/schema checks, payload validation, typed metric extraction, numeric rule metric keys/semantic aliases, observation time, and construction of the atomic event write. Core receives parsed domain values rather than transport bytes or generated protocol types.
+- The host retains JSON envelope decoding, device identity/context lookup, snapshot acquisition, and outcome logging. All contract/schema/metric decisions moved out of the event handler. The remaining context lookup is a narrow legacy ingress dependency to migrate with presence; adapters still reload authoritative device targets inside the transaction before evaluating rules.
+- Existing event semantics are preserved: absent metric paths are skipped, type mismatch rejects the event, only numeric values enter rule metrics, contract events do not run geofence evaluation, duplicate IDs do not repeat writes, and valid events participate in existing contract-assignment convergence. No configuration acknowledgement feature was added.
+- The host now acquires context/snapshot before core validation, so the diagnostic emitted when both snapshot acquisition and input validation would fail may change; both cases still drop the event without writes. Transaction boundaries and wire format are unchanged.
+- No affected inline event tests or mocks were found by source inspection. Tests were not added, repaired, compiled, or run. R08 remains in progress for presence, raw telemetry, and remaining ingress composition.
+- Validation passed: independent core/adapters, all four production host profiles, formatting, whitespace, and architecture checks (26 direct accesses across 10 files, 9 tracked exceptions). No tests or migrations ran. Changes remain uncommitted.
+
+
+### R08 presence and identity ownership
+
+- Moved the tenant-qualified device identity, ingress records, and ingress repository port into core. The identity constructor preserves the established 1–128-byte ASCII alphabet and tenant validation. Its existing two unit tests moved unchanged with the type; tests were not compiled or run. Host imports remain compatibility re-exports of the same concrete type.
+- Both adapters now own identity lookup, heartbeat and offline persistence, including the existing atomic status/log/rule-runtime/outbox write sets. PostgreSQL device row locks, sorted offline lock order, and conditional status checks are preserved; Turso retains its writer transaction and conditional updates. Raw telemetry's remaining outbox helper now delegates directly to the adapter instead of the deleted host device module.
+- Core `DeviceIngressApplication` owns severity-independent presence policy: accepted status/fallback, the three-attempt optimistic heartbeat loop, status-rule evaluation preparation, global offline candidate processing, and checked timeout arithmetic. Existing accepted-status casing and uptime narrowing remain unchanged. Host workers retain cadence/backoff and cancellation.
+- Added the core `RuleSnapshotProvider` port, implemented by the host snapshot store. Core requests snapshots when a transition needs evaluation; it does not own polling or in-memory store lifecycle. Existing per-transition snapshot acquisition is preserved.
+- Event ingestion now acquires device context inside core using the migrated ingress port. Host event handling no longer coordinates device-context and event repositories; the interim `EventRuleContext` transport parameter was removed. The core event clock sample again precedes the context lookup, matching the earlier event sequence.
+- Removed the legacy host ingress service and PostgreSQL/Turso device-ingress modules. No tests became obsolete other than moving existing identity tests with their implementation; none were added, repaired, compiled, or run. No migrations or wire changes were introduced. R08 remains open for raw telemetry and final ownership/contract audit.
+- Validation passed: independent core/adapters, all four production host profiles, combined-adapter CLI, formatting, whitespace, and architecture checks (26 direct accesses across 10 files, 9 tracked exceptions). No tests or migrations ran. All changes remain uncommitted; continue with raw telemetry.
+
+
+### R08 raw telemetry persistence, reads, and maintenance ownership
+
+- Core owns telemetry records/ports and read applications, including authorization, limits, and missing-device outcomes. HTTP timestamp parsing/DTO conversion remains in the host. Latest-location keeps its existing authenticated tenant-scoped behavior, which lacked a separate telemetry permission gate; this extraction does not silently add a new authorization requirement.
+- Both adapter crates now own raw telemetry writes, reads, latest-state/location persistence, hourly rollups, and retention. PostgreSQL partition functions/SQL helpers moved into its adapter. Atomic record/device/rule-runtime/outbox transactions remain intact. Removed the old host telemetry service/adapters/helpers and final ingress outbox wrapper; no host caller remains for the rule-runtime/outbox transaction bridge aliases.
+- Raw/history PI-03/PI-04: PostgreSQL now uses inclusive `since` and exclusive `before`, matching Turso. Raw lists and latest location use descending receive-time/ID tie order. Hourly lists retain `[since, before)` and descending unique bucket order.
+- Core `TelemetryMaintenanceApplication` owns one clock sample, UTC closed-hour calculation, the existing 25-hour lookback, and checked retention arithmetic. Host maintenance retains cadence/backoff and logging. PostgreSQL still commits rollup/partition/row-pruning stages separately, while Turso uses one write transaction; PI-09's final retry/partial-failure audit remains open, especially when retention overlaps the recomputation window.
+- PI-07 remains open: PostgreSQL raw insertion still obtains receive time from the database, while Turso stores the supplied observation time. Raw ingress normalization/evaluation construction is still in the host and must move before R08 closes. No migrations or wire changes were introduced.
+- Source inspection found no tests requiring removal for this slice. Tests were not added, repaired, compiled, or run. Changes remain uncommitted.
+- Validation passed: independent core/adapters, all four production host profiles, combined-adapter CLI, formatting, whitespace, and architecture checks. Direct handler-to-repository access fell from 26 across 10 files to 22 across 9 files; 9 tracked exceptions remain. No tests or migrations ran. Changes remain uncommitted.
+
+### R08 raw telemetry ingress application
+
+- Added core `TelemetryInput` and `TelemetryIngressApplication`. Core now owns metadata normalization, compatibility for location presence (including flagged `(0, 0)`), rule evaluation intent, and the existing three attempts to commit against device targeting changes. The injected clock and snapshot provider replace host policy dependencies.
+- The host telemetry consumer now decodes protobuf, checks topic/device agreement, maps transport values, and reports the core outcome. Persistence still commits raw telemetry, latest state, device projections, rule runtime, and durable actions together in the adapters.
+- Preserved missing-device drops, per-attempt observation times, geofence evaluation, raw payload storage, and existing optional location/motion behavior. Exhausted targeting retries return the existing core busy error and are logged/dropped by the consumer. No transport acknowledgement or new protocol was introduced.
+- Production checks passed for the host with no default features and with combined PostgreSQL/Turso features, plus formatting, whitespace, and architecture checks (22 direct accesses across 9 files; 9 tracked exceptions). Source inspection found no tests referencing the changed handler internals; no tests were run, compiled, added, repaired, or removed.
+- R08 remains in progress for the timestamp contract (PI-07), maintenance partial-failure policy (PI-09), and final ingress ownership audit. R09–R15 remain outstanding.
+
+### R08 timestamp and telemetry maintenance contracts
+
+- PI-07: raw telemetry now receives an explicit core-clock `received_at` at application entry, before device-context lookup, fixed across targeting retries and truncated once to UTC microseconds. Both adapters persist that value. This intentionally replaces PostgreSQL's database-default timestamp and Turso's per-attempt observation timestamp; no historical records are rewritten. Latest/history ordering and hourly buckets use receipt time.
+- `observed_at` remains the server evaluation instant for each attempt and drives device presence and rules. Device occurrence time is distinct: typed events retain their validated envelope `occurred_at`; raw protobuf telemetry retains its existing device `timestamp` in the stored payload, without adding a database column, interpreting its units, rejecting older clients, or changing rules to device-clock ordering. Server receipt time is not a claim about when the device measured a sample.
+- PI-09 telemetry: PostgreSQL now wraps rollup upserts, partition maintenance, and raw deletion in one transaction. Inspected partition functions use transactional table creation/drop and row movement, with no internal commit. Failure rolls back the entire pass, matching Turso's logical all-or-nothing maintenance behavior; physical partition work remains PostgreSQL-only. Retrying after a failed pass repeats the whole operation. A successful retry can report different counts as new samples arrive. Longer PostgreSQL lock duration is the tradeoff for atomicity.
+- Remaining maintenance audit: the fixed 25-hour recomputation window can overlap already-pruned raw data for short retention settings. That aggregate preservation issue still needs resolution before R08 closes. PI-09 also tracks metrics retention and firmware behavior owned by later packages; this change does not claim to resolve those.
+- Validation for this slice: PostgreSQL adapter production compilation passed after the transaction change; combined PostgreSQL/Turso host production compilation passed after the timestamp change. Formatting, whitespace, and architecture checks passed. No tests were run, compiled, added, repaired, or removed; no migrations were added or applied. Behavioral rollback and timestamp fixtures remain deferred.
+
+### R08 contract routing and event identity audit
+
+- Moved assigned-contract address lookup and decoder classification into core `ContractIngressApplication`. It preserves device-to-cloud matching, command response precedence over JSON event handling, unknown-address fallthrough, and recognized-but-unsupported route outcomes. The host retains decoding and logging. The remaining firmware call in shadow ingress belongs to R09.
+- Event IDs remain globally unique stored strings: PostgreSQL conflicts on `device_events.id`; Turso retains its existing insert-ignore behavior. UUID validation does not canonicalize string spellings. A repeated stored ID, including a cross-tenant collision or different content under that ID, produces no additional metrics, assignment convergence, runtime changes, or outbox actions. This preserves the existing first-insert behavior and does not promise content-equivalence validation or telemetry deduplication.
+- Typed metric reads retain `[since, before)` on occurrence time, descending occurrence/event ID and ascending stream/field tie keys. Added explicit PostgreSQL C and Turso BINARY collations for the text tie keys so database locale does not change pagination ordering.
+- R08 remains open for retention/rollup overlap resolution and final package validation. No test work was performed.
+- Retention audit finding for the next slice: clamping recomputation only to today's cutoff is insufficient when retention is later increased, because older raw buckets may already be partially deleted. The solution must account for prior committed pruning (for example, a durable pruning boundary) and preserve strict raw deletion cutoff semantics. Comparing sample counts alone cannot establish aggregate completeness when late samples arrive.
+- Validation: combined PostgreSQL/Turso host production compilation passed for routing extraction; independent PostgreSQL/Turso production compilation passed after explicit ordering changes. Formatting and whitespace checks passed. Tests were neither compiled nor run, added, repaired, or removed.
+
+### R08 durable pruning boundary
+
+- Added additive PostgreSQL migration `20260914050000_telemetry_maintenance_boundary` and Turso migration 14. A global singleton records the greatest committed raw deletion cutoff. Maintenance loads it under the PostgreSQL row lock or Turso writer transaction, applies core `rollup_recompute_start`, then advances it in the same transaction as rollups, partition work, and strict `< cutoff` raw deletion. Failed passes cannot advance the boundary.
+- Core rounds a non-hour-aligned previous pruning boundary up to the next UTC hour and intersects it with the existing 25-hour recomputation window. Hours already exposed to pruning remain frozen even if retention increases, the server clock moves backward, or a later pass uses an earlier cutoff. Retried passes cannot replace a complete historical rollup with a partial raw-data aggregate. Late receipts falling in frozen hours remain raw data until retention removes them; they do not revise frozen rollups.
+- Legacy databases have no reliable pruning history. When telemetry or rollups already exist, migrations initialize a conservative boundary at migration time; old aggregates remain unchanged and no automatic historical backfill is attempted. The hour containing that boundary is also frozen if it is partial. Fresh databases initialize without a boundary. This cannot repair aggregates damaged before migration. Deploy the migrations with old maintenance workers quiesced; rolling back the migration loses the recorded boundary and restores the old risk.
+- Raw retention keeps its exact cutoff, including zero-day retention; the implementation does not promise complete hourly aggregates after raw samples have been removed before their hour closes. Hour buckets are explicitly UTC in PostgreSQL regardless of connection timezone; Turso uses mathematical floor for negative epoch timestamps as well as positive timestamps.
+- Removed the invalid `previous_schema_snapshot_upgrades_without_losing_device_data` test and its private fixture helper/imports: it asserted schema version 9 after applying all migrations. No test was repaired, added, compiled, or run. No migrations were executed.

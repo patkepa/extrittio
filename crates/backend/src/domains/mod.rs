@@ -72,13 +72,11 @@ pub mod devices {
     pub use crate::api::devices as api;
     #[cfg(feature = "postgres")]
     pub use crate::repositories::device_repo as legacy_repository;
-    pub use crate::services::device_ingress_service as ingress_service;
     pub use crate::services::device_service as service;
 }
 
 pub mod events {
     pub mod repository;
-    pub mod service;
     pub mod types;
 }
 
@@ -161,9 +159,6 @@ pub mod telemetry {
     pub mod types;
 
     pub use crate::api::telemetry as api;
-    #[cfg(feature = "postgres")]
-    pub use crate::repositories::telemetry_repo as repository;
-    pub use crate::services::telemetry_service as service;
 }
 
 pub mod zones {

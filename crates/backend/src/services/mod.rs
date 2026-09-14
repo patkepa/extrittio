@@ -4,8 +4,6 @@ pub mod activity_service;
 pub mod audit_service;
 #[path = "../domains/dashboard/dashboard_service.rs"]
 pub mod dashboard_service;
-#[path = "../domains/devices/device_ingress_service.rs"]
-pub mod device_ingress_service;
 #[path = "../domains/devices/device_service.rs"]
 pub mod device_service;
 #[path = "../domains/firmware/firmware_creation.rs"]
@@ -18,5 +16,3 @@ pub mod metrics_middleware;
 pub mod server_metrics;
 #[path = "../domains/shadows/shadow_service.rs"]
 pub mod shadow_service;
-#[path = "../domains/telemetry/telemetry_service.rs"]
-pub mod telemetry_service;

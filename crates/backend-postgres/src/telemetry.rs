@@ -3,23 +3,42 @@ use diesel::Connection;
 use diesel::OptionalExtension;
 use diesel::prelude::*;
 
-use crate::db::models::{
+use crate::models::{
     Device, NewTelemetryRecord, TelemetryRecord as PgTelemetryRecord,
     TelemetryRollupHourly as PgTelemetryRollup, UpdateDevice,
 };
-use crate::domains::telemetry::port::TelemetryRepository;
-use crate::domains::telemetry::types::{
+use extrittio_backend_core::telemetry::TelemetryRepository;
+use extrittio_backend_core::telemetry::{
     PartitionMaintenance, TelemetryMaintenanceOutcome, TelemetryQuery, TelemetryRecord,
     TelemetryRollup, TelemetryWrite, TelemetryWriteOutcome,
 };
-use crate::error::AppError;
-use crate::persistence::PersistenceError;
-use crate::repositories::{device_repo, telemetry_repo};
-use crate::tenancy::{DeviceIdentity, TenantId};
 
-use super::PostgresAdapter;
-use super::executor::map_diesel_error;
-use super::outbox::enqueue_pending_actions;
+use crate::telemetry_sql as telemetry_repo;
+use extrittio_backend_core::PersistenceError;
+use extrittio_backend_core::{DeviceIdentity, TenantId};
+
+use crate::{PostgresExecutor, PostgresPool};
+#[derive(Clone)]
+pub struct PostgresTelemetryRepository {
+    executor: PostgresExecutor,
+}
+impl PostgresTelemetryRepository {
+    pub fn from_pool(pool: PostgresPool) -> Self {
+        Self {
+            executor: PostgresExecutor::new(pool),
+        }
+    }
+}
+#[derive(Debug, thiserror::Error)]
+enum TelemetryTransactionError {
+    #[error(transparent)]
+    Database(#[from] diesel::result::Error),
+    #[error(transparent)]
+    Persistence(#[from] PersistenceError),
+}
+
+use crate::error::map_diesel_error;
+use crate::outbox::enqueue_actions_in_transaction as enqueue_pending_actions;
 
 fn to_record(record: PgTelemetryRecord) -> TelemetryRecord {
     TelemetryRecord {
@@ -55,16 +74,15 @@ fn to_rollup(record: PgTelemetryRollup) -> TelemetryRollup {
     }
 }
 
-fn map_app_error(error: AppError) -> PersistenceError {
+fn map_app_error(error: TelemetryTransactionError) -> PersistenceError {
     match error {
-        AppError::Database(error) => map_diesel_error(error),
-        AppError::Persistence(error) => error,
-        other => PersistenceError::Internal(other.to_string()),
+        TelemetryTransactionError::Database(error) => map_diesel_error(error),
+        TelemetryTransactionError::Persistence(error) => error,
     }
 }
 
 #[async_trait]
-impl TelemetryRepository for PostgresAdapter {
+impl TelemetryRepository for PostgresTelemetryRepository {
     async fn record(
         &self,
         identity: &DeviceIdentity,
@@ -75,8 +93,8 @@ impl TelemetryRepository for PostgresAdapter {
         self.executor
             .run(move |connection| {
                 connection
-                    .transaction::<_, AppError, _>(|connection| {
-                        use crate::db::schema::devices;
+                    .transaction::<_, TelemetryTransactionError, _>(|connection| {
+                        use crate::schema::devices;
                         let device = devices::table
                             .filter(devices::tenant_id.eq(&tenant_id))
                             .filter(devices::id.eq(&device_id))
@@ -112,24 +130,28 @@ impl TelemetryRepository for PostgresAdapter {
                             altitude: write.altitude,
                             heading: write.heading,
                         };
-                        let (telemetry_id, received_at) =
-                            telemetry_repo::insert_telemetry(connection, &record)?;
+                        let (telemetry_id, received_at) = telemetry_repo::insert_telemetry(
+                            connection,
+                            &record,
+                            write.received_at,
+                        )?;
                         telemetry_repo::upsert_latest_state(
                             connection,
                             &record,
                             telemetry_id,
                             received_at,
                         )?;
-                        device_repo::update_device(
-                            connection,
-                            &tenant_id,
-                            &device_id,
-                            &UpdateDevice {
-                                last_seen: Some(write.observed_at),
-                                updated_at: Some(write.observed_at),
-                                ..Default::default()
-                            },
-                        )?;
+                        diesel::update(
+                            devices::table
+                                .filter(devices::tenant_id.eq(&tenant_id))
+                                .filter(devices::id.eq(&device_id)),
+                        )
+                        .set(UpdateDevice {
+                            last_seen: Some(write.observed_at),
+                            updated_at: Some(write.observed_at),
+                            ..Default::default()
+                        })
+                        .execute(connection)?;
                         if write.latitude.is_some() && write.longitude.is_some() {
                             diesel::update(
                                 devices::table
@@ -142,7 +164,7 @@ impl TelemetryRepository for PostgresAdapter {
                             ))
                             .execute(connection)?;
                         }
-                        let actions = crate::database::postgres_ingress_rules(
+                        let actions = crate::rule_runtime::evaluate_rules_in_transaction(
                             connection,
                             &tenant_id,
                             &device_id,
@@ -169,7 +191,11 @@ impl TelemetryRepository for PostgresAdapter {
         let device_id = device_id.to_string();
         self.executor
             .run(move |connection| {
-                if device_repo::find_device_for_tenant(connection, &tenant_id, &device_id)
+                if crate::schema::devices::table
+                    .filter(crate::schema::devices::tenant_id.eq(&tenant_id))
+                    .filter(crate::schema::devices::id.eq(&device_id))
+                    .select(crate::schema::devices::id)
+                    .first::<String>(connection)
                     .optional()
                     .map_err(map_diesel_error)?
                     .is_none()
@@ -216,7 +242,11 @@ impl TelemetryRepository for PostgresAdapter {
         let device_id = device_id.to_string();
         self.executor
             .run(move |connection| {
-                if device_repo::find_device_for_tenant(connection, &tenant_id, &device_id)
+                if crate::schema::devices::table
+                    .filter(crate::schema::devices::tenant_id.eq(&tenant_id))
+                    .filter(crate::schema::devices::id.eq(&device_id))
+                    .select(crate::schema::devices::id)
+                    .first::<String>(connection)
                     .optional()
                     .map_err(map_diesel_error)?
                     .is_none()
@@ -261,22 +291,42 @@ impl TelemetryRepository for PostgresAdapter {
     ) -> Result<TelemetryMaintenanceOutcome, PersistenceError> {
         self.executor
             .run(move |connection| {
-                let rollups_upserted =
-                    telemetry_repo::upsert_hourly_rollups(connection, rollup_since, rollup_before)
-                        .map_err(map_diesel_error)?;
-                let partitions =
-                    telemetry_repo::maintain_partitions(connection, 3, retention_cutoff)
-                        .map_err(map_diesel_error)?;
-                let rows_deleted = telemetry_repo::delete_older_than(connection, retention_cutoff)
-                    .map_err(map_diesel_error)?;
-                Ok(TelemetryMaintenanceOutcome {
-                    rollups_upserted,
-                    rows_deleted,
-                    partitions: PartitionMaintenance {
-                        created_count: partitions.created_count,
-                        dropped_count: partitions.dropped_count,
-                    },
-                })
+                // Partition helpers use transactional DDL and contain no commits.
+                // Rollback the whole maintenance pass if any stage fails.
+                connection
+                    .transaction::<_, TelemetryTransactionError, _>(|connection| {
+                        let boundary = telemetry_repo::lock_maintenance_boundary(connection)?;
+                        let rollup_since =
+                            extrittio_backend_core::telemetry::rollup_recompute_start(
+                                rollup_since,
+                                boundary,
+                            )
+                            .ok_or_else(|| {
+                                PersistenceError::Internal(
+                                    "Telemetry pruning boundary is outside the supported range"
+                                        .into(),
+                                )
+                            })?;
+                        let rollups_upserted = telemetry_repo::upsert_hourly_rollups(
+                            connection,
+                            rollup_since,
+                            rollup_before,
+                        )?;
+                        let partitions =
+                            telemetry_repo::maintain_partitions(connection, 3, retention_cutoff)?;
+                        let rows_deleted =
+                            telemetry_repo::delete_older_than(connection, retention_cutoff)?;
+                        telemetry_repo::advance_maintenance_boundary(connection, retention_cutoff)?;
+                        Ok(TelemetryMaintenanceOutcome {
+                            rollups_upserted,
+                            rows_deleted,
+                            partitions: PartitionMaintenance {
+                                created_count: partitions.created_count,
+                                dropped_count: partitions.dropped_count,
+                            },
+                        })
+                    })
+                    .map_err(map_app_error)
             })
             .await
     }

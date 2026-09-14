@@ -1001,7 +1001,7 @@ Add `RuleSnapshotStore` at the host boundary and two-runtime refresh tests. Make
 Move:
 
 - reported/desired shadows;
-- configuration versions and acknowledgements;
+- existing configuration reads and atomic JSON merges;
 - command creation/status/history;
 - associated compare-and-set or idempotency operations.
 
@@ -1274,7 +1274,7 @@ The current `Persistence` aggregate is exhausted by this ledger:
 | `bootstrap` | P1.3 + P3.1 | split lifecycle from system-scoped domain bootstrap |
 | `certificates` | P3.1 | identity use case with injected key protection |
 | `commands` | P3.4 | command state port; publication through `DeviceBus` |
-| `configuration` | P3.4 | versioned config/acknowledgement operations |
+| `configuration` | P3.4 | existing configuration read/atomic merge operations |
 | `dashboard` | P3.7 | application read model |
 | `device_blueprints` | P3.2 | catalog/contract application boundary |
 | `device_types` | P3.2 | catalog port with explicit in-use deletion outcome |
@@ -1437,3 +1437,5 @@ After that closure, continue one reviewable sub-slice at a time in this order: A
 6. verify JWT/API-key compatibility, permission-denied and public-error mappings, encrypted key readability, retry/concurrency behavior, and migration/bootstrap idempotency.
 
 Do not begin P3.2 until all identity/bootstrap operations have left the legacy aggregate, both adapters pass the shared P3.1 contracts, and core can still be built and tested without any runtime or database SDK.
+
+R07 scope clarification: the user requested preserving existing configuration behavior, not adding configuration versions or device acknowledgements. Existing device-contract convergence stays in event ingestion.

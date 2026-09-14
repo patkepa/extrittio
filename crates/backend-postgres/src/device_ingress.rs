@@ -1,16 +1,35 @@
-use super::PostgresAdapter;
-use super::executor::map_diesel_error;
-use super::outbox::enqueue_pending_actions;
-use crate::db::models::{Device, NewDeviceLog};
-use crate::db::schema::{device_logs, devices};
-use crate::domains::devices::repository::DeviceIngressRepository;
-use crate::domains::devices::types::*;
-use crate::error::AppError;
-use crate::persistence::PersistenceError;
-use crate::tenancy::DeviceIdentity;
+use crate::{PostgresExecutor, PostgresPool};
+#[derive(Clone)]
+pub struct PostgresDeviceIngressRepository {
+    executor: PostgresExecutor,
+}
+impl PostgresDeviceIngressRepository {
+    pub fn from_pool(pool: PostgresPool) -> Self {
+        Self {
+            executor: PostgresExecutor::new(pool),
+        }
+    }
+}
+#[derive(Debug, thiserror::Error)]
+enum IngressTransactionError {
+    #[error(transparent)]
+    Database(#[from] diesel::result::Error),
+    #[error(transparent)]
+    Persistence(#[from] PersistenceError),
+}
+
+use crate::error::map_diesel_error;
+use crate::models::{Device, NewDeviceLog};
+use crate::outbox::enqueue_actions_in_transaction as enqueue_pending_actions;
+use crate::schema::{device_logs, devices};
+use extrittio_backend_core::device_ingress::DeviceIngressRepository;
+use extrittio_backend_core::device_ingress::*;
+
 use async_trait::async_trait;
 use diesel::sql_types::Text;
 use diesel::{Connection, prelude::*};
+use extrittio_backend_core::DeviceIdentity;
+use extrittio_backend_core::PersistenceError;
 #[derive(QueryableByName)]
 struct BlueprintIdRow {
     #[diesel(sql_type = Text)]
@@ -56,16 +75,15 @@ fn to_ingress_context(
     })
 }
 
-fn map_app_error(error: AppError) -> PersistenceError {
+fn map_app_error(error: IngressTransactionError) -> PersistenceError {
     match error {
-        AppError::Database(error) => map_diesel_error(error),
-        AppError::Persistence(error) => error,
-        other => PersistenceError::Internal(other.to_string()),
+        IngressTransactionError::Database(error) => map_diesel_error(error),
+        IngressTransactionError::Persistence(error) => error,
     }
 }
 
 #[async_trait]
-impl DeviceIngressRepository for PostgresAdapter {
+impl DeviceIngressRepository for PostgresDeviceIngressRepository {
     async fn resolve_identity(
         &self,
         device_id: &str,
@@ -127,7 +145,7 @@ impl DeviceIngressRepository for PostgresAdapter {
         self.executor
             .run(move |connection| {
                 connection
-                    .transaction::<_, AppError, _>(|connection| {
+                    .transaction::<_, IngressTransactionError, _>(|connection| {
                         let current_status = devices::table
                             .filter(devices::tenant_id.eq(&tenant_id))
                             .filter(devices::id.eq(&device_id))
@@ -167,7 +185,7 @@ impl DeviceIngressRepository for PostgresAdapter {
                                 })
                                 .execute(connection)?;
                         }
-                        let actions = crate::database::postgres_ingress_rules(
+                        let actions = crate::rule_runtime::evaluate_rules_in_transaction(
                             connection,
                             &tenant_id,
                             &device_id,
@@ -228,7 +246,7 @@ impl DeviceIngressRepository for PostgresAdapter {
         self.executor
             .run(move |connection| {
                 connection
-                    .transaction::<_, AppError, _>(|connection| {
+                    .transaction::<_, IngressTransactionError, _>(|connection| {
                         let mut devices_updated = 0;
                         let mut actions_enqueued = 0;
                         for transition in transitions {
@@ -265,7 +283,7 @@ impl DeviceIngressRepository for PostgresAdapter {
                                 })
                                 .execute(connection)?;
                             devices_updated += 1;
-                            let actions = crate::database::postgres_ingress_rules(
+                            let actions = crate::rule_runtime::evaluate_rules_in_transaction(
                                 connection,
                                 tenant_id,
                                 device_id,

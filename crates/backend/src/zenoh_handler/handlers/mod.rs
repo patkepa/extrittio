@@ -7,7 +7,6 @@ pub mod shadow;
 pub mod telemetry;
 
 use crate::persistence::RepositorySet;
-use crate::services::device_ingress_service;
 use crate::tenancy::DeviceIdentity;
 
 pub(crate) async fn resolve_ingress_identity(
@@ -16,8 +15,12 @@ pub(crate) async fn resolve_ingress_identity(
     device_id: &str,
     warn_if_missing: bool,
 ) -> Option<DeviceIdentity> {
-    match device_ingress_service::resolve_identity(persistence.device_ingress.as_ref(), device_id)
-        .await
+    match extrittio_backend_core::DeviceIngressApplication::new(
+        persistence.device_ingress.clone(),
+        std::sync::Arc::new(crate::auth::SystemClock),
+    )
+    .resolve_identity(device_id)
+    .await
     {
         Ok(Some(identity)) => Some(identity),
         Ok(None) => {

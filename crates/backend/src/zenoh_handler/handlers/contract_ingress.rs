@@ -1,4 +1,4 @@
-use extrittio_device_contract::{CompiledContractDocument, PayloadEncoding, RouteDirection};
+use extrittio_backend_core::application::{ContractIngressApplication, ContractIngressRoute};
 use tracing::warn;
 
 use crate::persistence::RepositorySet;
@@ -13,50 +13,37 @@ pub async fn handle_contract_ingress(
     payload: &[u8],
     rule_cache: &crate::rule_snapshots::RuleSnapshotStore,
 ) -> bool {
-    let assigned = match persistence
-        .devices
-        .assigned_contract(identity.tenant_id(), identity.device_id())
+    let route = match ContractIngressApplication::new(persistence.devices.clone())
+        .resolve(identity, topic)
         .await
     {
-        Ok(Some(contract)) => contract,
+        Ok(Some(route)) => route,
         Ok(None) => return false,
         Err(error) => {
             warn!(device_id = identity.device_id(), %error, "Failed to resolve contract ingress");
             return false;
         }
     };
-    let contract: CompiledContractDocument = match serde_json::from_value(assigned.document) {
-        Ok(contract) => contract,
-        Err(error) => {
-            warn!(contract_id = assigned.id, %error, "Stored device contract is invalid");
-            return false;
+    match route {
+        ContractIngressRoute::CommandResponse => {
+            super::command_response::handle_command_response(
+                persistence,
+                identity,
+                identity.device_id(),
+                payload,
+            )
+            .await;
         }
-    };
-    let Some((route_key, route)) = contract.routes.iter().find(|(_, route)| {
-        route.direction == RouteDirection::DeviceToCloud && route.address == topic
-    }) else {
-        return false;
-    };
-
-    if contract
-        .commands
-        .values()
-        .any(|command| command.response_route == *route_key)
-    {
-        super::command_response::handle_command_response(
-            persistence,
-            identity,
-            identity.device_id(),
-            payload,
-        )
-        .await;
-    } else if route.encoding == PayloadEncoding::Json {
-        super::event::handle_event(persistence, identity, route_key, payload, rule_cache).await;
-    } else {
-        warn!(
-            device_id = identity.device_id(),
-            route_key, "No contract ingress decoder is available for this route"
-        );
+        ContractIngressRoute::JsonEvent { route_key } => {
+            super::event::handle_event(persistence, identity, &route_key, payload, rule_cache)
+                .await;
+        }
+        ContractIngressRoute::Unsupported { route_key } => {
+            warn!(
+                device_id = identity.device_id(),
+                route_key, "No contract ingress decoder is available for this route"
+            );
+        }
     }
     true
 }

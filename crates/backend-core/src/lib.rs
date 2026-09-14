@@ -90,3 +90,21 @@ pub use application::CommandApplication;
 
 pub mod logs;
 pub use application::{LogApplication, LogIngressApplication};
+
+pub mod events;
+
+pub use application::EventApplication;
+
+pub use application::EventIngressApplication;
+
+pub mod device_identity;
+pub use device_identity::{DeviceIdentity, DeviceIdentityError};
+pub mod device_ingress;
+
+pub use application::DeviceIngressApplication;
+
+pub mod telemetry;
+
+pub use application::{
+    TelemetryApplication, TelemetryIngressApplication, TelemetryMaintenanceApplication,
+};

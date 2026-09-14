@@ -158,7 +158,6 @@ impl OutboxRepository for PostgresOutboxRepository {
 }
 
 /// Participate in the caller's ingress transaction; never commits independently.
-#[cfg(feature = "migration-bridge")]
 pub fn enqueue_actions_in_transaction(
     connection: &mut diesel::PgConnection,
     actions: &[extrittio_backend_core::rule_engine::types::PendingAction],

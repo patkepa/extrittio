@@ -8,7 +8,6 @@ use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::auth::context::RequestContext;
-use crate::domains::events::service as event_service;
 use crate::domains::events::types::{
     DeviceMetricQuery as PortDeviceMetricQuery, DeviceMetricRecord, MetricValue,
 };
@@ -16,7 +15,6 @@ use crate::domains::telemetry::types::{
     TelemetryQuery as PortTelemetryQuery, TelemetryRecord, TelemetryRollup,
 };
 use crate::error::AppError;
-use crate::services::telemetry_service;
 use crate::state::AppState;
 use crate::util;
 
@@ -208,19 +206,21 @@ pub(crate) async fn get_device_metrics(
 ) -> Result<Json<Vec<DeviceMetricResponse>>, AppError> {
     let since = util::parse_timestamp(params.since.as_deref())?;
     let before = util::parse_timestamp(params.before.as_deref())?;
-    let records = event_service::list_metrics(
-        &ctx,
-        state.persistence.events.as_ref(),
-        &id,
-        PortDeviceMetricQuery {
-            stream_key: params.stream_key,
-            field_path: params.field_path,
-            since,
-            before,
-            limit: params.limit.unwrap_or(1000).clamp(1, 10_000),
-        },
-    )
-    .await?;
+    let records = state
+        .application()
+        .events()
+        .list_metrics(
+            &ctx.tenant_context(),
+            &id,
+            PortDeviceMetricQuery {
+                stream_key: params.stream_key,
+                field_path: params.field_path,
+                since,
+                before,
+                limit: params.limit.unwrap_or(1000),
+            },
+        )
+        .await?;
     Ok(Json(
         records
             .into_iter()
@@ -246,11 +246,13 @@ pub(crate) async fn get_latest_device_telemetry(
     Extension(ctx): Extension<RequestContext>,
     Path(id): Path<String>,
 ) -> Result<Json<TelemetryResponse>, AppError> {
-    let response =
-        telemetry_service::latest_with_repository(&ctx, state.persistence.telemetry.as_ref(), &id)
-            .await?
-            .map(TelemetryResponse::from)
-            .ok_or_else(|| AppError::NotFound(format!("No telemetry found for device {id}")))?;
+    let response = state
+        .application()
+        .telemetry()
+        .latest(&ctx.tenant_context(), &id)
+        .await?
+        .map(TelemetryResponse::from)
+        .ok_or_else(|| AppError::NotFound(format!("No telemetry found for device {id}")))?;
 
     Ok(Json(response))
 }
@@ -278,19 +280,21 @@ pub(crate) async fn get_hourly_device_telemetry(
 ) -> Result<Json<Vec<HourlyTelemetryResponse>>, AppError> {
     let since = util::parse_timestamp(params.since.as_deref())?;
     let before = util::parse_timestamp(params.before.as_deref())?;
-    let limit = params.limit.unwrap_or(168).clamp(1, 10_000);
+    let limit = params.limit.unwrap_or(168);
 
-    let results = telemetry_service::list_hourly_with_repository(
-        &ctx,
-        state.persistence.telemetry.as_ref(),
-        &id,
-        PortTelemetryQuery {
-            since,
-            before,
-            limit,
-        },
-    )
-    .await?;
+    let results = state
+        .application()
+        .telemetry()
+        .list_hourly(
+            &ctx.tenant_context(),
+            &id,
+            PortTelemetryQuery {
+                since,
+                before,
+                limit,
+            },
+        )
+        .await?;
     let response = results
         .into_iter()
         .map(HourlyTelemetryResponse::from)
@@ -328,17 +332,19 @@ pub(crate) async fn get_device_telemetry(
     let since = util::parse_timestamp(params.since.as_deref())?;
     let before = util::parse_timestamp(params.before.as_deref())?;
 
-    let results = telemetry_service::list_with_repository(
-        &ctx,
-        state.persistence.telemetry.as_ref(),
-        &id,
-        PortTelemetryQuery {
-            since,
-            before,
-            limit: params.limit.unwrap_or(50).clamp(1, 1000),
-        },
-    )
-    .await?;
+    let results = state
+        .application()
+        .telemetry()
+        .list(
+            &ctx.tenant_context(),
+            &id,
+            PortTelemetryQuery {
+                since,
+                before,
+                limit: params.limit.unwrap_or(50),
+            },
+        )
+        .await?;
     let response = results.into_iter().map(TelemetryResponse::from).collect();
 
     Ok(Json(response))

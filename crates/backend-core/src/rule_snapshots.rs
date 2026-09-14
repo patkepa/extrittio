@@ -218,3 +218,8 @@ pub struct LegacyZoneEntry {
     pub event_id: String,
     pub created_at: chrono::NaiveDateTime,
 }
+
+/// Host-owned definition acquisition. Core controls when decisions need a snapshot.
+pub trait RuleSnapshotProvider: Send + Sync {
+    fn snapshot(&self) -> Result<RuleEvaluationSnapshot, crate::ApplicationError>;
+}

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tracing::{info, warn};
 
 use crate::persistence::RepositorySet;
-use crate::services::{device_ingress_service, shadow_service};
+use crate::services::shadow_service;
 use crate::state::ZenohMetrics;
 use crate::tenancy::DeviceIdentity;
 
@@ -14,8 +14,12 @@ async fn resolve_identity(
     message_type: &'static str,
     device_id: &str,
 ) -> Option<DeviceIdentity> {
-    match device_ingress_service::resolve_identity(persistence.device_ingress.as_ref(), device_id)
-        .await
+    match extrittio_backend_core::DeviceIngressApplication::new(
+        persistence.device_ingress.clone(),
+        std::sync::Arc::new(crate::auth::SystemClock),
+    )
+    .resolve_identity(device_id)
+    .await
     {
         Ok(Some(identity)) => Some(identity),
         Ok(None) => {
