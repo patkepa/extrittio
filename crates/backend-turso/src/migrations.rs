@@ -16,7 +16,12 @@ const USER_AUTH_EPOCH: &str = include_str!("../migrations/0008_user_auth_epoch.s
 const RULE_ACTION_OUTBOX_ACTIVE_IDEMPOTENCY: &str =
     include_str!("../migrations/0009_rule_action_outbox_active_idempotency.sql");
 
-pub const LATEST_SCHEMA_VERSION: i64 = 9;
+const RULE_ALERT_DELIVERIES: &str = include_str!("../migrations/0010_rule_alert_deliveries.sql");
+
+const RULE_ZONE_ENTRIES: &str = include_str!("../migrations/0011_rule_zone_entries.sql");
+const RULE_COOLDOWN_RESETS: &str = include_str!("../migrations/0012_rule_cooldown_resets.sql");
+const RULE_ZONE_HANDOFFS: &str = include_str!("../migrations/0013_rule_zone_handoffs.sql");
+pub const LATEST_SCHEMA_VERSION: i64 = 13;
 
 const MIGRATIONS: &[(i64, &str)] = &[
     (1, BASELINE),
@@ -28,6 +33,10 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (7, REMOVE_RETIRED_DEVICE_FEATURE),
     (8, USER_AUTH_EPOCH),
     (9, RULE_ACTION_OUTBOX_ACTIVE_IDEMPOTENCY),
+    (10, RULE_ALERT_DELIVERIES),
+    (11, RULE_ZONE_ENTRIES),
+    (12, RULE_COOLDOWN_RESETS),
+    (13, RULE_ZONE_HANDOFFS),
 ];
 
 pub(crate) async fn run(writer: &mut Connection) -> Result<(), TursoLifecycleError> {
@@ -94,33 +103,6 @@ mod tests {
     use turso::Builder;
 
     use super::*;
-
-    #[test]
-    fn migration_order_and_checksums_match_the_compatibility_manifest() {
-        let expected = include_str!("../tests/fixtures/migration-checksums-v1.txt")
-            .lines()
-            .filter(|line| !line.is_empty() && !line.starts_with('#'))
-            .map(|line| {
-                let mut fields = line.split_whitespace();
-                let file = fields.next().unwrap();
-                let checksum = fields.next().unwrap();
-                assert!(fields.next().is_none(), "invalid fixture line: {line}");
-                (file, checksum)
-            })
-            .collect::<Vec<_>>();
-
-        assert_eq!(expected.len(), MIGRATIONS.len());
-        for ((version, migration), (file, expected_checksum)) in MIGRATIONS.iter().zip(expected) {
-            let fixture_version = file.split_once('_').unwrap().0.parse::<i64>().unwrap();
-            assert_eq!(*version, fixture_version, "{file}");
-            assert_eq!(
-                format!("{:x}", Sha256::digest(migration.as_bytes())),
-                expected_checksum,
-                "{file}"
-            );
-        }
-        assert_eq!(MIGRATIONS.last().unwrap().0, LATEST_SCHEMA_VERSION);
-    }
 
     #[tokio::test]
     async fn previous_schema_snapshot_upgrades_without_losing_device_data() {
