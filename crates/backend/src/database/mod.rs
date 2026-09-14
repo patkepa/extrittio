@@ -419,3 +419,18 @@ pub(crate) fn turso_analytics(
         extrittio_backend_turso::TursoAnalyticsRepository::from_handles(database.shared_handles()),
     )
 }
+
+#[cfg(feature = "postgres")]
+pub(crate) fn postgres_audit(
+    pool: &PostgresPool,
+) -> Arc<dyn extrittio_backend_core::audit::AuditRepository> {
+    Arc::new(extrittio_backend_postgres::PostgresAuditRepository::from_pool(pool.clone()))
+}
+#[cfg(feature = "turso")]
+pub(crate) fn turso_audit(
+    database: &TursoDatabase,
+) -> Arc<dyn extrittio_backend_core::audit::AuditRepository> {
+    Arc::new(extrittio_backend_turso::TursoAuditRepository::from_handles(
+        database.shared_handles(),
+    ))
+}

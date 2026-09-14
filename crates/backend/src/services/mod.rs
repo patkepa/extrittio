@@ -1,5 +1,3 @@
-#[path = "../domains/audit/audit_service.rs"]
-pub mod audit_service;
 #[path = "../domains/devices/device_service.rs"]
 pub mod device_service;
 #[path = "../domains/firmware/firmware_creation.rs"]

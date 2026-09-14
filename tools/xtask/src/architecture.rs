@@ -138,13 +138,6 @@ const DEFAULT_TENANT_ALLOWANCES: &[TokenAllowance] = &[
         "legacy token generation/claims behavior",
     ),
     TokenAllowance::new(
-        "crates/backend/src/middleware.rs",
-        "DEFAULT_TENANT_ID",
-        2,
-        "P1.2",
-        "audit middleware currently invents tenant scope",
-    ),
-    TokenAllowance::new(
         "crates/backend/src/persistence/turso/mod.rs",
         "DEFAULT_TENANT_ID",
         4,
@@ -166,7 +159,6 @@ const DEFAULT_TENANT_ALLOWANCES: &[TokenAllowance] = &[
 /// to `state.repositories` cannot disguise a new direct repository access.
 /// Entries and caps may only be removed or reduced as vertical slices migrate.
 const APP_STATE_REPOSITORY_ACCESS_ALLOWANCES: &[AppStateRepositoryAccessAllowance] = &[
-    AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/audit/audit.rs", 1, 0),
     AppStateRepositoryAccessAllowance::new(
         "crates/backend/src/domains/operations/server_metrics_api.rs",
         2,
@@ -177,7 +169,6 @@ const APP_STATE_REPOSITORY_ACCESS_ALLOWANCES: &[AppStateRepositoryAccessAllowanc
         1,
         0,
     ),
-    AppStateRepositoryAccessAllowance::new("crates/backend/src/middleware.rs", 1, 0),
 ];
 
 const APP_TURSO_ALLOWANCES: &[TokenAllowance] = &[TokenAllowance::new(

@@ -115,3 +115,5 @@ pub mod activity;
 pub mod dashboard;
 
 pub mod analytics;
+
+pub mod audit;

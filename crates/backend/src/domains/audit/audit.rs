@@ -10,7 +10,6 @@ use utoipa::ToSchema;
 
 use crate::auth::context::RequestContext;
 use crate::error::AppError;
-use crate::services::audit_service;
 use crate::state::AppState;
 
 #[derive(Debug, Deserialize)]
@@ -62,7 +61,11 @@ pub(crate) async fn list_audit_events(
 ) -> Result<Json<AuditEventListResponse>, AppError> {
     let limit = query.limit.unwrap_or(50).clamp(1, 200);
     let offset = query.offset.unwrap_or(0).max(0);
-    let rows = audit_service::list(&ctx, state.persistence.audit.as_ref(), limit, offset).await?;
+    let rows = state
+        .application()
+        .audit()
+        .list(&ctx.tenant_context(), limit, offset)
+        .await?;
 
     Ok(Json(AuditEventListResponse {
         data: rows

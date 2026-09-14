@@ -104,3 +104,7 @@ pub use dashboard::PostgresDashboardRepository;
 
 mod analytics;
 pub use analytics::PostgresAnalyticsRepository;
+
+mod audit;
+pub use audit::PostgresAuditRepository;
+mod audit_sql;

@@ -1,17 +1,28 @@
 use async_trait::async_trait;
 
-use crate::db::models::NewAuditEvent;
-use crate::domains::audit::port::AuditRepository;
-use crate::domains::audit::types::{AuditEventRecord, NewAuditEventRecord};
-use crate::persistence::PersistenceError;
-use crate::repositories::audit_repo;
-use crate::tenancy::TenantId;
+use crate::audit_sql as audit_repo;
+use crate::models::NewAuditEvent;
+use extrittio_backend_core::PersistenceError;
+use extrittio_backend_core::TenantId;
+use extrittio_backend_core::audit::AuditRepository;
+use extrittio_backend_core::audit::{AuditEventRecord, NewAuditEventRecord};
 
-use super::PostgresAdapter;
-use super::executor::map_diesel_error;
+use crate::{PostgresExecutor, PostgresPool};
+#[derive(Clone)]
+pub struct PostgresAuditRepository {
+    executor: PostgresExecutor,
+}
+impl PostgresAuditRepository {
+    pub fn from_pool(pool: PostgresPool) -> Self {
+        Self {
+            executor: PostgresExecutor::new(pool),
+        }
+    }
+}
+use crate::error::map_diesel_error;
 
 #[async_trait]
-impl AuditRepository for PostgresAdapter {
+impl AuditRepository for PostgresAuditRepository {
     async fn record(
         &self,
         tenant: &TenantId,

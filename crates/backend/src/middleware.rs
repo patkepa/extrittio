@@ -151,9 +151,11 @@ pub async fn audit_middleware(
             "status": status.as_u16(),
         }),
     };
-    if let Err(error) =
-        crate::services::audit_service::record(state.persistence.audit.as_ref(), tenant_id, event)
-            .await
+    if let Err(error) = state
+        .application()
+        .audit()
+        .record_access(tenant_id, event)
+        .await
     {
         tracing::error!(%error, "failed to persist audit event");
     }

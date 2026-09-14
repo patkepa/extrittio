@@ -28,9 +28,6 @@ pub mod audit {
     pub mod types;
 
     pub use crate::api::audit as api;
-    #[cfg(feature = "postgres")]
-    pub use crate::repositories::audit_repo as repository;
-    pub use crate::services::audit_service as service;
 }
 
 pub mod commands {

@@ -112,3 +112,6 @@ pub use dashboard::TursoDashboardRepository;
 
 mod analytics;
 pub use analytics::TursoAnalyticsRepository;
+
+mod audit;
+pub use audit::TursoAuditRepository;

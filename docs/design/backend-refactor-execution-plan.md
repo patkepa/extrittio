@@ -872,3 +872,12 @@ This closes the implementation items left open in the preceding R05 notes.
 - Moved existing pure analytics tests with their implementation without changing their cases or running them. No tests were added, repaired, compiled, or removed. No migrations were added or executed.
 - This extraction preserves current query behavior; the remaining R10 audit must resolve text ordering, negative-epoch bucket parity, catalog/device/sample snapshot consistency, and numeric semantics rather than treating compilation as parity evidence. Sample windows currently use `[start, end)` in both engines. Audit, operational metrics, PI-05/PI-09, and prior activity audit items remain outstanding.
 - Validation passed: combined PostgreSQL/Turso host production compilation, formatting, whitespace, and architecture. Direct handler accesses fell from 7 across 5 files to 5 across 4 files; 9 tracked migration exceptions remain. Behavioral analytics verification remains deferred.
+
+### R10 audit application and persistence
+
+- Moved audit values/port and `AuditApplication` into core. Reads preserve `ReadServerMetrics`, tenant scope, and pagination inputs. Both adapters own insertion/list SQL and row hydration; deleted the host audit service, PostgreSQL SQL helper, and legacy adapter modules.
+- Middleware now invokes `record_access` with its authenticated tenant attribution. It still handles failure as a diagnostic and returns the original HTTP response. Unauthenticated mutations remain structured host logs without invented tenant scope. Existing OTA URL redaction and path-only audit metadata remain in middleware; no signing token or request body is added to audit data.
+- PostgreSQL audit listing now orders equal timestamps by ID with C collation; Turso explicitly uses BINARY for the same tie-breaker. Existing storage-time timestamp sources are preserved pending the complete R10 time-contract audit.
+- Removed audit endpoint/middleware direct-repository allowances and the obsolete middleware `DEFAULT_TENANT_ID` allowance. No tests were added, repaired, compiled, run, or removed. No migrations were added or executed.
+- Operational metrics and cross-adapter projection semantics remain outstanding in R10.
+- Validation passed: combined PostgreSQL/Turso host production compilation, formatting, whitespace, and architecture. Counted direct accesses fell from 5 across 4 files to 3 across 2 files; 9 tracked exceptions remain. Behavioral audit failure/tenant verification remains deferred.
