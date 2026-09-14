@@ -52,7 +52,7 @@ impl AnalyticsRepository for TursoAnalyticsRepository {
                       WHERE latest.tenant_id = b.tenant_id
                         AND latest.blueprint_id = b.id
                   )
-                ORDER BY b.name, b.id
+                ORDER BY b.name COLLATE BINARY, b.id COLLATE BINARY
                 "#,
                 params![tenant.as_str()],
             )
@@ -82,10 +82,14 @@ impl AnalyticsRepository for TursoAnalyticsRepository {
         tenant: &TenantId,
         query: AnalyticsQuery,
     ) -> Result<AnalyticsQueryData, PersistenceError> {
-        let connection = self
+        let mut raw_connection = self
             .handles
             .connect_raw()
             .map_err(|error| PersistenceError::Unavailable(error.to_string()))?;
+        let connection = raw_connection
+            .transaction()
+            .await
+            .map_err(row::legacy_error)?;
         let type_ids = serde_json::to_string(&query.scope.device_type_ids)
             .map_err(|error| PersistenceError::Internal(error.to_string()))?;
         let fleet_ids = serde_json::to_string(&query.scope.fleet_ids)
@@ -119,6 +123,7 @@ impl AnalyticsRepository for TursoAnalyticsRepository {
                 })
             })?;
 
+        drop(count_rows);
         let compatible_sql = format!(
             r#"
             SELECT count(*)
@@ -182,7 +187,7 @@ impl AnalyticsRepository for TursoAnalyticsRepository {
              AND r.id = c.blueprint_revision_id
             WHERE {SCOPE_FILTER}
               AND r.blueprint_id = ?5
-            ORDER BY d.name, d.id
+            ORDER BY d.name COLLATE BINARY, d.id COLLATE BINARY
             LIMIT ?6
             "#
         );
@@ -209,7 +214,9 @@ impl AnalyticsRepository for TursoAnalyticsRepository {
             });
         }
 
+        drop(device_rows);
         if compatible_devices > query.max_devices || devices.is_empty() {
+            connection.commit().await.map_err(row::legacy_error)?;
             return Ok(AnalyticsQueryData {
                 selected_devices,
                 compatible_devices,
@@ -259,6 +266,8 @@ impl AnalyticsRepository for TursoAnalyticsRepository {
             });
         }
 
+        drop(rows);
+        connection.commit().await.map_err(row::legacy_error)?;
         Ok(AnalyticsQueryData {
             selected_devices,
             compatible_devices,
@@ -274,7 +283,7 @@ fn metric_samples_query() -> &'static str {
             SELECT
                 d.id AS device_id,
                 d.name AS device_name,
-                s.occurred_at - (s.occurred_at % ?5) AS bucket_start,
+                s.occurred_at - CASE WHEN s.occurred_at % ?5 < 0 THEN s.occurred_at % ?5 + ?5 ELSE s.occurred_at % ?5 END AS bucket_start,
                 coalesce(s.value_double, CAST(s.value_int AS REAL)) AS value,
                 s.occurred_at,
                 s.event_id
@@ -304,7 +313,7 @@ fn metric_samples_query() -> &'static str {
         ), ranked AS (
             SELECT *, row_number() OVER (
                 PARTITION BY device_id, bucket_start
-                ORDER BY occurred_at DESC, event_id DESC
+                ORDER BY occurred_at DESC, event_id COLLATE BINARY DESC
             ) AS latest_rank
             FROM bucketed
         )
@@ -319,7 +328,7 @@ fn metric_samples_query() -> &'static str {
             max(CASE WHEN latest_rank = 1 THEN value END) AS latest
         FROM ranked
         GROUP BY device_id, device_name, bucket_start
-        ORDER BY bucket_start, device_name, device_id
+        ORDER BY bucket_start, device_name COLLATE BINARY, device_id COLLATE BINARY
         LIMIT ?9
         "#
 }

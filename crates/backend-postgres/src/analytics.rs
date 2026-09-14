@@ -127,8 +127,13 @@ impl AnalyticsRepository for PostgresAnalyticsRepository {
         let tenant_id = tenant.as_str().to_owned();
         self.executor
             .run(move |connection| {
-                let scope_count = diesel::sql_query(
-                    r#"
+                connection
+                    .build_transaction()
+                    .read_only()
+                    .repeatable_read()
+                    .run::<_, AnalyticsReadError, _>(|connection| {
+                        let scope_count = diesel::sql_query(
+                            r#"
                     SELECT count(*)::bigint AS count
                     FROM devices d
                     WHERE d.tenant_id = $1
@@ -136,18 +141,18 @@ impl AnalyticsRepository for PostgresAnalyticsRepository {
                       AND (cardinality($3) = 0 OR d.fleet_id = ANY($3))
                       AND (cardinality($4) = 0 OR d.id = ANY($4))
                     "#,
-                )
-                .bind::<Text, _>(&tenant_id)
-                .bind::<Array<Integer>, _>(&query.scope.device_type_ids)
-                .bind::<Array<Integer>, _>(&query.scope.fleet_ids)
-                .bind::<Array<Text>, _>(&query.scope.device_ids)
-                .get_result::<CountRow>(connection)
-                .map_err(map_diesel_error)?
-                .count;
-                let selected_devices = usize::try_from(scope_count).unwrap_or(usize::MAX);
+                        )
+                        .bind::<Text, _>(&tenant_id)
+                        .bind::<Array<Integer>, _>(&query.scope.device_type_ids)
+                        .bind::<Array<Integer>, _>(&query.scope.fleet_ids)
+                        .bind::<Array<Text>, _>(&query.scope.device_ids)
+                        .get_result::<CountRow>(connection)
+                        .map_err(map_diesel_error)?
+                        .count;
+                        let selected_devices = usize::try_from(scope_count).unwrap_or(usize::MAX);
 
-                let compatible_count = diesel::sql_query(
-                    r#"
+                        let compatible_count = diesel::sql_query(
+                            r#"
                     SELECT count(*)::bigint AS count
                     FROM devices d
                     JOIN device_contract_assignments a
@@ -166,21 +171,22 @@ impl AnalyticsRepository for PostgresAnalyticsRepository {
                       AND (cardinality($4) = 0 OR d.id = ANY($4))
                       AND r.blueprint_id = $5
                     "#,
-                )
-                .bind::<Text, _>(&tenant_id)
-                .bind::<Array<Integer>, _>(&query.scope.device_type_ids)
-                .bind::<Array<Integer>, _>(&query.scope.fleet_ids)
-                .bind::<Array<Text>, _>(&query.scope.device_ids)
-                .bind::<Text, _>(&query.metric.selector.blueprint_id)
-                .get_result::<CountRow>(connection)
-                .map_err(map_diesel_error)?
-                .count;
-                let compatible_devices = usize::try_from(compatible_count).unwrap_or(usize::MAX);
+                        )
+                        .bind::<Text, _>(&tenant_id)
+                        .bind::<Array<Integer>, _>(&query.scope.device_type_ids)
+                        .bind::<Array<Integer>, _>(&query.scope.fleet_ids)
+                        .bind::<Array<Text>, _>(&query.scope.device_ids)
+                        .bind::<Text, _>(&query.metric.selector.blueprint_id)
+                        .get_result::<CountRow>(connection)
+                        .map_err(map_diesel_error)?
+                        .count;
+                        let compatible_devices =
+                            usize::try_from(compatible_count).unwrap_or(usize::MAX);
 
-                let device_limit =
-                    i64::try_from(query.max_devices.saturating_add(1)).unwrap_or(i64::MAX);
-                let device_rows = diesel::sql_query(
-                    r#"
+                        let device_limit =
+                            i64::try_from(query.max_devices.saturating_add(1)).unwrap_or(i64::MAX);
+                        let device_rows = diesel::sql_query(
+                            r#"
                     SELECT d.id, d.name
                     FROM devices d
                     JOIN device_contract_assignments a
@@ -198,69 +204,76 @@ impl AnalyticsRepository for PostgresAnalyticsRepository {
                       AND (cardinality($3) = 0 OR d.fleet_id = ANY($3))
                       AND (cardinality($4) = 0 OR d.id = ANY($4))
                       AND r.blueprint_id = $5
-                    ORDER BY d.name, d.id
+                    ORDER BY d.name COLLATE "C", d.id COLLATE "C"
                     LIMIT $6
                     "#,
-                )
-                .bind::<Text, _>(&tenant_id)
-                .bind::<Array<Integer>, _>(&query.scope.device_type_ids)
-                .bind::<Array<Integer>, _>(&query.scope.fleet_ids)
-                .bind::<Array<Text>, _>(&query.scope.device_ids)
-                .bind::<Text, _>(&query.metric.selector.blueprint_id)
-                .bind::<BigInt, _>(device_limit)
-                .load::<DeviceRow>(connection)
-                .map_err(map_diesel_error)?;
-                let devices: Vec<_> = device_rows
-                    .into_iter()
-                    .map(|row| AnalyticsDevice {
-                        id: row.id,
-                        name: row.name,
+                        )
+                        .bind::<Text, _>(&tenant_id)
+                        .bind::<Array<Integer>, _>(&query.scope.device_type_ids)
+                        .bind::<Array<Integer>, _>(&query.scope.fleet_ids)
+                        .bind::<Array<Text>, _>(&query.scope.device_ids)
+                        .bind::<Text, _>(&query.metric.selector.blueprint_id)
+                        .bind::<BigInt, _>(device_limit)
+                        .load::<DeviceRow>(connection)
+                        .map_err(map_diesel_error)?;
+                        let devices: Vec<_> = device_rows
+                            .into_iter()
+                            .map(|row| AnalyticsDevice {
+                                id: row.id,
+                                name: row.name,
+                            })
+                            .collect();
+
+                        if compatible_devices > query.max_devices || devices.is_empty() {
+                            return Ok(AnalyticsQueryData {
+                                selected_devices,
+                                compatible_devices,
+                                devices,
+                                buckets: Vec::new(),
+                            });
+                        }
+
+                        let device_ids: Vec<_> =
+                            devices.iter().map(|device| device.id.clone()).collect();
+                        let row_limit =
+                            i64::try_from(query.max_rows.saturating_add(1)).unwrap_or(i64::MAX);
+                        let rows = diesel::sql_query(metric_samples_query())
+                            .bind::<Text, _>(&tenant_id)
+                            .bind::<Array<Text>, _>(&device_ids)
+                            .bind::<Timestamptz, _>(query.start)
+                            .bind::<Timestamptz, _>(query.end)
+                            .bind::<BigInt, _>(query.bucket_seconds)
+                            .bind::<Text, _>(&query.metric.selector.stream_key)
+                            .bind::<Text, _>(&query.metric.selector.field_path)
+                            .bind::<Text, _>(&query.metric.selector.blueprint_id)
+                            .bind::<BigInt, _>(row_limit)
+                            .load::<BucketRow>(connection)
+                            .map_err(map_diesel_error)?;
+                        let buckets = rows
+                            .into_iter()
+                            .map(|row| AnalyticsBucket {
+                                device_id: row.device_id,
+                                device_name: row.device_name,
+                                bucket_start: row.bucket_start,
+                                sample_count: row.sample_count,
+                                average: row.average,
+                                minimum: row.minimum,
+                                maximum: row.maximum,
+                                latest: row.latest,
+                            })
+                            .collect();
+
+                        Ok(AnalyticsQueryData {
+                            selected_devices,
+                            compatible_devices,
+                            devices,
+                            buckets,
+                        })
                     })
-                    .collect();
-
-                if compatible_devices > query.max_devices || devices.is_empty() {
-                    return Ok(AnalyticsQueryData {
-                        selected_devices,
-                        compatible_devices,
-                        devices,
-                        buckets: Vec::new(),
-                    });
-                }
-
-                let device_ids: Vec<_> = devices.iter().map(|device| device.id.clone()).collect();
-                let row_limit = i64::try_from(query.max_rows.saturating_add(1)).unwrap_or(i64::MAX);
-                let rows = diesel::sql_query(metric_samples_query())
-                    .bind::<Text, _>(&tenant_id)
-                    .bind::<Array<Text>, _>(&device_ids)
-                    .bind::<Timestamptz, _>(query.start)
-                    .bind::<Timestamptz, _>(query.end)
-                    .bind::<BigInt, _>(query.bucket_seconds)
-                    .bind::<Text, _>(&query.metric.selector.stream_key)
-                    .bind::<Text, _>(&query.metric.selector.field_path)
-                    .bind::<Text, _>(&query.metric.selector.blueprint_id)
-                    .bind::<BigInt, _>(row_limit)
-                    .load::<BucketRow>(connection)
-                    .map_err(map_diesel_error)?;
-                let buckets = rows
-                    .into_iter()
-                    .map(|row| AnalyticsBucket {
-                        device_id: row.device_id,
-                        device_name: row.device_name,
-                        bucket_start: row.bucket_start,
-                        sample_count: row.sample_count,
-                        average: row.average,
-                        minimum: row.minimum,
-                        maximum: row.maximum,
-                        latest: row.latest,
+                    .map_err(|error| match error {
+                        AnalyticsReadError::Diesel(error) => map_diesel_error(error),
+                        AnalyticsReadError::Persistence(error) => error,
                     })
-                    .collect();
-
-                Ok(AnalyticsQueryData {
-                    selected_devices,
-                    compatible_devices,
-                    devices,
-                    buckets,
-                })
             })
             .await
     }
@@ -302,7 +315,7 @@ fn metric_samples_query() -> &'static str {
         ), ranked AS (
             SELECT *, row_number() OVER (
                 PARTITION BY device_id, bucket_start
-                ORDER BY occurred_at DESC, event_id DESC
+                ORDER BY occurred_at DESC, event_id COLLATE "C" DESC
             ) AS latest_rank
             FROM bucketed
         )
@@ -317,7 +330,15 @@ fn metric_samples_query() -> &'static str {
             max(value) FILTER (WHERE latest_rank = 1)::double precision AS latest
         FROM ranked
         GROUP BY device_id, device_name, bucket_start
-        ORDER BY bucket_start, device_name, device_id
+        ORDER BY bucket_start, device_name COLLATE "C", device_id COLLATE "C"
         LIMIT $9
         "#
+}
+
+#[derive(Debug, thiserror::Error)]
+enum AnalyticsReadError {
+    #[error(transparent)]
+    Diesel(#[from] diesel::result::Error),
+    #[error(transparent)]
+    Persistence(#[from] PersistenceError),
 }

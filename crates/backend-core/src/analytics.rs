@@ -186,6 +186,11 @@ pub trait AnalyticsRepository: Send + Sync {
         tenant: &TenantId,
     ) -> Result<Vec<AnalyticsBlueprintRevision>, PersistenceError>;
 
+    /// Read scope counts, compatible devices, and metric buckets in one snapshot.
+    /// The preceding catalog lookup is independent and resolves immutable selector
+    /// metadata; it does not pin the catalog and sample read to one transaction.
+    /// Bounds are microsecond [start, end); bucket labels are UTC epoch floors.
+    /// Device/page ties and latest-event ties use binary text ordering.
     async fn query(
         &self,
         tenant: &TenantId,

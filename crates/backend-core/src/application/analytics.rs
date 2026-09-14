@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 
-use chrono::NaiveDateTime;
+use chrono::{NaiveDateTime, Timelike};
 use extrittio_device_contract::{AggregateKind, DeviceBlueprint, FieldValueType};
 
 use super::require_permission;
@@ -82,8 +82,8 @@ impl AnalyticsApplication {
                 AnalyticsQuery {
                     scope: request.scope.clone(),
                     metric: metric.clone(),
-                    start: request.start,
-                    end: request.end,
+                    start: storage_bound(request.start)?,
+                    end: storage_bound(request.end)?,
                     bucket_seconds,
                     max_devices: MAX_DEVICES,
                     max_rows: MAX_TOTAL_POINTS,
@@ -106,6 +106,20 @@ impl AnalyticsApplication {
 
         Ok(build_result(request, metric, bucket_seconds, source, data))
     }
+}
+
+// For a microsecond store, ceil both ends to preserve the original [start, end)
+// membership. The response and point-budget policy retain the requested bounds.
+fn storage_bound(value: NaiveDateTime) -> Result<NaiveDateTime, ApplicationError> {
+    let remainder = value.nanosecond() % 1_000;
+    if remainder == 0 {
+        return Ok(value);
+    }
+    value
+        .checked_add_signed(chrono::TimeDelta::nanoseconds(i64::from(1_000 - remainder)))
+        .ok_or_else(|| {
+            ApplicationError::InvalidInput("Analytics timestamp exceeds the supported range".into())
+        })
 }
 
 fn resolve_metric(
@@ -428,7 +442,11 @@ fn per_device_series(buckets: &[AnalyticsBucket], latest_only: bool) -> Vec<Anal
             })
         })
         .collect();
-    series.sort_by(|left, right| left.label.cmp(&right.label));
+    series.sort_by(|left, right| {
+        left.label
+            .cmp(&right.label)
+            .then_with(|| left.id.cmp(&right.id))
+    });
     series
 }
 

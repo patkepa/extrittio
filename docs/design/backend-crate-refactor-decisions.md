@@ -1068,3 +1068,22 @@ concurrent commits. Stored clocks remain PostgreSQL's database default and Turso
 adapter UTC clock. Retention keeps strict `< cutoff` and atomic two-table deletion.
 Runtime numeric, boundary, timezone, overflow, and rollback acceptance is deferred;
 production compilation does not execute these SQL queries.
+
+
+### R10 analytics follow-up: stable reads and bucket membership
+
+Analytics adapter queries now use one database read snapshot for scope counts,
+compatible devices, and buckets (PostgreSQL read-only repeatable read; Turso read
+transaction). Catalog lookup is intentionally separate and resolves the latest
+immutable revision metadata visible at that lookup. Samples still span matching
+historical revisions of the selected blueprint; no latest-revision-only filter is
+introduced.
+
+Corrected differences are binary name/ID ordering, binary latest-event ID ties,
+flooring negative UTC epoch buckets in Turso, and stable ID ties for same-label
+core device series. Both `[start, end)` persistence bounds round upward to storage
+microseconds, preserving requested membership. Response bounds and point-budget
+calculations remain unchanged. Existing integer-to-f64 sample conversion and
+weighting/coverage algorithms are retained, including precision loss for large
+integers. Read snapshots can live for the duration of a bounded analytics query;
+no writer mutex is acquired for Turso reads. Runtime acceptance is deferred.
