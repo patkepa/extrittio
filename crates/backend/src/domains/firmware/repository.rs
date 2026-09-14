@@ -4,19 +4,13 @@ use crate::persistence::PersistenceError;
 use crate::tenancy::{DeviceIdentity, TenantId};
 
 use super::types::{
-    CiIngestOutcome, CiIngestParams, FirmwareBlobRecord, FirmwarePage, FirmwareRecord,
-    GlobalOtaDeploymentPage, LegacyFirmwareBlob, NewFirmwareBlobRecord, NewFirmwareRecord,
-    OtaDeploymentPage, OtaStatusUpdate, TriggerOtaOutcome,
+    FirmwareBlobRecord, FirmwarePage, FirmwareRecord, GlobalOtaDeploymentPage, LegacyFirmwareBlob,
+    NewFirmwareBlobRecord, NewFirmwareRecord, OtaDeploymentPage, OtaStatusUpdate,
+    TriggerOtaOutcome,
 };
 
 #[async_trait]
 pub trait FirmwareRepository: Send + Sync {
-    async fn ingest_ci(
-        &self,
-        key_hash: &str,
-        params: CiIngestParams,
-    ) -> Result<CiIngestOutcome, PersistenceError>;
-
     async fn list(
         &self,
         tenant: &TenantId,

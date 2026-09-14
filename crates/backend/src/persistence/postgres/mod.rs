@@ -59,11 +59,13 @@ fn build_repositories(pool: PostgresPool) -> RepositorySet {
     let roles = crate::database::postgres_roles(&pool);
     let users = crate::database::postgres_users(&pool);
     let api_keys = crate::database::postgres_api_keys(&pool);
+    let ci_ingest = crate::database::postgres_ci_ingest(&pool);
     let adapter = Arc::new(PostgresAdapter::new(pool));
     RepositorySet {
         activity: adapter.clone(),
         analytics: adapter.clone(),
         api_keys,
+        ci_ingest,
         alerts: adapter.clone(),
         audit: adapter.clone(),
         bootstrap: adapter.clone(),

@@ -460,6 +460,52 @@ The contract does not select behavior for embedded NUL in usernames. PI-16 must 
 - Credential and session adapter tests or equivalent concurrency evidence must demonstrate that a security read cannot combine a verifier or authorization projection from different principal revisions. Ordinary list snapshot consistency is deliberately outside this closure gate.
 - Embedded-NUL parity is intentionally untested until PI-16 selects a portable contract.
 
+## ADR-009: Preserve the combined CI-ingest persistence operation during extraction
+
+- **Status:** Accepted for the 2026-09-14 ownership extraction; behavioral test execution deferred by user instruction
+- **Owner work package:** P3.1 API-key authentication / P3.6 firmware ingest
+
+### Decision
+
+Core owns `CiIngestApplication`, the UTC input types, outcomes, device-type scope
+policy, and `CiIngestRepository`. Each adapter implements the combined operation:
+resolve a stored key hash, touch usage, find a device type within the key's tenant,
+apply core scope policy, and insert firmware metadata. The caller cannot supply
+or override that tenant. Hashing, request validation, rate limiting, and HTTP
+translation remain host responsibilities.
+
+Keeping this operation combined preserves Turso's existing transaction. It also
+avoids introducing a gap between authorization and insertion by independently
+calling key and firmware repositories from the application.
+
+The following existing differences are intentionally retained:
+
+- PostgreSQL performs key lookup and a best-effort `last_used_at` update outside
+  the firmware insert/read transaction. Missing device types, scope rejection,
+  and insert failures may leave the usage touch persisted. A touch error is ignored.
+- Turso holds the shared serialized writer and uses one transaction. Unknown keys
+  roll back without mutation. Missing device types and scope rejection commit the
+  usage touch. Insertion errors roll back the transaction, including that touch.
+- Concurrent key deletion retains each engine's existing isolation behavior.
+  This extraction does not promise identical revocation timing across engines.
+
+Both implementations call the same pure core scope policy after tenant-local
+device-type lookup. Existing outcome precedence and conflict/not-found/forbidden
+messages remain unchanged. Core timestamps use `DateTime<Utc>`; PostgreSQL converts
+to naive UTC at its row boundary, and Turso stores microseconds as before.
+
+### Consequences and remaining verification
+
+The legacy host CI service, PostgreSQL API-key helpers, API-key compatibility
+re-exports, and firmware-port ingest method are removed. HTTP calls the core
+application and its direct repository exception is deleted. No migration or
+public API schema change is required.
+
+Shared ingest contracts and failure/concurrency execution remain outstanding
+because tests were skipped. Before declaring semantic parity, choose a separate
+transaction/revocation contract and prove it on both engines. Existing API-key
+name uniqueness differences and planned nonce/rotation scope remain separate.
+
 ## Architecture exception and removal ledger
 
 P0-C should encode only these bounded temporary exceptions. A source allowlist entry must reference the exception ID, exact path/pattern, owner work package, and removal condition. New violations are not covered merely because they resemble an existing row.

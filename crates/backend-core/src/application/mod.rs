@@ -1,5 +1,7 @@
 mod api_keys;
+mod ci_ingest;
 pub use api_keys::ApiKeyApplication;
+pub use ci_ingest::CiIngestApplication;
 mod roles;
 mod users;
 mod zones;
@@ -47,6 +49,7 @@ impl ApplicationDependencies {
 #[derive(Clone)]
 pub struct Application {
     api_keys: ApiKeyApplication,
+    ci_ingest: CiIngestApplication,
     roles: RoleApplication,
     users: UserApplication,
     zones: ZoneApplication,
@@ -62,6 +65,7 @@ impl Application {
         let repositories = repositories.into_parts();
         Self {
             api_keys: ApiKeyApplication::new(repositories.api_keys, dependencies.api_key_generator),
+            ci_ingest: CiIngestApplication::new(repositories.ci_ingest),
             roles: RoleApplication::new(repositories.roles),
             users: UserApplication::new(
                 repositories.users,
@@ -71,6 +75,11 @@ impl Application {
             zones: ZoneApplication::new(repositories.zones),
             _rule_zone_snapshots: repositories.rule_zone_snapshots,
         }
+    }
+
+    #[must_use]
+    pub fn ci_ingest(&self) -> &CiIngestApplication {
+        &self.ci_ingest
     }
 
     #[must_use]
@@ -306,6 +315,7 @@ mod tests {
         let application = Application::new(
             RepositorySet::new(RepositorySetInput {
                 api_keys: Arc::new(crate::api_keys::tests::RecordingRepository::default()),
+                ci_ingest: Arc::new(crate::api_keys::tests::RecordingRepository::default()),
                 roles: repository.clone(),
                 users: repository.clone(),
                 zones: repository.clone(),

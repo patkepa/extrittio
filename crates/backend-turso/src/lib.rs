@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 
 pub mod api_keys;
+mod ci_ingest;
+pub use ci_ingest::TursoCiIngestRepository;
 mod database;
 pub use api_keys::TursoApiKeyRepository;
 mod error;

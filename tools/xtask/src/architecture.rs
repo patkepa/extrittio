@@ -211,11 +211,6 @@ const APP_STATE_REPOSITORY_ACCESS_ALLOWANCES: &[AppStateRepositoryAccessAllowanc
     ),
     AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/devices/devices.rs", 24, 0),
     AppStateRepositoryAccessAllowance::new(
-        "crates/backend/src/domains/firmware/ci_pipeline.rs",
-        1,
-        0,
-    ),
-    AppStateRepositoryAccessAllowance::new(
         "crates/backend/src/domains/firmware/firmware_updates.rs",
         14,
         0,

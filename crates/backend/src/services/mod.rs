@@ -6,8 +6,6 @@ pub mod alert_service;
 pub mod audit_service;
 #[path = "../domains/identity/cert_service.rs"]
 pub mod cert_service;
-#[path = "../domains/firmware/ci_pipeline_service.rs"]
-pub mod ci_pipeline_service;
 #[path = "../domains/commands/command_service.rs"]
 pub mod command_service;
 #[path = "../domains/configuration/config_service.rs"]

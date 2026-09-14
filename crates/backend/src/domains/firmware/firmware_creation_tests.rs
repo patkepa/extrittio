@@ -73,15 +73,6 @@ impl FirmwareRepository for RecordingRepository {
         }))
     }
     #[allow(unused_variables)]
-    async fn ingest_ci(
-        &self,
-        key_hash: &str,
-        params: CiIngestParams,
-    ) -> Result<CiIngestOutcome, PersistenceError> {
-        panic!("unused by firmware storage tests")
-    }
-
-    #[allow(unused_variables)]
     async fn list(
         &self,
         tenant: &TenantId,

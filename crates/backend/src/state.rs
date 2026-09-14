@@ -200,6 +200,7 @@ impl AppState {
             extrittio_backend_core::RepositorySet::new(
                 extrittio_backend_core::RepositorySetInput {
                     api_keys: persistence.api_keys.clone(),
+                    ci_ingest: persistence.ci_ingest.clone(),
                     roles: persistence.roles.clone(),
                     users: persistence.users.clone(),
                     zones: persistence.zones.clone(),
