@@ -4,17 +4,28 @@ use diesel::Connection;
 use diesel::prelude::*;
 use serde_json::{Map, Value};
 
-use crate::db::models::{DeviceConfig, NewDeviceConfig};
-use crate::db::schema::{device_configs, devices};
-use crate::domains::configuration::repository::DeviceConfigRepository;
-use crate::domains::configuration::types::{
+use crate::models::{DeviceConfig, NewDeviceConfig};
+use crate::schema::{device_configs, devices};
+use extrittio_backend_core::PersistenceError;
+use extrittio_backend_core::TenantId;
+use extrittio_backend_core::configuration::DeviceConfigRepository;
+use extrittio_backend_core::configuration::{
     DeviceConfigRecord, GetDeviceConfigOutcome, MergeDeviceConfigOutcome, merge_config,
 };
-use crate::persistence::PersistenceError;
-use crate::tenancy::TenantId;
 
-use super::PostgresAdapter;
-use super::executor::map_diesel_error;
+use crate::{PostgresExecutor, PostgresPool};
+#[derive(Clone)]
+pub struct PostgresConfigurationRepository {
+    executor: PostgresExecutor,
+}
+impl PostgresConfigurationRepository {
+    pub fn from_pool(pool: PostgresPool) -> Self {
+        Self {
+            executor: PostgresExecutor::new(pool),
+        }
+    }
+}
+use crate::error::map_diesel_error;
 
 fn to_record(row: DeviceConfig) -> DeviceConfigRecord {
     DeviceConfigRecord {
@@ -25,7 +36,7 @@ fn to_record(row: DeviceConfig) -> DeviceConfigRecord {
 }
 
 #[async_trait]
-impl DeviceConfigRepository for PostgresAdapter {
+impl DeviceConfigRepository for PostgresConfigurationRepository {
     async fn get_for_device(
         &self,
         tenant: &TenantId,

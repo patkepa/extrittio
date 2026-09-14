@@ -3,28 +3,45 @@ use chrono::{DateTime, Utc};
 use serde_json::{Map, Value};
 use turso::{Connection, Row, params};
 
-use crate::domains::shadows::repository::ShadowRepository;
-use crate::domains::shadows::types::{
+use extrittio_backend_core::PersistenceError;
+use extrittio_backend_core::TenantId;
+use extrittio_backend_core::shadows::ShadowRepository;
+use extrittio_backend_core::shadows::{
     ShadowRecord, apply_desired_patch, apply_reported_patch, reset_shadow,
 };
-use crate::persistence::PersistenceError;
-use crate::tenancy::TenantId;
 
-use super::{TursoAdapter, row};
+use crate::{TursoConnectionHandles, row};
+#[derive(Clone)]
+pub struct TursoShadowRepository {
+    handles: TursoConnectionHandles,
+}
+impl TursoShadowRepository {
+    pub fn from_handles(handles: TursoConnectionHandles) -> Self {
+        Self { handles }
+    }
+    fn connect(&self) -> Result<Connection, PersistenceError> {
+        self.handles
+            .connect_raw()
+            .map_err(|error| PersistenceError::Unavailable(error.to_string()))
+    }
+}
 
 fn decode(record: &Row) -> Result<ShadowRecord, PersistenceError> {
     let json = |index| -> Result<Value, PersistenceError> {
-        let value: String = record.get(index).map_err(row::error)?;
+        let value: String = record.get(index).map_err(row::legacy_error)?;
         serde_json::from_str(&value)
             .map_err(|error| PersistenceError::CorruptData(error.to_string()))
     };
     Ok(ShadowRecord {
-        device_id: record.get(0).map_err(row::error)?,
+        device_id: record.get(0).map_err(row::legacy_error)?,
         desired: json(1)?,
         reported: json(2)?,
         delta: json(3)?,
-        version: row::i32(record.get(4).map_err(row::error)?, "device_shadows.version")?,
-        updated_at: row::datetime(record.get(5).map_err(row::error)?)?,
+        version: row::i32(
+            record.get(4).map_err(row::legacy_error)?,
+            "device_shadows.version",
+        )?,
+        updated_at: row::datetime(record.get(5).map_err(row::legacy_error)?)?,
     })
 }
 
@@ -40,10 +57,10 @@ async fn get_from(
             params![tenant.as_str(), device_id],
         )
         .await
-        .map_err(row::error)?;
+        .map_err(row::legacy_error)?;
     rows.next()
         .await
-        .map_err(row::error)?
+        .map_err(row::legacy_error)?
         .map(|record| decode(&record))
         .transpose()
 }
@@ -72,17 +89,17 @@ async fn store(
         )
         .await
         .map(|_| ())
-        .map_err(row::error)
+        .map_err(row::legacy_error)
 }
 
 #[async_trait]
-impl ShadowRepository for TursoAdapter {
+impl ShadowRepository for TursoShadowRepository {
     async fn get(
         &self,
         tenant: &TenantId,
         device_id: &str,
     ) -> Result<Option<ShadowRecord>, PersistenceError> {
-        get_from(&self.database.connect()?, tenant, device_id).await
+        get_from(&self.connect()?, tenant, device_id).await
     }
 
     async fn update_desired(
@@ -124,26 +141,28 @@ impl ShadowRepository for TursoAdapter {
     }
 }
 
-impl TursoAdapter {
+impl TursoShadowRepository {
     async fn mutate(
         &self,
         tenant: &TenantId,
         device_id: &str,
         mutate: impl FnOnce(
             ShadowRecord,
-        )
-            -> Result<ShadowRecord, crate::domains::shadows::types::ShadowMutationError>,
+        ) -> Result<
+            ShadowRecord,
+            extrittio_backend_core::shadows::ShadowMutationError,
+        >,
     ) -> Result<Option<ShadowRecord>, PersistenceError> {
-        let mut writer = self.database.writer().await;
-        let transaction = writer.transaction().await.map_err(row::error)?;
+        let mut writer = self.handles.lock_writer().await;
+        let transaction = writer.transaction().await.map_err(row::legacy_error)?;
         let Some(current) = get_from(&transaction, tenant, device_id).await? else {
-            transaction.rollback().await.map_err(row::error)?;
+            transaction.rollback().await.map_err(row::legacy_error)?;
             return Ok(None);
         };
         let updated =
             mutate(current).map_err(|error| PersistenceError::CorruptData(error.to_string()))?;
         store(&transaction, tenant, &updated).await?;
-        transaction.commit().await.map_err(row::error)?;
+        transaction.commit().await.map_err(row::legacy_error)?;
         Ok(Some(updated))
     }
 }

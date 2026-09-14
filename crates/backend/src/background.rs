@@ -5,7 +5,7 @@ use chrono::Timelike;
 use tracing::{info, warn};
 
 use crate::persistence::RepositorySet;
-use crate::services::{command_service, device_ingress_service, log_service};
+use crate::services::{device_ingress_service, log_service};
 
 /// Compute a backoff sleep duration based on consecutive failures.
 /// Doubles each failure from `base` up to `max`.
@@ -88,10 +88,11 @@ pub async fn run_command_timeout_checker(persistence: RepositorySet, timeout_sec
         };
         tokio::time::sleep(sleep_dur).await;
 
-        let result = command_service::timeout_stale_with_repository(
-            persistence.commands.as_ref(),
-            timeout_secs,
+        let result = extrittio_backend_core::CommandWorkerApplication::new(
+            persistence.commands.clone(),
+            std::sync::Arc::new(crate::auth::SystemClock),
         )
+        .timeout_stale(timeout_secs)
         .await;
 
         match result {

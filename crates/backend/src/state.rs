@@ -201,6 +201,8 @@ impl AppState {
         let application = extrittio_backend_core::Application::new(
             extrittio_backend_core::RepositorySet::new(
                 extrittio_backend_core::RepositorySetInput {
+                    configuration: persistence.configuration.clone(),
+                    shadows: persistence.shadows.clone(),
                     alerts: persistence.alerts.clone(),
                     outbox: persistence.outbox.clone(),
                     rules: persistence.rules.clone(),

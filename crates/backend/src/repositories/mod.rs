@@ -1,7 +1,5 @@
 #[path = "../domains/audit/audit_repo.rs"]
 pub mod audit_repo;
-#[path = "../domains/commands/command_repo.rs"]
-pub mod command_repo;
 #[path = "../domains/devices/device_repo.rs"]
 pub mod device_repo;
 #[path = "../domains/device_types/device_type_repo.rs"]

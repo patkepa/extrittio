@@ -175,11 +175,6 @@ const APP_STATE_REPOSITORY_ACCESS_ALLOWANCES: &[AppStateRepositoryAccessAllowanc
     AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/audit/audit.rs", 1, 0),
     AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/commands/commands.rs", 3, 0),
     AppStateRepositoryAccessAllowance::new(
-        "crates/backend/src/domains/configuration/configs.rs",
-        2,
-        0,
-    ),
-    AppStateRepositoryAccessAllowance::new(
         "crates/backend/src/domains/dashboard/dashboard.rs",
         1,
         0,
@@ -201,7 +196,6 @@ const APP_STATE_REPOSITORY_ACCESS_ALLOWANCES: &[AppStateRepositoryAccessAllowanc
         1,
         0,
     ),
-    AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/shadows/shadows.rs", 4, 0),
     AppStateRepositoryAccessAllowance::new(
         "crates/backend/src/domains/telemetry/telemetry.rs",
         4,

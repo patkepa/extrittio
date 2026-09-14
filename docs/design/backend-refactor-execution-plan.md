@@ -4,7 +4,7 @@
 - **Created:** 2026-09-14.
 - **Purpose:** Executable work packages for completing the remaining backend ownership refactor.
 - **Current execution preference:** Skip running, compiling, adding, and repairing tests for now. Remove tests made invalid by the refactor; keep unaffected tests. Continue production compilation, formatting, and architecture checks.
-- **Next package:** R06 — alerts and durable actions/outbox. R01–R05 are implemented; behavioral verification remains deferred.
+- **Next package:** R07 — commands, shadows, and configuration. R01–R06 are implemented; behavioral verification remains deferred.
 
 ## 1. Scope and authority
 
@@ -437,8 +437,8 @@ with a generic “done.” List individual PRs if a package is split.
 | R03 | Implemented | Deferred | Core catalogs and both adapters; ADR-012 |
 | R04 | Implemented | Deferred | Core blueprints/devices, atomic provisioning, both adapters; ADR-013 |
 | R05 | Implemented | Deferred | Core rules/evaluation, consistent reads, immutable host snapshots, polling/readiness/metrics; ADR-005 |
-| R06 | In progress | Deferred | Alert/outbox extraction done; finish authoritative runtime state and duplicate prevention |
-| R07 | Not started | Deferred | Shadows/configuration, then commands |
+| R06 | Implemented | Deferred | Core policy/runtime, adapter-owned outbox and durable transitions; ADR-014 |
+| R07 | In progress | Deferred | Shadow/configuration applications and adapters extracted; shared OTA, config version/ack, and commands next |
 | R08 | Not started | Deferred | Ingress and time-series contracts |
 | R09 | CI ingest only | Deferred | Remaining metadata/blob/OTA work |
 | R10 | Not started | Deferred | Projections, audit, metrics |
@@ -599,3 +599,32 @@ This closes the implementation items left open in the preceding R05 notes.
 - Legacy zone-entry delivery uses the core system façade and retained outbox metadata. Live observation wins over any later-delivered legacy update regardless of clock skew; old producers must be quiesced during rollout. Before handoff, the legacy ordering policy is deterministic on both databases.
 - R06 still needs a final ownership audit (including worker transition/retention façades) and review of stale definition snapshots versus new runtime foreign keys before it is marked complete. Tests remain deferred; no new invalid tests were found in this slice.
 - Validation passed: independent core/adapters, all four host profiles, combined-adapter CLI compilation, formatting, whitespace, and architecture checks (41 direct accesses across 14 files, 9 migration exceptions). Source search found no host runtime-map API or field access. No tests or migrations ran. Changes remain uncommitted.
+
+
+### R06 final ownership audit
+
+- Core worker operations now own alert update/resolve and legacy cooldown application. Core maintenance computes checked retention cutoffs and explicitly prunes resolved alerts across all tenants; the host owns scheduling and delivery clients.
+- Transaction participants filter snapshot candidates against surviving enabled rules before evaluating. PostgreSQL holds key-share locks on surviving rule identities through commit; Turso uses its existing write transaction. Deleted snapshot rules cannot introduce runtime foreign-key violations. Definition edits still follow the documented snapshot freshness window.
+- Outbox insertion SQL now lives in both adapter crates. Host ingress wrappers only delegate inside the existing outer transaction; their removal belongs to R08. No second connection or independent commit was introduced.
+- The seven R06 implementation requirements are connected: core decisions, database-authoritative runtime state, adapter-owned outbox, claim-token conditional outcomes, versioned legacy-readable payloads, explicit retention/time/order semantics, and host transport/scheduling. External delivery remains at least once; migration and behavioral evidence remain deferred.
+- Validation passed: independent core/adapters, all production host feature profiles, combined-adapter CLI compilation, formatting, whitespace, and architecture checks. Architecture reports 41 direct accesses across 14 files and 9 tracked exceptions. No tests or migrations ran. R06 is implemented, not behaviorally verified.
+
+### R07 initial shadow boundary
+
+- Moved shadow records, the repository port, checked version increments, desired/reported merge and delta decisions, and reset policy into core. Existing host imports temporarily re-export these definitions while application and adapter ownership migrate.
+- Preserved shallow patch semantics: null removes a key, nested values replace whole values, and delta contains only desired keys differing from reported. Core contains the pure JSON operations so it does not depend on the transport/common crate; common's public helpers remain available to existing consumers.
+- Existing pure mutation tests moved unchanged with the implementation; they were not compiled or run. No tests became obsolete in this move. PostgreSQL row locking and Turso transaction behavior are unchanged.
+- R07 remains in progress: move shadow application operations and SQL ownership next, then configuration and command transitions/dispatch under ADR-003.
+
+- Shadow repository SQL moved into `backend-postgres::PostgresShadowRepository` and `backend-turso::TursoShadowRepository`; composition uses the existing pool/shared handles. Deleted the superseded host adapter modules. PostgreSQL still locks the shadow row through mutation/commit; Turso still serializes its writer transaction. Host service authorization/publication and legacy OTA transaction helpers remain to migrate in R07.
+- Validation passed for this R07 slice: independent core/adapters, all four production host feature profiles, formatting, whitespace, and architecture checks (41 direct accesses across 14 files, 9 tracked exceptions). No tests were compiled or run. Changes remain uncommitted.
+
+
+### R07 shadow applications and configuration extraction
+
+- Core `ShadowApplication` owns read/manage authorization, reserved `ota` desired-key rejection, missing-record outcomes, and clock-based mutations. `DeviceShadowApplication` offers only tenant-scoped reads/reported updates for authenticated ingress. HTTP and device message handlers now invoke these operations. The host publishes desired deltas only after a committed result, preserving best-effort publication and metrics.
+- Removed the four obsolete shadow service tests (`passes_tenant_identity_to_reads_reports_and_resets`, `reported_update_requires_manage_permission_before_persistence`, `every_user_shadow_mutation_requires_manage_permission`, `shadow_management_cannot_inject_or_remove_ota_commands`), which called deleted service/authorization functions. Pure shadow mutation tests remain unchanged and unexecuted. The remaining host shadow service contains delta transport and OTA report translation pending shared OTA migration.
+- Core configuration now owns records, outcomes, shallow merge policy, read/manage authorization, missing-device errors, and the clock. Both adapters own configuration SQL and retain device-row/write-transaction serialization for atomic read/merge/upsert. HTTP uses the application façade; the old host service and adapter modules were removed.
+- Removed the obsolete configuration service tests `passes_tenant_identity_to_get_and_atomic_merge` and `authorization_happens_before_persistence`, whose entry points were deleted. Pure configuration merge tests moved unchanged to core. No tests were run, compiled, added, or repaired.
+- Source inspection found no configuration version or acknowledgement message in the current common protocol or configuration records/port. The plan explicitly requires those semantics, so their design/implementation remains open; this extraction does not claim to satisfy that requirement. Shadow OTA mutation unification and command validation/state/dispatch also remain open. R07 is still in progress.
+- Validation passed: independent core/adapters, all four production host profiles, combined-adapter CLI, formatting, whitespace, and architecture checks. Direct handler-to-repository access decreased from 41 across 14 files to 35 across 12 files; 9 tracked exceptions remain. No tests or migrations ran. Changes remain uncommitted.

@@ -81,3 +81,12 @@ pub use rule_runtime::evaluate_rules_in_transaction;
 #[cfg(feature = "migration-bridge")]
 #[doc(hidden)]
 pub use outbox::enqueue_actions_in_transaction;
+
+mod shadows;
+pub use shadows::TursoShadowRepository;
+
+mod configuration;
+pub use configuration::TursoConfigurationRepository;
+
+mod commands;
+pub use commands::TursoCommandRepository;

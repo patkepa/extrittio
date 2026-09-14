@@ -9,7 +9,6 @@ use crate::domains::commands::port::CommandRepository;
 use crate::domains::commands::types::{CommandQuery, CommandRecord, NewCommandRecord};
 use crate::error::AppError;
 use crate::state::ZenohMetrics;
-use crate::tenancy::DeviceIdentity;
 use extrittio_backend_core::devices::DeviceRepository;
 use extrittio_common::extrittio::DeviceCommand;
 
@@ -121,35 +120,4 @@ pub async fn list_commands_with_repository(
         .list(ctx.tenant_id(), device_id, query)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Device '{device_id}' not found")))
-}
-
-pub async fn timeout_stale_with_repository(
-    repository: &dyn CommandRepository,
-    timeout_secs: u64,
-) -> Result<usize, AppError> {
-    #[allow(clippy::cast_possible_wrap)]
-    let cutoff = chrono::Utc::now().naive_utc() - chrono::TimeDelta::seconds(timeout_secs as i64);
-    Ok(repository
-        .timeout_stale(cutoff, chrono::Utc::now().naive_utc())
-        .await?)
-}
-
-pub async fn handle_response_with_repository(
-    repository: &dyn CommandRepository,
-    identity: &DeviceIdentity,
-    correlation_id: &str,
-    device_status: &str,
-    payload: Option<&str>,
-) -> Result<Option<String>, AppError> {
-    if correlation_id.is_empty() {
-        return Ok(None);
-    }
-    Ok(repository
-        .apply_response(
-            identity,
-            correlation_id.to_string(),
-            device_status.to_string(),
-            payload.map(ToOwned::to_owned),
-        )
-        .await?)
 }

@@ -1,3 +1,9 @@
+mod commands;
+pub use commands::CommandWorkerApplication;
+mod configuration;
+pub use configuration::ConfigurationApplication;
+mod shadows;
+pub use shadows::{DeviceShadowApplication, ShadowApplication};
 mod alerts;
 pub use alerts::{
     AlertApplication, AlertMaintenanceApplication, AlertWorkerApplication, RuleAlertIntent,
@@ -87,6 +93,8 @@ pub struct Application {
     device_types: DeviceTypeApplication,
     ci_ingest: CiIngestApplication,
     certificates: CertificateApplication,
+    configuration: ConfigurationApplication,
+    shadows: ShadowApplication,
     alerts: AlertApplication,
     outbox: OutboxApplication,
     rules: RuleApplication,
@@ -96,6 +104,12 @@ pub struct Application {
 }
 
 impl Application {
+    pub fn configuration(&self) -> &ConfigurationApplication {
+        &self.configuration
+    }
+    pub fn shadows(&self) -> &ShadowApplication {
+        &self.shadows
+    }
     pub fn alerts(&self) -> &AlertApplication {
         &self.alerts
     }
@@ -120,6 +134,11 @@ impl Application {
             dependencies.clock.clone(),
         );
         Self {
+            configuration: ConfigurationApplication::new(
+                repositories.configuration,
+                dependencies.clock.clone(),
+            ),
+            shadows: ShadowApplication::new(repositories.shadows, dependencies.clock.clone()),
             alerts: AlertApplication::new(repositories.alerts),
             outbox: OutboxApplication::new(repositories.outbox),
             rules: RuleApplication::new(

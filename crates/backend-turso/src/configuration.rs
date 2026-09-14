@@ -3,23 +3,37 @@ use chrono::{DateTime, Utc};
 use serde_json::{Map, Value};
 use turso::params;
 
-use crate::domains::configuration::repository::DeviceConfigRepository;
-use crate::domains::configuration::types::{
+use extrittio_backend_core::PersistenceError;
+use extrittio_backend_core::TenantId;
+use extrittio_backend_core::configuration::DeviceConfigRepository;
+use extrittio_backend_core::configuration::{
     DeviceConfigRecord, GetDeviceConfigOutcome, MergeDeviceConfigOutcome, merge_config,
 };
-use crate::persistence::PersistenceError;
-use crate::tenancy::TenantId;
 
-use super::{TursoAdapter, row};
+use crate::{TursoConnectionHandles, row};
+#[derive(Clone)]
+pub struct TursoConfigurationRepository {
+    handles: TursoConnectionHandles,
+}
+impl TursoConfigurationRepository {
+    pub fn from_handles(handles: TursoConnectionHandles) -> Self {
+        Self { handles }
+    }
+    fn connect(&self) -> Result<turso::Connection, PersistenceError> {
+        self.handles
+            .connect_raw()
+            .map_err(|e| PersistenceError::Unavailable(e.to_string()))
+    }
+}
 
 #[async_trait]
-impl DeviceConfigRepository for TursoAdapter {
+impl DeviceConfigRepository for TursoConfigurationRepository {
     async fn get_for_device(
         &self,
         tenant: &TenantId,
         device_id: &str,
     ) -> Result<GetDeviceConfigOutcome, PersistenceError> {
-        let connection = self.database.connect()?;
+        let connection = self.connect()?;
         let mut rows = connection
             .query(
                 "SELECT c.config, c.updated_at FROM devices d
@@ -28,12 +42,12 @@ impl DeviceConfigRepository for TursoAdapter {
                 params![tenant.as_str(), device_id],
             )
             .await
-            .map_err(row::error)?;
-        let Some(record) = rows.next().await.map_err(row::error)? else {
+            .map_err(row::legacy_error)?;
+        let Some(record) = rows.next().await.map_err(row::legacy_error)? else {
             return Ok(GetDeviceConfigOutcome::DeviceNotFound);
         };
-        let config_text: Option<String> = record.get(0).map_err(row::error)?;
-        let updated_at: Option<i64> = record.get(1).map_err(row::error)?;
+        let config_text: Option<String> = record.get(0).map_err(row::legacy_error)?;
+        let updated_at: Option<i64> = record.get(1).map_err(row::legacy_error)?;
         match (config_text, updated_at) {
             (None, None) => Ok(GetDeviceConfigOutcome::Found(None)),
             (Some(config), Some(updated_at)) => {
@@ -60,8 +74,8 @@ impl DeviceConfigRepository for TursoAdapter {
         patch: Map<String, Value>,
         updated_at: DateTime<Utc>,
     ) -> Result<MergeDeviceConfigOutcome, PersistenceError> {
-        let mut writer = self.database.writer().await;
-        let transaction = writer.transaction().await.map_err(row::error)?;
+        let mut writer = self.handles.lock_writer().await;
+        let transaction = writer.transaction().await.map_err(row::legacy_error)?;
         let mut rows = transaction
             .query(
                 "SELECT c.config FROM devices d LEFT JOIN device_configs c
@@ -70,14 +84,14 @@ impl DeviceConfigRepository for TursoAdapter {
                 params![tenant.as_str(), device_id],
             )
             .await
-            .map_err(row::error)?;
-        let Some(record) = rows.next().await.map_err(row::error)? else {
-            transaction.rollback().await.map_err(row::error)?;
+            .map_err(row::legacy_error)?;
+        let Some(record) = rows.next().await.map_err(row::legacy_error)? else {
+            transaction.rollback().await.map_err(row::legacy_error)?;
             return Ok(MergeDeviceConfigOutcome::DeviceNotFound);
         };
         let current = record
             .get::<Option<String>>(0)
-            .map_err(row::error)?
+            .map_err(row::legacy_error)?
             .map(|value| serde_json::from_str(&value))
             .transpose()
             .map_err(|error| PersistenceError::CorruptData(error.to_string()))?
@@ -100,8 +114,8 @@ impl DeviceConfigRepository for TursoAdapter {
                 ],
             )
             .await
-            .map_err(row::error)?;
-        transaction.commit().await.map_err(row::error)?;
+            .map_err(row::legacy_error)?;
+        transaction.commit().await.map_err(row::legacy_error)?;
         Ok(MergeDeviceConfigOutcome::Updated(DeviceConfigRecord {
             device_id: device_id.to_string(),
             config,

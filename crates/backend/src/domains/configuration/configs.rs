@@ -11,7 +11,6 @@ use utoipa::ToSchema;
 
 use crate::auth::context::RequestContext;
 use crate::error::AppError;
-use crate::services::config_service;
 use crate::state::AppState;
 
 // ---------------------------------------------------------------------------
@@ -64,8 +63,11 @@ pub(crate) async fn get_config(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<ConfigResponse>, AppError> {
-    let config =
-        config_service::get_config(&ctx, state.persistence.configuration.as_ref(), &id).await?;
+    let config = state
+        .application()
+        .configuration()
+        .get(&ctx.tenant_context(), &id)
+        .await?;
     let response = match config {
         Some(config) => ConfigResponse {
             device_id: config.device_id,
@@ -104,13 +106,11 @@ pub(crate) async fn update_config(
     Path(id): Path<String>,
     Json(body): Json<UpdateConfigRequest>,
 ) -> Result<Json<ConfigResponse>, AppError> {
-    let updated = config_service::merge_and_update(
-        &ctx,
-        state.persistence.configuration.as_ref(),
-        &id,
-        &body.entries,
-    )
-    .await?;
+    let updated = state
+        .application()
+        .configuration()
+        .merge(&ctx.tenant_context(), &id, body.entries)
+        .await?;
     let response = ConfigResponse {
         device_id: updated.device_id,
         config: updated.config,

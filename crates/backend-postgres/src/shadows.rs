@@ -5,17 +5,28 @@ use diesel::PgConnection;
 use diesel::prelude::*;
 use serde_json::{Map, Value};
 
-use crate::db::models::{DeviceShadow, UpdateShadow};
-use crate::db::schema::device_shadows;
-use crate::domains::shadows::repository::ShadowRepository;
-use crate::domains::shadows::types::{
+use crate::models::{DeviceShadow, UpdateShadow};
+use crate::schema::device_shadows;
+use extrittio_backend_core::PersistenceError;
+use extrittio_backend_core::TenantId;
+use extrittio_backend_core::shadows::ShadowRepository;
+use extrittio_backend_core::shadows::{
     ShadowMutationError, ShadowRecord, apply_desired_patch, apply_reported_patch, reset_shadow,
 };
-use crate::persistence::PersistenceError;
-use crate::tenancy::TenantId;
 
-use super::PostgresAdapter;
-use super::executor::map_diesel_error;
+use crate::{PostgresExecutor, PostgresPool};
+#[derive(Clone)]
+pub struct PostgresShadowRepository {
+    executor: PostgresExecutor,
+}
+impl PostgresShadowRepository {
+    pub fn from_pool(pool: PostgresPool) -> Self {
+        Self {
+            executor: PostgresExecutor::new(pool),
+        }
+    }
+}
+use crate::error::map_diesel_error;
 
 fn to_record(row: DeviceShadow) -> ShadowRecord {
     ShadowRecord {
@@ -93,7 +104,7 @@ fn mutate_shadow(
 }
 
 #[async_trait]
-impl ShadowRepository for PostgresAdapter {
+impl ShadowRepository for PostgresShadowRepository {
     async fn get(
         &self,
         tenant: &TenantId,

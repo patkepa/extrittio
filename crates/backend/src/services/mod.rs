@@ -4,8 +4,6 @@ pub mod activity_service;
 pub mod audit_service;
 #[path = "../domains/commands/command_service.rs"]
 pub mod command_service;
-#[path = "../domains/configuration/config_service.rs"]
-pub mod config_service;
 #[path = "../domains/dashboard/dashboard_service.rs"]
 pub mod dashboard_service;
 #[path = "../domains/devices/device_ingress_service.rs"]

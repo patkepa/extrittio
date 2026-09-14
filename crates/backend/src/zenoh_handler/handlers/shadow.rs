@@ -66,12 +66,11 @@ pub async fn handle_shadow_report(
         return;
     };
 
-    let shadow = match shadow_service::update_reported_for_tenant(
-        persistence.shadows.as_ref(),
-        identity.tenant_id(),
-        identity.device_id(),
-        &patch,
+    let shadow = match extrittio_backend_core::DeviceShadowApplication::new(
+        persistence.shadows.clone(),
+        Arc::new(crate::auth::SystemClock),
     )
+    .update_reported(identity.tenant_id(), identity.device_id(), patch)
     .await
     {
         Ok(shadow) => shadow,
@@ -126,11 +125,11 @@ pub async fn handle_shadow_get(
     else {
         return;
     };
-    let shadow = match shadow_service::get_shadow_for_tenant(
-        persistence.shadows.as_ref(),
-        identity.tenant_id(),
-        identity.device_id(),
+    let shadow = match extrittio_backend_core::DeviceShadowApplication::new(
+        persistence.shadows.clone(),
+        Arc::new(crate::auth::SystemClock),
     )
+    .get(identity.tenant_id(), identity.device_id())
     .await
     {
         Ok(shadow) => shadow,
