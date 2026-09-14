@@ -3,8 +3,8 @@
 - **Baseline:** `9e8a529`, pushed on `refactoring/backend-continuation`.
 - **Created:** 2026-09-14.
 - **Purpose:** Executable work packages for completing the remaining backend ownership refactor.
-- **Current execution preference:** Skip running, adding, and repairing tests for now. Remove tests made invalid by the refactor; keep unaffected tests. Continue production compilation, formatting, and architecture checks.
-- **Next package:** R01 — certificates and key protection.
+- **Current execution preference:** Skip running, compiling, adding, and repairing tests for now. Remove tests made invalid by the refactor; keep unaffected tests. Continue production compilation, formatting, and architecture checks.
+- **Next package:** R06 — alerts and durable actions/outbox. R01–R05 are implemented; behavioral verification remains deferred.
 
 ## 1. Scope and authority
 
@@ -57,9 +57,13 @@ For each package:
 
 ### Test policy for the current implementation phase
 
-- Do not run tests, add new suites, repair obsolete tests, or expand test coverage now.
+This policy overrides test requirements in the linked plans and each package below
+for the current refactor. Continue implementation without waiting for deferred tests.
+
+- Do not run or compile tests, add new suites, repair obsolete tests, or expand test coverage now.
 - When a refactor removes or changes an interface, behavior, fixture, or mock that an existing test depends on, remove the affected invalid test. Remove its dedicated fixture/mock/helper if nothing else uses it.
 - Keep unaffected tests. Remove a whole test file or target only when all of its tests are obsolete; otherwise remove only the invalid cases.
+- A broken shared setup helper alone does not make every case obsolete. Inspect the cases individually, preserve coverage of unchanged supported behavior, and defer setup repairs without compiling or running the tests.
 - Remove obsolete test-target declarations and explicit CI/task references when deleting their targets. Do not leave commands pointing to deleted files, and do not disable unrelated CI checks or suites.
 - Record deleted tests and the reason in the package/PR ledger. Do not treat a test that still covers supported behavior as obsolete merely because it exposes an implementation defect.
 - Do not make implementation completion depend on behavioral test coverage. The acceptance lists below are future verification notes, not tasks to execute now.
@@ -355,6 +359,10 @@ target references during a refactor is routine cleanup and does not activate R14
 
 ### R15 — Release, documentation, and operational closure
 
+Complete documentation and static artifact inspection while R14 is postponed.
+Defer smoke tests, runtime benchmarks, migration rehearsals, and other executable
+behavioral verification; these do not block implementation or documentation closure.
+
 **Implementation:**
 
 - Update contributor instructions, architecture diagrams, migration/backup/restore guides, deployment profiles, environment documentation, and CLI runbooks to final paths.
@@ -412,6 +420,9 @@ Format changed Rust files using repository configuration. Include app/profile
 compilation when CLI or deployment features change. Compilation proves type and
 feature consistency, not runtime transaction, migration, or compatibility behavior.
 Do not run `cargo xtask verify backend` under the current preference: it runs tests.
+Do not use `cargo test`, `cargo test --no-run`, or `cargo check --tests/--all-targets`
+as a substitute. Check production targets only; identify obsolete tests by inspecting
+their dependencies on changed code, then remove only the invalid cases and unused support.
 
 ## 7. Execution ledger
 
@@ -421,12 +432,12 @@ with a generic “done.” List individual PRs if a package is split.
 | Package | Implementation | Behavioral verification | Commit/PR and next action |
 | --- | --- | --- | --- |
 | Baseline CI ingest | Complete at `9e8a529` | Deferred | Four host profiles and architecture passed |
-| R01 | Not started | Deferred | Start certificate call-site and PI-06/PI-14 review |
-| R02 | Not started | Deferred | Follow R01 |
-| R03 | Not started | Deferred | Device types, then fleets |
-| R04 | Not started | Deferred | Blueprints, then provisioning aggregate |
-| R05 | Not started | Deferred | Rules and snapshot ownership |
-| R06 | Not started | Deferred | Alerts, then durable actions/outbox |
+| R01 | Implemented | Deferred | Core façades and both adapters; ADR-010 |
+| R02 | Implemented | Deferred | Core system bootstrap and both adapters; ADR-011 |
+| R03 | Implemented | Deferred | Core catalogs and both adapters; ADR-012 |
+| R04 | Implemented | Deferred | Core blueprints/devices, atomic provisioning, both adapters; ADR-013 |
+| R05 | Implemented | Deferred | Core rules/evaluation, consistent reads, immutable host snapshots, polling/readiness/metrics; ADR-005 |
+| R06 | In progress | Deferred | Alert/outbox extraction done; finish authoritative runtime state and duplicate prevention |
 | R07 | Not started | Deferred | Shadows/configuration, then commands |
 | R08 | Not started | Deferred | Ingress and time-series contracts |
 | R09 | CI ingest only | Deferred | Remaining metadata/blob/OTA work |
@@ -442,3 +453,149 @@ remaining compatibility bridges, architecture count before/after, compilation
 results, removed tests and reasons, deferred verification, migration/rollback notes,
 and the next package. This makes
 the plan resumable from the repository without relying on conversation history.
+
+## 8. R01/R02 implementation record
+
+- Certificate types, policy, tenant and system façades, and crypto ports moved to core. Both adapter crates now own certificate persistence; the host supplies configured encryption/issuance and filesystem/TLS integration.
+- Provisioning preparation now calls the certificate application. All four certificate HTTP routes use core, and their direct repository allowance is deleted. The device route loses its certificate repository access as well.
+- ADR-010 resolves PI-06 with consume-on-rotation on both engines and records PI-14's schema-enforced global device ID contract. No encryption envelope, HTTP schema, or migration bytes changed.
+- Core owns bootstrap policy, built-in seeds, password hashing orchestration, and explicit local setup compatibility. Both adapters own bootstrap persistence; startup and CLI use application façades. ADR-011 records PI-15 and PostgreSQL owner-role creation/permission convergence.
+- Removed obsolete host certificate service/helper/type/port files and certificate/bootstrap engine implementations. The legacy business aggregate still holds core ports for host composition until R12.
+- Removed invalid core application/repository composition tests and their now-unused CI-ingest mock implementation; removed `backend/tests/cert_tests.rs`, whose cases/setup imported deleted host certificate service/helpers. Removed only obsolete certificate/bootstrap setup/assertion portions of the broad legacy Turso foundation test. Unaffected tests remain; the encryption-envelope fixtures moved with their implementation and were not run.
+- R01 compilation passed for independent core/adapters and all four host adapter profiles. Architecture after R01 reports 97 direct accesses across 20 files and 11 tracked exceptions (baseline: 102 / 21 / 12). R02 additionally reduces the default-tenant bootstrap allowance from two occurrences to one.
+- R02 independent core/adapter checks, all host profiles, the combined-adapter CLI build, and architecture checks passed. Behavioral tests, concurrency/migration runs, and new test coverage remain deferred. Changes are in the working tree; no implementation commit/push has been requested for these packages.
+- R01/R02 next package was R03; see its execution record below.
+
+## 9. R03 implementation record
+
+- Device-type and fleet policy, records, and repository ports moved to core. Both database adapters now own their catalog implementations, using the same shared pool/engine handles.
+- Catalog routes plus device/firmware compatibility-type resolution call core applications. Preserved validation/default/whitespace rules and public errors; added transport-independent `InvalidOperation` mapped to the existing 422 response category.
+- ADR-012 selects binary name/ID ordering for both engines and records the retained PostgreSQL firmware lookup bridge. Removed every unused helper from that bridge; R09 owns its final deletion.
+- Removed invalid device-type/fleet service tests. Deleted the remaining legacy Turso catalog, OTA, blueprint, and analytics test cases whose setup invoked removed catalog implementations; their execution/replacement is deferred under the user policy. Kept the unaffected activity-pagination case and its required setup. Earlier R01/R02 removed parts of the mixed foundation case; R03 makes that entire case obsolete and removes it.
+- Independent core/PostgreSQL/Turso crate compilation, all four host adapter profiles, combined-adapter CLI compilation, formatting, whitespace, and architecture checks pass. Architecture is now 86 direct accesses across 18 files with 11 tracked exceptions, down from baseline 102 / 21 / 12.
+- All R01–R03 changes remain uncommitted. No test suites ran. The full plan remains active, with R04 next.
+
+### R04 execution notes (2026-09-14)
+
+- Added core blueprint and device catalog values, ports, and applications; moved both SQL implementations to adapter crates using shared existing handles. Blueprint handlers and firmware revision lookup now call the application façade.
+- `DeviceApplication::provision` owns UUID allocation, blueprint compilation, compatibility type resolution, and certificate preparation. The HTTP handler passes translated inputs and its configured endpoint; CLI creation already calls this HTTP route. The database operation requires a compiled contract and atomically creates identity, shadow, contract, assignment, optional certificate, and declared initial configuration.
+- ADR-013 resolves PI-13: unchanged latest document/hash publication returns the original revision; changed drafts and stale compatibility baselines return conflicts. PostgreSQL parent/draft locking uses consistent order. No schema key or migration was added.
+- ADR-013 resolves PI-12: normalize duplicate IDs before selection limits; both adapters count unique matching tenant-owned rows. Deletion retries count only newly deleted rows. Configuration now materializes compiled defaults/overrides in `device_configs`, in the provisioning transaction.
+- Moved update-name validation and timestamps to core. Ingress is split into the explicit host `DeviceIngressRepository` until R08; existing commands retain a narrow core catalog dependency until R07. Removed legacy blueprint and device catalog services/types/SQL.
+- Removed the invalid device catalog service test module. Removed `test_device_creation_materializes_and_assigns_contract` and `test_device_ingress_resolves_the_persisted_tenant_identity` from the mixed API suite because they directly invoke ingress methods removed from the catalog port. Removed their dedicated `contract_blueprint_document` helper and unused Prost trait import. Other API cases and endpoint-derivation tests remain unchanged; none were run or repaired.
+- Independent core/adapter compilation, all four host feature profiles, and the combined-adapter CLI build passed. Formatting, whitespace, and architecture checks passed. Direct handler-to-repository accesses fell from 86 across 18 files to 61 across 17 files; 11 tracked migration exceptions remain. Behavioral, concurrency, rollback, and migration verification remain deferred by instruction.
+- Changes remain uncommitted; R05 is next. R14 remains postponed in full.
+
+### R05 execution notes — application and persistence ownership (2026-09-14)
+
+- Added core rule records, repository contract, and `RuleApplication` with existing authorization, validation, IDs, and update/toggle timestamps. HTTP rule CRUD now calls the application. A host `PublicWebhookUrlPolicy` implements the core URL-policy port, preserving URL/literal-address validation without introducing Reqwest or DNS dependencies into core.
+- Moved rule SQL and PostgreSQL helper queries into their adapter crates, using shared existing handles. The host retains only `rule_repo::upsert_cooldown` for the unmigrated alert transaction (R06 owner); obsolete helpers and the unused host active-alert loader are removed.
+- Resolved PI-11's source-read contract: PostgreSQL uses one read-only repeatable-read transaction; Turso uses one transaction on a dedicated read connection. Rules, conditions, actions, zone definitions, cooldown hints, and active-alert hints all come from that snapshot. Zone SQL/decoding is reused within the transaction and geometry conversion lives in core. The host no longer combines a rule read with a separate zone read.
+- Enabled-rule traversal is tenant/ID ordered. Conditions use group/ID order, actions use ID order, and active-alert duplicate hints choose the last row in created-at/ID order on both engines. Public list ordering retains the prior engine difference (PostgreSQL newest-created first, now with ID ties; Turso name/ID). This does not claim cross-engine list-order parity.
+- Removed the obsolete host rule service, record/port modules, and its zone-snapshot conversion test, whose enclosing service/helper boundary was removed. Other rule-engine and zone-adapter tests remain untouched and were not run.
+- **Still required for R05:** replace the mutable host cache with `RuleSnapshotStore`; move all evaluators behind snapshot access; add single-flight invalidation and independent polling; validate the 5-second default and 1–60-second interval; preserve the last good definitions; expose age/reload metrics and readiness degradation after two intervals; avoid rebuilding unchanged definitions. Mutable runtime-state authority closes in R06, not through snapshot replacement.
+- The repository's transitional `build_cache` result still includes mutable runtime hints, and HTTP still performs local refresh. Those are explicitly intermediate implementation paths, not completion of ADR-005. No schema migration or stored action/wire change was introduced. Transaction/consistency behavior remains unverified while tests are deferred.
+- Removed the unused separate zone-snapshot dependency from the core application aggregate; the adapter zone port remains available for its existing consumers and unaffected tests.
+- Independent core/adapter compilation, all four host profiles, the combined-adapter CLI build, formatting, whitespace, and architecture checks passed. Direct handler-to-repository accesses fell from 61 across 17 files to 55 across 16 files; 11 migration exceptions remain. No tests ran. Changes remain uncommitted; continue R05 with the immutable snapshot store and core evaluation integration.
+
+### R05 execution notes — immutable snapshots and lifecycle (2026-09-14)
+
+This closes the implementation items left open in the preceding R05 notes.
+
+- `RuleSnapshotStore::initialize` loads a full consistent snapshot before server construction. Every process starts a supervised, cancellable polling worker; the configured default is 5 seconds, with 1–60 whole seconds accepted for all profiles. The environment sample documents `RULE_SNAPSHOT_REFRESH_INTERVAL_SECS`.
+- Core `RuleChangeNotifier` fires only after successful create/update/delete/toggle commits. The host uses a coalescing notification, so reload failure cannot change the committed API result. Invalidations received during a reload retain a pending permit. A single-flight mutex prevents overlapping reloads and missed polling ticks are skipped/coalesced.
+- Adapters now return unindexed `RuleSnapshotRecords` from the consistent read. Core owns record-to-index construction and tenant-qualified telemetry/status/geofence evaluation through `RuleEvaluationSnapshot`. The host compares a deterministic SHA-256 definition fingerprint before compilation; unchanged content retains the existing index and still refreshes observation freshness.
+- Rule definitions live in a shared immutable index. Readers hold immutable snapshot handles; runtime hint updates use copy-on-write and cannot alter already-issued snapshots. A changed definition snapshot preserves current runtime hints, including updates made while the database read was in flight. These hints are explicitly transitional: authoritative cooldown, alert, zone-entry, claim, and idempotency handling remains R06 work.
+- Failed reloads retain the last good definitions. Readiness computes freshness on every request and degrades after two intervals, independently of whether the reload worker is waiting on the database. Age is measured from the successful read's start, including its load time. Current metrics expose snapshot age, interval, reload duration, success/failure counters, definition changes, and snapshot freshness.
+- Removed the direct host-to-rule-engine dependency, old handler cache refresh helper, and repository bridge. All live evaluator entry points now obtain a snapshot from the host store and call core evaluation. The architecture legacy-edge allowance and its invalid assertion were removed; other verifier assertions remain.
+- Removed the remaining `backend/tests/api_tests.rs` target because every case uses shared setup constructing the deleted mutable-cache `AppStateInput` boundary. Its target-specific architecture allowance was removed; no CI/task command references remained. Other rule-engine, configuration, zone-adapter, endpoint, and unrelated suites remain untouched. No tests were executed, added, or repaired.
+- Regenerated `api/openapi.json` and frontend OpenAPI types for the additive `rule_snapshots` metrics field, and updated the frontend compatibility type. Generation also incorporates R01's already-corrected certificate-download error description (400 when the key is gone). Existing protocol/action payload shapes and database schemas are unchanged.
+- Runtime, multi-process propagation, failure, concurrency, and representative-load measurements remain deferred under the test policy. R05 implementation is complete; verification remains deferred. Changes are uncommitted; continue with R06.
+- Validation passed: independent core/adapters, no-adapter/PostgreSQL/Turso/combined host compilation, combined-adapter CLI compilation, OpenAPI generation, frontend type generation and type-check, formatting, whitespace, and architecture checks. Source review confirmed notifications occur only after the four successful mutation paths. Architecture reports 55 direct handler-to-repository accesses across 16 files and 9 tracked migration exceptions (down from 11). No test suites ran.
+
+### R06 execution record — outbox and alert extraction (in progress)
+
+- Moved outbox ports/records, action mapping and versioned serialization, replay authorization/validation, claim validation, and retry classification into core. Both adapters now own claim/retry/replay queries. Workers use the core worker façade and returned claim tokens.
+- PI-10 uses fresh opaque tokens on every claim, conditional processing/token updates, and an additional attempt check on failures. PostgreSQL rechecks base-row eligibility while claiming and explicitly orders returned rows; both engines share tenant-ranked batch selection and microsecond lease precision.
+- Added backward reads of raw actions and version-1 writes. ADR-014 records the required rollout/rollback reader compatibility and the distinction between claim ownership and exactly-once side effects.
+- Moved alert records/port and tenant application operations to core, and alert/cooldown SQL into both adapter crates. Removed the obsolete host alert service/repository/type modules and the final host rule cooldown SQL helper. Alert/outbox handlers no longer access `state.persistence`; their architecture allowances were removed.
+- PostgreSQL transition preconditions now run under a row lock. Resolve/reactivate update cooldowns in the alert transaction on both engines, replacing handler-spawned persistence. Bulk transition IDs are deduplicated and locked in sorted order. Core owns transition preconditions; adapter changesets translate the transitions to storage.
+- PI-02: retained the explicit all-tenant resolved-at retention operation and deleted the unused creation-time retention helper. Alert PI-03/PI-04: `[since, before)` boundaries and `created_at DESC, id DESC` ordering; PostgreSQL's `since` boundary deliberately becomes inclusive. Summaries explicitly order status/severity.
+- No tests were added, repaired, or executed in this slice. Source search found no remaining Rust references to the removed alert/outbox interfaces; no additional test deletion was needed.
+- Remaining R06 work: database-authoritative alert creation and rule runtime state, atomic cooldown/zone-entry decisions and action intent, and removal of process-local correctness dependencies. Host ingress still owns its transactional enqueue helper pending the ingress extraction. This is not R06 completion.
+- Validation passed: independent core and both adapters, all four host feature profiles, combined-adapter CLI compilation, formatting, whitespace, and architecture checks. Direct handler-to-repository access fell from 55 across 16 files to 41 across 14 files; 9 tracked migration exceptions remain. No tests ran. All implementation changes remain uncommitted.
+
+### R06 execution record — atomic alert creation and receipts
+
+- Added a core system `AlertWorkerApplication` and explicit rule-alert intent. The durable action ID supplies the new alert ID. Replaced the generic insert port with transactional create-or-reuse semantics and removed the worker's local-map reservation/early return.
+- PostgreSQL serializes creators on the tenant-scoped device row. Turso obtains a database writer transaction. Both atomically reuse the newest active/acknowledged alert or insert one, recording which alert fulfilled the delivery.
+- Added adapter-owned `rule_alert_deliveries` migrations and PostgreSQL schema declarations. Receipts outlive alert retention and cascade with outbox deletion. Retried creation can return successful absence when its previously delivered alert was removed. Turso logical archives include the receipt table.
+- ADR-014 records rollout, no inferred historical backfill, archive-version handling, and receipt loss on PostgreSQL downgrade. No database migration or backup/restore operation was executed.
+- Removed the invalid fixed-count Turso `migration_order_and_checksums_match_the_compatibility_manifest` test and PostgreSQL `embeds_the_expected_postgres_migration_chain` / `migration_assets_match_the_compatibility_manifest` tests, plus their now-unused checksum fixtures and dedicated helper/imports. Their frozen migration counts/manifests became obsolete with the new migration. Other migration/backup tests remain untouched; no tests were added, repaired, or executed.
+- Still required for R06: authoritative evaluation/cooldown/zone-entry state and action-intent coupling, plus integration of manual reactivation with the duplicate-prevention rules. Creation is no longer gated by local hints, but the overall evaluator is still transitional.
+- Validation passed: independent core/adapter compilation, all four production host profiles, combined-adapter CLI compilation, formatting, whitespace, and architecture checks (41 direct accesses across 14 files, 9 migration exceptions). No tests or migrations were run. Changes remain uncommitted; the full plan remains active.
+
+### R06 execution record — manual reactivation serialization
+
+- Core now identifies transitions requiring an active rule/device slot and exposes an explicit competing-alert outcome. Single reactivation returns HTTP 409 when another alert is active or acknowledged for the same tenant/rule/device. Bulk reactivation skips conflicts and returns its existing updated count; rule-less alerts retain previous behavior.
+- PostgreSQL transitions acquire the same device lock as creators before locking/reloading the alert. Bulk transitions lock all target devices in sorted order first, then process sorted alert IDs. Turso obtains its database write transaction before the precondition/conflict check. Failed reactivation leaves alert and cooldown state unchanged.
+- Updated the HTTP OpenAPI annotations for the conflict response and bulk skip semantics. Existing historical duplicate alerts are left intact; no data cleanup or migration was performed in this slice.
+- Remaining R06 work is authoritative evaluation/cooldown/zone-entry state and action-intent coupling. Manual reactivation now participates in storage-backed active-alert exclusion. Tests remain deferred; no additional obsolete tests were found for this change.
+- Validation passed: independent core/adapters, all four host feature profiles, OpenAPI generation and response inspection, frontend type generation/type-check, formatting, whitespace, and architecture checks. Architecture remains at 41 direct accesses across 14 files and 9 migration exceptions. No tests ran, and changes remain uncommitted.
+
+### R06 execution record — explicit evaluation time
+
+- Added explicit-time rule-engine entry points for telemetry, status change, geofence, and cooldown checks. Within an evaluation, webhook timestamps, cooldown writes, and zone-entry timestamps now use the same supplied time instead of independently reading the wall clock.
+- Core snapshot entry points require that observation time. Telemetry and heartbeat share it with the corresponding ingress write; contract events share their received timestamp; an offline sweep uses one evaluation timestamp across its candidates.
+- Kept the existing rule-engine convenience functions as compatibility wrappers that capture time once and delegate. Existing tests and callers using those functions remain valid; no test changes were needed or executed.
+- This removes hidden clock reads from the decision functions used by core. It is groundwork for re-evaluation under transaction locks, not completion of database-authoritative runtime state. The current ingress paths still evaluate against local runtime hints before persistence; that remaining dependency must be removed in R06.
+- Validation passed: independent core/adapters, all four production host feature profiles, formatting, whitespace, and architecture checks (41 direct accesses across 14 files, 9 migration exceptions). No tests ran or changed. Changes remain uncommitted, and R06 remains in progress.
+
+### R06 execution record — transactional status-rule evaluation
+
+- Heartbeat and offline preparation now capture immutable definitions and evaluation input, not actions computed from local runtime hints. The ingress write carries an optional core `StatusRuleEvaluation`; unchanged statuses have no evaluation.
+- Both adapters load active/acknowledged alerts, cooldowns, and current device targeting inside the existing ingress transaction after its device mutation/lock. Core builds an evaluation cache from shared definitions plus those device-scoped runtime rows; it never inherits the snapshot's local runtime maps.
+- Core separates cooldown mutations from delivery intents. Adapters persist cooldown changes immediately; the host's remaining transaction participant enqueues returned deliveries before the same transaction commits. Failures roll back status/log writes, cooldown changes, and outbox inserts together. New status evaluations no longer queue `UpdateCooldown` actions.
+- Adapter-owned SQL is exposed through narrow migration-feature transaction participants, called only through host `database` composition. They do not create connections or commit transactions. These temporary participants move inside adapter-owned ingress implementations during R08; they are not a new general transaction framework.
+- PostgreSQL legacy cooldown writes now acquire the same sorted device locks as ingress and alert transitions. Both adapters preserve the maximum existing cooldown timestamp on upsert; the remaining local hint update also avoids timestamp regression. This does not fence an old queued update against a deliberately cleared/deleted row; legacy action retirement/runtime fencing is still open.
+- Offline transitions sort by tenant/device before mutation on both engines, and PostgreSQL candidate reads use the same explicit order. Actual adapter device type/fleet/blueprint targeting is reloaded in the transaction instead of relying on the host's earlier catalog read.
+- Removed the obsolete core snapshot status-change entry point that evaluated against local hints. Source inspection found no remaining callers or tests requiring it. No tests were added, repaired, or run.
+- R06 is still incomplete: telemetry/contract-event/geofence decisions continue to use local runtime hints; zone-entry persistence and atomic decisions, retirement/fencing of legacy runtime-update actions, and final local-map removal remain required.
+- Validation passed: independent core/adapters, all four host profiles, combined-adapter CLI compilation, formatting, whitespace, and architecture checks (41 direct accesses across 14 files, 9 migration exceptions). No tests ran. No new migration was needed for this status-only slice; changes remain uncommitted.
+
+### R06 execution record — telemetry, events, and durable zone entries
+
+- Generalized the core transaction request to `DeviceRuleEvaluation` with status or telemetry input. Telemetry may include geofence evaluation; contract events keep their previous telemetry-only behavior. All current ingress paths carry definitions/input into the transaction instead of evaluating local runtime hints in the host.
+- Both adapter participants read device-scoped alert, cooldown, and zone-entry rows and current targeting, then invoke core. Core separates cooldown/zone-entry mutations from delivery intents. Ingestion, state mutations, and queued deliveries commit together; new live paths no longer queue `UpdateCooldown` or `UpdateZoneEntry` actions.
+- Added PostgreSQL `20260914020000_rule_zone_entries` and Turso `0011_rule_zone_entries.sql`, tenant-scoped rule/device foreign keys, a device lookup index, and Turso logical archive inclusion. PostgreSQL adds redundant tenant-qualified unique parent indexes to enforce the same foreign-key scope as Turso. No migrations were applied.
+- Contract-event PostgreSQL ingestion now locks its device before writing the event, matching other rule-state writers. Duplicate event inserts still exit without evaluation/state mutation. Turso evaluates after obtaining its existing write transaction. Raw telemetry retains its existing optimistic device-type/fleet checks.
+- Removed the remaining core snapshot telemetry/geofence methods that could read local runtime hints. `DeviceRuleEvaluation` uses shared definitions plus transaction-provided runtime state only. Host runtime-map updates remain temporarily for legacy actions, but no live evaluator consumes those maps.
+- Zone-entry state starts empty on upgrade because old process-local entries cannot be reliably backfilled. The first valid location observation establishes persisted entry state. Subsequent restart behavior uses the database. Downgrading removes zone-entry history; use schema-compatible backup/restore tooling as described in ADR-014.
+- Remaining R06 work: handle legacy queued cooldown/zone-entry actions without undoing newer resets/state, remove unused local runtime-map loading/writes, and reconcile final retention/ownership documentation. Tests remain deferred; no new invalid tests were found in this slice.
+- Validation passed: independent core/adapters, all four host profiles, combined-adapter CLI compilation, formatting, whitespace, and architecture checks (41 direct accesses across 14 files, 9 migration exceptions). No tests or migrations ran. Changes remain uncommitted; R06 is not complete.
+
+### R06 execution record — definition-only snapshot loading
+
+- Removed alert/cooldown fields from `RuleSnapshotRecords` and deleted both adapters' global runtime scans during snapshot loading. PostgreSQL's unused global cooldown loader was removed. Snapshot transactions now assemble definitions (rules, children, zones); device runtime rows are read only by ingress evaluation or their dedicated operations.
+- Removed local alert/cooldown-map writes from HTTP alert transitions and action delivery. Snapshot reload no longer copies those maps. Database mutations already own this state, and live evaluators never consume local runtime maps.
+- The only remaining `runtime_mut` caller is legacy `UpdateZoneEntry` delivery. Its temporary sink and the legacy cooldown delivery path still require reset-safe handling before final removal and R06 closure. No queued action was discarded by this cleanup.
+- Validation passed: independent core/adapters, all four host feature profiles, formatting, whitespace, and architecture checks (41 direct accesses across 14 files, 9 migration exceptions). Source search confirmed the sole remaining runtime-map caller. Tests were neither run nor changed; no additional invalid tests were found. Changes remain uncommitted.
+
+### R06 execution record — cooldown reset markers
+
+- Added `rule_cooldown_resets` migrations (PostgreSQL `20260914030000`, Turso 12), tenant-scoped parent references, a device index, and logical archive inclusion. Reset markers retain one maximum timestamp per tenant/rule/device until the parent is deleted; ordinary cooldown retention does not erase them.
+- Reactivation records the reset marker and deletes the cooldown in the same transaction. Existing device/write locks serialize it with both live evaluation and legacy delivery. An old legacy cooldown at or before that reset becomes an acknowledged no-op, even when the cooldown row no longer exists.
+- Live transaction decisions and resolve operations use a distinct current-decision helper; they do not get mistaken for legacy delivery when timestamps collide within a microsecond. Both paths still preserve the maximum existing cooldown timestamp. Turso's three callers share one storage helper.
+- No historical reset times are guessed: only resets recorded by this implementation receive this protection. Old worker binaries must be stopped during rollout because they do not consult the marker. Downgrade removes marker history and therefore removes this replay protection. Migrations were not applied.
+- Legacy queued zone-entry handling and removal of its final local sink remain open; R06 is not yet complete. No tests were added, repaired, or run, and no additional invalid tests were found.
+- Validation passed: independent core/adapters, combined-adapter production host compilation, formatting, whitespace, and architecture checks (41 direct accesses across 14 files, 9 migration exceptions). Source review confirmed the separate legacy/current helper call sites and all SQL parameter bindings. Changes remain uncommitted.
+
+### R06 execution record — legacy zone handoff and final local-map removal
+
+- Added the core legacy zone-entry operation and both adapter implementations. Legacy updates apply to the database in a device/write transaction, ordered by their immutable outbox creation time and binary event ID. Equal/replayed or older updates are acknowledged no-ops.
+- Added `rule_zone_handoffs` migrations (PostgreSQL `20260914040000`, Turso 13), tenant-scoped parent references, a device index, and logical archive inclusion. Existing persisted zone entries are marked live during migration. No migrations were applied.
+- A valid live location observation permanently takes ownership of each applicable geofence rule/device pair. Core records observations even when they produce no entry/exit mutation, so an old entry action cannot undo a newer outside observation. Invalid/missing coordinates do not take ownership. Handoff and state/output writes commit atomically.
+- Removed `runtime_mut`, its mutation guard, all snapshot runtime-map copying, and snapshot wiring from the action worker. A full host source search also found and removed the obsolete rule-update branch that cleared local alert hints. Database alert state now consistently governs rule edits; no local trigger-type override remains.
+- Legacy zone-entry delivery uses the core system façade and retained outbox metadata. Live observation wins over any later-delivered legacy update regardless of clock skew; old producers must be quiesced during rollout. Before handoff, the legacy ordering policy is deterministic on both databases.
+- R06 still needs a final ownership audit (including worker transition/retention façades) and review of stale definition snapshots versus new runtime foreign keys before it is marked complete. Tests remain deferred; no new invalid tests were found in this slice.
+- Validation passed: independent core/adapters, all four host profiles, combined-adapter CLI compilation, formatting, whitespace, and architecture checks (41 direct accesses across 14 files, 9 migration exceptions). Source search found no host runtime-map API or field access. No tests or migrations ran. Changes remain uncommitted.

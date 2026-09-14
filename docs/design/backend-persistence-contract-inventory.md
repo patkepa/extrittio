@@ -1,5 +1,23 @@
 # Backend persistence contract inventory
 
+Current implementation updates for R01–R05: certificate and bootstrap ports now
+live in core with adapter-owned implementations (ADR-010/011), as do device types
+and fleets (ADR-012). PI-06 rotation behavior, PI-14 global-ID scope, and PI-15
+bootstrap role preconditions have implementation decisions; verification is deferred.
+PI-04 catalog lists now use explicit binary name/ID ordering. Older detailed rows
+below remain historical evidence until their behavioral contract suites are resumed.
+Blueprint and device catalog ports now live in core, with SQL in both adapter crates.
+ADR-013 defines PI-12 duplicate counts, PI-13 publication retries, and atomic initial
+configuration/contract/credential provisioning. Ingress remains an explicit host port
+until R08. These are implementation decisions; behavioral evidence remains deferred.
+R05 is implemented: rule records/port/application and both adapters have moved.
+PI-11 now uses one database snapshot including zones (PostgreSQL repeatable read;
+Turso transaction). The immutable host store, independent polling, core evaluation,
+post-commit invalidation,
+and readiness/metrics parts of ADR-005 are implemented. Mutable runtime maps remain
+transitional until R06; behavioral evidence remains deferred.
+
+
 - **Status:** P0-A implementation inventory
 - **Architecture plan:** `docs/design/backend-crate-architecture-plan.md`, P0.3
 - **Inspected revision:** `a75ff73c187e1ae9bae04fd9f1377e8662886242` plus the working tree as of 2026-08-31
@@ -398,3 +416,40 @@ Each P2/P3 slice should copy the relevant rows from this inventory into executab
 - Caller/use case, tenant/system scope, empty/not-found/conflict semantics, ordering/pagination, transaction participation, time behavior, retry/idempotency, evidence, target package, and ambiguity are recorded for every operation or coherent group.
 - Observed adapter differences are flagged without selecting accidental behavior as the target contract.
 - This inventory makes no production-code or schema change.
+
+## R06 continuation correction — alerts and outbox
+
+The historical rows above describe the baseline. Alert and outbox ports now live
+in `backend-core`; both concrete implementations live in the adapter crates.
+ADR-014 specifies unique claim tokens, conditional completion/failure, versioned
+action decoding and rollout, deterministic claim ordering, atomic alert transition
+cooldowns, `[since, before)` alert lists, and all-tenant resolved-at retention.
+The unused creation-time alert retention helper has been removed. Database-backed
+rule evaluation/duplicate prevention is still unfinished; PI-10 implementation
+and alert PI-02/03/04 decisions have no behavioral execution evidence yet.
+
+The R06 creation follow-up replaces generic alert insertion with
+`create_or_get_active`: serialize creators in storage and commit an action receipt
+with the created/reused alert. The new `rule_alert_deliveries` table survives alert
+retention and follows outbox lifetime. Both adapter migrations and Turso logical
+archive inclusion are present; migration and concurrency execution remains
+deferred. Manual reactivation now shares the device serialization boundary with
+creation and rejects an occupied active/acknowledged rule/device slot (HTTP 409
+for a single target; bulk skips conflicts). Authoritative evaluation state remains
+open. See ADR-014 for lock ordering and compatibility behavior.
+
+Heartbeat/offline status rules now evaluate inside ingress transactions using
+current database alerts/cooldowns and device targeting. Core returns cooldown
+mutations separately from delivery intents; both commit with ingress/outbox.
+Adapter-owned transaction participants are temporarily exposed only through the
+migration feature and host composition boundary until R08 extracts ingress.
+Telemetry, contract-event, and geofence evaluation remain transitional, as does
+reset fencing for legacy queued runtime updates. No behavioral tests were run.
+
+
+R06 live-evaluator update: telemetry, contract events, and geofence now join the
+same transaction-owned evaluation path as heartbeat/offline. Core uses only
+adapter-loaded runtime state and immutable definitions. `rule_zone_entries`
+migrations and logical backup inclusion provide persisted entry/exit state;
+cooldown and entry mutations commit with ingestion/outbox. Legacy queued runtime
+updates and unused local-map plumbing remain open. No migrations or tests ran.

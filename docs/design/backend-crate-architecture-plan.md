@@ -77,6 +77,15 @@ cross-engine semantic convergence remain open; this update does not declare P3.1
 or the full firmware slice complete. The next extraction is certificates/key
 protection, followed by bootstrap.
 
+### R01/R02 continuation
+
+Certificates and business bootstrap now have core application ownership and
+adapter-owned repositories. Host crypto is injected; certificate routes and
+provisioning preparation use the application, and startup/CLI bootstrap uses an
+explicit system façade. ADR-010 records one-time rotation and global device identity;
+ADR-011 records first-owner semantics and role preconditions. The detailed execution
+ledger tracks implementation separately from deferred behavioral verification.
+
 ## 1. Executive decision
 
 Proceed with the four-crate split, but treat it as an ownership refactor rather than a file move.

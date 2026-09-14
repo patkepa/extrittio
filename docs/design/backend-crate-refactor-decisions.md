@@ -243,10 +243,21 @@ Compensation is idempotent: deleting an already absent object is treated as succ
 
 ## ADR-005: Rule-snapshot refresh bound
 
+R05 implementation update (2026-09-14): core now owns rule records, application
+validation/authorization, and the rule port; adapters own queries. PI-11 requires
+one snapshot for definitions, children, zones, and initial runtime hints:
+PostgreSQL uses a read-only repeatable-read transaction and Turso a read-connection
+transaction. HTTP list ordering keeps its historical engine difference; snapshot
+rule/child ordering is explicit and stable. The host immutable store, polling,
+fingerprint-before-compilation, core evaluation, post-commit invalidation, readiness,
+and reload metrics are now implemented. Readers retain immutable handles; definition
+reloads preserve current runtime hints pending R06's durable state ownership.
+Behavioral evidence remains deferred under the current test policy.
+
 - **Status:** Accepted for healthy dependencies; no partition-time guarantee
 - **Owner work packages:** P3.3 for snapshot semantics; P4.3 for supervision/readiness
 
-### Context and evidence
+### Original context and evidence (before R05)
 
 - `crates/backend/src/app/boot.rs` performs one full rule-cache load at process startup.
 - `crates/backend/src/domains/rules/rules.rs` refreshes only the process that handled a successful HTTP mutation.
@@ -505,6 +516,433 @@ Shared ingest contracts and failure/concurrency execution remain outstanding
 because tests were skipped. Before declaring semantic parity, choose a separate
 transaction/revocation contract and prove it on both engines. Existing API-key
 name uniqueness differences and planned nonce/rotation scope remain separate.
+
+## ADR-010: Certificate ownership, one-time rotation, and system identity scope
+
+- **Status:** Implemented in the R01 continuation; behavioral verification deferred by instruction.
+- **Owner work package:** R01 / P3.1 certificates and key protection.
+
+Core owns certificate records, the business repository port, tenant certificate
+operations, provisioning material preparation, and a separate system façade for
+CA setup, encrypted-key maintenance, server material, and active certificate IDs.
+The host supplies `CertificateIssuer` and `KeyProtector`; crypto configuration is
+resolved at composition. Ring/rcgen, PEM/fingerprinting, randomness, blocking-task
+execution, and the unchanged `enc:v1:` envelope remain host outbound concerns.
+Key-bearing core records redact private material from `Debug`.
+
+PI-06 selects the existing PostgreSQL one-time rotation behavior for both engines:
+regeneration returns the new plaintext key in its response, and replacement clears
+the persisted key before committing. Turso now also clears it transactionally.
+A later download does not return that regenerated key again. Initial provisioning
+continues to store material until the first successful compare-and-set consumption.
+This is an intentional Turso behavior correction without a schema change; rollback
+to an older binary cannot restore a key already consumed. Reissue a certificate if
+its one-time response is lost, matching the existing PostgreSQL flow.
+
+PI-14 retains the global device-ID invariant enforced by `devices.id` primary keys
+in both shipped schemas. CN-only system ACL enumeration is explicitly global.
+Tenant certificate reads/mutations still require exact tenant and device identity;
+this decision does not authorize default-tenant substitution or cross-tenant reads.
+Changing to tenant-local duplicate device IDs would require a separate schema,
+certificate identity, and device transport migration.
+
+Host certificate services/helpers and adapter implementations are removed after
+all production callers migrate. Tests bound to those removed interfaces are removed
+rather than repaired; pure encryption-envelope tests remain with the outbound
+implementation. Compilation and architecture checks are the current evidence;
+concurrent consumption/rotation and stored-data execution remain deferred.
+
+## ADR-011: System bootstrap ownership and owner-role convergence
+
+- **Status:** Implemented in the R02 continuation; behavioral verification deferred by instruction.
+- **Owner work package:** R02 / P3.1 bootstrap.
+
+Core `BootstrapApplication` owns built-in seed definitions, owner validation, local
+admin/admin compatibility, injected password hashing, and application configuration
+selection. The host retains environment reads, generated JWT secret candidates,
+logging, and the explicit default-tenant bootstrap selector. Database lifecycle
+remains on the host `DatabaseRuntime`; core bootstrap contains no migration,
+backup, checkpoint, or health capability.
+
+PI-15 retains global emptiness: owner creation is skipped whenever any user exists
+in any tenant. Both adapters check this inside their serialized owner transaction.
+Before creating the owner, both insert the tenant's owner role if missing and
+ensure its full permission catalog, then create one user/role assignment with a
+fresh random authentication epoch and permission version 2. PostgreSQL now handles
+the missing-role precondition as Turso already did; no migration is needed.
+Built-in device-type seeds remain insert-only, with no update to an existing name.
+JWT secret candidates converge through the existing unique-key insert/read path.
+
+Only the explicit local bootstrap operation accepts the historic admin/admin pair;
+normal startup keeps the existing username/password checks. Password hashes use
+core's redacted encoded-hash type. Existing public CLI/setup functions remain thin
+host wrappers. No runtime/CLI caller uses the bootstrap repository directly.
+Concurrent startup and migration/fixture execution remain deferred. Invalid tests
+that directly used removed host bootstrap implementations are removed as specified
+by the current execution policy.
+
+## ADR-012: Catalog ownership and deterministic name ordering
+
+- **Status:** Implemented in R03; behavioral verification deferred by instruction.
+- **Owner work package:** R03 / P3.2 device types and fleets.
+
+Core owns catalog values, tenant authorization, application operations, and the
+six-operation device-type and four-operation fleet business ports. Both adapter
+crates own queries and row conversion. HTTP routes and compatibility device-type
+resolution in device/firmware creation invoke the core application.
+
+PI-04's catalog ordering is binary name ascending, then numeric ID ascending:
+PostgreSQL explicitly uses C collation and Turso explicitly uses BINARY collation.
+This intentionally removes PostgreSQL locale-dependent sorting. Lists retain
+separate count/page reads and existing pagination; they do not gain snapshot
+consistency. Fleet device counts always join/group inside the exact tenant.
+
+Existing application behavior is retained: device-type names/icons are trimmed,
+color is normalized to uppercase, omitted icon/color get existing defaults, and
+an empty update returns the current record. The historic device-type ID 1 deletion
+restriction and compatibility default-name lookup remain unchanged. Fleet create
+preserves supplied nonblank whitespace, while rename trims it. Existing uniqueness,
+in-use/foreign-key deletion behavior, and error precedence remain as before.
+Core `InvalidOperation` represents operation-precondition rejection; the host maps
+it to the existing 422 `unprocessable_entity` response, while `InvalidInput` retains
+400 `bad_request`. No route/DTO or schema changes are required.
+
+The host catalog services, ports/types, and adapter implementations are removed.
+One PostgreSQL `find_device_type_by_id` compatibility helper remains exclusively
+for the legacy firmware transaction, with R09 as its deletion owner. Its unused
+CRUD/list/name helpers have been removed and no new callers are permitted.
+
+Invalid service tests and the remaining legacy Turso cases that constructed the
+removed catalog implementations are deleted under the current policy. Public API
+and other unaffected tests remain; execution and shared catalog contracts are deferred.
+
+## ADR-013: Blueprint publication retries and atomic device provisioning
+
+- **Status:** Implemented in R04; behavioral verification deferred by instruction.
+- **Owner work package:** R04 / P3.2; decisions PI-12 and PI-13.
+
+Core owns blueprint values, validation, publication compatibility, contract compilation,
+and device catalog/provisioning policy. Each database crate owns its queries and
+transaction boundaries. `DeviceApplication::provision` is the only application
+entry point that creates a device; the HTTP handler translates inputs and computes
+the host endpoint. CLI creation already uses that HTTP endpoint. Core uses its clock
+for application timestamps and the existing UUID facility for new identities.
+
+PI-13 publication is conditional on both the draft timestamp and exact JSON document.
+Inside the transaction, compare the current latest revision against the revision
+used to calculate compatibility. If that baseline changed, return a publication
+conflict. An unchanged draft matching the latest revision's document and canonical
+hash returns that existing immutable revision, including its original compatibility
+metadata and creation timestamp. This makes consecutive identical publishes and
+lost-response retries stable, without a new idempotency key or schema migration.
+Reverting to an older document after an intervening different revision creates a
+new revision; retries after a draft edit publish the current draft, not an old
+request body. PostgreSQL locks the blueprint parent before the draft, matching
+replacement's lock order. Turso uses its shared writer transaction; database busy
+errors retain the adapter's existing retry/error handling. Revision overflow is
+rejected rather than narrowing an out-of-range integer.
+
+Provisioning prepares the compiled contract and certificate before opening a
+transaction. The adapters commit the device, empty initial shadow, immutable
+contract, pending assignment, optional prepared certificate, and initial
+configuration together. When the blueprint declares configuration, core passes the
+compiled desired configuration (defaults plus request overrides) for insertion into
+`device_configs`; without declared configuration no configuration row is created.
+This intentionally materializes configuration that was previously present only in
+the contract. Tenant-qualified foreign keys enforce blueprint/type/fleet/device
+relationships. A compiled contract is mandatory in the creation port.
+
+Preparation failure creates no device rows. Transaction failure rolls back the
+aggregate; generated key/contract values are discarded. Current certificate
+preparation is local and has no remote resource to clean up. Duplicate name/identity
+creation is a conflict, never an upsert or implicit key rotation. After a lost
+creation response, the caller must look up the existing device; retrying the same
+name does not silently create or overwrite it. This does not add an API idempotency
+key or distributed transaction.
+
+PI-12 target selection removes repeated IDs, preserving the first occurrence,
+before applying the selection-size limit. Bulk assignment counts unique matching
+tenant-owned rows, including devices already assigned to the requested fleet;
+missing or foreign-tenant IDs count zero. Bulk deletion counts rows actually deleted,
+so a completed deletion retried later returns zero. Turso also deduplicates at its
+port boundary, matching PostgreSQL's set-based statements.
+
+Catalog and blueprint host services/types/SQL are removed. The explicit host
+`DeviceIngressRepository` retains protocol identity resolution, heartbeat/offline
+transactions, and rule-action coupling until R08. Command callers use the core
+catalog port until R07. No new database handles or migration bridges are introduced.
+No stored contract/wire shape changes or schema migrations are needed. Existing
+binaries can read the resulting rows; rolling back code also restores the old
+non-idempotent publication behavior. Concurrency, failure injection, configuration
+compatibility, and database execution evidence remain deferred to R14.
+
+## ADR-014: Durable outbox claim ownership and alert transaction boundaries
+
+- **Status:** Outbox and alert extraction implemented; database-authoritative rule evaluation/duplicate prevention remains in progress in R06. Behavioral verification deferred by instruction.
+- **Owner work package:** R06 / P3.3; PI-02, alert portion of PI-03/PI-04, and PI-10.
+
+Core owns alert records, transition preconditions, tenant-facing authorization,
+action-to-outbox metadata/idempotency mapping, persisted action encoding, replay
+validation, and retry classification. PostgreSQL and Turso own queries and
+transactions, using the existing shared engine handles. The host retains concrete
+HTTP/Zenoh delivery clients, scheduling, and cancellation.
+
+### Claims and retries
+
+Claim ordering ranks eligible rows within each tenant by `available_at`,
+`created_at`, and `id`, then selects and returns rows by tenant rank followed by
+those same keys. PostgreSQL skips rows locked by other claimers and rechecks
+eligibility on the locked base row; Turso claims within its writer transaction.
+This is deterministic batch selection, not a guarantee of delivery completion
+order across concurrent tasks or fairness under every contention pattern.
+
+Each batch receives a fresh opaque UUID-bearing token in the existing `locked_by`
+column. The worker label alone is never the ownership credential. An event ID
+plus token identifies its claim even after a same-worker reclaim or dead-letter
+replay that resets attempts. Success requires processing status and token;
+failure additionally requires the claimed attempt. A rejected conditional update
+returns false and cannot overwrite a newer claim. Expired final attempts become
+dead letters. Lease comparisons retain microsecond precision on both engines.
+
+Core preserves the existing exponential retry delay (2 through 256 seconds).
+Invalid action envelopes, unsupported versions, and tenant/event-type metadata
+mismatches are permanent failures; delivery failures remain retryable up to the
+persisted attempt limit. Claim ownership does not make external side effects
+exactly-once; database-authoritative duplicate suppression is still unfinished.
+
+### Persisted action compatibility and rollout
+
+New payloads use `{ "version": 1, "action": <existing externally tagged enum> }`.
+The decoder also accepts existing raw enum payloads. Existing enum field names,
+action metadata, and idempotency hashes remain unchanged. No schema migration is
+needed for the envelope or claim token.
+
+Old worker binaries cannot read version 1. Deployment must quiesce old producers
+and consumers before starting this version, or first introduce a separate
+reader-only compatibility release before enabling version-1 producers. Do not
+roll back to a raw-only reader while versioned rows remain eligible for delivery
+or replay; retain a compatible reader or explicitly convert those rows first.
+Dead-letter API payloads expose the stored JSON, so clients must tolerate the
+new envelope. These are deployment requirements, not completed rollout evidence.
+
+### Alert transitions, intervals, and retention
+
+PostgreSQL locks the tenant-scoped alert row before checking the core transition
+precondition; Turso uses its writer transaction. Resolve persists its cooldown in
+the same transaction; reactivate clears the associated cooldown there. Handlers
+no longer spawn best-effort persistence after the response. Bulk transitions
+normalize IDs and lock them in sorted order to avoid inconsistent lock ordering.
+
+Alert list intervals are `[since, before)`, with `created_at DESC, id DESC`
+ordering on both engines. This deliberately makes PostgreSQL's previously strict
+`since` comparison inclusive. Summaries explicitly sort by status and severity.
+Retention is system-scoped: delete only resolved alerts with `resolved_at < cutoff`
+across every tenant, leaving null resolution timestamps untouched. The unused
+legacy helper that deleted by creation time was removed. Runtime boundary and
+concurrency evidence remains deferred.
+
+Local alert/cooldown/zone-entry maps still exist as transitional runtime state.
+Authoritative rule evaluation/state reservation and
+transactional coupling of that state with action intent must finish before R06
+can be marked implemented. This ADR does not claim that those maps are already
+safe for multi-process duplicate prevention.
+
+### R06 follow-up: durable alert creation receipts
+
+`AlertWorkerApplication` now constructs a rule alert from the durable action ID.
+The repository atomically returns an existing receipt, reuses an active or
+acknowledged tenant/rule/device alert, or inserts an alert and records delivery.
+PostgreSQL serializes creators on the tenant-scoped device row; Turso acquires a
+database write transaction before checking active state. Both choose the newest
+active alert with an ID tie-breaker if historical duplicates already exist.
+The worker no longer reserves or suppresses creation through a process-local map.
+Local updates after creation are hints, and a poisoned hint lock cannot block the
+persisted creation decision.
+
+A new `rule_alert_deliveries` table records the resulting alert ID for each action,
+including actions that reused another alert. Its receipt is committed in the same
+transaction as creation/reuse. Retries remain no-ops after resolution, retention,
+or device deletion: a missing retained alert returns a successful empty result.
+Receipts cascade only when their owning outbox row is deleted; alert IDs have no
+foreign key so alert retention cannot erase delivery history. This addresses
+creation retries. Manual reactivation now shares the device serialization boundary
+(described below); other rule decisions still need the authoritative runtime-state
+design before R06 is complete. Older workers
+must be quiesced: they do not participate in receipt-based creation.
+
+PostgreSQL migration `20260914010000_rule_alert_deliveries` and Turso migration
+`0010_rule_alert_deliveries.sql` add the table without rewriting historical rows.
+Existing pending actions use the normal active-alert lookup on first delivery;
+there is no inferred backfill of historical completion receipts. New Turso logical
+archives include receipts after outbox rows. Its existing exact-schema archive
+policy rejects older table sets; restore old archives with their compatible
+binary first, then upgrade the restored database. PostgreSQL's down migration
+removes receipt history, so do not downgrade/replay previously applied actions
+under an assumption that receipt-based deduplication survives that downgrade.
+Migrations, backups, concurrency, and retry behavior have not been executed in
+this phase because tests remain deferred.
+
+### R06 follow-up: reactivation shares the active-alert boundary
+
+Manual reactivation cannot create a second active/acknowledged alert for the
+same tenant, rule, and device. Core identifies transitions requiring an active
+slot and returns an explicit competing-alert outcome. A single reactivation maps
+that outcome to HTTP 409, naming the competing alert. Bulk reactivation preserves
+the existing count response and skips conflicts just as it skips missing alerts
+or invalid statuses; sorted alert IDs determine which requested alert gets an
+empty slot. Rule-less alerts have no rule slot and retain their previous behavior.
+Existing historical duplicates are not deleted or resolved automatically.
+
+PostgreSQL transitions lock the device before the alert, matching creation's
+serialization boundary, then reload the alert and inspect competing active rows.
+Bulk operations lock all affected device rows in ID order before locking any
+alert rows, avoiding opposite parent-lock ordering between requests. Turso obtains
+its database write transaction before the precondition and competing-alert check.
+A conflict commits no alert/cooldown mutation for that target. Successful
+reactivation still clears cooldown state in its transaction. This closes the
+manual-reactivation race with new alert creation; evaluator cooldown/zone-entry
+state and atomic action-intent decisions remain unfinished.
+
+### R06 follow-up: explicit evaluation time
+
+Core passes one host observation timestamp into telemetry/status/geofence
+calculations. All cooldown comparisons, action timestamps, and zone-entry times
+in that evaluation use that value. Telemetry and heartbeat use the same timestamp
+for their ingress write; contract events use their received timestamp. Offline
+sweeps use one timestamp across the candidate batch. The explicit-time engine
+functions do not read the wall clock. Existing convenience entry points capture
+it once and delegate, preserving their public signatures.
+
+The purpose is to make a decision reproducible when adapters later evaluate under
+a device/runtime-state transaction lock. Passing a timestamp alone does not make
+the current local runtime hints authoritative, and does not close the pending
+atomic state/action-intent work.
+
+### R06 follow-up: status-rule decisions join the ingress transaction
+
+Heartbeat and offline writes carry immutable definitions and prepared inputs.
+After acquiring the device serialization boundary, adapters load current alert
+and cooldown rows and current device targeting, then call core's status decision
+function. That function uses a fresh runtime view plus the shared definition
+index, never snapshot-local runtime hints. Its cooldown mutations and queued
+external/alert delivery intents commit in the same transaction as ingress.
+A queue insertion failure rolls back all three. Cooldown actions are no longer
+queued by these status paths; delivery counts therefore count actual outbox rows.
+
+Adapter transaction participants are temporarily exposed under `migration-bridge`
+while ingress ownership remains in the host. Their caller must already hold the
+device/write transaction and enqueue the returned deliveries before committing.
+They neither create a connection nor commit independently. R08 folds them into
+the extracted adapter ingress operation. The additional device-scoped reads add
+transaction work; representative-load measurement remains deferred.
+
+Cooldown upserts keep the maximum existing timestamp on both engines. PostgreSQL
+legacy cooldown delivery also joins the sorted device-lock protocol; offline
+batches sort by tenant/device to match it. Clearing a cooldown is still a separate
+state transition: an old legacy action can recreate a removed row until action
+retirement or a durable reset fence is implemented. Telemetry, contract events,
+and geofence state have not yet switched to this transaction-owned evaluation.
+R06 cannot be closed until those paths and legacy runtime actions are handled.
+
+### R06 follow-up: all live ingestion uses transaction runtime state
+
+The core request is now `DeviceRuleEvaluation`: status changes, telemetry with
+optional geofence processing, and contract-event metrics use the same adapter
+transaction participant. It combines shared rule definitions with database-loaded
+alerts, cooldowns, and zone entries. Current device targeting is read inside the
+transaction. Host snapshot APIs that evaluated telemetry/geofences against local
+runtime hints have been removed.
+
+Zone-entry updates now persist alongside cooldown changes and outbox deliveries,
+inside the ingestion transaction. PostgreSQL event ingestion acquires its device
+lock before inserts; Turso uses the existing database write transaction. Duplicate
+contract-event inserts skip evaluation. A failed delivery enqueue rolls back the
+input write and all runtime state changes. No new live evaluator produces queued
+runtime-update actions; these actions remain readable for legacy queue handling.
+
+PostgreSQL migration `20260914020000_rule_zone_entries` and Turso migration 11 add
+`rule_zone_entries`, keyed by tenant/rule/device. Both enforce tenant-qualified
+rule/device ownership with cascade deletion and index tenant/device reads.
+PostgreSQL needs tenant-qualified unique parent indexes for these foreign keys;
+global parent IDs were already unique. Turso logical archives include the table.
+These are new unapplied migrations, and migration/rollback execution is deferred.
+
+No historical entry-state backfill is inferred from telemetry: old entries were
+process-local, so the table begins empty and the next valid observation establishes
+entry state. This can produce an entry action at the upgrade boundary, just as the
+old implementation could after losing its local map on restart. Thereafter state
+survives restart. PostgreSQL downgrade discards this history; older logical archive
+table sets require their schema-compatible restoration path before upgrade.
+
+Legacy queued cooldown/zone-entry effects and unused local-map plumbing still
+need closure. In particular, old cooldown delivery can recreate a cleared row;
+zone-entry delivery still targets the obsolete local map. Do not mark R06 complete
+until this legacy path is fenced or retired explicitly and the maps are removed.
+
+### R06 follow-up: snapshot loading contains definitions only
+
+`RuleSnapshotRecords` no longer contains active alerts or cooldowns. Both adapter
+snapshot loaders read only rules, condition/action children, and zones in their
+existing consistent transaction. Runtime rows are loaded per device by ingress
+transactions. HTTP alert management and normal delivery no longer update local
+alert/cooldown hints, and definition reload does not copy those maps.
+
+The temporary mutable snapshot sink remains solely for legacy queued zone-entry
+updates. Legacy cooldown delivery still writes the database. Their reset-safe
+handling is the remaining prerequisite to removing the sink and closing R06;
+this cleanup does not silently discard queued actions.
+
+### R06 follow-up: cooldown resets survive deletion of the cooldown row
+
+Reactivation now persists the maximum reset timestamp in `rule_cooldown_resets`
+before deleting its cooldown, under the existing device/write transaction.
+Legacy queued updates use a guarded upsert: a firing time at or before the reset
+is an acknowledged no-op. A newer accepted update still cannot move an existing
+cooldown backward. Current transaction decisions and resolve operations use a
+separate helper path and remain authoritative even at the same microsecond as a
+reset. Reset comparison applies to delayed legacy intents, not current decisions.
+
+PostgreSQL migration `20260914030000_rule_cooldown_resets` and Turso migration 12
+add tenant-qualified rule/device foreign keys and a device lookup index. Markers
+outlive cooldown retention; cascade deletion follows rule/device lifetime, so
+repeated resets do not add unbounded rows per key. Turso logical archives include
+the marker table. Migrations and runtime/concurrency checks remain unexecuted.
+
+There is no historical reset-time backfill because the old schema did not record
+that event. Protection begins with recorded resets under this implementation.
+Old workers must be quiesced during rollout: their unconditional upserts cannot
+participate in the protocol. Downgrade discards reset history; previously applied
+cooldown replay protection cannot be assumed after that downgrade. Legacy zone
+updates and the final local-map sink remain a separate unfinished R06 item.
+
+### R06 follow-up: ordered legacy zone state and live ownership
+
+Legacy `UpdateZoneEntry` deliveries remain readable and now call a core system
+operation backed by adapter transactions. Before live evaluation takes ownership,
+updates are ordered by original outbox creation time and binary event ID, retained
+across retry/replay. Older or identical deliveries are acknowledged no-ops. State
+mutation and the ordering marker commit together under the device/write lock.
+
+Every valid location observation marks each applicable geofence rule/device pair
+as live-owned, including observations that produce no entry/exit. This is needed
+because an outside observation against empty state must still supersede a delayed
+legacy entry. Invalid/missing coordinates do not claim ownership. Once live-owned,
+all legacy deliveries for that pair become no-ops regardless of timestamp; new
+producers never emit queued zone-state actions. Old producers must be quiesced at
+rollout. Markers cascade with rule/device deletion and survive zone exits.
+
+PostgreSQL migration `20260914040000_rule_zone_handoffs` and Turso migration 13 add
+the table, tenant-qualified parent references, device index, and logical archive
+inclusion. Existing persisted zone entries seed live ownership. The old schema
+cannot reveal previously exited locations, so no additional historical handoff
+is inferred. Downgrade removes ordering/ownership history and requires compatible
+queue/backup handling. Migration and concurrency execution remain deferred.
+
+The host no longer has a mutable rule-runtime map API or an action-worker snapshot
+dependency. The obsolete rule-update branch that cleared local alert hints is
+removed: database alert state governs updated definitions in every process.
+Snapshot reload contains only immutable definitions and freshness/version state.
+Final R06 ownership and stale-definition/foreign-key review remain outstanding.
 
 ## Architecture exception and removal ledger
 

@@ -119,7 +119,7 @@ const DEFAULT_TENANT_ALLOWANCES: &[TokenAllowance] = &[
     TokenAllowance::new(
         "crates/backend/src/init.rs",
         "DEFAULT_TENANT_ID",
-        2,
+        1,
         "P1.2/P3.1",
         "current application bootstrap mapping",
     ),
@@ -158,20 +158,6 @@ const DEFAULT_TENANT_ALLOWANCES: &[TokenAllowance] = &[
         "P1.2",
         "legacy authentication route compatibility",
     ),
-    TokenAllowance::new(
-        "crates/backend/tests/api_tests.rs",
-        "DEFAULT_TENANT_ID",
-        3,
-        "P1.2",
-        "HTTP compatibility fixtures",
-    ),
-    TokenAllowance::new(
-        "crates/backend/tests/cert_tests.rs",
-        "DEFAULT_TENANT_ID",
-        1,
-        "P3.1",
-        "certificate compatibility fixture",
-    ),
 ];
 
 /// Exact P3 migration debt for HTTP handlers that still bypass `Application`.
@@ -181,7 +167,6 @@ const DEFAULT_TENANT_ALLOWANCES: &[TokenAllowance] = &[
 /// Entries and caps may only be removed or reduced as vertical slices migrate.
 const APP_STATE_REPOSITORY_ACCESS_ALLOWANCES: &[AppStateRepositoryAccessAllowance] = &[
     AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/activity/activity.rs", 1, 0),
-    AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/alerts/alerts.rs", 11, 0),
     AppStateRepositoryAccessAllowance::new(
         "crates/backend/src/domains/analytics/analytics.rs",
         2,
@@ -199,30 +184,13 @@ const APP_STATE_REPOSITORY_ACCESS_ALLOWANCES: &[AppStateRepositoryAccessAllowanc
         1,
         0,
     ),
-    AppStateRepositoryAccessAllowance::new(
-        "crates/backend/src/domains/device_blueprints/device_blueprints.rs",
-        9,
-        0,
-    ),
-    AppStateRepositoryAccessAllowance::new(
-        "crates/backend/src/domains/device_types/device_types.rs",
-        4,
-        0,
-    ),
-    AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/devices/devices.rs", 24, 0),
+    AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/devices/devices.rs", 8, 0),
     AppStateRepositoryAccessAllowance::new(
         "crates/backend/src/domains/firmware/firmware_updates.rs",
-        14,
-        0,
-    ),
-    AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/fleets/fleets.rs", 4, 0),
-    AppStateRepositoryAccessAllowance::new(
-        "crates/backend/src/domains/identity/certificates.rs",
-        4,
+        10,
         0,
     ),
     AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/logs/logs.rs", 1, 0),
-    AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/operations/outbox.rs", 3, 0),
     AppStateRepositoryAccessAllowance::new(
         "crates/backend/src/domains/operations/server_metrics_api.rs",
         2,
@@ -233,7 +201,6 @@ const APP_STATE_REPOSITORY_ACCESS_ALLOWANCES: &[AppStateRepositoryAccessAllowanc
         1,
         0,
     ),
-    AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/rules/rules.rs", 7, 0),
     AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/shadows/shadows.rs", 4, 0),
     AppStateRepositoryAccessAllowance::new(
         "crates/backend/src/domains/telemetry/telemetry.rs",
@@ -532,10 +499,6 @@ fn is_workspace_dependency(root: &Path, dependency: &CargoDependency) -> bool {
 
 fn legacy_workspace_edge(package: &str, dependency: &str) -> Option<(&'static str, &'static str)> {
     match (package, dependency) {
-        (HOST_PACKAGE, "extrittio-rule-engine") => Some((
-            "P3.3",
-            "rule behavior has not moved behind backend-core yet",
-        )),
         ("extrittio", "extrittio-openthread-runtime") => Some((
             "P5.3",
             "OpenThread composition still lives partly in the process shell",
@@ -967,7 +930,6 @@ mod tests {
     #[test]
     fn identifies_only_known_legacy_workspace_edges() {
         assert!(legacy_workspace_edge("extrittio", "extrittio-openthread-runtime").is_some());
-        assert!(legacy_workspace_edge(HOST_PACKAGE, "extrittio-rule-engine").is_some());
         assert!(legacy_workspace_edge(CORE_PACKAGE, HOST_PACKAGE).is_none());
     }
 
