@@ -4,13 +4,24 @@ use diesel::prelude::*;
 use diesel::sql_types::{BigInt, Jsonb, Nullable, Text, Timestamptz};
 use serde_json::Value;
 
-use crate::domains::activity::repository::ActivityRepository;
-use crate::domains::activity::types::{ActivityEventPage, ActivityEventRecord, ActivityQuery};
-use crate::persistence::PersistenceError;
-use crate::tenancy::TenantId;
+use extrittio_backend_core::PersistenceError;
+use extrittio_backend_core::TenantId;
+use extrittio_backend_core::activity::ActivityRepository;
+use extrittio_backend_core::activity::{ActivityEventPage, ActivityEventRecord, ActivityQuery};
 
-use super::PostgresAdapter;
-use super::executor::map_diesel_error;
+use crate::{PostgresExecutor, PostgresPool};
+#[derive(Clone)]
+pub struct PostgresActivityRepository {
+    executor: PostgresExecutor,
+}
+impl PostgresActivityRepository {
+    pub fn from_pool(pool: PostgresPool) -> Self {
+        Self {
+            executor: PostgresExecutor::new(pool),
+        }
+    }
+}
+use crate::error::map_diesel_error;
 
 const ACTIVITY_QUERY: &str = r#"
 WITH activity AS (
@@ -177,7 +188,7 @@ SELECT
     occurred_at,
     count(*) OVER ()::bigint AS total_count
 FROM filtered
-ORDER BY occurred_at DESC, id DESC
+ORDER BY occurred_at DESC, id COLLATE "C" DESC
 LIMIT $9 OFFSET $10
 "#;
 
@@ -214,7 +225,7 @@ struct ActivityRow {
 }
 
 #[async_trait]
-impl ActivityRepository for PostgresAdapter {
+impl ActivityRepository for PostgresActivityRepository {
     async fn list(
         &self,
         tenant: &TenantId,

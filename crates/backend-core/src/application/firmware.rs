@@ -358,3 +358,89 @@ impl FirmwareApplication {
         })
     }
 }
+
+impl FirmwareApplication {
+    pub async fn trigger_ota(
+        &self,
+        ctx: &TenantContext,
+        device_id: &str,
+        firmware_update_id: i32,
+        public_url: &str,
+        clock: &dyn crate::Clock,
+        signer: &dyn crate::firmware::FirmwareDownloadSigner,
+    ) -> Result<(serde_json::Value, i32), ApplicationError> {
+        use crate::firmware::{FirmwareDownloadGrant, TriggerOtaOutcome};
+        require_permission(ctx, Permission::DeployFirmware)?;
+        let grant = FirmwareDownloadGrant::new(ctx.tenant_id().clone(), firmware_update_id, clock)?;
+        let token = signer.sign(&grant)?;
+        let download_url = format!(
+            "{}/api/v1/ota-downloads/{token}",
+            public_url.trim_end_matches('/')
+        );
+        match self.repository.trigger_ota(ctx.tenant_id(), device_id, firmware_update_id, &download_url).await? {
+            TriggerOtaOutcome::DeviceNotFound => Err(ApplicationError::NotFound(format!("Device '{device_id}' not found"))),
+            TriggerOtaOutcome::FirmwareNotFound => Err(ApplicationError::NotFound(format!("Firmware update {firmware_update_id} not found"))),
+            TriggerOtaOutcome::Incompatible => Err(ApplicationError::InvalidInput("Firmware device type does not match device".into())),
+            TriggerOtaOutcome::InvalidArtifact => Err(ApplicationError::InvalidInput("Firmware requires a valid SHA-256, a version of at most 63 bytes and a download URL of at most 1023 bytes".into())),
+            TriggerOtaOutcome::Ready { delta, version } => Ok((delta, version)),
+        }
+    }
+}
+
+/// OTA reports arrive with an authenticated device identity from the host.
+#[derive(Clone)]
+pub struct FirmwareReportApplication {
+    repository: Arc<dyn FirmwareRepository>,
+    clock: Arc<dyn crate::Clock>,
+}
+impl FirmwareReportApplication {
+    pub fn new(repository: Arc<dyn FirmwareRepository>, clock: Arc<dyn crate::Clock>) -> Self {
+        Self { repository, clock }
+    }
+    pub async fn process_report(
+        &self,
+        identity: &crate::DeviceIdentity,
+        reported: &serde_json::Value,
+    ) -> Result<(), ApplicationError> {
+        use crate::firmware::OtaStatusUpdate;
+
+        let Some(serde_json::Value::Object(ota)) = reported.get("ota") else {
+            return Ok(());
+        };
+        let Some(status_raw) = ota.get("status").and_then(serde_json::Value::as_str) else {
+            return Ok(());
+        };
+        let status = status_raw.to_lowercase();
+        let Some(deployment_id) = ota
+            .get("deployment_id")
+            .and_then(serde_json::Value::as_i64)
+            .and_then(|id| i32::try_from(id).ok())
+            .filter(|id| *id > 0)
+        else {
+            return Ok(());
+        };
+        let firmware_update_id = ota
+            .get("firmware_update_id")
+            .and_then(serde_json::Value::as_i64)
+            .and_then(|id| i32::try_from(id).ok());
+        let error_message = ota
+            .get("error")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string);
+        let completed_at =
+            crate::firmware::ota_status_is_terminal(&status).then(|| self.clock.now().naive_utc());
+        self.repository
+            .apply_ota_status(
+                identity,
+                OtaStatusUpdate {
+                    deployment_id,
+                    firmware_update_id,
+                    status,
+                    error_message,
+                    completed_at,
+                },
+            )
+            .await?;
+        Ok(())
+    }
+}

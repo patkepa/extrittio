@@ -95,11 +95,11 @@ pub async fn handle_shadow_report(
         report.device_id, shadow.version
     );
 
-    if let Err(error) = shadow_service::process_ota_from_report_with_repository(
-        persistence.firmware.as_ref(),
-        &identity,
-        &reported,
+    if let Err(error) = extrittio_backend_core::application::FirmwareReportApplication::new(
+        persistence.firmware.clone(),
+        Arc::new(crate::auth::SystemClock),
     )
+    .process_report(&identity, &reported)
     .await
     {
         warn!("Failed to process OTA from shadow report: {error}");

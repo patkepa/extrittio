@@ -20,7 +20,6 @@ pub mod activity {
     pub mod types;
 
     pub use crate::api::activity as api;
-    pub use crate::services::activity_service as service;
 }
 
 pub mod audit {
@@ -60,7 +59,6 @@ pub mod dashboard {
     pub mod types;
 
     pub use crate::api::dashboard as api;
-    pub use crate::services::dashboard_service as service;
 }
 
 pub mod devices {

@@ -4,7 +4,7 @@
 - **Created:** 2026-09-14.
 - **Purpose:** Executable work packages for completing the remaining backend ownership refactor.
 - **Current execution preference:** Skip running, compiling, adding, and repairing tests for now. Remove tests made invalid by the refactor; keep unaffected tests. Continue production compilation, formatting, and architecture checks.
-- **Next package:** R09 — remaining firmware, object storage, and OTA. R01–R08 are implemented; behavioral verification remains deferred.
+- **Next package:** R10 — projections, audit, and operational metrics. R01–R09 are implemented; behavioral verification remains deferred.
 
 ## 1. Scope and authority
 
@@ -440,8 +440,8 @@ with a generic “done.” List individual PRs if a package is split.
 | R06 | Implemented | Deferred | Core policy/runtime, adapter-owned outbox and durable transitions; ADR-014 |
 | R07 | Implemented | Deferred | Existing shadow/configuration behavior, commands/DeviceBus, shared OTA shadow mutation; no new config protocol |
 | R08 | Implemented | Deferred | Core ingress/read/maintenance policy, both adapters, explicit timestamps and durable pruning boundary |
-| R09 | In progress | Deferred | Core firmware values/port and both adapters extracted; application workflows next |
-| R10 | Not started | Deferred | Projections, audit, metrics |
+| R09 | Implemented | Deferred | Core firmware/object/OTA applications, both adapters, source preservation audit; host signing/storage/transport |
+| R10 | In progress | Deferred | Activity application and adapter SQL extracted; remaining projections/audit/metrics next |
 | R11 | Partial through completed slices | Deferred | Continue thinning each migrated entry point |
 | R12 | Foundations already exist | Deferred | Finish after last legacy domain moves |
 | R13 | Existing implementation needs reconciliation | Deferred | Inspect proof and decide remaining gaps |
@@ -813,3 +813,54 @@ This closes the implementation items left open in the preceding R05 notes.
 - Both HTTP download handlers now call core. Removed `AppState::firmware_download_repository()` and its direct repository path. Filename/header sanitization, private/no-store headers, content length, and HTTP body construction remain host-owned and unchanged.
 - Grant issuance policy and OTA orchestration remain outstanding in R09. Existing JWT tests still target unchanged signing/verification functions and are retained; none were run, compiled, added, repaired, or removed. No migrations were added or executed.
 - Validation passed: combined PostgreSQL/Turso host production compilation, formatting, whitespace, and architecture (11 counted direct accesses across 8 files; 9 tracked exceptions). The removed special download accessor was outside that count. Runtime download/grant behavior remains deferred; R09 is still in progress.
+
+### R09 OTA initiation and download-grant policy
+
+- Core `FirmwareApplication::trigger_ota` now authorizes deployment, creates the scoped signing request, builds the existing download URL, invokes atomic persistence, and maps all deployment outcomes to the existing application/HTTP errors. Single and bulk device handlers use it through the host publication wrapper.
+- Core owns the unchanged download audience and seven-day lifetime through an injected clock. The host `JwtFirmwareDownloadSigner` keeps JWT encoding/key handling. Expiry arithmetic is checked for unsupported clock values. Existing grant helper/signature remains available and delegates to the same policy; verification and its existing tests remain intact and unexecuted.
+- The host publishes the committed delta using the existing best-effort Zenoh helper. Persistence failure still prevents publication; no republish loop was added. Removed the last two direct device-handler repository accesses and their architecture allowance.
+- R09 remains open for OTA report policy extraction, final OTA persistence-policy audit, and package validation. No tests were added, repaired, compiled, run, or removed; no migrations were added or executed.
+- Validation passed: combined PostgreSQL/Turso host production compilation, formatting, whitespace, and architecture. Counted handler accesses fell from 11 across 8 files to 9 across 7 files; 9 tracked exceptions remain. Behavioral OTA/grant verification stays deferred.
+
+### R09 OTA report application and shared version policy
+
+- Added core `FirmwareReportApplication`, injected with the firmware port and clock. It interprets reported OTA JSON, normalizes status, ignores missing/invalid positive deployment IDs as before, carries the reported firmware ID/error, and supplies a completion time only for terminal status. The host shadow consumer invokes it with authenticated identity after the existing shadow report operation.
+- Deleted host OTA report interpretation; the shadow service now only publishes transport deltas. Adapter stale-report/terminal checks and atomic conditional desired-command cleanup remain unchanged.
+- Consolidated identical PostgreSQL/Turso version increment logic in core. This preserves the existing three-component patch increment/fallback behavior, including its existing unsigned overflow limitation; this extraction does not claim to repair unsupported maximum patch values.
+- R09 still needs its final persistence-policy/OTA invariant audit and package feature-matrix validation before it can close. No tests were added, repaired, compiled, run, or removed; no migrations were added or executed.
+- Validation passed after both extractions: combined PostgreSQL/Turso host production compilation, formatting, whitespace, and architecture (9 direct accesses across 7 files; 9 tracked exceptions). Behavioral verification remains deferred.
+
+### R09 shared OTA artifact preparation
+
+- Moved URL selection and desired-shadow OTA payload construction from both adapters into core `PreparedOtaArtifact`. It preserves external HTTPS URL precedence, signed-download fallback, artifact limits, mandatory SHA-256, exact shadow keys, and deployment/firmware identity values.
+- Adapters validate the prepared artifact before deployment mutation and supply the generated attempt ID when constructing the patch. Existing PostgreSQL shadow locking and Turso writer transactions still enclose supersession, deployment insertion, and shadow storage; no publication occurs inside persistence.
+- R09 remains open for full native/client invariant evidence and production feature-matrix checks, plus any remaining policy found by that audit. Initial source inspection located native rollback/watchdog/boot restoration in `clients/rust/sdk/src/native_ota.rs`; no client code was changed or runtime behavior claimed verified.
+- No tests were added, repaired, compiled, run, or removed. No migrations were added or executed.
+- Validation passed: combined PostgreSQL/Turso host production compilation, formatting, whitespace, and architecture (9 direct accesses across 7 files; 9 tracked exceptions). Follow-up client audit anchors are `clients/rust/runtime/src/lib.rs` and `clients/rust/macos/src/main.rs` for native boot initialization and shadow subscriptions. Behavioral verification remains deferred.
+
+### R09 completion source audit
+
+- Core `application/firmware.rs` owns metadata permissions/error mapping, blueprint preparation, upload/delete ordering, download selection/integrity, grant issuance policy, OTA initiation/report interpretation, and one-step legacy migration. `firmware.rs` owns values/ports, transition/artifact/version policy, and OTA patch construction. Both adapter firmware modules own persistence and preserve transaction-sized deployment mutations. The old host SQL/aggregate implementations and shadow transaction bridge exports are removed; host wrappers perform hashing, signing, publication, diagnostics, and scheduling.
+- Reservation and identity: `application/shadows.rs::update_desired` rejects any user patch containing `ota`, including null. `PreparedOtaArtifact` includes firmware/deployment IDs and SHA-256. `FirmwareReportApplication` consumes the fresh report passed by the shadow handler, not merged historical state. Both adapters reject firmware-ID mismatch and disallowed transitions; `clear_ota_for_deployment` clears only the matching desired attempt inside the transaction. PostgreSQL locks the shadow before deployment changes; Turso retains its writer transaction.
+- Grant/download behavior: seven-day purpose-specific audience, tenant/object scope, existing JWT signing/verification, external HTTPS precedence, user permission checks, response headers, and object keys are preserved. Object failures keep original error precedence. Legacy migration retains its deterministic object for retry after metadata failure.
+- Native preservation evidence: `clients/rust/runtime/src/lib.rs` and `clients/rust/macos/src/main.rs` call `native_ota::boot` and use its returned version, declare shadow subscribers before sending `ShadowGet`, and reserve OTA with `compare_exchange(false, true, ...)` before spawning work. `clients/rust/sdk/src/native_ota.rs` persists journal/image state, fences rollback by attempt identity, verifies the previous image digest, restores previous version on rolled-back boot, and emits terminal reports only from confirmed/rolled-back journal states. These client files and the CI-ingest implementations have no worktree changes from this refactor. Source evidence establishes preservation, not successful runtime boot/rollback execution.
+- Behavioral acceptance remains deferred by user instruction. No tests or migrations were executed. Remaining host compatibility aliases belong to R12; broad final entry-point/documentation review belongs to R11/R15.
+
+- R09 production matrix passed: no-default host, PostgreSQL-only host, Turso-only host, combined host (preceding unchanged-code slice), independent core/adapters, and combined PostgreSQL/Turso CLI. Formatting, whitespace, and architecture passed (9 direct accesses across 7 files; 9 tracked exceptions). No tests/migrations ran. R09 implementation is complete under the deferred-verification policy; R10 is next. The full objective remains active.
+
+
+### R10 activity projection extraction
+
+- Moved activity records/read port and authorization/filter normalization into core `ActivityApplication`; HTTP calls the application directly. Preserved `ReadLogs`, accepted filters, trimming/lowercasing, 256-byte search limit, and reversed-time-window rejection. The legacy lowercasing of device-ID filters is preserved here and requires explicit review with the remaining projection semantics.
+- Both adapter crates now own the activity union queries, row hydration, and count/page reads using existing pool/shared handles. Deleted the host activity service and adapter modules. Kept the inclusive `[since, until]` activity interval; added explicit PostgreSQL C/Turso BINARY text-ID tie ordering for equal timestamps.
+- Moved the two existing pure filter tests unchanged with their functions. No tests were added, repaired, compiled, run, or removed. Source-level preservation is not behavioral parity evidence: search collation, audit-message formatting, count/page consistency, and remaining projection differences still need the R10 audit.
+- Removed the activity handler's repository allowance. R10 remains in progress; dashboard, analytics, audit, metrics, and PI-05/PI-09 decisions are outstanding. No migrations were added or executed.
+- Validation passed after extraction and ordering changes: combined PostgreSQL/Turso host production compilation, formatting, whitespace, and architecture. Counted direct accesses fell from 9 across 7 files to 8 across 6 files; 9 tracked exceptions remain. Behavioral verification remains deferred.
+
+### R10 dashboard projection
+
+- Moved dashboard summary/read port and `DashboardApplication` into core. HTTP invokes the application, preserving `ReadDevices`, online-to-active response naming, and existing response fields. Both adapter crates own the projection SQL and numeric hydration; old host service/adapter modules are deleted.
+- PostgreSQL now computes all counts in one statement, matching Turso's existing query shape and preventing a response from mixing four successive database snapshots. Zero devices yields zero counts; online/offline comparisons retain exact lowercase status matching. `total_messages` still counts retained raw telemetry, not lifetime traffic or typed contract events.
+- Removed invalid host-service tests `passes_validated_tenant_identity_to_the_repository` and `authorization_happens_before_persistence` and their private mock/context support because the replaced host entry point no longer exists. No tests were added, repaired, compiled, or run.
+- Removed the dashboard HTTP repository allowance. R10 remains open for analytics, audit, operational metrics, and the recorded projection semantic audits. No migrations were added or executed.
+- Validation passed: combined PostgreSQL/Turso host production compilation, formatting, whitespace, and architecture. Direct handler accesses fell from 8 across 6 files to 7 across 5 files; 9 tracked exceptions remain. Behavioral projection verification remains deferred.

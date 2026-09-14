@@ -166,19 +166,12 @@ const DEFAULT_TENANT_ALLOWANCES: &[TokenAllowance] = &[
 /// to `state.repositories` cannot disguise a new direct repository access.
 /// Entries and caps may only be removed or reduced as vertical slices migrate.
 const APP_STATE_REPOSITORY_ACCESS_ALLOWANCES: &[AppStateRepositoryAccessAllowance] = &[
-    AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/activity/activity.rs", 1, 0),
     AppStateRepositoryAccessAllowance::new(
         "crates/backend/src/domains/analytics/analytics.rs",
         2,
         0,
     ),
     AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/audit/audit.rs", 1, 0),
-    AppStateRepositoryAccessAllowance::new(
-        "crates/backend/src/domains/dashboard/dashboard.rs",
-        1,
-        0,
-    ),
-    AppStateRepositoryAccessAllowance::new("crates/backend/src/domains/devices/devices.rs", 2, 0),
     AppStateRepositoryAccessAllowance::new(
         "crates/backend/src/domains/operations/server_metrics_api.rs",
         2,

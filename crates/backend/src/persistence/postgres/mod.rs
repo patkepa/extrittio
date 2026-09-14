@@ -3,10 +3,8 @@ use std::sync::Arc;
 use crate::persistence::{DatabaseRuntime, RepositorySet};
 use executor::PostgresPool;
 
-mod activity;
 mod analytics;
 mod audit;
-mod dashboard;
 pub mod executor;
 pub(crate) mod lifecycle;
 mod metrics;
@@ -59,11 +57,13 @@ fn build_repositories(pool: PostgresPool) -> RepositorySet {
     let device_types = crate::database::postgres_device_types(&pool);
     let bootstrap = crate::database::postgres_bootstrap(&pool);
     let certificates = crate::database::postgres_certificates(&pool);
+    let dashboard = crate::database::postgres_dashboard(&pool);
+    let activity = crate::database::postgres_activity(&pool);
     let firmware = crate::database::postgres_firmware(&pool);
     let ci_ingest = crate::database::postgres_ci_ingest(&pool);
     let adapter = Arc::new(PostgresAdapter::new(pool));
     RepositorySet {
-        activity: adapter.clone(),
+        activity,
         analytics: adapter.clone(),
         api_keys,
         ci_ingest,
@@ -73,7 +73,7 @@ fn build_repositories(pool: PostgresPool) -> RepositorySet {
         certificates,
         commands,
         configuration,
-        dashboard: adapter.clone(),
+        dashboard,
         device_blueprints,
         device_types,
         devices,

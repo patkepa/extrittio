@@ -13,17 +13,40 @@ pub struct DownloadGrant {
 }
 
 pub fn issue(tenant: &TenantId, firmware_id: i32, secret: &str) -> Result<String, AppError> {
-    encode(
-        &Header::default(),
-        &DownloadGrant {
-            tenant: tenant.as_str().into(),
-            firmware_id,
-            aud: AUDIENCE.into(),
-            exp: (chrono::Utc::now().timestamp() + 7 * 24 * 3600) as u64,
-        },
-        &EncodingKey::from_secret(secret.as_bytes()),
+    let grant = extrittio_backend_core::firmware::FirmwareDownloadGrant::new(
+        tenant.clone(),
+        firmware_id,
+        &crate::auth::SystemClock,
+    )?;
+    extrittio_backend_core::firmware::FirmwareDownloadSigner::sign(
+        &JwtFirmwareDownloadSigner(secret),
+        &grant,
     )
-    .map_err(|_| AppError::Internal("Failed to authorize firmware download".into()))
+    .map_err(Into::into)
+}
+
+pub struct JwtFirmwareDownloadSigner<'a>(pub &'a str);
+impl extrittio_backend_core::firmware::FirmwareDownloadSigner for JwtFirmwareDownloadSigner<'_> {
+    fn sign(
+        &self,
+        grant: &extrittio_backend_core::firmware::FirmwareDownloadGrant,
+    ) -> Result<String, extrittio_backend_core::ApplicationError> {
+        encode(
+            &Header::default(),
+            &DownloadGrant {
+                tenant: grant.tenant.as_str().into(),
+                firmware_id: grant.firmware_id,
+                aud: grant.audience.into(),
+                exp: grant.expires_at,
+            },
+            &EncodingKey::from_secret(self.0.as_bytes()),
+        )
+        .map_err(|_| {
+            extrittio_backend_core::ApplicationError::Internal(
+                "Failed to authorize firmware download".into(),
+            )
+        })
+    }
 }
 
 pub fn verify(token: &str, secret: &str) -> Result<DownloadGrant, AppError> {

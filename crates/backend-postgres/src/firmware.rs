@@ -83,16 +83,6 @@ fn blob_record(blob: FirmwareBlob) -> FirmwareBlobRecord {
     }
 }
 
-fn increment_version(version: &str) -> String {
-    let parts: Vec<&str> = version.split('.').collect();
-    if parts.len() == 3
-        && let Ok(patch) = parts[2].parse::<u32>()
-    {
-        return format!("{}.{}.{}", parts[0], parts[1], patch + 1);
-    }
-    format!("{version}.1")
-}
-
 #[derive(QueryableByName)]
 struct AssignedBlueprintRevision {
     #[diesel(sql_type = Text)]
@@ -308,7 +298,10 @@ impl FirmwareRepository for PostgresFirmwareRepository {
             .run(move |connection| {
                 firmware_repo::find_next_version(connection, &tenant_id, device_type_id)
                     .map(|version| {
-                        version.map_or_else(|| "1.0.0".to_string(), |v| increment_version(&v))
+                        version.map_or_else(
+                            || "1.0.0".to_string(),
+                            |v| extrittio_backend_core::firmware::increment_firmware_version(&v),
+                        )
                     })
                     .map_err(map_diesel_error)
             })
@@ -330,7 +323,10 @@ impl FirmwareRepository for PostgresFirmwareRepository {
                     &blueprint_revision_id,
                 )
                 .map(|version| {
-                    version.map_or_else(|| "1.0.0".to_string(), |v| increment_version(&v))
+                    version.map_or_else(
+                        || "1.0.0".to_string(),
+                        |v| extrittio_backend_core::firmware::increment_firmware_version(&v),
+                    )
                 })
                 .map_err(map_diesel_error)
             })
@@ -531,17 +527,16 @@ impl FirmwareRepository for PostgresFirmwareRepository {
                             return Ok(TriggerOtaOutcome::Incompatible);
                         }
 
-                        if !extrittio_backend_core::firmware::valid_ota_artifact(
-                            &firmware.version,
-                            firmware.sha256.as_deref(),
-                            if firmware.url.starts_with("https://") {
-                                &firmware.url
-                            } else {
-                                &public_url
-                            },
-                        ) {
+                        let Some(artifact) =
+                            extrittio_backend_core::firmware::PreparedOtaArtifact::prepare(
+                                &firmware.version,
+                                firmware.sha256.as_deref(),
+                                &firmware.url,
+                                &public_url,
+                            )
+                        else {
                             return Ok(TriggerOtaOutcome::InvalidArtifact);
-                        }
+                        };
                         crate::shadows::lock_in_transaction(connection, &tenant_id, &device_id)?
                             .ok_or(PersistenceError::NotFound)?;
                         use crate::schema::ota_deployments;
@@ -567,22 +562,7 @@ impl FirmwareRepository for PostgresFirmwareRepository {
                                 firmware_update_id: firmware.id,
                             },
                         )?;
-                        let firmware_url = if firmware.url.starts_with("https://") {
-                            firmware.url.clone()
-                        } else {
-                            public_url.clone()
-                        };
-                        let mut ota = serde_json::json!({
-                            "firmware_version": firmware.version,
-                            "firmware_url": firmware_url,
-                            "firmware_update_id": firmware.id,
-                            "deployment_id": deployment_id,
-                        });
-                        if let Some(hash) = firmware.sha256 {
-                            ota["sha256"] = serde_json::Value::String(hash);
-                        }
-                        let mut patch = serde_json::Map::new();
-                        patch.insert("ota".to_string(), ota);
+                        let patch = artifact.desired_patch(firmware.id, i64::from(deployment_id));
                         let (delta, version) =
                             update_desired_shadow(connection, &tenant_id, &device_id, &patch)?;
                         Ok(TriggerOtaOutcome::Ready { delta, version })

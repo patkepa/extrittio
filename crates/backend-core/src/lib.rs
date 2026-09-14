@@ -109,3 +109,7 @@ pub mod telemetry;
 pub use application::{
     TelemetryApplication, TelemetryIngressApplication, TelemetryMaintenanceApplication,
 };
+
+pub mod activity;
+
+pub mod dashboard;

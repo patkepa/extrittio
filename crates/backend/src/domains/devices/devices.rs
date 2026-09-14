@@ -585,9 +585,9 @@ pub(crate) async fn trigger_ota(
     Path(id): Path<String>,
     Json(body): Json<TriggerOtaRequest>,
 ) -> Result<StatusCode, AppError> {
-    firmware_service::trigger_ota_with_repository(
+    firmware_service::trigger_ota(
         &ctx,
-        state.persistence.firmware.as_ref(),
+        state.application().firmware(),
         &state.zenoh_session,
         &id,
         body.firmware_update_id,
@@ -747,9 +747,9 @@ pub(crate) async fn bulk_trigger_ota(
     let mut result = BulkResultResponse::default();
 
     for device_id in &ids {
-        let outcome = firmware_service::trigger_ota_with_repository(
+        let outcome = firmware_service::trigger_ota(
             &ctx,
-            state.persistence.firmware.as_ref(),
+            state.application().firmware(),
             &state.zenoh_session,
             device_id,
             firmware_update_id,

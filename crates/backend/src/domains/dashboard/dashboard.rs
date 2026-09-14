@@ -5,7 +5,6 @@ use utoipa::ToSchema;
 
 use crate::auth::context::RequestContext;
 use crate::error::AppError;
-use crate::services::dashboard_service;
 use crate::state::AppState;
 
 #[derive(Serialize, ToSchema)]
@@ -34,8 +33,11 @@ pub(crate) async fn get_stats(
     Extension(ctx): Extension<RequestContext>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<DashboardStats>, AppError> {
-    let svc_stats =
-        dashboard_service::get_stats(&ctx, state.persistence.dashboard.as_ref()).await?;
+    let svc_stats = state
+        .application()
+        .dashboard()
+        .get_stats(&ctx.tenant_context())
+        .await?;
     let stats = DashboardStats {
         total_devices: svc_stats.total_devices,
         active_devices: svc_stats.active_devices,

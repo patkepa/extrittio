@@ -1,5 +1,9 @@
+mod dashboard;
+pub use dashboard::DashboardApplication;
+mod activity;
+pub use activity::ActivityApplication;
 mod firmware;
-pub use firmware::{FirmwareApplication, FirmwareMigrationApplication};
+pub use firmware::{FirmwareApplication, FirmwareMigrationApplication, FirmwareReportApplication};
 mod telemetry;
 pub use telemetry::{
     TelemetryApplication, TelemetryIngressApplication, TelemetryMaintenanceApplication,
@@ -103,6 +107,8 @@ impl ApplicationDependencies {
 /// Curated application façade passed to transports.
 #[derive(Clone)]
 pub struct Application {
+    dashboard: DashboardApplication,
+    activity: ActivityApplication,
     firmware: FirmwareApplication,
     telemetry: TelemetryApplication,
     events: EventApplication,
@@ -126,6 +132,14 @@ pub struct Application {
 }
 
 impl Application {
+    pub fn dashboard(&self) -> &DashboardApplication {
+        &self.dashboard
+    }
+
+    pub fn activity(&self) -> &ActivityApplication {
+        &self.activity
+    }
+
     pub fn firmware(&self) -> &FirmwareApplication {
         &self.firmware
     }
@@ -172,6 +186,8 @@ impl Application {
             dependencies.clock.clone(),
         );
         Self {
+            dashboard: DashboardApplication::new(repositories.dashboard),
+            activity: ActivityApplication::new(repositories.activity),
             firmware: FirmwareApplication::new(repositories.firmware),
             telemetry: TelemetryApplication::new(repositories.telemetry),
             events: EventApplication::new(repositories.events),

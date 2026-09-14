@@ -11,7 +11,6 @@ use utoipa::{IntoParams, ToSchema};
 use crate::auth::context::RequestContext;
 use crate::domains::activity::types::{ActivityEventRecord, ActivityQuery};
 use crate::error::AppError;
-use crate::services::activity_service;
 use crate::state::AppState;
 use crate::util;
 
@@ -110,22 +109,24 @@ pub(crate) async fn list_activity_events(
 ) -> Result<Json<ActivityEventListResponse>, AppError> {
     let limit = params.limit.unwrap_or(100).clamp(1, 200);
     let offset = params.offset.unwrap_or(0).clamp(0, 100_000);
-    let page = activity_service::list(
-        &ctx,
-        state.persistence.activity.as_ref(),
-        ActivityQuery {
-            source: params.source,
-            severity: params.severity,
-            category: params.category,
-            device_id: params.device_id,
-            search: params.search,
-            since: util::parse_timestamp(params.since.as_deref())?,
-            until: util::parse_timestamp(params.until.as_deref())?,
-            limit,
-            offset,
-        },
-    )
-    .await?;
+    let page = state
+        .application()
+        .activity()
+        .list(
+            &ctx.tenant_context(),
+            ActivityQuery {
+                source: params.source,
+                severity: params.severity,
+                category: params.category,
+                device_id: params.device_id,
+                search: params.search,
+                since: util::parse_timestamp(params.since.as_deref())?,
+                until: util::parse_timestamp(params.until.as_deref())?,
+                limit,
+                offset,
+            },
+        )
+        .await?;
 
     Ok(Json(ActivityEventListResponse {
         data: page.data.into_iter().map(Into::into).collect(),
