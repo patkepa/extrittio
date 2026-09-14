@@ -3,7 +3,6 @@ mod analytics;
 mod audit;
 mod dashboard;
 mod database;
-mod firmware;
 mod metrics;
 mod row;
 
@@ -57,6 +56,7 @@ fn build_repositories(database: Arc<TursoDatabase>) -> RepositorySet {
     let device_types = crate::database::turso_device_types(&database);
     let bootstrap = crate::database::turso_bootstrap(&database);
     let certificates = crate::database::turso_certificates(&database);
+    let firmware = crate::database::turso_firmware(&database);
     let ci_ingest = crate::database::turso_ci_ingest(&database);
     let adapter = Arc::new(TursoAdapter::new(database));
     RepositorySet {
@@ -77,7 +77,7 @@ fn build_repositories(database: Arc<TursoDatabase>) -> RepositorySet {
         device_ingress,
         events,
         fleets,
-        firmware: adapter.clone(),
+        firmware,
         logs,
         metrics: adapter.clone(),
         outbox,

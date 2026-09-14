@@ -1,6 +1,9 @@
+//! PostgreSQL persistence adapters for the backend application core.
 #![forbid(unsafe_code)]
 
-//! PostgreSQL persistence adapters for the backend application core.
+mod firmware;
+mod firmware_sql;
+pub use firmware::PostgresFirmwareRepository;
 
 pub mod api_keys;
 mod fleets;
@@ -79,10 +82,6 @@ pub use configuration::PostgresConfigurationRepository;
 
 mod commands;
 pub use commands::PostgresCommandRepository;
-
-#[cfg(feature = "migration-bridge")]
-#[doc(hidden)]
-pub use shadows::{lock_in_transaction, store_in_transaction};
 
 mod logs;
 pub use logs::PostgresLogRepository;

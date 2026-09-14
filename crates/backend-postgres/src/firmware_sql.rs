@@ -3,11 +3,11 @@
 use diesel::PgConnection;
 use diesel::prelude::*;
 
-use crate::db::models::{
+use crate::models::{
     Device, DeviceType, FirmwareBlob, FirmwareUpdate, Fleet, NewFirmwareBlob, NewFirmwareUpdate,
     NewOtaDeployment, OtaDeployment,
 };
-use crate::db::schema::{
+use crate::schema::{
     device_types, devices, firmware_blobs, firmware_updates, fleets, ota_deployments,
 };
 
@@ -127,18 +127,6 @@ pub fn insert_firmware_blob(
         .values(blob)
         .execute(conn)?;
     Ok(())
-}
-
-pub fn find_firmware_blob(
-    conn: &mut PgConnection,
-    tenant_id: &str,
-    firmware_update_id: i32,
-) -> Result<FirmwareBlob, diesel::result::Error> {
-    firmware_blobs::table
-        .filter(firmware_blobs::tenant_id.eq(tenant_id))
-        .filter(firmware_blobs::firmware_update_id.eq(firmware_update_id))
-        .select(FirmwareBlob::as_select())
-        .first(conn)
 }
 
 pub fn find_optional_firmware_blob(
@@ -355,4 +343,27 @@ pub fn insert_ota_deployment(
         .values(deployment)
         .returning(ota_deployments::id)
         .get_result(conn)
+}
+
+pub fn find_device_for_tenant(
+    conn: &mut PgConnection,
+    tenant: &str,
+    id: &str,
+) -> Result<Device, diesel::result::Error> {
+    devices::table
+        .filter(devices::tenant_id.eq(tenant))
+        .filter(devices::id.eq(id))
+        .select(Device::as_select())
+        .first(conn)
+}
+pub fn find_device_type_by_id(
+    conn: &mut PgConnection,
+    tenant: &str,
+    id: i32,
+) -> Result<DeviceType, diesel::result::Error> {
+    device_types::table
+        .filter(device_types::tenant_id.eq(tenant))
+        .filter(device_types::id.eq(id))
+        .select(DeviceType::as_select())
+        .first(conn)
 }

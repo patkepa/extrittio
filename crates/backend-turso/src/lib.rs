@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+mod firmware;
+pub use firmware::TursoFirmwareRepository;
 pub mod api_keys;
 mod fleets;
 pub use fleets::TursoFleetRepository;
@@ -89,10 +91,6 @@ pub use configuration::TursoConfigurationRepository;
 
 mod commands;
 pub use commands::TursoCommandRepository;
-
-#[cfg(feature = "migration-bridge")]
-#[doc(hidden)]
-pub use shadows::{get_from as read_shadow_in_transaction, store as store_shadow_in_transaction};
 
 mod logs;
 pub use logs::TursoLogRepository;

@@ -205,15 +205,17 @@ pub(crate) async fn list_firmware_updates(
 ) -> Result<Json<PaginatedResponse<FirmwareUpdateResponse>>, AppError> {
     let (limit, offset) = pagination::clamp(params.limit, params.offset);
 
-    let page = firmware_service::list_with_repository(
-        &ctx,
-        state.persistence.firmware.as_ref(),
-        params.device_type_id,
-        params.blueprint_revision_id,
-        limit,
-        offset,
-    )
-    .await?;
+    let page = state
+        .application()
+        .firmware()
+        .list(
+            &ctx.tenant_context(),
+            params.device_type_id,
+            params.blueprint_revision_id,
+            limit,
+            offset,
+        )
+        .await?;
     let response = PaginatedResponse::new(
         page.records.into_iter().map(Into::into).collect(),
         page.total,
@@ -242,14 +244,11 @@ pub(crate) async fn list_all_ota_deployments(
 ) -> Result<Json<PaginatedResponse<GlobalOtaDeploymentResponse>>, AppError> {
     let (limit, offset) = pagination::clamp(params.limit, params.offset);
 
-    let page = firmware_service::list_all_deployments_with_repository(
-        &ctx,
-        state.persistence.firmware.as_ref(),
-        params.status,
-        limit,
-        offset,
-    )
-    .await?;
+    let page = state
+        .application()
+        .firmware()
+        .list_all_deployments(&ctx.tenant_context(), params.status, limit, offset)
+        .await?;
     let response = PaginatedResponse::new(
         page.records.into_iter().map(Into::into).collect(),
         page.total,
@@ -295,38 +294,42 @@ pub(crate) async fn create_firmware_update(
         ));
     }
 
-    let prepared = firmware_service::prepare_blueprint_firmware(
-        &ctx,
-        state.application().device_blueprints(),
-        state.application().device_types(),
-        &body.blueprint_revision_id,
-    )
-    .await?;
+    let prepared = state
+        .application()
+        .firmware()
+        .prepare_blueprint(
+            &ctx.tenant_context(),
+            state.application().device_blueprints(),
+            state.application().device_types(),
+            &body.blueprint_revision_id,
+        )
+        .await?;
 
     let version = match body.version {
         Some(version) if !version.trim().is_empty() => version.trim().to_string(),
         _ => {
-            firmware_service::next_blueprint_version_with_repository(
-                &ctx,
-                state.persistence.firmware.as_ref(),
-                &body.blueprint_revision_id,
-            )
-            .await?
+            state
+                .application()
+                .firmware()
+                .next_blueprint_version(&ctx.tenant_context(), &body.blueprint_revision_id)
+                .await?
         }
     };
-    let created = firmware_service::create_with_repository(
-        &ctx,
-        state.persistence.firmware.as_ref(),
-        prepared.into_record(
-            body.blueprint_revision_id,
-            version,
-            body.url,
-            body.sha256,
-            body.description,
-        ),
-        None,
-    )
-    .await?;
+    let created = state
+        .application()
+        .firmware()
+        .create(
+            &ctx.tenant_context(),
+            prepared.into_record(
+                body.blueprint_revision_id,
+                version,
+                body.url,
+                body.sha256,
+                body.description,
+            ),
+            None,
+        )
+        .await?;
     let response = created.into();
 
     Ok((StatusCode::CREATED, Json(response)))
@@ -410,13 +413,16 @@ pub(crate) async fn upload_firmware_update(
         .ok_or_else(|| AppError::BadRequest("Missing blueprint_revision_id".into()))?;
     let file_data = file_data.ok_or_else(|| AppError::BadRequest("Missing file".into()))?;
 
-    let prepared = firmware_service::prepare_blueprint_firmware(
-        &ctx,
-        state.application().device_blueprints(),
-        state.application().device_types(),
-        &blueprint_revision_id,
-    )
-    .await?;
+    let prepared = state
+        .application()
+        .firmware()
+        .prepare_blueprint(
+            &ctx.tenant_context(),
+            state.application().device_blueprints(),
+            state.application().device_types(),
+            &blueprint_revision_id,
+        )
+        .await?;
 
     // Sanitize filename: strip path components to prevent traversal
     let filename = filename
@@ -433,18 +439,17 @@ pub(crate) async fn upload_firmware_update(
     let version = match version {
         Some(version) => version,
         None => {
-            firmware_service::next_blueprint_version_with_repository(
-                &ctx,
-                state.persistence.firmware.as_ref(),
-                &blueprint_revision_id,
-            )
-            .await?
+            state
+                .application()
+                .firmware()
+                .next_blueprint_version(&ctx.tenant_context(), &blueprint_revision_id)
+                .await?
         }
     };
 
     let response = firmware_service::upload_blueprint_firmware(
         &ctx,
-        state.persistence.firmware.as_ref(),
+        state.application().firmware(),
         &state.firmware_store,
         prepared.into_record(
             blueprint_revision_id,
@@ -479,11 +484,12 @@ pub(crate) async fn download_firmware_blob(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i32>,
 ) -> Result<Response, AppError> {
-    let blob =
-        firmware_service::get_blob_with_repository(&ctx, state.persistence.firmware.as_ref(), id)
-            .await?;
-
-    serve_blob(&state, id, blob).await
+    let download = state
+        .application()
+        .firmware()
+        .download(&ctx.tenant_context(), id, &state.firmware_store)
+        .await?;
+    serve_download(download)
 }
 
 async fn download_for_device(
@@ -491,63 +497,23 @@ async fn download_for_device(
     Path(token): Path<String>,
 ) -> Result<Response, AppError> {
     let grant = crate::domains::firmware::download::verify(&token, &state.jwt_secret)?;
-    let tenant = crate::tenancy::TenantId::new(grant.tenant).map_err(|_| AppError::Unauthorized)?;
-    let blob = state
-        .firmware_download_repository()
-        .get_blob(&tenant, grant.firmware_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Firmware not found".into()))?;
-    serve_blob(&state, grant.firmware_id, blob).await
+    let scope = extrittio_backend_core::firmware::VerifiedFirmwareDownload::from_verified_claims(
+        grant.tenant,
+        grant.firmware_id,
+    )?;
+    let download = state
+        .application()
+        .firmware()
+        .download_granted(&scope, &state.firmware_store)
+        .await?;
+    serve_download(download)
 }
 
-async fn serve_blob(
-    state: &AppState,
-    id: i32,
-    blob: crate::domains::firmware::types::FirmwareBlobRecord,
+fn serve_download(
+    download: extrittio_backend_core::firmware::FirmwareDownload,
 ) -> Result<Response, AppError> {
-    let data = match (blob.data, blob.storage_key.as_deref()) {
-        (Some(data), _) => data,
-        (None, Some(storage_key)) => {
-            if blob.storage_backend != state.firmware_store.backend() {
-                tracing::error!(
-                    stored_backend = %blob.storage_backend,
-                    configured_backend = state.firmware_store.backend(),
-                    "Firmware object backend does not match the configured store"
-                );
-                return Err(AppError::Internal(
-                    "Firmware storage configuration does not match stored metadata".to_string(),
-                ));
-            }
-            state
-                .firmware_store
-                .get(storage_key)
-                .await
-                .map_err(|error| {
-                    tracing::error!(%error, firmware_update_id = id, "Firmware object download failed");
-                    AppError::Internal("Firmware storage is unavailable".to_string())
-                })?
-        }
-        (None, None) => {
-            return Err(AppError::Internal(
-                "Firmware blob has no storage location".to_string(),
-            ));
-        }
-    };
-
-    if data.len() != blob.size as usize {
-        tracing::error!(
-            firmware_update_id = id,
-            expected_size = blob.size,
-            actual_size = data.len(),
-            "Firmware object size does not match metadata"
-        );
-        return Err(AppError::Internal(
-            "Firmware object failed integrity validation".to_string(),
-        ));
-    }
-
     // Sanitize filename for Content-Disposition to prevent header injection
-    let safe_filename: String = blob
+    let safe_filename: String = download
         .filename
         .chars()
         .filter(|c| *c != '"' && *c != '\r' && *c != '\n' && *c != '\0')
@@ -558,8 +524,8 @@ async fn serve_blob(
         .header(header::CACHE_CONTROL, "private, no-store")
         .header(header::CONTENT_TYPE, "application/octet-stream")
         .header(header::CONTENT_DISPOSITION, content_disposition)
-        .header(header::CONTENT_LENGTH, blob.size.to_string())
-        .body(Body::from(data))
+        .header(header::CONTENT_LENGTH, download.size.to_string())
+        .body(Body::from(download.data))
         .unwrap())
 }
 
@@ -582,7 +548,7 @@ pub(crate) async fn delete_firmware_update(
 ) -> Result<StatusCode, AppError> {
     firmware_service::delete_stored_firmware(
         &ctx,
-        state.persistence.firmware.as_ref(),
+        state.application().firmware(),
         &state.firmware_store,
         id,
     )
@@ -607,12 +573,11 @@ pub(crate) async fn get_next_version(
     Extension(ctx): Extension<RequestContext>,
     Path(device_type_id): Path<i32>,
 ) -> Result<Json<NextVersionResponse>, AppError> {
-    let version = firmware_service::next_version_with_repository(
-        &ctx,
-        state.persistence.firmware.as_ref(),
-        device_type_id,
-    )
-    .await?;
+    let version = state
+        .application()
+        .firmware()
+        .next_version(&ctx.tenant_context(), device_type_id)
+        .await?;
 
     Ok(Json(NextVersionResponse {
         next_version: version,
@@ -635,12 +600,11 @@ pub(crate) async fn get_next_blueprint_version(
     Extension(ctx): Extension<RequestContext>,
     Path(revision_id): Path<String>,
 ) -> Result<Json<NextVersionResponse>, AppError> {
-    let version = firmware_service::next_blueprint_version_with_repository(
-        &ctx,
-        state.persistence.firmware.as_ref(),
-        &revision_id,
-    )
-    .await?;
+    let version = state
+        .application()
+        .firmware()
+        .next_blueprint_version(&ctx.tenant_context(), &revision_id)
+        .await?;
 
     Ok(Json(NextVersionResponse {
         next_version: version,

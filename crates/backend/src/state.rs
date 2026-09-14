@@ -201,6 +201,7 @@ impl AppState {
         let application = extrittio_backend_core::Application::new(
             extrittio_backend_core::RepositorySet::new(
                 extrittio_backend_core::RepositorySetInput {
+                    firmware: persistence.firmware.clone(),
                     telemetry: persistence.telemetry.clone(),
                     events: persistence.events.clone(),
                     logs: persistence.logs.clone(),
@@ -267,14 +268,5 @@ impl AppState {
     #[must_use]
     pub fn application(&self) -> &extrittio_backend_core::Application {
         &self.application
-    }
-
-    /// Narrow host bridge for resolving device-scoped firmware download grants
-    /// while the firmware vertical slice is still migrating behind `Application`.
-    #[must_use]
-    pub(crate) fn firmware_download_repository(
-        &self,
-    ) -> &dyn crate::domains::firmware::port::FirmwareRepository {
-        self.persistence.firmware.as_ref()
     }
 }

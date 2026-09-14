@@ -298,16 +298,6 @@ pub(crate) fn turso_commands(
 }
 
 #[cfg(feature = "postgres")]
-pub(crate) use extrittio_backend_postgres::{
-    lock_in_transaction as postgres_lock_shadow, store_in_transaction as postgres_store_shadow,
-};
-#[cfg(feature = "turso")]
-pub(crate) use extrittio_backend_turso::{
-    read_shadow_in_transaction as turso_read_shadow,
-    store_shadow_in_transaction as turso_store_shadow,
-};
-
-#[cfg(feature = "postgres")]
 pub(crate) fn postgres_logs(
     pool: &PostgresPool,
 ) -> Arc<dyn extrittio_backend_core::logs::LogRepository> {
@@ -367,4 +357,20 @@ pub(crate) fn turso_telemetry(
     Arc::new(
         extrittio_backend_turso::TursoTelemetryRepository::from_handles(database.shared_handles()),
     )
+}
+
+#[cfg(feature = "turso")]
+pub(crate) fn turso_firmware(
+    database: &TursoDatabase,
+) -> Arc<dyn extrittio_backend_core::firmware::FirmwareRepository> {
+    Arc::new(
+        extrittio_backend_turso::TursoFirmwareRepository::from_handles(database.shared_handles()),
+    )
+}
+
+#[cfg(feature = "postgres")]
+pub(crate) fn postgres_firmware(
+    pool: &PostgresPool,
+) -> Arc<dyn extrittio_backend_core::firmware::FirmwareRepository> {
+    Arc::new(extrittio_backend_postgres::PostgresFirmwareRepository::from_pool(pool.clone()))
 }
