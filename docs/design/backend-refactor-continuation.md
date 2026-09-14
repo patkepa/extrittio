@@ -1,5 +1,11 @@
 # Backend refactor continuation — 2026-09-14
 
+The [backend refactor execution plan](backend-refactor-execution-plan.md) now
+provides the detailed work packages for the full remaining backlog. This document
+retains the initial inspection and CI-ingest continuation history.
+Current execution skips running, adding, and repairing tests. Remove tests made
+invalid by refactoring, keep unaffected tests, and defer verification coverage work.
+
 ## Starting point
 
 Branch: `refactoring/backend-continuation`, created from freshly fetched

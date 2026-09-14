@@ -1,5 +1,11 @@
 # Backend Crate Architecture and Implementation Plan
 
+For the detailed remaining implementation sequence, dependencies, and resumable
+work-package ledger, use [Backend refactor execution plan](backend-refactor-execution-plan.md).
+Its current execution policy skips test execution, additions, and repairs; tests
+made invalid by the refactor are removed, and unaffected tests are retained.
+Historical test gates below remain future verification requirements.
+
 For the source-checked 2026-09-14 continuation order and verification gaps, see
 [Backend refactor continuation](backend-refactor-continuation.md). The dated
 status entries below are historical and require the evidence reconciliation
