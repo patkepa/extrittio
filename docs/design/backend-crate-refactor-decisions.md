@@ -36,7 +36,7 @@ Silently changing a malformed, explicitly supplied tenant into the default tenan
 
 ### Decision
 
-The host owns one compatibility mapper from validated user JWT claims to the non-optional core `TenantContext`. Authentication-epoch validation from ADR-008 happens before this tenant compatibility mapping:
+The host owns one compatibility mapper from validated user JWT claims to the non-optional core `TenantContext`. Nonempty authentication-epoch presence from ADR-008 is checked before this tenant compatibility mapping. Persisted epoch equality is checked after tenant selection and before creating an authenticated request context:
 
 1. A present, valid tenant claim maps to that tenant.
 2. An absent tenant claim on an otherwise valid signed **user JWT** maps to `DEFAULT_TENANT_ID` only when that token also carries a non-empty `auth_epoch` that resolves to the persisted principal. A signed token with no `auth_epoch` is rejected; it does not enter this compatibility branch.
@@ -462,7 +462,7 @@ The core `UserApplication` and `UserRepository` contract is:
 12. Core password validation uses UTF-8 byte length of at least 12 and requires at least one ASCII lowercase character, ASCII uppercase character, ASCII digit, and character outside the ASCII alphanumeric set. Consequently ASCII punctuation, whitespace, and non-ASCII characters satisfy the symbol category. Existing validation order and public messages remain stable.
 13. Core receives a `PasswordHasher` and UTC `Clock` as outbound ports. The host implementation uses Argon2's existing default parameters, a fresh `OsRng` salt, PHC encoding, and blocking-task isolation. Plaintext request DTOs deliberately lack `Debug`, `Clone`, and serialization. Plaintext transferred to the host `PasswordHasher` is wrapped in `Zeroizing` inside the blocking hash/verify task and is zeroized when that task ends; plaintext rejected before that boundary is not guaranteed to be zeroized. Encoded hashes have redacted `Debug`, no serialization, and appear only at credential-specific read and password-write boundaries.
 
-The contract does not select behavior for embedded NUL in usernames. PI-16 must decide whether core rejects it with a stable invalid-input error or both storage adapters are made to accept the same representation.
+PI-16 selects core rejection of embedded NUL (U+0000), before hashing or database access. User creation retains permission checking, trimming, and empty-name validation first, then returns InvalidInput("Username must not contain NUL characters"). Bootstrap applies the same rejection after its existing empty-name check. Authentication rejects NUL-bearing input as Unauthorized before credential lookup, preserving the generic login error and exact lookup semantics for all other names. No encoding, escaping, or storage migration is introduced. This is a focused portability correction: PostgreSQL previously failed to store such names while Turso could store them. Existing Turso rows are not rewritten or deleted; NUL-bearing usernames can no longer authenticate by username after this correction. Existing epoch-bound session resolution is unchanged.
 
 ### Consequences
 
@@ -472,7 +472,7 @@ The contract does not select behavior for embedded NUL in usernames. PI-16 must 
 - Exact login lookup intentionally differs from create-time trimming. A client that creates `" alice "` persists `"alice"` and must authenticate as `"alice"`.
 - Same-role and same-password retries intentionally invalidate previously issued authorization once per successful call; they are not version-idempotent.
 - Deleting and recreating a user cannot revive a prior session even if the storage engine reuses the numeric ID and the replacement reaches the same permission version.
-- Relaxed multi-statement consistency is limited to ordinary list projections. Authentication and session resolution require one security snapshot; PI-16 remains an explicit input-parity limitation.
+- Relaxed multi-statement consistency is limited to ordinary list projections. Authentication and session resolution require one security snapshot; PI-16 now rejects embedded-NUL input consistently in core; behavioral verification is deferred.
 
 ### Implemented evidence and remaining proof
 
@@ -481,7 +481,7 @@ The contract does not select behavior for embedded NUL in usernames. PI-16 must 
 - Host tests verify a pre-existing PHC Argon2 verifier, malformed-verifier failure, password round trips, wrong-password failure, and distinct random salts for identical plaintext.
 - Security-correction closure additionally requires migration tests that backfill distinct non-empty epochs and enforce them for new rows; shared adapter tests that prove fresh epochs on create and delete/recreate (including Turso numeric-ID reuse); core session tests for epoch mismatch; and a host login/JWT/middleware test that proves issuance, legacy missing-epoch rejection, version invalidation, and same-ID/same-version replacement non-revival. These are required proof, not verification claims in this record.
 - Credential and session adapter tests or equivalent concurrency evidence must demonstrate that a security read cannot combine a verifier or authorization projection from different principal revisions. Ordinary list snapshot consistency is deliberately outside this closure gate.
-- Embedded-NUL parity is intentionally untested until PI-16 selects a portable contract.
+- Embedded-NUL create/bootstrap rejection and generic login rejection require future behavioral verification. Tests remain skipped under the current execution policy.
 
 ## ADR-009: Preserve the combined CI-ingest persistence operation during extraction
 
@@ -978,6 +978,17 @@ P0-C should encode only these bounded temporary exceptions. A source allowlist e
 | EX-014 | Core-shaped code may currently pull Prost through broad `extrittio-common` features | Existing dependency closure only; no new generated-wire use | P1.5 and P2.3 | Core closure contains no Prost/generated transport types and uses lean shared features/types |
 | EX-015 | Legacy Diesel repository helpers remain under domain/repository paths | Existing helpers only; no new callers | P1.5; removed with matching P2.4/P3 slice | Each helper moves behind PostgreSQL adapter ownership or is deleted with its migrated slice |
 
+Current source reconciliation (R12): EX-002 through EX-009 and EX-011 through
+EX-015 no longer require code allowances: core/adapters own business policy and
+SQL, host domain modules are transport implementations, AppState fields are private,
+and CLI construction/serving uses the host service facade. The old tables above
+record removal criteria, not current allowed debt. EX-010's implementation is
+recorded in R05/R06; its behavioral proof stays deferred with R14. EX-001's
+missing-tenant mapper remains pending ADR-001 rollout telemetry, as documented in
+[identity closure](backend-identity-closure.md). The other exact default-tenant
+locations are intentional login/bootstrap selection and the constant definition.
+The unused default-tenant JWT issuance helper has been removed.
+
 Approved target composition paths such as host `database`, `boot`, and `maintenance` modules are not exceptions: they are the intended concrete-adapter boundary. Default-tenant bootstrap in `init.rs` and explicit default-tenant login selection are also not blanket exceptions; the architecture verifier should allow their exact semantic locations, not the constant throughout the crate.
 
 ## Decision maintenance
@@ -1087,3 +1098,20 @@ calculations remain unchanged. Existing integer-to-f64 sample conversion and
 weighting/coverage algorithms are retained, including precision loss for large
 integers. Read snapshots can live for the duration of a bounded analytics query;
 no writer mutex is acquired for Turso reads. Runtime acceptance is deferred.
+
+
+### R10 activity follow-up: portable search and snapshot totals
+
+Activity search keeps SQL `%`/`_` wildcards, ASCII-only case-insensitive matching,
+exact non-ASCII matching, and literal backslash. PostgreSQL's prior locale-sensitive
+ILIKE/escape behavior is replaced with explicit ASCII translation, C collation,
+and LIKE with no escape character to match Turso. Core retains its existing trim,
+256-byte search limit, and legacy lowercasing/unset handling for filters.
+
+Audit method/path rendering accepts only nonempty JSON strings. Its fallback method
+is the uppercase second dot-delimited action segment; missing segments yield empty
+text. This aligns Turso with PostgreSQL's segment selection and avoids engine-specific
+formatting of non-string metadata. Ordinary host-generated method/path strings are
+unchanged. List and fallback total share a read snapshot in each engine; separate
+requests do not share snapshots. Runtime search, rendering, and concurrency evidence
+remains deferred under the no-tests policy.

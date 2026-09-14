@@ -1,5 +1,10 @@
 # Backend Crate Architecture and Implementation Plan
 
+This is the historical architecture proposal and checkpoint record. Current identity
+implementation, deferred proof, and API-key nonce/rotation scope are reconciled in
+[Backend identity closure](backend-identity-closure.md). References below to adding
+epochs or API-key nonce/rotation flows are not current implementation tasks.
+
 For the detailed remaining implementation sequence, dependencies, and resumable
 work-package ledger, use [Backend refactor execution plan](backend-refactor-execution-plan.md).
 Its current execution policy skips test execution, additions, and repairs; tests

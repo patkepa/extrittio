@@ -114,7 +114,7 @@ const DEFAULT_TENANT_ALLOWANCES: &[TokenAllowance] = &[
         "DEFAULT_TENANT_ID",
         1,
         "P1.2",
-        "legacy/default bootstrap identifier definition",
+        "explicit default login/bootstrap tenant definition",
     ),
     TokenAllowance::new(
         "crates/backend/src/init.rs",
@@ -126,23 +126,16 @@ const DEFAULT_TENANT_ALLOWANCES: &[TokenAllowance] = &[
     TokenAllowance::new(
         "crates/backend/src/auth/context.rs",
         "DEFAULT_TENANT_ID",
-        3,
-        "P1.2",
-        "legacy claim compatibility must move to the host mapper",
-    ),
-    TokenAllowance::new(
-        "crates/backend/src/auth.rs",
-        "DEFAULT_TENANT_ID",
         2,
         "P1.2",
-        "legacy token generation/claims behavior",
+        "ADR-001 host mapper; retirement awaits rollout telemetry",
     ),
     TokenAllowance::new(
         "crates/backend/src/domains/identity/auth_routes.rs",
         "DEFAULT_TENANT_ID",
         2,
         "P1.2",
-        "legacy authentication route compatibility",
+        "explicit default-tenant login selection",
     ),
 ];
 
@@ -153,13 +146,7 @@ const DEFAULT_TENANT_ALLOWANCES: &[TokenAllowance] = &[
 /// Entries and caps may only be removed or reduced as vertical slices migrate.
 const APP_STATE_REPOSITORY_ACCESS_ALLOWANCES: &[AppStateRepositoryAccessAllowance] = &[];
 
-const APP_TURSO_ALLOWANCES: &[TokenAllowance] = &[TokenAllowance::new(
-    "apps/extrittio/src/commands/service.rs",
-    "TursoDatabase",
-    4,
-    "P5.3",
-    "current CLI performs Turso maintenance directly",
-)];
+const APP_TURSO_ALLOWANCES: &[TokenAllowance] = &[];
 
 #[derive(Debug, Deserialize)]
 struct CargoMetadata {
@@ -169,17 +156,22 @@ struct CargoMetadata {
 #[derive(Debug, Deserialize)]
 struct CargoPackage {
     name: String,
+    targets: Vec<CargoTarget>,
     dependencies: Vec<CargoDependency>,
     #[serde(default)]
     features: BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
+struct CargoTarget {
+    name: String,
+    kind: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct CargoDependency {
     name: String,
     path: Option<PathBuf>,
-    #[serde(default)]
-    optional: bool,
     uses_default_features: bool,
     #[serde(default)]
     features: Vec<String>,
@@ -257,7 +249,7 @@ impl Report {
         }
         if self.errors.is_empty() {
             println!(
-                "Architecture checks passed with {} tracked migration exception(s).",
+                "Architecture checks passed with {} tracked boundary allowance(s).",
                 self.warnings.len()
             );
             Ok(())
@@ -328,19 +320,10 @@ fn check_package_graph(root: &Path, metadata: &CargoMetadata, report: &mut Repor
             {
                 continue;
             }
-            if let Some((work_package, reason)) =
-                legacy_workspace_edge(rule.package, &dependency.name)
-            {
-                report.warning(format!(
-                    "{} -> {} is a bounded legacy edge ({work_package}: {reason})",
-                    rule.package, dependency.name
-                ));
-            } else {
-                report.error(format!(
-                    "{} must not depend on workspace package {}",
-                    rule.package, dependency.name
-                ));
-            }
+            report.error(format!(
+                "{} must not depend on workspace package {}",
+                rule.package, dependency.name
+            ));
         }
     }
 
@@ -349,6 +332,36 @@ fn check_package_graph(root: &Path, metadata: &CargoMetadata, report: &mut Repor
     }
 
     check_migration_bridge_features(&packages, report);
+
+    if let Some(host) = packages.get(HOST_PACKAGE) {
+        for target in &host.targets {
+            if target.kind.iter().any(|kind| kind == "bin") && target.name != "openapi" {
+                report.error(format!("{HOST_PACKAGE} must not own service executable {}; service execution belongs to apps/extrittio", target.name));
+            }
+        }
+    }
+
+    for package_name in [HOST_PACKAGE, "extrittio"] {
+        if let Some(package) = packages.get(package_name) {
+            for dependency in &package.dependencies {
+                if [
+                    "diesel",
+                    "diesel_migrations",
+                    "pq-sys",
+                    "turso",
+                    "libsql",
+                    "libsql-sys",
+                    "rusqlite",
+                    "sqlx",
+                    "tokio-postgres",
+                ]
+                .contains(&dependency.name.as_str())
+                {
+                    report.error(format!("{package_name} must use database adapters instead of direct engine dependency {}", dependency.name));
+                }
+            }
+        }
+    }
 
     if let Some(host) = packages.get(HOST_PACKAGE).copied() {
         let defaults = host.features.get("default").map_or(&[][..], Vec::as_slice);
@@ -374,62 +387,28 @@ fn check_package_graph(root: &Path, metadata: &CargoMetadata, report: &mut Repor
 }
 
 fn check_migration_bridge_features(packages: &BTreeMap<&str, &CargoPackage>, report: &mut Report) {
-    const ADAPTER_PACKAGES: &[&str] = &["extrittio-backend-postgres", "extrittio-backend-turso"];
-    const BRIDGE_FEATURE: &str = "migration-bridge";
-
-    for adapter_name in ADAPTER_PACKAGES {
-        let Some(adapter) = packages.get(adapter_name).copied() else {
-            continue;
-        };
-
-        if !adapter.features.contains_key(BRIDGE_FEATURE) {
-            report.error(format!(
-                "{adapter_name} must declare the temporary `{BRIDGE_FEATURE}` feature while legacy host repositories remain"
-            ));
-        }
-        if adapter
-            .features
-            .get("default")
-            .is_some_and(|features| features.iter().any(|feature| feature == BRIDGE_FEATURE))
+    for adapter_name in ["extrittio-backend-postgres", "extrittio-backend-turso"] {
+        if packages
+            .get(adapter_name)
+            .is_some_and(|adapter| adapter.features.contains_key("migration-bridge"))
         {
             report.error(format!(
-                "{adapter_name} must keep `{BRIDGE_FEATURE}` disabled by default"
+                "{adapter_name} must not expose the retired migration-bridge feature"
             ));
         }
-
-        let mut host_enables_bridge = false;
-        for package in packages.values().copied() {
-            for dependency in package
-                .dependencies
-                .iter()
-                .filter(|dependency| dependency.name == *adapter_name)
-                .filter(|dependency| {
-                    dependency
+        for package in packages.values() {
+            if package.dependencies.iter().any(|dependency| {
+                dependency.name == adapter_name
+                    && dependency
                         .features
                         .iter()
-                        .any(|feature| feature == BRIDGE_FEATURE)
-                })
-            {
-                if package.name != HOST_PACKAGE {
-                    report.error(format!(
-                        "{} must not enable {adapter_name}/{BRIDGE_FEATURE}; the temporary bridge is host-only",
-                        package.name
-                    ));
-                    continue;
-                }
-                host_enables_bridge = true;
-                if !dependency.optional {
-                    report.error(format!(
-                        "{HOST_PACKAGE} must keep its {adapter_name}/{BRIDGE_FEATURE} dependency optional"
-                    ));
-                }
+                        .any(|feature| feature == "migration-bridge")
+            }) {
+                report.error(format!(
+                    "{} must not enable {adapter_name}/migration-bridge",
+                    package.name
+                ));
             }
-        }
-
-        if !host_enables_bridge {
-            report.error(format!(
-                "{HOST_PACKAGE} must explicitly enable {adapter_name}/{BRIDGE_FEATURE} until the legacy repositories are removed"
-            ));
         }
     }
 }
@@ -439,16 +418,6 @@ fn is_workspace_dependency(root: &Path, dependency: &CargoDependency) -> bool {
         .path
         .as_deref()
         .is_some_and(|path| path.starts_with(root))
-}
-
-fn legacy_workspace_edge(package: &str, dependency: &str) -> Option<(&'static str, &'static str)> {
-    match (package, dependency) {
-        ("extrittio", "extrittio-openthread-runtime") => Some((
-            "P5.3",
-            "OpenThread composition still lives partly in the process shell",
-        )),
-        _ => None,
-    }
 }
 
 fn check_core_dependencies(core: &CargoPackage, report: &mut Report) {
@@ -499,6 +468,36 @@ fn check_source_boundaries(root: &Path, report: &mut Report) -> Result<()> {
         &[
             "PostgresAdapter",
             "TursoAdapter",
+            "extrittio_backend_postgres",
+            "extrittio_backend_turso",
+        ],
+        report,
+    );
+
+    // Migrated message handlers and worker loops receive application capabilities.
+    // Keep composition (app/workers.rs and boot) outside this transport-only set.
+    let application_driven_files = backend_files
+        .iter()
+        .filter(|(path, _)| {
+            path.starts_with("crates/backend/src/zenoh_handler/")
+                || path.starts_with("crates/backend/src/domains/")
+                || matches!(
+                    path.as_str(),
+                    "crates/backend/src/background.rs"
+                        | "crates/backend/src/domains/rules/rule_engine/actions.rs"
+                        | "crates/backend/src/domains/operations/server_metrics_service.rs"
+                        | "crates/backend/src/domains/firmware/firmware_store.rs"
+                )
+        })
+        .map(|(path, source)| (path.clone(), source.clone()))
+        .collect();
+    check_forbidden_tokens(
+        &application_driven_files,
+        "application-driven transport/worker",
+        &[
+            "RepositorySet",
+            "crate::persistence",
+            "crate::database",
             "extrittio_backend_postgres",
             "extrittio_backend_turso",
         ],
@@ -869,12 +868,6 @@ mod tests {
             count_field_access("state.persistence_error", ".persistence"),
             0
         );
-    }
-
-    #[test]
-    fn identifies_only_known_legacy_workspace_edges() {
-        assert!(legacy_workspace_edge("extrittio", "extrittio-openthread-runtime").is_some());
-        assert!(legacy_workspace_edge(CORE_PACKAGE, HOST_PACKAGE).is_none());
     }
 
     #[test]

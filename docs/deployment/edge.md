@@ -1,5 +1,8 @@
 # Edge deployment
 
+Refactor-specific migration ordering and rollback limits are documented in
+[Backend ownership and upgrade notes](backend-refactor.md).
+
 Extrittio Edge is the single-node runtime selected by `extrittio run`. It uses a
 local Turso database, embeds the built React UI, and stores all mutable state in
 one data directory. PostgreSQL remains the production server and HA backend.
