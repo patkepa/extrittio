@@ -30,11 +30,10 @@ export const Login = () => {
     setIsLoading(true);
 
     try {
-      const tenant = tenantId.trim();
       const response = await login({
         username,
         password,
-        ...(tenant ? { tenant_id: tenant } : {}),
+        ...(!__EXTRITTIO_EDGE__ && tenantId.trim() ? { tenant_id: tenantId.trim() } : {}),
       });
       setSession(response.user);
       navigate(getDefaultRoutePath(response.user.permissions), { replace: true });
@@ -83,14 +82,16 @@ export const Login = () => {
             />
           </FormGroup>
 
-          <FormGroup label="Tenant">
-            <InputGroup
-              leftIcon="office"
-              placeholder="default"
-              value={tenantId}
-              onChange={(e) => setTenantId(e.target.value)}
-            />
-          </FormGroup>
+          {!__EXTRITTIO_EDGE__ ? (
+            <FormGroup label="Tenant">
+              <InputGroup
+                leftIcon="office"
+                placeholder="default"
+                value={tenantId}
+                onChange={(e) => setTenantId(e.target.value)}
+              />
+            </FormGroup>
+          ) : null}
 
           <Button
             type="submit"

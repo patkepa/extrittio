@@ -7,9 +7,13 @@ const resolveFrontendModule = (path: string) => resolvePath(`./node_modules/${pa
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', 'EXTRITTIO_');
+  const isEdgeDeployment = env.EXTRITTIO_DEPLOYMENT_PROFILE === 'edge';
 
   return {
     plugins: [react({ compiler: true })],
+    define: {
+      __EXTRITTIO_EDGE__: JSON.stringify(isEdgeDeployment),
+    },
     resolve: {
       // Keep a single hooks dispatcher if a locally packed Kantzen UI build is
       // used while developing the framework and application together.
