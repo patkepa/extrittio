@@ -19,7 +19,6 @@ Commands:
   ota           Deploy and inspect firmware over-the-air updates
   api-keys      Manage API keys for CI and automation
   certs         Download or regenerate device certificates
-  provision     Create a device and emit client provisioning material
   help          Print this message or the help of the given subcommand(s)
 
 Options:
