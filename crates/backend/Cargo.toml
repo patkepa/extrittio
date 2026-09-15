@@ -73,7 +73,7 @@ dotenvy = "0.15"
 base64 = "0.22"
 ring = "0.17"
 include_dir = { version = "0.7", optional = true }
-mdns-sd = { version = "0.20", optional = true }
+mdns-sd = { version = "0.21", optional = true }
 
 [dev-dependencies]
 http-body-util = "0.1"
