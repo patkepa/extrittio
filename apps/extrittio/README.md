@@ -69,9 +69,8 @@ extrittio devices --help
 
 The web console and `api/openapi.json` are currently the supported interfaces
 for creating devices from published blueprint revisions. The CLI's legacy
-`devices create` and `provision` arguments still use the compatibility
-`device_type_id` request shape and should not be used for new blueprint-based
-provisioning.
+`devices create` arguments still use the compatibility `device_type_id` request
+shape and should not be used for new blueprint-based provisioning.
 
 Browser sessions use HTTP-only cookies. CLI commands can use a bearer token
 from `--token`, `EXTRITTIO_TOKEN`, or the saved login session. Override the
@@ -86,7 +85,6 @@ directory; override it with `--config` or `EXTRITTIO_CLI_CONFIG`.
 - `api.rs` owns authenticated HTTP transport.
 - `models.rs` and `output.rs` own response models and table/JSON rendering.
 - `commands/service.rs` composes the server and Edge runtimes.
-- `esp32.rs` contains legacy ESP-IDF NVS provisioning support.
 
 The backend domains and persistence adapters live in `crates/backend`; see the
 [system architecture](../../docs/architecture/overview.md).

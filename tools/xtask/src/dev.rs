@@ -121,7 +121,7 @@ pub(crate) fn run_edge(root: &Path, args: EdgeArgs) -> Result<()> {
             command: backend,
         });
     }
-    add_frontend(root, &args.common, &mut specs);
+    add_frontend(root, &args.common, &mut specs, true);
 
     print_summary("Edge", &args.common, Some(&data_dir), "admin / admin");
     supervisor::run(specs)
@@ -186,7 +186,7 @@ pub(crate) fn run_cloud(root: &Path, args: CloudArgs) -> Result<()> {
             command: backend,
         });
     }
-    add_frontend(root, &args.common, &mut specs);
+    add_frontend(root, &args.common, &mut specs, false);
 
     print_summary("Cloud", &args.common, None, "admin / Extrittio-dev1!");
     let result = supervisor::run(specs);
@@ -316,7 +316,7 @@ fn check_port(port: u16, label: &str) -> Result<()> {
         .map_err(|_| anyhow::anyhow!("{label} port {port} is unavailable; pass a different {flag}"))
 }
 
-fn add_frontend(root: &Path, args: &CommonArgs, specs: &mut Vec<ChildSpec>) {
+fn add_frontend(root: &Path, args: &CommonArgs, specs: &mut Vec<ChildSpec>, edge: bool) {
     if args.backend_only {
         return;
     }
@@ -335,6 +335,9 @@ fn add_frontend(root: &Path, args: &CommonArgs, specs: &mut Vec<ChildSpec>) {
         "--strictPort",
     ]);
     frontend.env("EXTRITTIO_DEV_API_URL", backend_url);
+    if edge {
+        frontend.env("EXTRITTIO_DEPLOYMENT_PROFILE", "edge");
+    }
     specs.push(ChildSpec {
         label: "Vite frontend",
         command: frontend,

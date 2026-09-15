@@ -114,7 +114,6 @@ fn device_create_requires_a_non_blank_blueprint_revision() {
             "--blueprint-revision-id",
             "   ",
         ],
-        vec!["provision", "--name", "sensor", "--device-type-id", "1"],
     ] {
         let output = extrittio(&args);
         assert_eq!(output.status.code(), Some(2));

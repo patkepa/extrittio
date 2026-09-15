@@ -84,7 +84,11 @@ pub(crate) fn build_frontend_assets(root: &Path) -> Result<()> {
     collect_files(&frontend.join("public"), &mut inputs)?;
 
     if !is_fresh(&build_stamp, inputs.iter())? {
-        run(command_in("npm", root).args(["--prefix", "apps/frontend", "run", "build"]))?;
+        let mut build = command_in("npm", root);
+        build
+            .args(["--prefix", "apps/frontend", "run", "build"])
+            .env("EXTRITTIO_DEPLOYMENT_PROFILE", "edge");
+        run(&mut build)?;
         fs::write(&build_stamp, b"built by cargo xtask edge assets\n")
             .with_context(|| format!("failed to write {}", build_stamp.display()))?;
     } else {

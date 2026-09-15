@@ -1,14 +1,9 @@
 use std::fmt::Write as _;
 
+use crate::models::{ApiKeyResponse, DeviceResponse, DeviceTypeResponse, FleetResponse, Paginated};
 use anyhow::{Context, Result};
 use clap::ValueEnum;
 use serde::Serialize;
-use serde_json::Value;
-
-use crate::{
-    defaults::{DEFAULT_ESP32_NVS_OFFSET, DEFAULT_ESP32_NVS_SIZE, DEFAULT_ZENOH_CONNECT},
-    models::{ApiKeyResponse, DeviceResponse, DeviceTypeResponse, FleetResponse, Paginated},
-};
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub(crate) enum OutputFormat {
@@ -126,65 +121,6 @@ pub(crate) fn format_api_keys(api_keys: &[ApiKeyResponse]) -> String {
             truncate(key.device_type_name.as_deref().unwrap_or("-"), 18),
             key.last_used_at.as_deref().unwrap_or("-")
         );
-    }
-    out
-}
-
-pub(crate) fn format_provisioning(value: &Value) -> String {
-    let mut out = String::new();
-    let _ = writeln!(
-        out,
-        "device_id={}",
-        value["device_id"].as_str().unwrap_or_default()
-    );
-    let _ = writeln!(out, "name={}", value["name"].as_str().unwrap_or_default());
-    let _ = writeln!(
-        out,
-        "device_type={} ({})",
-        value["device_type_name"].as_str().unwrap_or_default(),
-        value["device_type_id"].as_i64().unwrap_or_default(),
-    );
-    if let Some(fleet_name) = value["fleet_name"].as_str() {
-        let _ = writeln!(out, "fleet={fleet_name}");
-    }
-    let _ = writeln!(
-        out,
-        "firmware={}",
-        value["firmware"].as_str().unwrap_or_default()
-    );
-    let _ = writeln!(
-        out,
-        "zenoh_connect={}",
-        value["zenoh_connect"]
-            .as_str()
-            .unwrap_or(DEFAULT_ZENOH_CONNECT)
-    );
-    if let Some(cert_dir) = value["certificate_dir"].as_str() {
-        let _ = writeln!(out, "certificate_dir={cert_dir}");
-    }
-    if let Some(esp32_nvs) = value["esp32_nvs"].as_object() {
-        let _ = writeln!(
-            out,
-            "esp32_nvs=flashed port={} offset={} size={}",
-            esp32_nvs
-                .get("port")
-                .and_then(Value::as_str)
-                .unwrap_or_default(),
-            esp32_nvs
-                .get("nvs_offset")
-                .and_then(Value::as_str)
-                .unwrap_or(DEFAULT_ESP32_NVS_OFFSET),
-            esp32_nvs
-                .get("nvs_size")
-                .and_then(Value::as_str)
-                .unwrap_or(DEFAULT_ESP32_NVS_SIZE),
-        );
-        if let Some(csv_path) = esp32_nvs.get("csv_path").and_then(Value::as_str) {
-            let _ = writeln!(out, "nvs_csv={csv_path}");
-        }
-        if let Some(bin_path) = esp32_nvs.get("bin_path").and_then(Value::as_str) {
-            let _ = writeln!(out, "nvs_bin={bin_path}");
-        }
     }
     out
 }

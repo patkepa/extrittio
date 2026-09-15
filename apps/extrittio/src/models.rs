@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -142,15 +140,4 @@ pub(crate) struct BulkResultResponse {
     pub(crate) succeeded: i64,
     pub(crate) failed: i64,
     pub(crate) errors: Vec<BulkOperationError>,
-}
-
-#[derive(Debug, Serialize)]
-pub(crate) struct Esp32NvsFlashResult {
-    pub(crate) port: String,
-    pub(crate) chip: String,
-    pub(crate) baud: u32,
-    pub(crate) nvs_offset: String,
-    pub(crate) nvs_size: String,
-    pub(crate) csv_path: Option<PathBuf>,
-    pub(crate) bin_path: Option<PathBuf>,
 }

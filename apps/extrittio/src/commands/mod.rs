@@ -22,7 +22,6 @@ mod firmware;
 mod fleets;
 mod ota;
 mod pagination;
-mod provision;
 mod service;
 
 pub(crate) async fn run(cli: Cli) -> Result<()> {
@@ -80,7 +79,6 @@ async fn run_api_command(
         Command::Ota(command) => ota::handle(command, output_format, &client).await?,
         Command::ApiKeys(command) => api_keys::handle(command, output_format, &client).await?,
         Command::Certs(command) => certs::handle(command, output_format, &client).await?,
-        Command::Provision(args) => provision::handle(args, output_format, &client).await?,
         Command::Run(_)
         | Command::Serve(_)
         | Command::Migrate(_)

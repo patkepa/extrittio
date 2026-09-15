@@ -1,14 +1,5 @@
 import { useState } from 'react';
-import {
-  Card,
-  Elevation,
-  FormGroup,
-  InputGroup,
-  Button,
-  Callout,
-  H3,
-  Icon,
-} from '@blueprintjs/core';
+import { FormGroup, InputGroup, Button, Callout, H3, Icon } from '@blueprintjs/core';
 import { useNavigate } from 'react-router-dom';
 import { login } from '../api/auth';
 import { getDefaultRoutePath } from '../app/routes';
@@ -30,11 +21,10 @@ export const Login = () => {
     setIsLoading(true);
 
     try {
-      const tenant = tenantId.trim();
       const response = await login({
         username,
         password,
-        ...(tenant ? { tenant_id: tenant } : {}),
+        ...(!__EXTRITTIO_EDGE__ && tenantId.trim() ? { tenant_id: tenantId.trim() } : {}),
       });
       setSession(response.user);
       navigate(getDefaultRoutePath(response.user.permissions), { replace: true });
@@ -47,62 +37,72 @@ export const Login = () => {
 
   return (
     <div className="login-page">
-      <Card elevation={Elevation.ONE} className="login-card">
-        <div className="login-header">
-          <div className="login-logo">
-            <Icon icon="cube" size={24} />
+      <main className="login-panel">
+        <section className="login-card" aria-labelledby="login-heading">
+          <div className="login-header">
+            <div className="login-logo" aria-hidden="true">
+              <Icon icon="cube" size={20} />
+            </div>
+            <span className="login-product-name">Extrittio</span>
           </div>
-          <H3 style={{ margin: 0 }}>Extrittio</H3>
-          <p className="login-subtitle">Sign in to your IoT Hub</p>
-        </div>
 
-        <form onSubmit={handleSubmit}>
-          {error && (
-            <Callout intent="danger" icon="error" style={{ marginBottom: 16 }}>
-              {error}
-            </Callout>
-          )}
+          <div className="login-intro">
+            <H3 id="login-heading">Sign in</H3>
+            <p className="login-subtitle">Access your IoT Hub</p>
+          </div>
 
-          <FormGroup label="Username">
-            <InputGroup
-              leftIcon="user"
-              placeholder="admin"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              autoFocus
-            />
-          </FormGroup>
+          <form onSubmit={handleSubmit} className="login-form">
+            {error && (
+              <Callout intent="danger" icon="error" className="login-error">
+                {error}
+              </Callout>
+            )}
 
-          <FormGroup label="Password">
-            <InputGroup
-              leftIcon="lock"
-              type="password"
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </FormGroup>
+            <FormGroup label="Username">
+              <InputGroup
+                leftIcon="user"
+                placeholder="admin"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoComplete="username"
+                autoFocus
+              />
+            </FormGroup>
 
-          <FormGroup label="Tenant">
-            <InputGroup
-              leftIcon="office"
-              placeholder="default"
-              value={tenantId}
-              onChange={(e) => setTenantId(e.target.value)}
-            />
-          </FormGroup>
+            <FormGroup label="Password">
+              <InputGroup
+                leftIcon="lock"
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+              />
+            </FormGroup>
 
-          <Button
-            type="submit"
-            intent="primary"
-            fill
-            loading={isLoading}
-            disabled={!username.trim() || !password.trim()}
-          >
-            Sign In
-          </Button>
-        </form>
-      </Card>
+            {!__EXTRITTIO_EDGE__ ? (
+              <FormGroup label="Tenant (optional)">
+                <InputGroup
+                  leftIcon="office"
+                  placeholder="default"
+                  value={tenantId}
+                  onChange={(e) => setTenantId(e.target.value)}
+                />
+              </FormGroup>
+            ) : null}
+
+            <Button
+              type="submit"
+              intent="primary"
+              fill
+              loading={isLoading}
+              disabled={!username.trim() || !password.trim()}
+            >
+              Sign In
+            </Button>
+          </form>
+        </section>
+      </main>
     </div>
   );
 };

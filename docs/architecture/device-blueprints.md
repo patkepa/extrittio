@@ -57,7 +57,7 @@ initial shadow, certificate material, materialized contract, and assignment.
 assignment state. The first valid contract event acknowledges convergence.
 
 Use the web console for blueprint-based provisioning. The administrative CLI's
-legacy `devices create` and `provision` arguments still target `device_type_id`
+legacy `devices create` arguments still target `device_type_id`
 and are not the source of truth for this workflow.
 
 ## Blueprint contents
