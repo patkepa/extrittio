@@ -210,6 +210,10 @@ fn safe_segment(value: &str, fallback: &str) -> String {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::items_after_test_module,
+    reason = "storage tests stay adjacent to the object-key helpers they cover"
+)]
 mod tests {
     use super::FirmwareObjectStore;
     use uuid::Uuid;

@@ -125,6 +125,10 @@ fn is_blocked_ipv6(ip: Ipv6Addr) -> bool {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::items_after_test_module,
+    reason = "network policy tests stay adjacent to the address classifiers they cover"
+)]
 mod tests {
     use super::*;
 

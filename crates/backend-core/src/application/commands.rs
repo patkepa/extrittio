@@ -273,7 +273,7 @@ impl CommandApplication {
             extrittio_device_contract::validate_instance(
                 extrittio_device_contract::SchemaProfile::ExtrittioV1,
                 &definition.input_schema,
-                &params,
+                params,
             )
             .map_err(|error| {
                 ApplicationError::InvalidOperation(format!(

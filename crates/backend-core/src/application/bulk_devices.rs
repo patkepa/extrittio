@@ -46,6 +46,10 @@ impl Application {
         }
         Ok(outcomes)
     }
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "batch deployment coordinates explicit domain collaborators"
+    )]
     pub async fn deploy_selected_devices(
         &self,
         ctx: &TenantContext,

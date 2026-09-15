@@ -154,26 +154,25 @@ impl DeviceRuleEvaluation {
             data,
             geofence: true,
         } = &self.input
+            && evaluate::valid_location(data).is_some()
         {
-            if evaluate::valid_location(data).is_some() {
-                let device_type = self.device_type_id.to_string();
-                let fleet = self.fleet_id.map(|id| id.to_string());
-                decision.zone_observations = cache
-                    .rules_for_tenant_device(
-                        self.tenant.as_str(),
-                        &self.device_id,
-                        &device_type,
-                        fleet.as_deref(),
-                        self.blueprint_id.as_deref(),
-                    )
-                    .into_iter()
-                    .filter(|rule| {
-                        crate::rule_engine::compiler::compile_trigger(&rule.trigger_type)
-                            == Some(crate::rule_engine::model::RuleTrigger::Geofence)
-                    })
-                    .map(|rule| rule.id.clone())
-                    .collect();
-            }
+            let device_type = self.device_type_id.to_string();
+            let fleet = self.fleet_id.map(|id| id.to_string());
+            decision.zone_observations = cache
+                .rules_for_tenant_device(
+                    self.tenant.as_str(),
+                    &self.device_id,
+                    &device_type,
+                    fleet.as_deref(),
+                    self.blueprint_id.as_deref(),
+                )
+                .into_iter()
+                .filter(|rule| {
+                    crate::rule_engine::compiler::compile_trigger(&rule.trigger_type)
+                        == Some(crate::rule_engine::model::RuleTrigger::Geofence)
+                })
+                .map(|rule| rule.id.clone())
+                .collect();
         }
         for action in actions {
             match action {
