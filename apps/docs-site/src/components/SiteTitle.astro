@@ -1,0 +1,39 @@
+---
+const { siteTitle, siteTitleHref } = Astro.locals.starlightRoute;
+---
+
+<a href={siteTitleHref} class="site-title">
+	<img src="/favicon.svg" alt="" width="40" height="40" />
+	<span>{siteTitle}</span>
+</a>
+
+<style>
+	.site-title {
+		display: flex;
+		align-items: center;
+		gap: 0.625rem;
+		min-width: 0;
+		color: #fff;
+		font-size: 0.875rem;
+		font-weight: 700;
+		letter-spacing: -0.03em;
+		text-decoration: none;
+		white-space: nowrap;
+	}
+
+	.site-title:hover {
+		color: #fff;
+		text-decoration: none;
+	}
+
+	.site-title img {
+		width: 2rem;
+		height: 2rem;
+		flex: 0 0 auto;
+	}
+
+	.site-title span {
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+</style>

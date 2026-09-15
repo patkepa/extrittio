@@ -1,0 +1,25 @@
+.sl-markdown-content > h1:first-child {
+	margin-top: 0;
+	font-size: clamp(2rem, 4vw, 2.75rem);
+	letter-spacing: -0.04em;
+}
+
+.sl-markdown-content > h1:first-child + p {
+	max-width: 46rem;
+	color: var(--kui-text-secondary);
+	font-size: 1rem;
+}
+
+.sl-markdown-content table {
+	font-size: 0.8125rem;
+}
+
+.sl-markdown-content :is(h2, h3) {
+	letter-spacing: -0.025em;
+}
+
+@media (max-width: 36rem) {
+	.sl-markdown-content > h1:first-child {
+		font-size: 2rem;
+	}
+}

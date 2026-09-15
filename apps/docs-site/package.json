@@ -1,0 +1,28 @@
+{
+  "name": "@extrittio/docs-site",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "npm@10.9.3",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro check && astro build",
+    "check": "astro check",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/markdown-remark": "7.3.1",
+    "@astrojs/starlight": "0.42.0",
+    "@patkepa/kantzen-starlight": "0.1.0",
+    "astro": "7.3.1",
+    "sharp": "0.35.4",
+    "starlight-sidebar-topics": "0.9.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.6",
+    "typescript": "~5.9.3"
+  }
+}

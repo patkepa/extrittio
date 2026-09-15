@@ -14,6 +14,7 @@ debug
 node_modules
 dist
 dist-ssr
+.astro/
 *.local
 *.tsbuildinfo
 
