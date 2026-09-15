@@ -93,6 +93,10 @@ pub struct ApplicationDependencies {
 
 impl ApplicationDependencies {
     #[must_use]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "composition root constructor lists every required application port"
+    )]
     pub fn new(
         password_hasher: Arc<dyn PasswordHasher>,
         clock: Arc<dyn Clock>,

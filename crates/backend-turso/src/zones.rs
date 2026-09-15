@@ -327,6 +327,10 @@ fn decode_datetime(micros: i64) -> Result<DateTime<Utc>, PersistenceError> {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::items_after_test_module,
+    reason = "integration-style tests stay next to the repository implementation"
+)]
 mod tests {
     use std::time::Duration;
 

@@ -645,6 +645,10 @@ fn valid_thread_dns_sd_service_name(value: &str) -> bool {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::items_after_test_module,
+    reason = "configuration tests stay adjacent to the parsing and validation helpers"
+)]
 mod tests {
     use std::collections::HashMap;
 

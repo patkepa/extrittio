@@ -28,7 +28,9 @@ content, or real device identities.
 
 ## Verification
 
-Prefer the repository tasks because they match CI:
+Prefer the repository tasks because they contain the same product checks used
+by CI. CI selects affected scopes for pull requests and runs every scope for
+release tags:
 
 ```bash
 cargo xtask verify backend

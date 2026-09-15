@@ -197,6 +197,10 @@ fn triggered_value_for(conditions: &[CachedCondition], data: &TelemetryData) -> 
 /// - If conditions are met and an active alert exists → `UpdateAlertValue`.
 /// - If conditions are NOT met but an active alert exists → `ResolveAlert`.
 /// - After firing, an `UpdateCooldown` is appended.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "public compatibility API mirrors the device rule evaluation dimensions"
+)]
 pub fn evaluate_telemetry_for_tenant_at(
     tenant_id: &str,
     device_id: &str,
@@ -371,6 +375,10 @@ pub fn evaluate_telemetry_for_tenant_at(
 
 /// Evaluates the tenant's applicable rules against a device status change and
 /// returns the list of `PendingAction`s that should be executed.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "public compatibility API mirrors the device rule evaluation dimensions"
+)]
 pub fn evaluate_status_change_for_tenant_at(
     tenant_id: &str,
     device_id: &str,
@@ -566,6 +574,10 @@ pub fn valid_location(data: &TelemetryData) -> Option<(f64, f64)> {
 /// `zone_id` against the cached zone geometries.  Produces `PendingAction`s
 /// for zone entry/exit events.  Zone dwell mutations are returned as
 /// `UpdateZoneEntry` (deferred to the caller).
+#[allow(
+    clippy::too_many_arguments,
+    reason = "public compatibility API mirrors the device rule evaluation dimensions"
+)]
 pub fn evaluate_geofence_for_tenant_at(
     tenant_id: &str,
     device_id: &str,

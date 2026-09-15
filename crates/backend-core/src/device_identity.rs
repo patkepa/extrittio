@@ -52,6 +52,10 @@ pub enum DeviceIdentityError {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::items_after_test_module,
+    reason = "tests stay next to the public identity contract they cover"
+)]
 mod tests {
     use super::*;
 

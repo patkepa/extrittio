@@ -79,22 +79,20 @@ fn transition_alert(
     if !valid {
         return Ok(AlertTransitionOutcome::InvalidStatus(alert.status));
     }
-    if transition.requires_active_slot() {
-        if let Some(rule_id) = &alert.rule_id {
-            if let Some(existing_id) = alerts::table
-                .filter(alerts::tenant_id.eq(tenant_id))
-                .filter(alerts::rule_id.eq(rule_id))
-                .filter(alerts::device_id.eq(&alert.device_id))
-                .filter(alerts::id.ne(id))
-                .filter(alerts::status.eq_any(["active", "acknowledged"]))
-                .order((alerts::created_at.desc(), alerts::id.desc()))
-                .select(alerts::id)
-                .first::<String>(connection)
-                .optional()?
-            {
-                return Ok(AlertTransitionOutcome::ActiveConflict(existing_id));
-            }
-        }
+    if transition.requires_active_slot()
+        && let Some(rule_id) = &alert.rule_id
+        && let Some(existing_id) = alerts::table
+            .filter(alerts::tenant_id.eq(tenant_id))
+            .filter(alerts::rule_id.eq(rule_id))
+            .filter(alerts::device_id.eq(&alert.device_id))
+            .filter(alerts::id.ne(id))
+            .filter(alerts::status.eq_any(["active", "acknowledged"]))
+            .order((alerts::created_at.desc(), alerts::id.desc()))
+            .select(alerts::id)
+            .first::<String>(connection)
+            .optional()?
+    {
+        return Ok(AlertTransitionOutcome::ActiveConflict(existing_id));
     }
     let now = Utc::now().naive_utc();
     let changeset = match transition {

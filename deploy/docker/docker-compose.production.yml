@@ -18,7 +18,7 @@ services:
       start_period: 10s
 
   extrittio:
-    image: ${EXTRITTIO_IMAGE:-ghcr.io/extrittio/extrittio}:${EXTRITTIO_VERSION:?set EXTRITTIO_VERSION}
+    image: ${EXTRITTIO_IMAGE:-ghcr.io/patkepa/extrittio}:${EXTRITTIO_VERSION:?set EXTRITTIO_VERSION}
     restart: unless-stopped
     depends_on:
       postgres:

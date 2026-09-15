@@ -78,6 +78,10 @@ pub fn reset_shadow(
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::items_after_test_module,
+    reason = "tests stay next to the shadow mutation helpers they cover"
+)]
 mod tests {
     use chrono::TimeZone;
     use serde_json::json;

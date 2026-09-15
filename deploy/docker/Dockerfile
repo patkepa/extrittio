@@ -77,9 +77,9 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
         PKG_CONFIG_ALLOW_CROSS=1 PKG_CONFIG_SYSROOT_DIR=/ \
         PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig \
         OPENSSL_LIB_DIR=/usr/lib/aarch64-linux-gnu OPENSSL_INCLUDE_DIR=/usr/include \
-        cargo build --profile "$CARGO_PROFILE" --target aarch64-unknown-linux-gnu -p extrittio --no-default-features --features production; \
+        cargo build --locked --profile "$CARGO_PROFILE" --target aarch64-unknown-linux-gnu -p extrittio --no-default-features --features production; \
     else \
-        cargo build --profile "$CARGO_PROFILE" -p extrittio --no-default-features --features production; \
+        cargo build --locked --profile "$CARGO_PROFILE" -p extrittio --no-default-features --features production; \
     fi
 
 # Copy actual source code
@@ -109,10 +109,10 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
         PKG_CONFIG_ALLOW_CROSS=1 PKG_CONFIG_SYSROOT_DIR=/ \
         PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig \
         OPENSSL_LIB_DIR=/usr/lib/aarch64-linux-gnu OPENSSL_INCLUDE_DIR=/usr/include \
-        cargo build --profile "$CARGO_PROFILE" --target aarch64-unknown-linux-gnu -p extrittio --no-default-features --features production && \
+        cargo build --locked --profile "$CARGO_PROFILE" --target aarch64-unknown-linux-gnu -p extrittio --no-default-features --features production && \
         cp "target/aarch64-unknown-linux-gnu/$CARGO_PROFILE/extrittio" /app/bin/extrittio; \
     else \
-        cargo build --profile "$CARGO_PROFILE" -p extrittio --no-default-features --features production && \
+        cargo build --locked --profile "$CARGO_PROFILE" -p extrittio --no-default-features --features production && \
         cp "target/$CARGO_PROFILE/extrittio" /app/bin/extrittio; \
     fi
 

@@ -343,20 +343,17 @@ impl FirmwareRepository for TursoFirmwareRepository {
         }
         let terminal = extrittio_backend_core::firmware::ota_status_is_terminal(&u.status);
         tx.execute("UPDATE ota_deployments SET status=?3,error_message=?4,completed_at=?5 WHERE tenant_id=?1 AND id=?2",params![i.tenant_id_str(),id,u.status,u.error_message,u.completed_at.map(|v|v.and_utc().timestamp_micros())]).await.map_err(row::legacy_error)?;
-        if terminal {
-            if let Some(shadow) =
+        if terminal
+            && let Some(shadow) =
                 crate::shadows::get_from(&tx, i.tenant_id(), i.device_id()).await?
-            {
-                if let Some(updated) = extrittio_backend_core::shadows::clear_ota_for_deployment(
-                    shadow,
-                    id,
-                    chrono::Utc::now(),
-                )
-                .map_err(|error| PersistenceError::CorruptData(error.to_string()))?
-                {
-                    crate::shadows::store(&tx, i.tenant_id(), &updated).await?;
-                }
-            }
+            && let Some(updated) = extrittio_backend_core::shadows::clear_ota_for_deployment(
+                shadow,
+                id,
+                chrono::Utc::now(),
+            )
+            .map_err(|error| PersistenceError::CorruptData(error.to_string()))?
+        {
+            crate::shadows::store(&tx, i.tenant_id(), &updated).await?;
         }
         tx.commit().await.map_err(row::legacy_error)?;
         Ok(true)
