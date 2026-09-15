@@ -61,6 +61,17 @@ The API listens on `http://localhost:8080`. Vite listens on
 account is `admin` / `admin`; change it before using the installation with real
 devices or data.
 
+To work on the documentation site:
+
+```bash
+cd apps/docs-site
+npm ci
+npm run dev
+```
+
+Astro serves the documentation at `http://localhost:4321` and reads its content
+from the repository-level `docs/` directory.
+
 ## Single-node Edge
 
 Build the web assets, install the local Edge executable, and run it:
@@ -91,6 +102,7 @@ radio and IPv6 path.
 | --- | --- |
 | `apps/extrittio` | Server, Edge runtime, and administrative CLI |
 | `apps/frontend` | React/TypeScript operations console |
+| `apps/docs-site` | Astro Starlight documentation site |
 | `apps/mobile-app-ios` | Native SwiftUI companion app |
 | `crates/backend` | HTTP/Zenoh transport, runtime composition, workers, and outbound integrations |
 | `crates/backend-core` | Business applications, policy, and persistence ports |

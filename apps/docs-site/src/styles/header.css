@@ -1,0 +1,17 @@
+@media (min-width: 50rem) {
+	.page > header.header > .header {
+		grid-template-columns: var(--sl-sidebar-width) minmax(12rem, 1fr) auto;
+	}
+
+	.page > header.header .search-wrapper {
+		align-items: center;
+		justify-content: flex-end;
+		padding-inline: 1rem;
+	}
+}
+
+@media (max-width: 49.99rem) {
+	.page > header.header .search-wrapper {
+		padding-inline: 0.5rem;
+	}
+}
