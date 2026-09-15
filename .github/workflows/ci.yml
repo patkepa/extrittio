@@ -271,7 +271,7 @@ jobs:
         with:
           cache-on-failure: true
       - name: Install iOS tooling
-        run: brew install xcodegen swiftlint swiftformat
+        run: brew install protobuf xcodegen swiftlint swiftformat
       - name: Verify macOS Rust client
         run: |
           cargo clippy --locked -p extrittio-macos --all-targets -- -D warnings
