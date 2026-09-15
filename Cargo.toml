@@ -12,6 +12,7 @@ members = [
     "crates/openthread-runtime",
     "crates/rule-engine",
     "clients/rust/linux",
+    "clients/rust/contract",
     "clients/rust/macos",
     "clients/rust/rpi",
     "clients/rust/runtime",

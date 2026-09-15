@@ -19,30 +19,33 @@ impl CiIngestApplication {
         params: CiIngestParams,
     ) -> Result<(i32, String, String), ApplicationError> {
         let version = params.version.clone();
-        let device_type_name = params.device_type_name.clone();
+        let blueprint_revision_id = params.blueprint_revision_id.clone();
         let outcome = self.repository.ingest_ci(key_hash, params).await.map_err(
             |error| match error {
                 PersistenceError::UniqueViolation { .. } => ApplicationError::Conflict(format!(
-                    "Version '{version}' already exists for device type '{device_type_name}'"
+                    "Version '{version}' already exists for blueprint revision '{blueprint_revision_id}'"
                 )),
                 other => ApplicationError::Persistence(other),
             },
         )?;
         match outcome {
+            CiIngestOutcome::UnsupportedFirmware => Err(ApplicationError::InvalidOperation(
+                "The selected blueprint does not declare firmware update behavior".into(),
+            )),
             CiIngestOutcome::Unauthorized => Err(ApplicationError::Unauthorized),
-            CiIngestOutcome::DeviceTypeNotFound => Err(ApplicationError::NotFound(format!(
-                "Device type '{device_type_name}' not found"
+            CiIngestOutcome::BlueprintRevisionNotFound => Err(ApplicationError::NotFound(format!(
+                "Blueprint revision '{blueprint_revision_id}' not found"
             ))),
             CiIngestOutcome::Forbidden {
-                scoped_device_type_id,
+                scoped_blueprint_id,
             } => Err(ApplicationError::Forbidden(format!(
-                "API key is scoped to device type ID {scoped_device_type_id}, not '{device_type_name}'"
+                "API key is scoped to blueprint ID {scoped_blueprint_id}, not '{blueprint_revision_id}'"
             ))),
             CiIngestOutcome::Created {
                 firmware_id,
                 version,
-                device_type_name,
-            } => Ok((firmware_id, version, device_type_name)),
+                blueprint_revision_id,
+            } => Ok((firmware_id, version, blueprint_revision_id)),
         }
     }
 }

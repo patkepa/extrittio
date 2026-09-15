@@ -5,7 +5,7 @@ pub struct ApiKeyRecord {
     pub id: i32,
     pub name: String,
     pub key_prefix: String,
-    pub device_type_id: Option<i32>,
+    pub blueprint_id: Option<String>,
     pub created_at: DateTime<Utc>,
     pub last_used_at: Option<DateTime<Utc>>,
 }
@@ -13,7 +13,7 @@ pub struct ApiKeyRecord {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApiKeySummary {
     pub key: ApiKeyRecord,
-    pub device_type_name: Option<String>,
+    pub blueprint_name: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,7 +21,7 @@ pub struct CreateApiKeyRecord {
     pub name: String,
     pub key_hash: String,
     pub key_prefix: String,
-    pub device_type_id: Option<i32>,
+    pub blueprint_id: Option<String>,
 }
 
 use async_trait::async_trait;
@@ -43,7 +43,7 @@ pub trait ApiKeyRepository: Send + Sync {
 
 pub struct CreateApiKey {
     pub name: String,
-    pub device_type_id: Option<i32>,
+    pub blueprint_id: Option<String>,
 }
 
 /// Secret material returned only by creation; deliberately not Debug or Clone.
@@ -92,7 +92,7 @@ pub(crate) mod tests {
                 id: 1,
                 name: record.name,
                 key_prefix: record.key_prefix,
-                device_type_id: record.device_type_id,
+                blueprint_id: record.blueprint_id,
                 created_at: DateTime::UNIX_EPOCH,
                 last_used_at: None,
             })
@@ -148,7 +148,7 @@ pub(crate) mod tests {
     fn input(name: &str) -> CreateApiKey {
         CreateApiKey {
             name: name.into(),
-            device_type_id: Some(42),
+            blueprint_id: Some("blueprint-42".into()),
         }
     }
     #[test]
@@ -161,7 +161,7 @@ pub(crate) mod tests {
             assert_eq!(created.plaintext, "secret");
             assert_eq!(created.record.name, " CI ");
             assert_eq!(created.record.key_prefix, "extr_test");
-            assert_eq!(created.record.device_type_id, Some(42));
+            assert_eq!(created.record.blueprint_id, Some("blueprint-42".into()));
             application.list(&context).await.unwrap();
             application.delete(&context, 1).await.unwrap();
             assert_eq!(

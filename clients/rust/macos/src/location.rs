@@ -19,15 +19,10 @@ pub struct LocationData {
     pub altitude: f32,
     pub speed: f32,
     pub heading: f32,
+    observed_at: Instant,
 }
 
-/// Provides real device location via macOS CoreLocation, with simulated
-/// fallback when CoreLocation permission is unavailable (e.g., CLI tools
-/// on macOS Tahoe+).
-///
-/// Spawns a background thread that attempts CoreLocation first. If no
-/// real location is received within a timeout, falls back to the SDK's
-/// simulated LocationState for demonstration purposes.
+/// Reports real CoreLocation observations only; unavailable location stays absent.
 pub struct LocationProvider {
     state: Arc<Mutex<Option<LocationData>>>,
 }
@@ -50,8 +45,12 @@ impl LocationProvider {
 
     /// Read the most recent location. Non-blocking.
     /// Returns `None` if no location has been received yet.
-    pub fn latest(&self) -> Option<LocationData> {
-        self.state.lock().ok().and_then(|guard| *guard)
+    pub fn latest(&self, max_age: Duration) -> Option<LocationData> {
+        self.state
+            .lock()
+            .ok()
+            .and_then(|guard| *guard)
+            .filter(|value| value.observed_at.elapsed() <= max_age)
     }
 }
 
@@ -93,6 +92,10 @@ define_class! {
                 return;
             }
 
+            let age_seconds = -unsafe { location.timestamp() }.timeIntervalSinceNow();
+            if !age_seconds.is_finite() || age_seconds < 0.0 { return; }
+            let Ok(age) = Duration::try_from_secs_f64(age_seconds) else { return; };
+            let Some(observed_at) = Instant::now().checked_sub(age) else { return; };
             let coord = unsafe { location.coordinate() };
             let altitude = unsafe { location.altitude() } as f32;
             let raw_speed = unsafe { location.speed() } as f32;
@@ -103,6 +106,7 @@ define_class! {
             let heading = if raw_heading < 0.0 { 0.0 } else { raw_heading };
 
             let data = LocationData {
+                observed_at,
                 latitude: coord.latitude,
                 longitude: coord.longitude,
                 altitude,
@@ -190,11 +194,8 @@ fn run_location_loop(state: Arc<Mutex<Option<LocationData>>>) {
 
         let auth = manager.authorizationStatus();
         if auth == CLAuthorizationStatus::Denied || auth == CLAuthorizationStatus::Restricted {
-            tracing::warn!(
-                "Location permission denied/restricted — falling back to simulated location"
-            );
-            drop(delegate);
-            run_simulated_location(state);
+            tracing::warn!("Location permission denied/restricted — location is unavailable");
+            manager.setDelegate(None);
             return;
         }
 
@@ -207,123 +208,38 @@ fn run_location_loop(state: Arc<Mutex<Option<LocationData>>>) {
         manager.startUpdatingLocation();
     }
 
-    // Give CoreLocation a chance to deliver a fix via the run loop.
-    let start = Instant::now();
-    let timeout = Duration::from_secs(10);
     let run_loop = NSRunLoop::currentRunLoop();
-
-    while start.elapsed() < timeout {
-        let future = NSDate::dateWithTimeIntervalSinceNow(0.5);
-        run_loop.runUntilDate(&future);
-
-        // Check if we got a real location
-        if state.lock().ok().is_some_and(|g| g.is_some()) {
-            tracing::info!("CoreLocation delivering real location data");
-            // Keep running the run loop forever for continued updates
-            loop {
-                let future = NSDate::dateWithTimeIntervalSinceNow(1.0);
-                run_loop.runUntilDate(&future);
-            }
-        }
-    }
-
-    // CoreLocation didn't deliver within the timeout — fall back to simulation
-    tracing::warn!(
-        "CoreLocation unavailable (no permission or no fix after {}s) — using simulated location",
-        timeout.as_secs()
-    );
-
-    // Clean up CoreLocation resources
-    unsafe {
-        manager.stopUpdatingLocation();
-        manager.setDelegate(None);
-    }
-    drop(delegate);
-    drop(manager);
-
-    run_simulated_location(state);
-}
-
-// ---------------------------------------------------------------------------
-// Simulated location fallback
-// ---------------------------------------------------------------------------
-
-fn run_simulated_location(state: Arc<Mutex<Option<LocationData>>>) {
-    use extrittio_sdk::location::LocationState;
-
-    // Start near the user's likely location (Warsaw, Poland — SDK default)
-    let mut sim = LocationState::default();
-    let mut rng = SmallRng::from_os_rng();
-
-    tracing::info!(
-        "Simulated location started at {:.6}, {:.6}",
-        sim.latitude,
-        sim.longitude
-    );
-
-    // Write initial position immediately
-    if let Ok(mut guard) = state.lock() {
-        *guard = Some(LocationData {
-            latitude: sim.latitude,
-            longitude: sim.longitude,
-            altitude: sim.altitude,
-            speed: sim.speed,
-            heading: sim.heading,
-        });
-    }
-
     loop {
-        std::thread::sleep(Duration::from_secs(5));
+        let future = NSDate::dateWithTimeIntervalSinceNow(1.0);
+        run_loop.runUntilDate(&future);
+    }
+}
 
-        sim.step(
-            rng_range(&mut rng, -0.0003, 0.0003),
-            rng_range(&mut rng, -0.0003, 0.0003),
-            rng_range_f32(&mut rng, -2.0, 2.0),
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn missing_and_stale_fixes_are_absent_but_origin_is_valid() {
+        let state = Arc::new(Mutex::new(None));
+        let provider = LocationProvider {
+            state: state.clone(),
+        };
+        assert!(provider.latest(Duration::from_secs(30)).is_none());
+        *state.lock().unwrap() = Some(LocationData {
+            latitude: 0.0,
+            longitude: 0.0,
+            altitude: 0.0,
+            speed: 0.0,
+            heading: 0.0,
+            observed_at: Instant::now(),
+        });
+        assert_eq!(
+            provider.latest(Duration::from_secs(30)).unwrap().latitude,
+            0.0
         );
-
-        if let Ok(mut guard) = state.lock() {
-            *guard = Some(LocationData {
-                latitude: sim.latitude,
-                longitude: sim.longitude,
-                altitude: sim.altitude,
-                speed: sim.speed,
-                heading: sim.heading,
-            });
-        }
+        state.lock().unwrap().as_mut().unwrap().observed_at =
+            Instant::now() - Duration::from_secs(60);
+        assert!(provider.latest(Duration::from_secs(30)).is_none());
     }
-}
-
-// Simple RNG helpers to avoid pulling in the full `rand` crate
-use std::hash::{Hash, Hasher};
-
-struct SmallRng(u64);
-
-impl SmallRng {
-    fn from_os_rng() -> Self {
-        // Seed from current time + thread id
-        let mut hasher = std::hash::DefaultHasher::new();
-        std::time::SystemTime::now().hash(&mut hasher);
-        std::thread::current().id().hash(&mut hasher);
-        Self(hasher.finish())
-    }
-
-    fn next_u64(&mut self) -> u64 {
-        // xorshift64
-        self.0 ^= self.0 << 13;
-        self.0 ^= self.0 >> 7;
-        self.0 ^= self.0 << 17;
-        self.0
-    }
-
-    fn next_f64(&mut self) -> f64 {
-        (self.next_u64() >> 11) as f64 / (1u64 << 53) as f64
-    }
-}
-
-fn rng_range(rng: &mut SmallRng, min: f64, max: f64) -> f64 {
-    min + rng.next_f64() * (max - min)
-}
-
-fn rng_range_f32(rng: &mut SmallRng, min: f32, max: f32) -> f32 {
-    min + rng.next_f64() as f32 * (max - min)
 }

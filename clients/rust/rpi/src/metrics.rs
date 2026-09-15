@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 /// Reads CPU temperature from thermal zone (°C).
-/// Falls back to 0.0 if unavailable.
-pub fn cpu_temperature() -> f32 {
+/// Returns no measurement if the thermal sensor is unavailable.
+pub fn cpu_temperature() -> Option<f32> {
     // Try all thermal zones, prefer the first one
     for path in &[
         "/sys/class/thermal/thermal_zone0/temp",
@@ -11,17 +11,19 @@ pub fn cpu_temperature() -> f32 {
         if let Ok(contents) = std::fs::read_to_string(path)
             && let Ok(millidegrees) = contents.trim().parse::<f32>()
         {
-            return millidegrees / 1000.0;
+            if millidegrees.is_finite() {
+                return Some(millidegrees / 1000.0);
+            }
         }
     }
-    0.0
+    None
 }
 
 /// Reads memory usage as a percentage (0-100).
 /// Parses /proc/meminfo for MemTotal and MemAvailable.
-pub fn memory_usage_percent() -> f32 {
+pub fn memory_usage_percent() -> Option<f32> {
     let Ok(contents) = std::fs::read_to_string("/proc/meminfo") else {
-        return 0.0;
+        return None;
     };
 
     let mut total: Option<u64> = None;
@@ -39,8 +41,8 @@ pub fn memory_usage_percent() -> f32 {
     }
 
     match (total, available) {
-        (Some(t), Some(a)) if t > 0 => (t.saturating_sub(a) as f32 / t as f32) * 100.0,
-        _ => 0.0,
+        (Some(t), Some(a)) if t > 0 => Some((t.saturating_sub(a) as f32 / t as f32) * 100.0),
+        _ => None,
     }
 }
 

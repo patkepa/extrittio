@@ -171,23 +171,6 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         },
     );
 
-    let firmware_migration_application = state.workers().firmware_migration_application.clone();
-    let firmware_store = state.firmware_store().clone();
-    spawn_worker(
-        &mut workers,
-        &cancellation,
-        state.runtime().readiness(),
-        "firmware-object-migrator",
-        async move {
-            crate::domains::firmware_store::run_legacy_blob_migrator(
-                firmware_migration_application,
-                firmware_store,
-            )
-            .await;
-            Ok(())
-        },
-    );
-
     let outbox_application = state.workers().outbox_application.clone();
     let rule_delivery = state.workers().rule_delivery.clone();
     let outbox_config = crate::rule_engine::actions::OutboxWorkerConfig {
@@ -320,23 +303,6 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         },
     );
 
-    let telemetry_application = state.workers().telemetry_application.clone();
-    let telemetry_retention_days = config.telemetry_retention_days;
-    spawn_worker(
-        &mut workers,
-        &cancellation,
-        state.runtime().readiness(),
-        "telemetry-retention",
-        async move {
-            background::run_telemetry_rollup_and_retention(
-                telemetry_application,
-                telemetry_retention_days,
-            )
-            .await;
-            Ok(())
-        },
-    );
-
     let rate_limit_state = state.clone();
     spawn_worker(
         &mut workers,
@@ -349,12 +315,12 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         },
     );
 
-    if !state
+    if state
         .runtime()
         .database()
         .descriptor()
         .capabilities
-        .partitioned_telemetry
+        .periodic_checkpoint
     {
         let maintenance = state.runtime().database().clone();
         spawn_worker(
@@ -751,8 +717,6 @@ fn zenoh_listener_accepts(listen_host: &str, address: std::net::Ipv6Addr) -> boo
 /// Precomposed worker capabilities; runtime scheduling needs no persistence ports.
 pub(crate) struct WorkerApplications {
     subscriber_applications: crate::zenoh_handler::DeviceMessageApplications,
-    firmware_migration_application:
-        extrittio_backend_core::application::FirmwareMigrationApplication,
     outbox_application: extrittio_backend_core::OutboxWorkerApplication,
     rule_delivery: extrittio_backend_core::application::RuleDeliveryApplication,
     metrics_worker: extrittio_backend_core::application::MetricsWorkerApplication,
@@ -760,7 +724,6 @@ pub(crate) struct WorkerApplications {
     retention_application: extrittio_backend_core::AlertMaintenanceApplication,
     log_retention_application: extrittio_backend_core::LogIngressApplication,
     command_application: extrittio_backend_core::CommandWorkerApplication,
-    telemetry_application: extrittio_backend_core::TelemetryMaintenanceApplication,
 }
 impl WorkerApplications {
     pub(crate) fn new(
@@ -770,11 +733,6 @@ impl WorkerApplications {
     ) -> Self {
         let subscriber_applications = crate::zenoh_handler::DeviceMessageApplications {
             identity: extrittio_backend_core::DeviceIngressApplication::new(
-                persistence.device_ingress.clone(),
-                Arc::new(crate::auth::SystemClock),
-            ),
-            telemetry: extrittio_backend_core::TelemetryIngressApplication::new(
-                persistence.telemetry.clone(),
                 persistence.device_ingress.clone(),
                 Arc::new(crate::auth::SystemClock),
             ),
@@ -810,10 +768,6 @@ impl WorkerApplications {
                 ),
             ),
         };
-        let firmware_migration_application =
-            extrittio_backend_core::application::FirmwareMigrationApplication::new(
-                persistence.firmware.clone(),
-            );
         let outbox_application =
             extrittio_backend_core::OutboxWorkerApplication::new(persistence.outbox.clone());
         let rule_delivery = extrittio_backend_core::application::RuleDeliveryApplication::new(
@@ -827,7 +781,6 @@ impl WorkerApplications {
                     metrics.clone(),
                 )),
             ),
-            extrittio_backend_core::RuleRuntimeApplication::new(persistence.rules.clone()),
             Arc::new(crate::outbound::webhook::HttpWebhookSender),
         );
         let metrics_worker = extrittio_backend_core::application::MetricsWorkerApplication::new(
@@ -850,13 +803,8 @@ impl WorkerApplications {
             persistence.commands.clone(),
             Arc::new(crate::auth::SystemClock),
         );
-        let telemetry_application = extrittio_backend_core::TelemetryMaintenanceApplication::new(
-            persistence.telemetry.clone(),
-            Arc::new(crate::auth::SystemClock),
-        );
         Self {
             subscriber_applications,
-            firmware_migration_application,
             outbox_application,
             rule_delivery,
             metrics_worker,
@@ -864,7 +812,6 @@ impl WorkerApplications {
             retention_application,
             log_retention_application,
             command_application,
-            telemetry_application,
         }
     }
 }

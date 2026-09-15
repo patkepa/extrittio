@@ -1,12 +1,10 @@
-use std::collections::HashMap;
 use std::time::Duration;
 
 use clap::Parser;
 use extrittio_client_runtime::{
-    EMBED_MARKER_LEN, EMBED_SLOT_LEN, NativeClientConfig, TelemetrySource, contract::ContractEvent,
+    EMBED_MARKER_LEN, EMBED_SLOT_LEN, EventSource, NativeClientConfig, contract::ContractEvent,
     run_native_client,
 };
-use extrittio_common::extrittio::DeviceTelemetry;
 use extrittio_sdk::sensor::SensorState;
 use rand::Rng;
 
@@ -30,11 +28,9 @@ struct Args {
     device_id: Option<String>,
     /// Provisioned contract JSON downloaded from the Extrittio device contract endpoint.
     #[arg(long)]
-    contract: Option<String>,
+    contract: String,
     #[arg(long, default_value_t = 5)]
     interval: u64,
-    #[arg(long, default_value_t = 30)]
-    heartbeat_interval: u64,
     #[arg(long)]
     connect: Option<String>,
     #[arg(long)]
@@ -57,46 +53,22 @@ impl Default for SimulatedTelemetry {
     }
 }
 
-impl TelemetrySource for SimulatedTelemetry {
-    fn sample(&mut self, device_id: &str, timestamp: i64) -> DeviceTelemetry {
+impl EventSource for SimulatedTelemetry {
+    fn sample(&mut self) -> ContractEvent {
         let mut rng = rand::rng();
         self.sensor.step(
             rng.random_range(-0.5..=0.5),
             rng.random_range(-1.0..=1.0),
             rng.random_range(0.05..=0.15),
         );
-        DeviceTelemetry {
-            device_id: device_id.to_string(),
-            timestamp,
-            temperature: self.sensor.temperature,
-            humidity: self.sensor.humidity,
-            battery_level: self.sensor.battery,
-            metadata: HashMap::default(),
-            latitude: 0.0,
-            longitude: 0.0,
-            speed: 0.0,
-            altitude: 0.0,
-            heading: 0.0,
-            has_location: false,
-        }
-    }
-
-    fn summary(&self, _telemetry: &DeviceTelemetry) -> String {
-        format!(
-            "Telemetry: temp={:.1}°C humidity={:.1}% battery={:.1}%",
-            self.sensor.temperature, self.sensor.humidity, self.sensor.battery
-        )
-    }
-
-    fn contract_event(&self, telemetry: &DeviceTelemetry) -> Option<ContractEvent> {
-        Some(ContractEvent::new(
+        ContractEvent::new(
             "environment",
             serde_json::json!({
-                "temperature": telemetry.temperature,
-                "humidity": telemetry.humidity,
-                "batteryLevel": telemetry.battery_level
+                "temperature": self.sensor.temperature,
+                "humidity": self.sensor.humidity,
+                "batteryLevel": self.sensor.battery
             }),
-        ))
+        )
     }
 }
 
@@ -114,7 +86,6 @@ async fn main() {
         device_id: args.device_id,
         contract_path: args.contract,
         telemetry_interval: Duration::from_secs(args.interval),
-        heartbeat_interval: Duration::from_secs(args.heartbeat_interval),
         connect: args.connect,
         ca_cert: args.ca_cert,
         client_cert: args.client_cert,
@@ -122,4 +93,21 @@ async fn main() {
         client_name: "Linux client",
     };
     run_native_client(config, SimulatedTelemetry::default(), &DEVICE_ID_EMBED).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn contract_is_required_and_sample_is_a_native_stream_payload() {
+        assert!(Args::try_parse_from(["extrittio-client"]).is_err());
+        assert!(Args::try_parse_from(["extrittio-client", "--contract", "contract.json"]).is_ok());
+        let event = SimulatedTelemetry::default().sample();
+        assert_eq!(event.stream_key, "environment");
+        assert_eq!(event.payload.as_object().unwrap().len(), 3);
+        for key in ["temperature", "humidity", "batteryLevel"] {
+            assert!(event.payload[key].is_number());
+        }
+    }
 }

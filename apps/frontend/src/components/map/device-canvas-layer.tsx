@@ -41,6 +41,8 @@ function createPopupContent(device: MapDevice, onNavigate: (deviceId: string) =>
   root.appendChild(title);
   root.appendChild(document.createElement('br'));
   root.append(`Status: ${device.status}`);
+  root.appendChild(document.createElement('br'));
+  root.append(`Location observed: ${device.location.timestamp}`);
 
   if (device.last_seen_at) {
     root.appendChild(document.createElement('br'));
@@ -94,12 +96,12 @@ export function DeviceCanvasLayer({ devices }: DeviceCanvasLayerProps) {
 
       const marker =
         markers.get(device.id) ??
-        L.circleMarker([device.latest_latitude, device.latest_longitude], {
+        L.circleMarker([device.location.latitude, device.location.longitude], {
           ...getMarkerStyle(device.status),
           renderer,
         }).addTo(layerGroup);
 
-      marker.setLatLng([device.latest_latitude, device.latest_longitude]);
+      marker.setLatLng([device.location.latitude, device.location.longitude]);
       marker.setStyle(getMarkerStyle(device.status));
       marker.bindPopup(() =>
         createPopupContent(device, (deviceId) => {

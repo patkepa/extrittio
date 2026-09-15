@@ -60,13 +60,6 @@ export const settingsRoutes: SettingsRoute[] = [
     requiredPermissions: ['device_blueprints.read'],
   },
   {
-    id: 'device-types',
-    label: 'Device Types',
-    icon: 'tag',
-    path: 'device-types',
-    requiredPermissions: ['device_types.read'],
-  },
-  {
     id: 'fleets',
     label: 'Fleets',
     icon: 'layers',
@@ -139,7 +132,7 @@ export const appRoutes: AppRoute[] = [
     element: <Analytics />,
     navGroup: 'General',
     showInCommandPalette: true,
-    requiredPermissions: ['telemetry.read', 'devices.read', 'device_types.read', 'fleets.read'],
+    requiredPermissions: ['telemetry.read', 'devices.read', 'fleets.read'],
   },
   {
     id: 'device-detail',
@@ -157,7 +150,7 @@ export const appRoutes: AppRoute[] = [
     element: <FleetGraph />,
     navGroup: 'General',
     showInCommandPalette: true,
-    requiredPermissions: ['devices.read', 'fleets.read', 'device_types.read'],
+    requiredPermissions: ['devices.read', 'fleets.read'],
   },
   {
     id: 'map',
@@ -167,7 +160,7 @@ export const appRoutes: AppRoute[] = [
     element: <MapPage />,
     navGroup: 'General',
     showInCommandPalette: true,
-    requiredPermissions: ['devices.read', 'zones.read'],
+    requiredPermissions: ['devices.read', 'telemetry.read', 'zones.read'],
   },
   {
     id: 'openthread-router',

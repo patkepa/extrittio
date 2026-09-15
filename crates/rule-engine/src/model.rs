@@ -9,26 +9,13 @@ pub enum RuleTrigger {
 pub enum RuleTargetType {
     Global,
     Blueprint,
-    DeviceType,
     Fleet,
     Device,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TelemetryField {
-    Temperature,
-    Humidity,
-    BatteryLevel,
-    Latitude,
-    Longitude,
-    Speed,
-    Altitude,
-    Heading,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConditionField {
-    Telemetry(TelemetryField),
+    Metric,
     Status,
     Zone,
 }

@@ -4,7 +4,7 @@ import { Card, Checkbox, Elevation, Icon, Tag } from '@blueprintjs/core';
 import type { Device } from '../../../types/api';
 import { EmptyState, StatusLed } from '@patkepa/kantzen-ui';
 import type { DeviceSortDir, DeviceSortField } from '../hooks/use-device-list-state';
-import { DeviceTypeTag } from '../../../components/devices/device-type-tag';
+import { BlueprintTag } from '../../../components/devices/blueprint-tag';
 
 interface DeviceTableProps {
   devices: Device[];
@@ -167,10 +167,10 @@ function DeviceRow({
         </div>
       </div>
       <div role="cell" className="devices-grid-cell">
-        <DeviceTypeTag
-          name={device.device_type_name}
-          icon={device.device_type_icon}
-          colorHex={device.device_type_color_hex}
+        <BlueprintTag
+          name={device.blueprint_name}
+          icon={device.blueprint_icon}
+          colorHex={device.blueprint_color}
         />
       </div>
       <div role="cell" className="devices-grid-cell">
@@ -273,7 +273,7 @@ export function DeviceTable({
               Name
             </SortHeader>
             <div role="columnheader" className="devices-grid-cell">
-              Type
+              Blueprint
             </div>
             <div role="columnheader" className="devices-grid-cell">
               Fleet

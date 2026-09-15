@@ -6,7 +6,6 @@ use chrono::NaiveDateTime;
 #[derive(Debug, Clone)]
 pub struct DeviceIngressContext {
     pub identity: DeviceIdentity,
-    pub device_type_id: i32,
     pub fleet_id: Option<i32>,
     pub blueprint_id: Option<String>,
     pub status: String,

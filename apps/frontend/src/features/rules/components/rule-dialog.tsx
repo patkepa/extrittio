@@ -14,7 +14,6 @@ import {
 } from '@blueprintjs/core';
 import { useRule, useCreateRule, useUpdateRule } from '../queries/use-rules';
 import { useConfirmShortcut } from '@patkepa/kantzen-ui/interactions';
-import { useDeviceTypes } from '../../../hooks/use-device-types';
 import { useFleets } from '../../../hooks/use-fleets';
 import { useAllDevices } from '../../../hooks/use-devices';
 import { useDeviceContract } from '../../../hooks/use-devices';
@@ -124,7 +123,6 @@ function RuleEditor({ editingRuleId, closeRuleDialog, existingRule }: EditorProp
   const setConditions = (value: SetStateAction<ConditionRow[]>) => setField('conditions', value);
   const setActions = (value: SetStateAction<ActionRow[]>) => setField('actions', value);
 
-  const { data: deviceTypes } = useDeviceTypes();
   const { data: fleets } = useFleets();
   const { data: devicesData } = useAllDevices(undefined, { enabled: targetType === 'device' });
   const devices = devicesData?.data ?? [];
@@ -297,7 +295,6 @@ function RuleEditor({ editingRuleId, closeRuleDialog, existingRule }: EditorProp
               <option value="blueprint">Device Blueprint</option>
               <option value="fleet">Fleet</option>
               <option value="device">Device</option>
-              <option value="device_type">Legacy Device Type</option>
             </HTMLSelect>
           </FormGroup>
         </div>
@@ -315,18 +312,6 @@ function RuleEditor({ editingRuleId, closeRuleDialog, existingRule }: EditorProp
           </FormGroup>
         )}
 
-        {targetType === 'device_type' && (
-          <FormGroup label="Device Type">
-            <HTMLSelect fill value={targetId} onChange={(e) => setTargetId(e.target.value)}>
-              <option value="">Select device type...</option>
-              {(deviceTypes ?? []).map((dt) => (
-                <option key={dt.id} value={String(dt.id)}>
-                  {dt.name}
-                </option>
-              ))}
-            </HTMLSelect>
-          </FormGroup>
-        )}
         {targetType === 'fleet' && (
           <FormGroup label="Fleet">
             <HTMLSelect fill value={targetId} onChange={(e) => setTargetId(e.target.value)}>
@@ -345,7 +330,7 @@ function RuleEditor({ editingRuleId, closeRuleDialog, existingRule }: EditorProp
               <option value="">Select device...</option>
               {devices.map((d) => (
                 <option key={d.id} value={d.id}>
-                  {d.name} ({d.device_type_name})
+                  {d.name} ({d.id})
                 </option>
               ))}
             </HTMLSelect>

@@ -157,6 +157,8 @@ pub struct CompiledContractDocument {
     pub routes: BTreeMap<String, CompiledRoute>,
     pub schemas: BTreeMap<String, CompiledSchema>,
     pub streams: BTreeMap<String, CompiledStream>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<CompiledLocation>,
     pub commands: BTreeMap<String, CompiledCommand>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub configuration: Option<CompiledConfiguration>,
@@ -180,6 +182,44 @@ pub struct CompiledRuntime {
     pub max_message_bytes: u64,
     pub max_messages_per_minute: u32,
     pub max_metric_cardinality: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompiledLocation {
+    pub stream: String,
+    pub latitude_path: String,
+    pub longitude_path: String,
+    pub coordinate_system: crate::model::CoordinateSystem,
+    pub unit: crate::model::CoordinateUnit,
+    pub max_age_ms: u64,
+}
+
+impl CompiledContractDocument {
+    /// Resolve both coordinates from this event only. Missing, invalid, stale,
+    /// future-dated or unrelated observations cannot update location consumers.
+    pub fn event_location(
+        &self,
+        route_key: &str,
+        payload: &Value,
+        age_ms: i64,
+    ) -> Option<(f64, f64)> {
+        let binding = self.location.as_ref()?;
+        let age_ms = u64::try_from(age_ms).ok()?;
+        if age_ms > binding.max_age_ms || self.streams.get(&binding.stream)?.route != route_key {
+            return None;
+        }
+        let latitude = payload.pointer(&binding.latitude_path)?.as_f64()?;
+        let longitude = payload.pointer(&binding.longitude_path)?.as_f64()?;
+        if !latitude.is_finite()
+            || !longitude.is_finite()
+            || !(-90.0..=90.0).contains(&latitude)
+            || !(-180.0..=180.0).contains(&longitude)
+        {
+            return None;
+        }
+        Some((latitude, longitude))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -431,6 +471,19 @@ impl BlueprintCompiler {
             routes,
             schemas,
             streams,
+            location: blueprint
+                .spec
+                .location
+                .as_ref()
+                .map(|location| CompiledLocation {
+                    stream: location.stream.clone(),
+                    latitude_path: location.latitude_path.clone(),
+                    longitude_path: location.longitude_path.clone(),
+                    coordinate_system: location.coordinate_system,
+                    unit: location.unit,
+                    max_age_ms: parse_duration_ms(&location.max_age)
+                        .expect("validated location freshness"),
+                }),
             commands,
             configuration,
             reported_state: blueprint.spec.reported_state.clone(),

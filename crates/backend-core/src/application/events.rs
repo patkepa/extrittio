@@ -1,14 +1,127 @@
 use super::require_permission;
-use crate::events::{DeviceEventRepository, DeviceMetricQuery, DeviceMetricRecord};
+use crate::events::{
+    DeviceEventRepository, DeviceLocationQuery, DeviceLocationRecord, DeviceMetricQuery,
+    DeviceMetricRecord,
+};
 use crate::{ApplicationError, Permission, TenantContext};
 use std::sync::Arc;
+
+fn location_batch_ids(device_ids: Vec<String>) -> Result<Vec<String>, ApplicationError> {
+    if device_ids.len() > 500 || device_ids.iter().any(|id| id.trim().is_empty()) {
+        return Err(ApplicationError::InvalidInput(
+            "Location batches accept at most 500 nonempty device IDs".into(),
+        ));
+    }
+    let ids: std::collections::BTreeSet<_> = device_ids.into_iter().collect();
+    Ok(ids.into_iter().collect())
+}
+
+#[cfg(test)]
+mod location_batch_tests {
+    use super::location_batch_ids;
+    #[test]
+    fn location_batches_are_bounded_and_preserve_opaque_ids() {
+        assert!(location_batch_ids(vec!["device".into(); 501]).is_err());
+        assert!(location_batch_ids(vec!["  ".into()]).is_err());
+        assert!(location_batch_ids(Vec::new()).unwrap().is_empty());
+        assert_eq!(
+            location_batch_ids(vec![
+                "opaque-b".into(),
+                "opaque-a".into(),
+                "opaque-b".into()
+            ])
+            .unwrap(),
+            vec!["opaque-a", "opaque-b"]
+        );
+    }
+}
+
 #[derive(Clone)]
 pub struct EventApplication {
     repository: Arc<dyn DeviceEventRepository>,
+    devices: Arc<dyn DeviceRepository>,
+    clock: Arc<dyn Clock>,
 }
 impl EventApplication {
-    pub fn new(repository: Arc<dyn DeviceEventRepository>) -> Self {
-        Self { repository }
+    pub async fn latest_locations(
+        &self,
+        ctx: &TenantContext,
+        device_ids: Vec<String>,
+    ) -> Result<Vec<crate::events::LocatedDeviceRecord>, ApplicationError> {
+        require_permission(ctx, Permission::ReadTelemetry)?;
+        require_permission(ctx, Permission::ReadDevices)?;
+        let ids = location_batch_ids(device_ids)?;
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        Ok(self
+            .repository
+            .latest_locations(ctx.tenant_id(), ids, self.clock.now())
+            .await?)
+    }
+
+    pub fn new(
+        repository: Arc<dyn DeviceEventRepository>,
+        devices: Arc<dyn DeviceRepository>,
+        clock: Arc<dyn Clock>,
+    ) -> Self {
+        Self {
+            repository,
+            devices,
+            clock,
+        }
+    }
+
+    pub async fn latest_location(
+        &self,
+        ctx: &TenantContext,
+        device_id: &str,
+    ) -> Result<Option<DeviceLocationRecord>, ApplicationError> {
+        require_permission(ctx, Permission::ReadTelemetry)?;
+        let assigned = self
+            .devices
+            .assigned_contract(ctx.tenant_id(), device_id)
+            .await?
+            .ok_or_else(|| {
+                ApplicationError::NotFound(format!("Device '{device_id}' has no assigned contract"))
+            })?;
+        let contract: CompiledContractDocument = serde_json::from_value(assigned.document)
+            .map_err(|error| {
+                ApplicationError::Internal(format!("Stored device contract is invalid: {error}"))
+            })?;
+        if contract.device_id != device_id {
+            return Err(ApplicationError::Internal(
+                "Stored contract identity mismatch".into(),
+            ));
+        }
+        let Some(binding) = contract.location else {
+            return Ok(None);
+        };
+        let now = self.clock.now();
+        let since = i64::try_from(binding.max_age_ms)
+            .ok()
+            .and_then(chrono::Duration::try_milliseconds)
+            .and_then(|age| now.checked_sub_signed(age))
+            .ok_or_else(|| {
+                ApplicationError::Internal(
+                    "Location freshness is outside the supported range".into(),
+                )
+            })?;
+        Ok(self
+            .repository
+            .latest_location(
+                ctx.tenant_id(),
+                device_id,
+                DeviceLocationQuery {
+                    contract_id: assigned.id,
+                    stream_key: binding.stream,
+                    latitude_path: binding.latitude_path,
+                    longitude_path: binding.longitude_path,
+                    since,
+                    now,
+                },
+            )
+            .await?)
     }
     pub async fn list_metrics(
         &self,
@@ -138,20 +251,21 @@ impl EventIngressApplication {
                     ))
                 })?;
                 let numeric_value = match &value {
-                    MetricValue::Float64(value) => Some(*value),
-                    MetricValue::Int64(value) => Some(*value as f64),
+                    MetricValue::Float64(value) => {
+                        Some(crate::rule_engine::number::MetricNumber::Float(*value))
+                    }
+                    MetricValue::Int64(value) => {
+                        Some(crate::rule_engine::number::MetricNumber::Integer(*value))
+                    }
                     _ => None,
                 };
                 if let Some(value) = numeric_value {
-                    let canonical = format!(
-                        "{}.{}",
-                        stream_key,
-                        field_path.trim_start_matches('/').replace('/', ".")
-                    );
-                    rule_metrics.insert(canonical, value);
-                    if let Some(semantic) = &field.semantic {
-                        rule_metrics.insert(semantic.clone(), value);
+                    let canonical = crate::rule_engine::metric::MetricSelector {
+                        stream_key: stream_key.clone(),
+                        field_path: field_path.clone(),
                     }
+                    .field_key();
+                    rule_metrics.insert(canonical, value);
                 }
                 metrics.push(DeviceMetricSample {
                     stream_key: stream_key.clone(),
@@ -172,6 +286,13 @@ impl EventIngressApplication {
             .occurred_at
             .with_nanosecond(envelope.occurred_at.nanosecond() / 1_000 * 1_000)
             .expect("microsecond truncation is a valid nanosecond");
+        let location = contract.event_location(
+            route_key,
+            &envelope.payload,
+            received_at
+                .signed_duration_since(occurred_at)
+                .num_milliseconds(),
+        );
         let identity = crate::DeviceIdentity::new(tenant.as_str(), device_id)
             .map_err(|error| ApplicationError::InvalidInput(error.to_string()))?;
         let context = self
@@ -183,22 +304,15 @@ impl EventIngressApplication {
             snapshot,
             tenant: tenant.clone(),
             device_id: device_id.to_owned(),
-            device_type_id: context.device_type_id,
             fleet_id: context.fleet_id,
             blueprint_id: context.blueprint_id,
             input: crate::rule_snapshots::RuleEvaluationInput::Telemetry {
                 data: crate::rule_engine::types::TelemetryData {
-                    temperature: 0.0,
-                    humidity: 0.0,
-                    battery_level: 0.0,
-                    latitude: None,
-                    longitude: None,
-                    speed: 0.0,
-                    altitude: 0.0,
-                    heading: 0.0,
+                    latitude: location.map(|point| point.0),
+                    longitude: location.map(|point| point.1),
                     metrics: rule_metrics,
                 },
-                geofence: false,
+                geofence: location.is_some(),
             },
             observed_at: received_at.naive_utc(),
         };

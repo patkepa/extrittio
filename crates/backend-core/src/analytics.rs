@@ -41,7 +41,6 @@ pub struct AnalyticsBlueprintRevision {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct AnalyticsScope {
-    pub device_type_ids: Vec<i32>,
     pub fleet_ids: Vec<i32>,
     pub device_ids: Vec<String>,
 }

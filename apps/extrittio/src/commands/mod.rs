@@ -16,7 +16,6 @@ mod api_keys;
 mod auth;
 mod certs;
 mod config_cmd;
-mod device_types;
 mod devices;
 mod firmware;
 mod fleets;
@@ -72,9 +71,6 @@ async fn run_api_command(
             output(output_format, &value, || "Backend is ready".to_string())?;
         }
         Command::Devices(command) => devices::handle(command, output_format, &client).await?,
-        Command::DeviceTypes(command) => {
-            device_types::handle(command, output_format, &client).await?
-        }
         Command::Fleets(command) => fleets::handle(command, output_format, &client).await?,
         Command::Firmware(command) => firmware::handle(command, output_format, &client).await?,
         Command::Ota(command) => ota::handle(command, output_format, &client).await?,

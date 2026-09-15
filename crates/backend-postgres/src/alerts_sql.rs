@@ -139,32 +139,13 @@ pub fn upsert_cooldown(
     conn: &mut PgConnection,
     cooldown: &RuleCooldown,
 ) -> Result<(), diesel::result::Error> {
-    write_cooldown(conn, cooldown, true)
-}
-
-pub fn upsert_legacy_cooldown(
-    conn: &mut PgConnection,
-    cooldown: &RuleCooldown,
-) -> Result<(), diesel::result::Error> {
-    write_cooldown(conn, cooldown, false)
-}
-
-fn write_cooldown(
-    conn: &mut PgConnection,
-    cooldown: &RuleCooldown,
-    current_decision: bool,
-) -> Result<(), diesel::result::Error> {
-    // All callers hold the device serialization lock. The predicate also
-    // protects the insert path when reactivation has deleted the cooldown row.
+    // Caller holds the device serialization lock; timestamps never move backward.
     diesel::sql_query("INSERT INTO rule_cooldowns(tenant_id,rule_id,device_id,last_fired_at)
-        SELECT $1,$2,$3,$4 WHERE $5 OR NOT EXISTS (
-            SELECT 1 FROM rule_cooldown_resets WHERE tenant_id=$1 AND rule_id=$2 AND device_id=$3 AND reset_at >= $4
-        ) ON CONFLICT(rule_id,device_id) DO UPDATE SET last_fired_at=GREATEST(rule_cooldowns.last_fired_at,EXCLUDED.last_fired_at)")
+        VALUES ($1,$2,$3,$4) ON CONFLICT(rule_id,device_id) DO UPDATE SET last_fired_at=GREATEST(rule_cooldowns.last_fired_at,EXCLUDED.last_fired_at)")
         .bind::<diesel::sql_types::Text,_>(&cooldown.tenant_id)
         .bind::<diesel::sql_types::Text,_>(&cooldown.rule_id)
         .bind::<diesel::sql_types::Text,_>(&cooldown.device_id)
         .bind::<diesel::sql_types::Timestamptz,_>(cooldown.last_fired_at)
-        .bind::<diesel::sql_types::Bool,_>(current_decision)
         .execute(conn)?;
     Ok(())
 }

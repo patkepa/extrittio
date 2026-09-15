@@ -67,11 +67,7 @@ use utoipa::{Modify, OpenApi};
         super::devices::bulk_restart_devices,
         super::devices::bulk_trigger_ota,
         super::devices::get_device_latest_location,
-        // Device types
-        super::device_types::list_device_types,
-        super::device_types::create_device_type,
-        super::device_types::update_device_type,
-        super::device_types::delete_device_type,
+        super::devices::get_device_locations,
         // Device blueprints
         super::device_blueprints::list_blueprints,
         super::device_blueprints::create_blueprint,
@@ -93,10 +89,7 @@ use utoipa::{Modify, OpenApi};
         super::shadows::update_reported,
         super::shadows::delete_shadow,
         // Telemetry
-        super::telemetry::get_device_telemetry,
         super::telemetry::get_device_metrics,
-        super::telemetry::get_latest_device_telemetry,
-        super::telemetry::get_hourly_device_telemetry,
         // Commands
         super::commands::send_command,
         super::commands::list_commands,
@@ -107,7 +100,6 @@ use utoipa::{Modify, OpenApi};
         super::firmware_updates::upload_firmware_update,
         super::firmware_updates::download_firmware_blob,
         super::firmware_updates::delete_firmware_update,
-        super::firmware_updates::get_next_version,
         super::firmware_updates::get_next_blueprint_version,
         // Logs
         super::logs::get_device_logs,
@@ -214,10 +206,9 @@ use utoipa::{Modify, OpenApi};
         super::devices::BulkOperationError,
         super::devices::BulkResultResponse,
         super::devices::LocationResponse,
+        super::devices::DeviceLocationsRequest,
+        super::devices::DeviceLocationResponse,
         // Device types
-        super::device_types::DeviceTypeResponse,
-        super::device_types::NewDeviceTypeRequest,
-        super::device_types::UpdateDeviceTypeRequest,
         // Device blueprints
         super::device_blueprints::BlueprintDocumentRequest,
         super::device_blueprints::BlueprintResponse,
@@ -232,8 +223,6 @@ use utoipa::{Modify, OpenApi};
         // Shadows
         super::shadows::ShadowResponse,
         // Telemetry
-        super::telemetry::TelemetryResponse,
-        super::telemetry::HourlyTelemetryResponse,
         super::telemetry::MetricValueResponse,
         super::telemetry::DeviceMetricResponse,
         // Commands
@@ -318,7 +307,6 @@ use utoipa::{Modify, OpenApi};
         (name = "users", description = "User management"),
         (name = "roles", description = "Role and permission management"),
         (name = "devices", description = "Device management"),
-        (name = "device-types", description = "Device type management"),
         (name = "device-blueprints", description = "Versioned device contract blueprints"),
         (name = "fleets", description = "Fleet management"),
         (name = "shadows", description = "Device shadow (desired/reported state)"),
@@ -389,6 +377,97 @@ fn add_session_cookie_alternative(operation: Option<&mut Operation>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn device_type_management_is_not_exposed() {
+        let document = ApiDoc::openapi();
+        assert!(
+            !document
+                .paths
+                .paths
+                .keys()
+                .any(|path| path.starts_with("/api/v1/device-types"))
+        );
+        assert!(
+            !document
+                .paths
+                .paths
+                .contains_key("/api/v1/device-types/{id}")
+        );
+        let json = serde_json::to_value(document).unwrap();
+        let schemas = json["components"]["schemas"].as_object().unwrap();
+        assert!(!schemas.contains_key("NewDeviceTypeRequest"));
+        assert!(!schemas.contains_key("UpdateDeviceTypeRequest"));
+        assert!(!schemas.keys().any(|name| name.contains("DeviceType")));
+    }
+
+    #[test]
+    fn firmware_versions_are_scoped_to_blueprint_revisions() {
+        let document = ApiDoc::openapi();
+        let json = serde_json::to_value(&document).unwrap();
+        for name in ["FirmwareUpdateResponse", "GlobalOtaDeploymentResponse"] {
+            let schema = &json["components"]["schemas"][name];
+            assert!(
+                schema["required"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|field| field == "blueprint_revision_id")
+            );
+            assert_eq!(
+                schema["properties"]["blueprint_revision_id"]["type"],
+                "string"
+            );
+        }
+        let properties = json["components"]["schemas"]["FirmwareUpdateResponse"]["properties"]
+            .as_object()
+            .unwrap();
+        assert!(properties.contains_key("blueprint_revision_id"));
+        assert!(!properties.contains_key("device_type_id"));
+        assert!(!properties.contains_key("device_type_name"));
+        let deployment = json["components"]["schemas"]["GlobalOtaDeploymentResponse"]["properties"]
+            .as_object()
+            .unwrap();
+        assert!(deployment.contains_key("blueprint_revision_id"));
+        assert!(!deployment.contains_key("device_type_id"));
+        assert!(!deployment.contains_key("device_type_name"));
+        assert!(
+            !document
+                .paths
+                .paths
+                .contains_key("/api/v1/firmware-updates/next-version/{device_type_id}")
+        );
+        assert!(
+            document.paths.paths["/api/v1/firmware-updates/next-version/blueprint/{revision_id}"]
+                .get
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn metric_api_does_not_expose_retired_fixed_telemetry() {
+        let document = ApiDoc::openapi();
+        assert!(
+            document.paths.paths["/api/v1/devices/{id}/metrics"]
+                .get
+                .is_some()
+        );
+        for path in [
+            "/api/v1/devices/{id}/telemetry",
+            "/api/v1/devices/{id}/telemetry/latest",
+            "/api/v1/devices/{id}/telemetry/hourly",
+        ] {
+            assert!(
+                !document.paths.paths.contains_key(path),
+                "retired path: {path}"
+            );
+        }
+        let schemas = &document.components.as_ref().expect("schemas").schemas;
+        for name in ["TelemetryResponse", "HourlyTelemetryResponse"] {
+            assert!(!schemas.contains_key(name), "retired schema: {name}");
+        }
+        assert!(schemas.contains_key("DeviceMetricResponse"));
+    }
 
     #[test]
     fn protected_operations_document_cookie_or_bearer_authentication() {

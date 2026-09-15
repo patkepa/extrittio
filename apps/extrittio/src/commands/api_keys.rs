@@ -19,15 +19,12 @@ pub(super) async fn handle(
             let result: Vec<ApiKeyResponse> = client.get("/api/v1/api-keys").await?;
             output(output_format, &result, || format_api_keys(&result))?;
         }
-        ApiKeysSubcommand::Create {
-            name,
-            device_type_id,
-        } => {
+        ApiKeysSubcommand::Create { name, blueprint_id } => {
             let result: CreatedApiKeyResponse = client
                 .request(
                     Method::POST,
                     "/api/v1/api-keys",
-                    Some(json!({ "name": name, "device_type_id": device_type_id })),
+                    Some(json!({ "name": name, "blueprint_id": blueprint_id })),
                     true,
                 )
                 .await?;

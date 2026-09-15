@@ -13,6 +13,12 @@ test('unrelated permissions do not grant access', () => {
   assert.equal(hasRequiredPermissions(undefined, ['devices.read']), false);
 });
 
+test('blueprint permissions are independent of retired device-type keys', () => {
+  assert.equal(hasPermission(['device_blueprints.manage'], 'device_blueprints.read'), true);
+  assert.equal(hasPermission(['device_types.manage'], 'device_blueprints.read'), false);
+  assert.equal(hasPermission(['device_types.read'], 'device_blueprints.manage'), false);
+});
+
 test('routes without requirements are public to authenticated users', () => {
   assert.equal(hasRequiredPermissions([], undefined), true);
   assert.equal(hasRequiredPermissions([], []), true);

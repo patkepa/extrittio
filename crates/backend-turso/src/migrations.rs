@@ -4,43 +4,189 @@ use turso::Connection;
 use crate::lifecycle::{TursoLifecycleError, map_migration_error};
 
 const BASELINE: &str = include_str!("../migrations/0001_baseline.sql");
-const DEVICE_BLUEPRINTS: &str = include_str!("../migrations/0002_device_blueprints.sql");
-const DEVICE_CONTRACTS: &str = include_str!("../migrations/0003_device_contracts.sql");
-const DEVICE_EVENTS: &str = include_str!("../migrations/0004_device_events.sql");
-const RULE_BLUEPRINT_TARGETS: &str = include_str!("../migrations/0005_rule_blueprint_targets.sql");
-const FIRMWARE_BLUEPRINT_TARGETS: &str =
-    include_str!("../migrations/0006_firmware_blueprint_targets.sql");
-const REMOVE_RETIRED_DEVICE_FEATURE: &str =
-    include_str!("../migrations/0007_remove_retired_device_feature.sql");
-const USER_AUTH_EPOCH: &str = include_str!("../migrations/0008_user_auth_epoch.sql");
-const RULE_ACTION_OUTBOX_ACTIVE_IDEMPOTENCY: &str =
-    include_str!("../migrations/0009_rule_action_outbox_active_idempotency.sql");
+pub const LATEST_SCHEMA_VERSION: i64 = 1;
+const MIGRATIONS: &[(i64, &str)] = &[(1, BASELINE)];
 
-const RULE_ALERT_DELIVERIES: &str = include_str!("../migrations/0010_rule_alert_deliveries.sql");
+#[cfg(test)]
+mod tests {
+    #[tokio::test]
+    async fn blueprint_baseline_supports_scoped_keys_and_object_firmware() {
+        use extrittio_backend_core::firmware::{
+            FirmwareRepository, NewFirmwareBlobRecord, NewFirmwareRecord,
+        };
+        use extrittio_backend_core::{ApiKeyRepository, CreateApiKeyRecord, TenantId};
+        let directory = tempfile::tempdir().unwrap();
+        let database = crate::TursoDatabase::open(
+            directory.path(),
+            &directory.path().join("publishing.db"),
+            std::time::Duration::from_secs(1),
+        )
+        .await
+        .unwrap();
+        database.migrate().await.unwrap();
+        let connection = database.shared_handles().connect().unwrap();
+        connection.execute_batch(
+            "INSERT INTO device_blueprints VALUES ('blueprint','default','sensor','Sensor',NULL,0,0);
+             INSERT INTO device_blueprint_revisions VALUES ('revision','default','blueprint',1,'{}',
+                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','{}',0);"
+        ).await.unwrap();
+        let tenant = TenantId::new("default").unwrap();
+        let keys = crate::api_keys::TursoApiKeyRepository::from_handles(database.shared_handles());
+        let key = keys
+            .create(
+                &tenant,
+                CreateApiKeyRecord {
+                    name: "CI".into(),
+                    key_hash: "hash".into(),
+                    key_prefix: "prefix".into(),
+                    blueprint_id: Some("blueprint".into()),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(key.blueprint_id.as_deref(), Some("blueprint"));
+        // A blueprint referenced by a scoped key cannot disappear and widen its scope.
+        assert!(
+            database
+                .shared_handles()
+                .lock_writer()
+                .await
+                .execute("DELETE FROM device_blueprints WHERE id='blueprint'", ())
+                .await
+                .is_err()
+        );
+        let firmware =
+            crate::firmware::TursoFirmwareRepository::from_handles(database.shared_handles());
+        let record = firmware
+            .create(
+                &tenant,
+                NewFirmwareRecord {
+                    version: "1".into(),
+                    url: String::new(),
+                    sha256: Some("a".repeat(64)),
+                    description: None,
+                    commit_sha: None,
+                    branch: None,
+                    ci_run_url: None,
+                    build_timestamp: None,
+                    changelog: None,
+                    source: None,
+                    blueprint_revision_id: "revision".into(),
+                    compatibility: serde_json::json!({}),
+                    update_strategy: Some("partition_swap".into()),
+                },
+                Some(NewFirmwareBlobRecord {
+                    size: 3,
+                    filename: "fw.bin".into(),
+                    storage_key: "object".into(),
+                    storage_backend: "local".into(),
+                }),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(record.file_size, Some(3));
+        let blob = firmware
+            .get_blob(&tenant, record.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(blob.storage_key, "object");
+        assert_eq!(blob.filename, "fw.bin");
+        assert_eq!(blob.size, 3);
+        assert!(
+            firmware
+                .get_blob(&TenantId::new("other").unwrap(), record.id)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(firmware.delete(&tenant, record.id).await.unwrap().is_some());
+        assert!(
+            firmware
+                .get_blob(&tenant, record.id)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
 
-const RULE_ZONE_ENTRIES: &str = include_str!("../migrations/0011_rule_zone_entries.sql");
-const RULE_COOLDOWN_RESETS: &str = include_str!("../migrations/0012_rule_cooldown_resets.sql");
-const RULE_ZONE_HANDOFFS: &str = include_str!("../migrations/0013_rule_zone_handoffs.sql");
-const TELEMETRY_MAINTENANCE_BOUNDARY: &str =
-    include_str!("../migrations/0014_telemetry_maintenance_boundary.sql");
-pub const LATEST_SCHEMA_VERSION: i64 = 14;
-
-const MIGRATIONS: &[(i64, &str)] = &[
-    (1, BASELINE),
-    (2, DEVICE_BLUEPRINTS),
-    (3, DEVICE_CONTRACTS),
-    (4, DEVICE_EVENTS),
-    (5, RULE_BLUEPRINT_TARGETS),
-    (6, FIRMWARE_BLUEPRINT_TARGETS),
-    (7, REMOVE_RETIRED_DEVICE_FEATURE),
-    (8, USER_AUTH_EPOCH),
-    (9, RULE_ACTION_OUTBOX_ACTIVE_IDEMPOTENCY),
-    (10, RULE_ALERT_DELIVERIES),
-    (11, RULE_ZONE_ENTRIES),
-    (12, RULE_COOLDOWN_RESETS),
-    (13, RULE_ZONE_HANDOFFS),
-    (14, TELEMETRY_MAINTENANCE_BOUNDARY),
-];
+    #[tokio::test]
+    async fn blueprint_baseline_initializes_and_reopens_without_retired_objects() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("baseline.db");
+        let database =
+            crate::TursoDatabase::open(directory.path(), &path, std::time::Duration::from_secs(1))
+                .await
+                .unwrap();
+        database.migrate().await.unwrap();
+        database.migrate().await.unwrap();
+        let connection = database.shared_handles().connect().unwrap();
+        let mut rows = connection
+            .query(
+                "SELECT name,sql FROM sqlite_schema WHERE type='table' ORDER BY name",
+                (),
+            )
+            .await
+            .unwrap();
+        let mut names = Vec::new();
+        while let Some(row) = rows.next().await.unwrap() {
+            let name: String = row.get(0).unwrap();
+            let sql: String = row.get(1).unwrap();
+            assert!(!sql.contains("device_type_id"), "{name}: {sql}");
+            assert!(!sql.contains("latest_latitude"), "{name}: {sql}");
+            names.push(name);
+        }
+        for retired in [
+            "device_types",
+            "rule_zone_handoffs",
+            "rule_cooldown_resets",
+            "telemetry",
+            "telemetry_rollups_hourly",
+            "telemetry_maintenance_state",
+            "network_observed_hosts",
+        ] {
+            assert!(!names.iter().any(|name| name == retired));
+        }
+        for required in [
+            "device_blueprints",
+            "device_blueprint_revisions",
+            "device_contracts",
+            "device_contract_assignments",
+            "device_events",
+            "device_metric_samples",
+            "rule_alert_deliveries",
+            "rule_zone_entries",
+            "api_keys",
+            "firmware_updates",
+        ] {
+            assert!(names.iter().any(|name| name == required), "{required}");
+        }
+        drop(rows);
+        let mut rows = connection
+            .query("PRAGMA foreign_key_check", ())
+            .await
+            .unwrap();
+        assert!(rows.next().await.unwrap().is_none());
+        drop(rows);
+        let mut rows = connection
+            .query("SELECT count(*) FROM _extrittio_migrations", ())
+            .await
+            .unwrap();
+        assert_eq!(
+            rows.next().await.unwrap().unwrap().get::<i64>(0).unwrap(),
+            1
+        );
+        drop(rows);
+        drop(connection);
+        drop(database);
+        let reopened =
+            crate::TursoDatabase::open(directory.path(), &path, std::time::Duration::from_secs(1))
+                .await
+                .unwrap();
+        reopened.migrate().await.unwrap();
+    }
+}
 
 pub(crate) async fn run(writer: &mut Connection) -> Result<(), TursoLifecycleError> {
     writer

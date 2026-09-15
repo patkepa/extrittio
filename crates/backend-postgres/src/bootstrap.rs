@@ -2,15 +2,13 @@ use async_trait::async_trait;
 use diesel::prelude::*;
 
 use crate::models::{
-    NewDeviceType, NewRole, NewRolePermission, NewServerConfigEntry, NewUser, NewUserRole, Role,
+    NewRole, NewRolePermission, NewServerConfigEntry, NewUser, NewUserRole, Role,
     ServerConfigEntry, User,
 };
-use crate::schema::{device_types, role_permissions, roles, server_config, user_roles, users};
+use crate::schema::{role_permissions, roles, server_config, user_roles, users};
 use extrittio_backend_core::PersistenceError;
 use extrittio_backend_core::TenantId;
-use extrittio_backend_core::bootstrap::{
-    BootstrapOwner, BootstrapRepository, BuiltinDeviceType, SeedOwnerOutcome,
-};
+use extrittio_backend_core::bootstrap::{BootstrapOwner, BootstrapRepository, SeedOwnerOutcome};
 
 use crate::error::map_diesel_error;
 use crate::{PostgresExecutor, PostgresPool};
@@ -29,34 +27,6 @@ impl PostgresBootstrapRepository {
 
 #[async_trait]
 impl BootstrapRepository for PostgresBootstrapRepository {
-    async fn seed_builtin_device_types(
-        &self,
-        tenant: &TenantId,
-        records: Vec<BuiltinDeviceType>,
-    ) -> Result<(), PersistenceError> {
-        let tenant_id = tenant.as_str().to_owned();
-        self.executor
-            .run(move |connection| {
-                let rows = records
-                    .into_iter()
-                    .map(|record| NewDeviceType {
-                        tenant_id: tenant_id.clone(),
-                        name: record.name,
-                        icon: record.icon,
-                        color_hex: record.color_hex,
-                    })
-                    .collect::<Vec<_>>();
-                diesel::insert_into(device_types::table)
-                    .values(rows)
-                    .on_conflict((device_types::tenant_id, device_types::name))
-                    .do_nothing()
-                    .execute(connection)
-                    .map(|_| ())
-                    .map_err(map_diesel_error)
-            })
-            .await
-    }
-
     async fn get_or_create_server_config(
         &self,
         key: &str,

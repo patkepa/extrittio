@@ -8,8 +8,6 @@ pub use firmware::PostgresFirmwareRepository;
 pub mod api_keys;
 mod fleets;
 pub use fleets::PostgresFleetRepository;
-mod device_types;
-pub use device_types::PostgresDeviceTypeRepository;
 mod bootstrap;
 pub use bootstrap::PostgresBootstrapRepository;
 mod certificates;
@@ -74,9 +72,6 @@ pub use events::PostgresEventRepository;
 mod device_ingress;
 pub use device_ingress::PostgresDeviceIngressRepository;
 
-mod telemetry;
-pub use telemetry::PostgresTelemetryRepository;
-mod telemetry_sql;
 
 mod activity;
 pub use activity::PostgresActivityRepository;

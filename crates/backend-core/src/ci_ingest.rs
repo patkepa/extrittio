@@ -1,7 +1,7 @@
 //! API-key-authenticated CI firmware ingestion.
 //!
 //! The repository operation deliberately combines key lookup, usage bookkeeping,
-//! tenant-scoped device-type lookup, and insertion. Splitting these into separate
+//! tenant-scoped blueprint revision lookup, and insertion. Splitting these into separate
 //! async calls would discard Turso's existing transaction boundary.
 use crate::PersistenceError;
 use async_trait::async_trait;
@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone)]
 pub struct CiIngestParams {
-    pub device_type_name: String,
+    pub blueprint_revision_id: String,
     pub version: String,
     pub artifact_url: String,
     pub sha256: Option<String>,
@@ -24,41 +24,35 @@ pub struct CiIngestParams {
 #[derive(Debug, Clone)]
 pub enum CiIngestOutcome {
     Unauthorized,
-    DeviceTypeNotFound,
+    BlueprintRevisionNotFound,
+    UnsupportedFirmware,
     Forbidden {
-        scoped_device_type_id: i32,
+        scoped_blueprint_id: String,
     },
     Created {
         firmware_id: i32,
         version: String,
-        device_type_name: String,
+        blueprint_revision_id: String,
     },
 }
 
 /// Scope policy shared by both storage engines inside their ingest operation.
-/// A missing key or device type must be resolved before calling this policy.
-pub fn authorize_ci_device_type(
-    scope: Option<i32>,
-    device_type_id: i32,
+/// The key and tenant-owned revision must be resolved before this policy.
+pub fn authorize_ci_blueprint(
+    scope: Option<&str>,
+    blueprint_id: &str,
 ) -> Result<(), CiIngestOutcome> {
-    if let Some(scoped_device_type_id) = scope
-        && scoped_device_type_id != device_type_id
+    if let Some(scoped_blueprint_id) = scope
+        && scoped_blueprint_id != blueprint_id
     {
         return Err(CiIngestOutcome::Forbidden {
-            scoped_device_type_id,
+            scoped_blueprint_id: scoped_blueprint_id.to_owned(),
         });
     }
     Ok(())
 }
 
 /// Resolve the tenant from the stored key hash; never accept a caller tenant.
-///
-/// Compatibility contract: unknown keys do not mutate data. Recognized keys are
-/// touched before device-type/scope rejection. Turso commits those rejections
-/// and rolls back on insert failure; PostgreSQL retains its best-effort touch
-/// outside the firmware insert transaction. Concurrent deletion retains each
-/// engine's existing semantics. A stronger cross-engine guarantee is separate
-/// work, not an implicit consequence of extracting this port.
 #[async_trait]
 pub trait CiIngestRepository: Send + Sync {
     async fn ingest_ci(
@@ -66,4 +60,23 @@ pub trait CiIngestRepository: Send + Sync {
         key_hash: &str,
         params: CiIngestParams,
     ) -> Result<CiIngestOutcome, PersistenceError>;
+}
+
+/// CI metadata comes from the published document, never from caller-supplied
+/// compatibility claims.
+pub fn ci_firmware_metadata(
+    document: serde_json::Value,
+) -> Result<Option<(serde_json::Value, Option<String>)>, PersistenceError> {
+    let blueprint: extrittio_device_contract::DeviceBlueprint = serde_json::from_value(document)
+        .map_err(|error| PersistenceError::CorruptData(error.to_string()))?;
+    let Some(firmware) = blueprint.spec.firmware else {
+        return Ok(None);
+    };
+    let compatibility = serde_json::to_value(firmware.compatibility)
+        .map_err(|error| PersistenceError::CorruptData(error.to_string()))?;
+    let strategy = serde_json::to_value(firmware.strategy)
+        .map_err(|error| PersistenceError::CorruptData(error.to_string()))?
+        .as_str()
+        .map(str::to_owned);
+    Ok(Some((compatibility, strategy)))
 }

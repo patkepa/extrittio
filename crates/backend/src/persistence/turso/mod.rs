@@ -16,7 +16,6 @@ fn build_repositories(database: Arc<TursoDatabase>) -> RepositorySetInput {
     let roles = crate::database::turso_roles(&database);
     let users = crate::database::turso_users(&database);
     let api_keys = crate::database::turso_api_keys(&database);
-    let telemetry = crate::database::turso_telemetry(&database);
     let device_ingress = crate::database::turso_device_ingress(&database);
     let events = crate::database::turso_events(&database);
     let logs = crate::database::turso_logs(&database);
@@ -29,7 +28,6 @@ fn build_repositories(database: Arc<TursoDatabase>) -> RepositorySetInput {
     let outbox = crate::database::turso_outbox(&database);
     let rules = crate::database::turso_rules(&database);
     let devices = crate::database::turso_devices(&database);
-    let device_types = crate::database::turso_device_types(&database);
     let bootstrap = crate::database::turso_bootstrap(&database);
     let certificates = crate::database::turso_certificates(&database);
     let metrics = crate::database::turso_metrics(&database);
@@ -52,7 +50,6 @@ fn build_repositories(database: Arc<TursoDatabase>) -> RepositorySetInput {
         configuration,
         dashboard,
         device_blueprints,
-        device_types,
         devices,
         device_ingress,
         events,
@@ -64,7 +61,6 @@ fn build_repositories(database: Arc<TursoDatabase>) -> RepositorySetInput {
         roles,
         rules,
         shadows,
-        telemetry,
         users,
         zones,
     }

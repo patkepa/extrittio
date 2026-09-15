@@ -50,14 +50,8 @@ interface PendingZoneGeometry {
   geometry_json: CircleGeometry | PolygonGeometry;
 }
 
-export interface MapDevice {
-  id: string;
-  name: string;
-  status: string;
-  latest_latitude: number;
-  latest_longitude: number;
-  last_seen_at?: string | null;
-}
+export type { MapDevice } from './map-device-model';
+import type { MapDevice } from './map-device-model';
 
 type PanelTab = 'devices' | 'zones';
 type AcceptDrawnLayer = (layer: L.Layer, type: string) => void;

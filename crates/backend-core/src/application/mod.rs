@@ -13,11 +13,7 @@ pub use dashboard::DashboardApplication;
 mod activity;
 pub use activity::ActivityApplication;
 mod firmware;
-pub use firmware::{FirmwareApplication, FirmwareMigrationApplication, FirmwareReportApplication};
-mod telemetry;
-pub use telemetry::{
-    TelemetryApplication, TelemetryIngressApplication, TelemetryMaintenanceApplication,
-};
+pub use firmware::{FirmwareApplication, FirmwareReportApplication};
 mod device_ingress;
 pub use device_ingress::DeviceIngressApplication;
 mod events;
@@ -41,7 +37,7 @@ pub use alerts::{
 mod outbox;
 pub use outbox::{OutboxApplication, OutboxWorkerApplication};
 mod rules;
-pub use rules::{RuleApplication, RuleRuntimeApplication};
+pub use rules::RuleApplication;
 mod devices;
 pub use devices::{DeviceApplication, DeviceTargetSelection, ProvisionDevice};
 mod device_blueprints;
@@ -49,8 +45,6 @@ pub use device_blueprints::{BlueprintValidation, DeviceBlueprintApplication};
 mod api_keys;
 mod fleets;
 pub use fleets::FleetApplication;
-mod device_types;
-pub use device_types::DeviceTypeApplication;
 mod bootstrap;
 mod certificate_system;
 mod certificates;
@@ -125,7 +119,6 @@ pub struct Application {
     dashboard: DashboardApplication,
     activity: ActivityApplication,
     firmware: FirmwareApplication,
-    telemetry: TelemetryApplication,
     events: EventApplication,
     logs: LogApplication,
     commands: CommandApplication,
@@ -133,7 +126,6 @@ pub struct Application {
     device_blueprints: DeviceBlueprintApplication,
     devices: DeviceApplication,
     fleets: FleetApplication,
-    device_types: DeviceTypeApplication,
     ci_ingest: CiIngestApplication,
     certificates: CertificateApplication,
     configuration: ConfigurationApplication,
@@ -170,9 +162,6 @@ impl Application {
         &self.firmware
     }
 
-    pub fn telemetry(&self) -> &TelemetryApplication {
-        &self.telemetry
-    }
     pub fn events(&self) -> &EventApplication {
         &self.events
     }
@@ -198,7 +187,6 @@ impl Application {
             repositories.device_blueprints,
             dependencies.clock.clone(),
         );
-        let device_types = DeviceTypeApplication::new(repositories.device_types);
         let certificates = CertificateApplication::new(
             repositories.certificates,
             dependencies.certificate_issuer,
@@ -207,7 +195,6 @@ impl Application {
         let devices = DeviceApplication::new(
             repositories.devices.clone(),
             blueprints.clone(),
-            device_types.clone(),
             certificates.clone(),
             dependencies.clock.clone(),
         );
@@ -218,8 +205,11 @@ impl Application {
             dashboard: DashboardApplication::new(repositories.dashboard),
             activity: ActivityApplication::new(repositories.activity),
             firmware: FirmwareApplication::new(repositories.firmware),
-            telemetry: TelemetryApplication::new(repositories.telemetry),
-            events: EventApplication::new(repositories.events),
+            events: EventApplication::new(
+                repositories.events,
+                repositories.devices.clone(),
+                dependencies.clock.clone(),
+            ),
             logs: LogApplication::new(repositories.logs),
             commands: CommandApplication::new(
                 repositories.commands,
@@ -243,7 +233,6 @@ impl Application {
             api_keys: ApiKeyApplication::new(repositories.api_keys, dependencies.api_key_generator),
             ci_ingest: CiIngestApplication::new(repositories.ci_ingest),
             certificates,
-            device_types,
             device_blueprints: blueprints,
             fleets: FleetApplication::new(repositories.fleets),
             roles: RoleApplication::new(repositories.roles),
@@ -264,11 +253,6 @@ impl Application {
     #[must_use]
     pub fn ci_ingest(&self) -> &CiIngestApplication {
         &self.ci_ingest
-    }
-
-    #[must_use]
-    pub fn device_types(&self) -> &DeviceTypeApplication {
-        &self.device_types
     }
 
     #[must_use]

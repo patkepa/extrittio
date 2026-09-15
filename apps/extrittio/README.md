@@ -58,11 +58,38 @@ extrittio database --help
 extrittio devices --help
 ```
 
-The web console and `api/openapi.json` are currently the supported interfaces
-for creating devices from published blueprint revisions. The CLI's legacy
-`devices create` and `provision` arguments still use the compatibility
-`device_type_id` request shape and should not be used for new blueprint-based
-provisioning.
+Create devices from an immutable published blueprint revision:
+
+```bash
+extrittio devices create --name workshop-sensor --blueprint-revision-id REVISION_ID
+```
+
+Device creation and `provision` no longer accept device-type selectors, and the
+`device-types` command has been removed. Blueprint publishing remains available
+through the web console and HTTP API. To create a device and save its verified
+contract response for a native client:
+
+```bash
+extrittio provision --name workshop-sensor --blueprint-revision-id REVISION_ID \
+  --contract-out ./device-contract.json
+```
+
+The destination must not exist and its parent directory must be writable.
+Provisioning verifies contract hash, device identity and revision before saving
+the file with private permissions on Unix. The endpoint is taken from the
+contract, not a CLI default. If contract retrieval or later certificate/NVS work
+fails after creation, retain the created device ID instead of blindly creating
+another device. The ESP NVS format itself still needs contract-native migration.
+
+Firmware upload and filtering also use published revisions:
+
+```bash
+extrittio firmware upload --blueprint-revision-id REVISION_ID --file firmware.bin
+extrittio firmware list --blueprint-revision-id REVISION_ID
+```
+
+Firmware commands reject `--device-type-id`. Their output reports revision
+identity; JSON output also includes compatibility metadata and update strategy.
 
 Browser sessions use HTTP-only cookies. CLI commands can use a bearer token
 from `--token`, `EXTRITTIO_TOKEN`, or the saved login session. Override the

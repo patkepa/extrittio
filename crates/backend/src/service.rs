@@ -43,7 +43,6 @@ pub async fn initialize(config: &AppConfig) -> anyhow::Result<()> {
     let database = crate::persistence::factory::create(&config.database).await?;
     crate::init::run_database_migrations(database.runtime()).await?;
     let repositories = database.repositories();
-    crate::init::seed_persistence_device_types(repositories).await?;
     crate::init::init_persistence_jwt_secret(repositories).await?;
     crate::init::seed_persistence_admin_user(repositories).await?;
     crate::init::init_persistence_ca_certificate(repositories).await?;

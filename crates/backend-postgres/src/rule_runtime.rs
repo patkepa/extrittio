@@ -9,8 +9,6 @@ use extrittio_backend_core::{PersistenceError, rule_engine::types::PendingAction
 
 #[derive(QueryableByName)]
 struct DeviceTargets {
-    #[diesel(sql_type = diesel::sql_types::Integer)]
-    device_type_id: i32,
     #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Integer>)]
     fleet_id: Option<i32>,
     #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Text>)]
@@ -33,11 +31,10 @@ pub fn evaluate_rules_in_transaction(
             "rule evaluation scope does not match ingress".into(),
         ));
     }
-    let targets = diesel::sql_query("SELECT d.device_type_id,d.fleet_id,(SELECT r.blueprint_id FROM device_contract_assignments a JOIN device_contracts c ON c.tenant_id=a.tenant_id AND c.id=a.desired_contract_id JOIN device_blueprint_revisions r ON r.tenant_id=c.tenant_id AND r.id=c.blueprint_revision_id WHERE a.tenant_id=d.tenant_id AND a.device_id=d.id) AS blueprint_id FROM devices d WHERE d.tenant_id=$1 AND d.id=$2")
+    let targets = diesel::sql_query("SELECT d.fleet_id,(SELECT r.blueprint_id FROM device_contract_assignments a JOIN device_contracts c ON c.tenant_id=a.tenant_id AND c.id=a.desired_contract_id JOIN device_blueprint_revisions r ON r.tenant_id=c.tenant_id AND r.id=c.blueprint_revision_id WHERE a.tenant_id=d.tenant_id AND a.device_id=d.id) AS blueprint_id FROM devices d WHERE d.tenant_id=$1 AND d.id=$2")
         .bind::<diesel::sql_types::Text,_>(tenant).bind::<diesel::sql_types::Text,_>(device)
         .get_result::<DeviceTargets>(connection).map_err(map_diesel_error)?;
     let mut plan = plan.clone();
-    plan.device_type_id = targets.device_type_id;
     plan.fleet_id = targets.fleet_id;
     plan.blueprint_id = targets.blueprint_id;
     let mut runtime = DeviceRuleRuntime::default();
@@ -136,9 +133,6 @@ pub fn evaluate_rules_in_transaction(
             .map_err(map_diesel_error)?;
         }
     }
-    for rule in decision.zone_observations {
-        diesel::sql_query("INSERT INTO rule_zone_handoffs(tenant_id,rule_id,device_id,live_seen) VALUES($1,$2,$3,TRUE) ON CONFLICT(tenant_id,rule_id,device_id) DO UPDATE SET live_seen=TRUE")
-            .bind::<diesel::sql_types::Text,_>(tenant).bind::<diesel::sql_types::Text,_>(&rule).bind::<diesel::sql_types::Text,_>(device).execute(connection).map_err(map_diesel_error)?;
-    }
+
     Ok(decision.deliveries)
 }

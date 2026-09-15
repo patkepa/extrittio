@@ -5,7 +5,6 @@ use clap::{Args, Parser, Subcommand};
 use crate::{
     defaults::{
         DEFAULT_ESP32_BAUD, DEFAULT_ESP32_CHIP, DEFAULT_ESP32_NVS_OFFSET, DEFAULT_ESP32_NVS_SIZE,
-        DEFAULT_ZENOH_CONNECT,
     },
     output::OutputFormat,
 };
@@ -58,8 +57,6 @@ pub(crate) enum Command {
     Ready,
     /// Manage devices.
     Devices(DevicesCommand),
-    /// Manage device types.
-    DeviceTypes(DeviceTypesCommand),
     /// Manage fleets.
     Fleets(FleetsCommand),
     /// Publish and list firmware artifacts.
@@ -380,32 +377,10 @@ pub(crate) struct CreateDeviceArgs {
     pub(crate) blueprint_revision_id: String,
 
     #[arg(long)]
-    pub(crate) device_type_id: Option<i32>,
-
-    #[arg(long, value_name = "NAME")]
-    pub(crate) device_type: Option<String>,
-
-    #[arg(long)]
     pub(crate) fleet_id: Option<i32>,
 
     #[arg(long)]
     pub(crate) firmware: Option<String>,
-}
-
-#[derive(Debug, Args)]
-pub(crate) struct DeviceTypesCommand {
-    #[command(subcommand)]
-    pub(crate) command: DeviceTypesSubcommand,
-}
-
-#[derive(Debug, Subcommand)]
-pub(crate) enum DeviceTypesSubcommand {
-    /// List device types.
-    List(PageArgs),
-    /// Create a device type.
-    Create { name: String },
-    /// Delete a device type.
-    Delete { id: i32 },
 }
 
 #[derive(Debug, Args)]
@@ -442,8 +417,9 @@ pub(crate) enum FirmwareSubcommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct ListFirmwareArgs {
-    #[arg(long)]
-    pub(crate) device_type_id: Option<i32>,
+    /// Filter by published blueprint revision.
+    #[arg(long, value_parser = parse_non_empty_string)]
+    pub(crate) blueprint_revision_id: Option<String>,
     #[arg(long, default_value_t = 50)]
     pub(crate) limit: i64,
     #[arg(long, default_value_t = 0)]
@@ -452,8 +428,6 @@ pub(crate) struct ListFirmwareArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct UploadFirmwareArgs {
-    #[arg(long)]
-    pub(crate) device_type_id: i32,
     /// Published immutable blueprint revision associated with the firmware.
     #[arg(long, value_parser = parse_non_empty_string)]
     pub(crate) blueprint_revision_id: String,
@@ -533,7 +507,7 @@ pub(crate) enum ApiKeysSubcommand {
     Create {
         name: String,
         #[arg(long)]
-        device_type_id: Option<i32>,
+        blueprint_id: Option<String>,
     },
     /// Delete an API key.
     Delete { id: i32 },
@@ -579,9 +553,9 @@ pub(crate) struct ProvisionArgs {
     #[command(flatten)]
     pub(crate) device: CreateDeviceArgs,
 
-    /// Zenoh endpoint to include in generated client config.
-    #[arg(long, default_value = DEFAULT_ZENOH_CONNECT)]
-    pub(crate) zenoh_connect: String,
+    /// Destination for the verified provisioned contract response; must not exist.
+    #[arg(long)]
+    pub(crate) contract_out: PathBuf,
 
     /// Download and write the device certificate bundle into this directory.
     #[arg(long)]

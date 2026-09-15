@@ -121,22 +121,6 @@ pub(crate) fn turso_bootstrap(
 }
 
 #[cfg(feature = "postgres")]
-pub(crate) fn postgres_device_types(
-    pool: &PostgresPool,
-) -> Arc<dyn extrittio_backend_core::device_types::DeviceTypeRepository> {
-    Arc::new(extrittio_backend_postgres::PostgresDeviceTypeRepository::from_pool(pool.clone()))
-}
-
-#[cfg(feature = "turso")]
-pub(crate) fn turso_device_types(
-    database: &TursoDatabase,
-) -> Arc<dyn extrittio_backend_core::device_types::DeviceTypeRepository> {
-    Arc::new(
-        extrittio_backend_turso::TursoDeviceTypeRepository::from_handles(database.shared_handles()),
-    )
-}
-
-#[cfg(feature = "postgres")]
 pub(crate) fn postgres_fleets(
     pool: &PostgresPool,
 ) -> Arc<dyn extrittio_backend_core::fleets::FleetRepository> {
@@ -321,21 +305,6 @@ pub(crate) fn turso_device_ingress(
         extrittio_backend_turso::TursoDeviceIngressRepository::from_handles(
             database.shared_handles(),
         ),
-    )
-}
-
-#[cfg(feature = "postgres")]
-pub(crate) fn postgres_telemetry(
-    pool: &PostgresPool,
-) -> Arc<dyn extrittio_backend_core::telemetry::TelemetryRepository> {
-    Arc::new(extrittio_backend_postgres::PostgresTelemetryRepository::from_pool(pool.clone()))
-}
-#[cfg(feature = "turso")]
-pub(crate) fn turso_telemetry(
-    database: &TursoDatabase,
-) -> Arc<dyn extrittio_backend_core::telemetry::TelemetryRepository> {
-    Arc::new(
-        extrittio_backend_turso::TursoTelemetryRepository::from_handles(database.shared_handles()),
     )
 }
 

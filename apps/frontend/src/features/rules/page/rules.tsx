@@ -14,7 +14,7 @@ import {
   Tooltip,
 } from '@blueprintjs/core';
 import { useRules, useDeleteRule, useToggleRule } from '../queries/use-rules';
-import { useDeviceTypes } from '../../../hooks/use-device-types';
+import { useDeviceBlueprints } from '../../../hooks/use-device-blueprints';
 import { useFleets } from '../../../hooks/use-fleets';
 import { useAllDevices } from '../../../hooks/use-devices';
 import { useUIStore } from '../../../stores/ui-store';
@@ -33,7 +33,7 @@ export const Rules = () => {
   const rulesQuery = useRules();
   const deleteMutation = useDeleteRule();
   const toggleMutation = useToggleRule();
-  const { data: deviceTypes } = useDeviceTypes();
+  const { data: blueprints } = useDeviceBlueprints();
   const { data: fleets } = useFleets();
   const { data: devicesData } = useAllDevices();
 
@@ -61,8 +61,8 @@ export const Rules = () => {
     if (rule.target_type === 'global') return 'All devices';
     if (!rule.target_id) return rule.target_type;
     switch (rule.target_type) {
-      case 'device_type': {
-        const dt = (deviceTypes ?? []).find((d) => String(d.id) === rule.target_id);
+      case 'blueprint': {
+        const dt = (blueprints ?? []).find((d) => d.id === rule.target_id);
         return dt ? dt.name : rule.target_id;
       }
       case 'fleet': {
@@ -263,7 +263,7 @@ export const Rules = () => {
                   </td>
                   <td>
                     <Tag minimal intent={rule.target_type === 'global' ? 'primary' : undefined}>
-                      {rule.target_type === 'device_type' ? 'type' : rule.target_type}
+                      {rule.target_type}
                     </Tag>
                     {rule.target_type !== 'global' && (
                       <span style={{ marginLeft: 6 }}>{resolveTargetName(rule)}</span>

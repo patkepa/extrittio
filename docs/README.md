@@ -6,6 +6,8 @@ proposals, not in the operational documentation.
 
 ## Design proposals
 
+- [Blueprint-only migration plan](design/blueprint-only-migration-plan.md)
+  — complete removal of fixed telemetry and device-type compatibility paths.
 - [Backend crate architecture plan](design/backend-crate-architecture-plan.md)
   — proposed modular-monolith crate boundaries and migration sequence.
 

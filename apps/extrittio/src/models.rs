@@ -27,8 +27,12 @@ pub(crate) struct Paginated<T> {
 pub(crate) struct DeviceResponse {
     pub(crate) id: String,
     pub(crate) name: String,
-    pub(crate) device_type_id: i32,
-    pub(crate) device_type_name: String,
+    pub(crate) blueprint_id: String,
+    pub(crate) blueprint_revision_id: String,
+    pub(crate) blueprint_key: String,
+    pub(crate) blueprint_name: String,
+    pub(crate) blueprint_icon: Option<String>,
+    pub(crate) blueprint_color: Option<String>,
     pub(crate) fleet_id: Option<i32>,
     pub(crate) fleet_name: Option<String>,
     pub(crate) status: String,
@@ -37,14 +41,7 @@ pub(crate) struct DeviceResponse {
     pub(crate) firmware: String,
     pub(crate) uptime: String,
     pub(crate) uptime_seconds: i32,
-    pub(crate) latest_latitude: Option<f64>,
-    pub(crate) latest_longitude: Option<f64>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub(crate) struct DeviceTypeResponse {
-    pub(crate) id: i32,
-    pub(crate) name: String,
+    pub(crate) declared_connections: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -59,8 +56,8 @@ pub(crate) struct ApiKeyResponse {
     pub(crate) id: i32,
     pub(crate) name: String,
     pub(crate) key_prefix: String,
-    pub(crate) device_type_id: Option<i32>,
-    pub(crate) device_type_name: Option<String>,
+    pub(crate) blueprint_id: Option<String>,
+    pub(crate) blueprint_name: Option<String>,
     pub(crate) created_at: String,
     pub(crate) last_used_at: Option<String>,
 }
@@ -71,7 +68,7 @@ pub(crate) struct CreatedApiKeyResponse {
     pub(crate) name: String,
     pub(crate) key: String,
     pub(crate) key_prefix: String,
-    pub(crate) device_type_id: Option<i32>,
+    pub(crate) blueprint_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -101,8 +98,9 @@ pub(crate) struct CertificateStatus {
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct FirmwareUpdateResponse {
     pub(crate) id: i32,
-    pub(crate) device_type_id: i32,
-    pub(crate) device_type_name: String,
+    pub(crate) blueprint_revision_id: String,
+    pub(crate) compatibility: serde_json::Value,
+    pub(crate) update_strategy: Option<String>,
     pub(crate) version: String,
     pub(crate) url: String,
     pub(crate) sha256: Option<String>,

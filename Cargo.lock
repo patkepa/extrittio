@@ -1398,9 +1398,12 @@ dependencies = [
  "dirs",
  "dotenvy",
  "extrittio-backend",
+ "extrittio-client-contract",
+ "extrittio-device-contract",
  "reqwest",
  "serde",
  "serde_json",
+ "tempfile",
  "tikv-jemallocator",
  "tokio",
  "tracing",
@@ -1534,7 +1537,6 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "extrittio-client-runtime",
- "extrittio-common",
  "extrittio-sdk",
  "rand 0.9.4",
  "serde_json",
@@ -1543,22 +1545,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "extrittio-client-contract"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "extrittio-device-contract",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "extrittio-client-runtime"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "extrittio-client-contract",
  "extrittio-common",
- "extrittio-device-contract",
  "extrittio-sdk",
  "prost",
  "reqwest",
- "serde",
  "serde_json",
  "sha2",
- "thiserror",
  "tokio",
  "tracing",
- "uuid",
  "zenoh",
 ]
 
@@ -1586,8 +1598,10 @@ dependencies = [
 name = "extrittio-macos"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "clap",
  "dirs",
+ "extrittio-client-runtime",
  "extrittio-common",
  "extrittio-sdk",
  "libc",
@@ -1631,11 +1645,12 @@ dependencies = [
 name = "extrittio-rpi"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "clap",
  "extrittio-client-runtime",
- "extrittio-common",
  "libc",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing-subscriber",
 ]
@@ -1664,11 +1679,16 @@ dependencies = [
 name = "extrittio-simulator"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "clap",
+ "extrittio-client-runtime",
  "extrittio-common",
+ "extrittio-device-contract",
  "extrittio-sdk",
  "prost",
  "rand 0.9.4",
+ "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",

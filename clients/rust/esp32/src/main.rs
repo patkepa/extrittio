@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 mod ota_boot;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -7,9 +7,8 @@ use esp_idf_svc::eventloop::EspSystemEventLoop;
 use esp_idf_svc::hal::peripherals::Peripherals;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_svc::wifi::{BlockingWifi, ClientConfiguration, Configuration, EspWifi};
-use extrittio_common::extrittio::{
-    DeviceHeartbeat, DeviceTelemetry, ShadowDelta, ShadowGet, ShadowReport,
-};
+use extrittio_client_contract::{ContractEvent, ProvisionedContract};
+use extrittio_common::extrittio::{DeviceHeartbeat, ShadowDelta, ShadowGet, ShadowReport};
 use extrittio_common::{device_status, ota::fields as ota_fields, topics};
 use extrittio_sdk::sensor::SensorState;
 use log::info;
@@ -20,16 +19,17 @@ use zenoh::Wait;
 
 // ── Configuration ───────────────────────────────────────────────────
 // Edit these constants or wire them to NVS / menuconfig for production.
-const DEVICE_ID: &str = "esp32-001";
+static CONTRACT: OnceLock<ProvisionedContract> = OnceLock::new();
+fn device_id() -> &'static str {
+    CONTRACT
+        .get()
+        .expect("Contract must be verified before startup")
+        .device_id()
+}
 const WIFI_SSID: &str = "your-wifi-ssid";
 const WIFI_PASS: &str = "your-wifi-password";
 const TELEMETRY_INTERVAL_SECS: u64 = 5;
-const HEARTBEAT_INTERVAL_SECS: u64 = 30;
 const FIRMWARE_VERSION: &str = "v1.0.0-esp32";
-
-// Zenoh router endpoint — set to the IP of the machine running the backend.
-// Leave empty to use Zenoh multicast scouting (same LAN only).
-const ZENOH_CONNECT: &str = "tcp/192.0.2.100:7447";
 
 // ── Entry point ─────────────────────────────────────────────────────
 
@@ -46,7 +46,19 @@ fn main() {
         esp_idf_svc::sys::esp_ota_mark_app_valid_and_cancel_rollback();
     }
 
-    info!("Extrittio ESP32 client starting (device '{}')", DEVICE_ID);
+    let contract = ProvisionedContract::from_api_response(include_bytes!(concat!(
+        env!("OUT_DIR"),
+        "/device-contract.json"
+    )))
+    .expect("Invalid provisioned device contract");
+    contract
+        .encode_event(&sensor_event(&SensorState::new()), chrono::Utc::now())
+        .expect("Contract must declare this example's environment stream and fields");
+    CONTRACT.set(contract).expect("Contract initialized once");
+    let contract = CONTRACT.get().unwrap();
+    let heartbeat_interval = contract.heartbeat_interval();
+
+    info!("Extrittio ESP32 client starting (device '{}')", device_id());
 
     // ── Hardware / system init ──────────────────────────────────────
     let peripherals = Peripherals::take().expect("Failed to take peripherals");
@@ -74,17 +86,36 @@ fn main() {
         .expect("Failed to bring up network interface");
 
     info!("WiFi connected");
+    // Contract events require real UTC observation timestamps, not boot-relative time.
+    let _sntp =
+        esp_idf_svc::sntp::EspSntp::new_default().expect("Failed to start time synchronization");
+    let sync_start = Instant::now();
+    while _sntp.get_sync_status() != esp_idf_svc::sntp::SyncStatus::Completed {
+        assert!(
+            sync_start.elapsed() < Duration::from_secs(60),
+            "Time synchronization timed out"
+        );
+        thread::sleep(Duration::from_millis(100));
+    }
 
     // ── Zenoh ───────────────────────────────────────────────────────
     let mut zenoh_cfg = zenoh::Config::default();
-    if !ZENOH_CONNECT.is_empty() {
-        zenoh_cfg
-            .insert_json5("connect/endpoints", &format!("[\"{ZENOH_CONNECT}\"]"))
-            .expect("Failed to set Zenoh connect endpoint");
-        zenoh_cfg
-            .insert_json5("scouting/multicast/enabled", "false")
-            .expect("Failed to disable multicast scouting");
-    }
+    let endpoint = contract
+        .zenoh_endpoint()
+        .expect("Contract must declare a Zenoh endpoint");
+    assert!(
+        endpoint.starts_with("tcp/"),
+        "This ESP32 build supports TCP; provision a TCP contract endpoint"
+    );
+    zenoh_cfg
+        .insert_json5(
+            "connect/endpoints",
+            &serde_json::to_string(&[endpoint]).unwrap(),
+        )
+        .expect("Failed to set contract endpoint");
+    zenoh_cfg
+        .insert_json5("scouting/multicast/enabled", "false")
+        .expect("Failed to disable multicast scouting");
     tune_zenoh_for_esp32(&mut zenoh_cfg);
 
     // .wait() is the blocking equivalent of .await for Zenoh builders.
@@ -95,11 +126,10 @@ fn main() {
 
     info!("Zenoh session opened");
 
-    let telemetry_topic = topics::telemetry(DEVICE_ID);
-    let heartbeat_topic = topics::heartbeat(DEVICE_ID);
-    let shadow_get_topic = topics::shadow_get(DEVICE_ID);
-    let shadow_delta_topic = topics::shadow_delta(DEVICE_ID);
-    let shadow_report_topic = topics::shadow_report(DEVICE_ID);
+    let heartbeat_topic = topics::heartbeat(device_id());
+    let shadow_get_topic = topics::shadow_get(device_id());
+    let shadow_delta_topic = topics::shadow_delta(device_id());
+    let shadow_report_topic = topics::shadow_report(device_id());
     let start = Instant::now();
 
     // Shared state
@@ -135,7 +165,7 @@ fn main() {
         }
         // ── Request pending shadow delta on startup ──────────────────────
         let shadow_get = ShadowGet {
-            device_id: DEVICE_ID.to_string(),
+            device_id: device_id().to_string(),
         };
         match shadow_session
             .put(&shadow_get_topic, shadow_get.encode_to_vec())
@@ -151,10 +181,7 @@ fn main() {
                     let payload = sample.payload().to_bytes();
                     match ShadowDelta::decode(payload.as_ref()) {
                         Ok(delta) => {
-                            info!(
-                                "Shadow delta received: version={}",
-                                delta.version
-                            );
+                            info!("Shadow delta received: version={}", delta.version);
 
                             // Parse delta JSON and merge into reported state
                             match serde_json::from_str::<serde_json::Value>(&delta.delta_json) {
@@ -219,11 +246,11 @@ fn main() {
     let hb_topic = heartbeat_topic.clone();
     let hb_firmware = firmware_version.clone();
     thread::spawn(move || loop {
-        thread::sleep(Duration::from_secs(HEARTBEAT_INTERVAL_SECS));
+        thread::sleep(heartbeat_interval);
 
         let fw = hb_firmware.lock().unwrap().clone();
         let heartbeat = DeviceHeartbeat {
-            device_id: DEVICE_ID.to_string(),
+            device_id: device_id().to_string(),
             timestamp: extrittio_sdk::time::now_millis(),
             status: device_status::ONLINE.to_string(),
             firmware: fw,
@@ -239,7 +266,7 @@ fn main() {
 
     // ── Telemetry loop (main thread) ────────────────────────────────
     let mut sensor = SensorState::new();
-    info!("Sending telemetry to '{telemetry_topic}'");
+    info!("Sending contract-defined environment events");
 
     // Keep wifi alive — the binding must not be dropped.
     let _wifi = wifi;
@@ -253,30 +280,32 @@ fn main() {
             rng.gen_range(0.05..=0.15),
         );
 
-        let telemetry = DeviceTelemetry {
-            device_id: DEVICE_ID.to_string(),
-            timestamp: extrittio_sdk::time::now_millis(),
-            temperature: sensor.temperature,
-            humidity: sensor.humidity,
-            battery_level: sensor.battery,
-            metadata: Default::default(),
-            latitude: 0.0,
-            longitude: 0.0,
-            speed: 0.0,
-            altitude: 0.0,
-            heading: 0.0,
-            has_location: false,
+        let encoded = match contract.encode_event(&sensor_event(&sensor), chrono::Utc::now()) {
+            Ok(encoded) => encoded,
+            Err(error) => {
+                log::warn!("Contract event rejected locally: {error}");
+                continue;
+            }
         };
-
-        let payload = telemetry.encode_to_vec();
-        match session.put(&telemetry_topic, payload).wait() {
+        match session.put(&encoded.address, encoded.payload).wait() {
             Ok(_) => info!(
-                "Telemetry: temp={:.1}°C humidity={:.1}% battery={:.1}%",
+                "Environment: temp={:.1}°C humidity={:.1}% battery={:.1}%",
                 sensor.temperature, sensor.humidity, sensor.battery
             ),
-            Err(e) => log::warn!("Failed to send telemetry: {e}"),
+            Err(e) => log::warn!("Failed to send contract event: {e}"),
         }
     }
+}
+
+fn sensor_event(sensor: &SensorState) -> ContractEvent {
+    ContractEvent::new(
+        "environment",
+        serde_json::json!({
+            "temperature": sensor.temperature,
+            "humidity": sensor.humidity,
+            "batteryLevel": sensor.battery,
+        }),
+    )
 }
 
 // ── Shadow helpers ──────────────────────────────────────────────────
@@ -304,7 +333,7 @@ fn send_shadow_report(
     let state_json = serde_json::to_string(&*state).unwrap_or_else(|_| "{}".to_string());
 
     let report = ShadowReport {
-        device_id: DEVICE_ID.to_string(),
+        device_id: device_id().to_string(),
         timestamp: extrittio_sdk::time::now_millis(),
         state_json,
         version,

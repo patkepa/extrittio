@@ -443,42 +443,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/device-types": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List all device types. */
-        get: operations["list_device_types"];
-        put?: never;
-        /** Create a new device type. */
-        post: operations["create_device_type"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/device-types/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Delete a device type by ID. */
-        delete: operations["delete_device_type"];
-        options?: never;
-        head?: never;
-        /** Update a device type. */
-        patch: operations["update_device_type"];
-        trace?: never;
-    };
     "/api/v1/devices": {
         parameters: {
             query?: never;
@@ -559,6 +523,23 @@ export interface paths {
         put?: never;
         /** Bulk restart multiple devices. */
         post: operations["bulk_restart_devices"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/locations/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Get the latest fresh location declared by the currently assigned contract. */
+        post: operations["get_device_locations"];
         delete?: never;
         options?: never;
         head?: never;
@@ -701,7 +682,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get the latest location recorded for a device. */
+        /** Get the latest fresh location declared by the currently assigned contract. */
         get: operations["get_device_latest_location"];
         put?: never;
         post?: never;
@@ -848,57 +829,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/devices/{id}/telemetry": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get telemetry data for a device. */
-        get: operations["get_device_telemetry"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/devices/{id}/telemetry/hourly": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get hourly telemetry aggregates for a device. */
-        get: operations["get_hourly_device_telemetry"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/devices/{id}/telemetry/latest": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get the most recently received telemetry sample for a device. */
-        get: operations["get_latest_device_telemetry"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/firmware-updates": {
         parameters: {
             query?: never;
@@ -942,23 +872,6 @@ export interface paths {
         };
         /** Get the next auto-generated version for a published blueprint revision. */
         get: operations["get_next_blueprint_version"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/firmware-updates/next-version/{device_type_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get the next auto-generated version for a device type. */
-        get: operations["get_next_version"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1666,7 +1579,6 @@ export interface components {
         };
         AnalyticsScopeRequest: {
             device_ids?: string[];
-            device_type_ids?: number[];
             fleet_ids?: number[];
         };
         AnalyticsScopeResponse: {
@@ -1698,10 +1610,9 @@ export interface components {
         /** @enum {string} */
         AnalyticsWeightingName: "equal_device" | "sample";
         ApiKeyResponse: {
+            blueprint_id?: string | null;
+            blueprint_name?: string | null;
             created_at: string;
-            /** Format: int32 */
-            device_type_id?: number | null;
-            device_type_name?: string | null;
             /** Format: int32 */
             id: number;
             key_prefix: string;
@@ -1839,18 +1750,18 @@ export interface components {
         };
         CiIngestRequest: {
             artifact_url: string;
+            blueprint_revision_id: string;
             branch?: string | null;
             build_timestamp?: string | null;
             changelog?: string | null;
             ci_run_url?: string | null;
             commit_sha?: string | null;
             description?: string | null;
-            device_type: string;
             sha256?: string | null;
             version: string;
         };
         CiIngestResponse: {
-            device_type: string;
+            blueprint_revision_id: string;
             /** Format: int32 */
             id: number;
             version: string;
@@ -1888,13 +1799,11 @@ export interface components {
             rcp_device?: string | null;
         };
         CreateApiKeyRequest: {
-            /** Format: int32 */
-            device_type_id?: number | null;
+            blueprint_id?: string | null;
             name: string;
         };
         CreateApiKeyResponse: {
-            /** Format: int32 */
-            device_type_id?: number | null;
+            blueprint_id?: string | null;
             /** Format: int32 */
             id: number;
             key: string;
@@ -2011,7 +1920,15 @@ export interface components {
             error?: string | null;
             id: string;
         };
+        DeviceLocationResponse: {
+            device_id: string;
+            location: components["schemas"]["LocationResponse"];
+        };
+        DeviceLocationsRequest: {
+            device_ids: string[];
+        };
         DeviceMetricResponse: {
+            contract_id: string;
             device_id: string;
             event_id: string;
             field_path: string;
@@ -2021,12 +1938,13 @@ export interface components {
             value_type: string;
         };
         DeviceResponse: {
+            blueprint_color?: string | null;
+            blueprint_icon?: string | null;
+            blueprint_id: string;
+            blueprint_key: string;
+            blueprint_name: string;
+            blueprint_revision_id: string;
             declared_connections: components["schemas"]["DeviceConnectionResponse"][];
-            device_type_color_hex: string;
-            device_type_icon: string;
-            /** Format: int32 */
-            device_type_id: number;
-            device_type_name: string;
             firmware: string;
             /** Format: int32 */
             fleet_id?: number | null;
@@ -2034,22 +1952,11 @@ export interface components {
             id: string;
             last_seen: string;
             last_seen_at?: string | null;
-            /** Format: double */
-            latest_latitude?: number | null;
-            /** Format: double */
-            latest_longitude?: number | null;
             name: string;
             status: string;
             uptime: string;
             /** Format: int32 */
             uptime_seconds: number;
-        };
-        DeviceTypeResponse: {
-            color_hex: string;
-            icon: string;
-            /** Format: int32 */
-            id: number;
-            name: string;
         };
         EnabledInput: {
             enabled: boolean;
@@ -2067,7 +1974,7 @@ export interface components {
             request_id: string;
         };
         FirmwareUpdateResponse: {
-            blueprint_revision_id?: string | null;
+            blueprint_revision_id: string;
             branch?: string | null;
             build_timestamp?: string | null;
             changelog?: string | null;
@@ -2076,9 +1983,6 @@ export interface components {
             compatibility: unknown;
             created_at: string;
             description?: string | null;
-            /** Format: int32 */
-            device_type_id: number;
-            device_type_name: string;
             /** Format: int32 */
             file_size?: number | null;
             filename?: string | null;
@@ -2099,14 +2003,13 @@ export interface components {
             name: string;
         };
         GlobalOtaDeploymentResponse: {
+            /** @description Revision targeted by the deployed firmware artifact. */
+            blueprint_revision_id: string;
             completed_at?: string | null;
             current_firmware: string;
             device_id: string;
             device_name: string;
             device_status: string;
-            /** Format: int32 */
-            device_type_id: number;
-            device_type_name: string;
             error_message?: string | null;
             /** Format: int32 */
             firmware_update_id: number;
@@ -2122,30 +2025,6 @@ export interface components {
         HealthResponse: {
             status: string;
         };
-        HourlyTelemetryResponse: {
-            /** Format: float */
-            avg_battery_level?: number | null;
-            /** Format: float */
-            avg_humidity?: number | null;
-            /** Format: float */
-            avg_temperature?: number | null;
-            bucket_start: string;
-            device_id: string;
-            /** Format: float */
-            max_battery_level?: number | null;
-            /** Format: float */
-            max_humidity?: number | null;
-            /** Format: float */
-            max_temperature?: number | null;
-            /** Format: float */
-            min_battery_level?: number | null;
-            /** Format: float */
-            min_humidity?: number | null;
-            /** Format: float */
-            min_temperature?: number | null;
-            /** Format: int64 */
-            sample_count: number;
-        };
         ImportThreadDatasetRequest: {
             /**
              * @description Complete hex-encoded Active Operational Dataset TLVs. This value is
@@ -2154,16 +2033,12 @@ export interface components {
             active_dataset_tlvs: string;
         };
         LocationResponse: {
-            /** Format: float */
-            altitude?: number | null;
-            /** Format: float */
-            heading?: number | null;
+            contract_id: string;
+            event_id: string;
             /** Format: double */
             latitude: number;
             /** Format: double */
             longitude: number;
-            /** Format: float */
-            speed?: number | null;
             timestamp: string;
         };
         LogResponse: {
@@ -2199,19 +2074,9 @@ export interface components {
             blueprint_revision_id: string;
             /** @description Device-specific configuration overlay, validated against the blueprint schema. */
             configuration?: unknown;
-            /**
-             * Format: int32
-             * @description Deprecated compatibility selector. Omit for blueprint-based devices.
-             */
-            device_type_id?: number | null;
             firmware?: string | null;
             /** Format: int32 */
             fleet_id?: number | null;
-            name: string;
-        };
-        NewDeviceTypeRequest: {
-            color_hex?: string | null;
-            icon?: string | null;
             name: string;
         };
         NewFirmwareUpdateRequest: {
@@ -2279,12 +2144,13 @@ export interface components {
         };
         PaginatedResponse_DeviceResponse: {
             data: {
+                blueprint_color?: string | null;
+                blueprint_icon?: string | null;
+                blueprint_id: string;
+                blueprint_key: string;
+                blueprint_name: string;
+                blueprint_revision_id: string;
                 declared_connections: components["schemas"]["DeviceConnectionResponse"][];
-                device_type_color_hex: string;
-                device_type_icon: string;
-                /** Format: int32 */
-                device_type_id: number;
-                device_type_name: string;
                 firmware: string;
                 /** Format: int32 */
                 fleet_id?: number | null;
@@ -2292,10 +2158,6 @@ export interface components {
                 id: string;
                 last_seen: string;
                 last_seen_at?: string | null;
-                /** Format: double */
-                latest_latitude?: number | null;
-                /** Format: double */
-                latest_longitude?: number | null;
                 name: string;
                 status: string;
                 uptime: string;
@@ -2309,24 +2171,9 @@ export interface components {
             /** Format: int64 */
             total: number;
         };
-        PaginatedResponse_DeviceTypeResponse: {
-            data: {
-                color_hex: string;
-                icon: string;
-                /** Format: int32 */
-                id: number;
-                name: string;
-            }[];
-            /** Format: int64 */
-            limit: number;
-            /** Format: int64 */
-            offset: number;
-            /** Format: int64 */
-            total: number;
-        };
         PaginatedResponse_FirmwareUpdateResponse: {
             data: {
-                blueprint_revision_id?: string | null;
+                blueprint_revision_id: string;
                 branch?: string | null;
                 build_timestamp?: string | null;
                 changelog?: string | null;
@@ -2335,9 +2182,6 @@ export interface components {
                 compatibility: unknown;
                 created_at: string;
                 description?: string | null;
-                /** Format: int32 */
-                device_type_id: number;
-                device_type_name: string;
                 /** Format: int32 */
                 file_size?: number | null;
                 filename?: string | null;
@@ -2374,14 +2218,13 @@ export interface components {
         };
         PaginatedResponse_GlobalOtaDeploymentResponse: {
             data: {
+                /** @description Revision targeted by the deployed firmware artifact. */
+                blueprint_revision_id: string;
                 completed_at?: string | null;
                 current_firmware: string;
                 device_id: string;
                 device_name: string;
                 device_status: string;
-                /** Format: int32 */
-                device_type_id: number;
-                device_type_name: string;
                 error_message?: string | null;
                 /** Format: int32 */
                 firmware_update_id: number;
@@ -2578,29 +2421,6 @@ export interface components {
             database: string;
             version: string;
         };
-        TelemetryResponse: {
-            /** Format: float */
-            altitude?: number | null;
-            /** Format: float */
-            battery_level?: number | null;
-            custom_json?: Record<string, never> | null;
-            device_id: string;
-            /** Format: float */
-            heading?: number | null;
-            /** Format: float */
-            humidity?: number | null;
-            /** Format: int64 */
-            id: number;
-            /** Format: double */
-            latitude?: number | null;
-            /** Format: double */
-            longitude?: number | null;
-            received_at: string;
-            /** Format: float */
-            speed?: number | null;
-            /** Format: float */
-            temperature?: number | null;
-        };
         ThreadChannelDiagnosticsResponse: {
             /** Format: int32 */
             channel: number;
@@ -2757,16 +2577,9 @@ export interface components {
             firmware_update_id: number;
         };
         UpdateDeviceRequest: {
-            /** Format: int32 */
-            device_type_id?: number | null;
             firmware?: string | null;
             /** Format: int32 */
             fleet_id?: number | null;
-            name?: string | null;
-        };
-        UpdateDeviceTypeRequest: {
-            color_hex?: string | null;
-            icon?: string | null;
             name?: string | null;
         };
         UpdateFleetRequest: {
@@ -3678,143 +3491,6 @@ export interface operations {
             };
         };
     };
-    list_device_types: {
-        parameters: {
-            query?: {
-                limit?: number | null;
-                offset?: number | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Paginated list of device types */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PaginatedResponse_DeviceTypeResponse"];
-                };
-            };
-        };
-    };
-    create_device_type: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["NewDeviceTypeRequest"];
-            };
-        };
-        responses: {
-            /** @description Device type created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DeviceTypeResponse"];
-                };
-            };
-            /** @description Invalid input */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    delete_device_type: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Device type ID */
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Device type deleted */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Device type not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Devices still reference this type */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Cannot delete the default type */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    update_device_type: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Device type ID */
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateDeviceTypeRequest"];
-            };
-        };
-        responses: {
-            /** @description Device type updated */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DeviceTypeResponse"];
-                };
-            };
-            /** @description Invalid input */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Device type not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
     list_devices: {
         parameters: {
             query?: {
@@ -3967,6 +3643,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BulkResultResponse"];
+                };
+            };
+        };
+    };
+    get_device_locations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceLocationsRequest"];
+            };
+        };
+        responses: {
+            /** @description Fresh contract locations for up to 500 devices */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceLocationResponse"][];
                 };
             };
         };
@@ -4685,115 +4385,9 @@ export interface operations {
             };
         };
     };
-    get_device_telemetry: {
-        parameters: {
-            query?: {
-                /** @description Maximum number of records to return (default 50, max 1000). */
-                limit?: number | null;
-                /** @description Only return records after this timestamp (RFC 3339 or YYYY-MM-DDTHH:MM:SS). */
-                since?: string | null;
-                /** @description Only return records before this timestamp (RFC 3339 or YYYY-MM-DDTHH:MM:SS). */
-                before?: string | null;
-            };
-            header?: never;
-            path: {
-                /** @description Device ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Telemetry records */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TelemetryResponse"][];
-                };
-            };
-            /** @description Device not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    get_hourly_device_telemetry: {
-        parameters: {
-            query?: {
-                /** @description Maximum number of records to return (default 50, max 1000). */
-                limit?: number | null;
-                /** @description Only return records after this timestamp (RFC 3339 or YYYY-MM-DDTHH:MM:SS). */
-                since?: string | null;
-                /** @description Only return records before this timestamp (RFC 3339 or YYYY-MM-DDTHH:MM:SS). */
-                before?: string | null;
-            };
-            header?: never;
-            path: {
-                /** @description Device ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Hourly telemetry aggregates */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HourlyTelemetryResponse"][];
-                };
-            };
-            /** @description Device not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    get_latest_device_telemetry: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Device ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Latest telemetry sample */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TelemetryResponse"];
-                };
-            };
-            /** @description Device or telemetry sample not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
     list_firmware_updates: {
         parameters: {
             query?: {
-                /** @description Filter by device type. */
-                device_type_id?: number | null;
                 /** @description Filter by an immutable device blueprint revision. */
                 blueprint_revision_id?: string | null;
                 limit?: number | null;
@@ -4903,29 +4497,6 @@ export interface operations {
             path: {
                 /** @description Published device blueprint revision ID */
                 revision_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Next version string */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["NextVersionResponse"];
-                };
-            };
-        };
-    };
-    get_next_version: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Device type ID */
-                device_type_id: number;
             };
             cookie?: never;
         };

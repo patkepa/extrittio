@@ -153,7 +153,7 @@ export const DeviceDetail = () => {
           )}
           {currentTab === 'telemetry' && (
             <ErrorBoundary>
-              <TelemetryTab deviceId={device.id} deviceTypeName={device.device_type_name} />
+              <TelemetryTab deviceId={device.id} />
             </ErrorBoundary>
           )}
           {currentTab === 'location' && (

@@ -4,7 +4,8 @@ use diesel::sql_types::{BigInt, Bool, Float8, Jsonb, Nullable, Text, Timestamptz
 
 use extrittio_backend_core::events::DeviceEventRepository;
 use extrittio_backend_core::events::{
-    DeviceMetricQuery, DeviceMetricRecord, MetricValue, RecordDeviceEvent, RecordDeviceEventOutcome,
+    DeviceLocationQuery, DeviceLocationRecord, DeviceMetricQuery, DeviceMetricRecord, MetricValue,
+    RecordDeviceEvent, RecordDeviceEventOutcome,
 };
 
 use extrittio_backend_core::PersistenceError;
@@ -40,6 +41,8 @@ struct ExistsRow {
 
 #[derive(diesel::QueryableByName)]
 struct MetricRow {
+    #[diesel(sql_type = Text)]
+    contract_id: String,
     #[diesel(sql_type = Text)]
     event_id: String,
     #[diesel(sql_type = Text)]
@@ -80,6 +83,7 @@ fn decode_metric(row: MetricRow) -> Result<DeviceMetricRecord, PersistenceError>
         ))
     })?;
     Ok(DeviceMetricRecord {
+        contract_id: row.contract_id,
         event_id: row.event_id,
         device_id: row.device_id,
         stream_key: row.stream_key,
@@ -89,8 +93,113 @@ fn decode_metric(row: MetricRow) -> Result<DeviceMetricRecord, PersistenceError>
     })
 }
 
+#[derive(diesel::QueryableByName)]
+struct LocationRow {
+    #[diesel(sql_type = Text)]
+    contract_id: String,
+    #[diesel(sql_type = Text)]
+    event_id: String,
+    #[diesel(sql_type = Float8)]
+    latitude: f64,
+    #[diesel(sql_type = Float8)]
+    longitude: f64,
+    #[diesel(sql_type = Timestamptz)]
+    occurred_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(diesel::QueryableByName)]
+struct LocatedRow {
+    #[diesel(sql_type = Text)]
+    device_id: String,
+    #[diesel(embed)]
+    location: LocationRow,
+}
+
 #[async_trait]
 impl DeviceEventRepository for PostgresEventRepository {
+    async fn latest_locations(
+        &self,
+        tenant: &TenantId,
+        device_ids: Vec<String>,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Vec<extrittio_backend_core::events::LocatedDeviceRecord>, PersistenceError> {
+        let tenant_id = tenant.as_str().to_owned();
+        self.executor.run(move |connection| {
+            diesel::sql_query(r#"WITH positions AS (
+SELECT e.device_id,e.contract_id,e.id AS event_id,e.occurred_at,
+CASE lat.value_type WHEN 'float64' THEN lat.value_double WHEN 'int64' THEN CAST(lat.value_int AS double precision) END AS latitude,
+CASE lon.value_type WHEN 'float64' THEN lon.value_double WHEN 'int64' THEN CAST(lon.value_int AS double precision) END AS longitude
+FROM device_events e
+JOIN device_contract_assignments a ON a.tenant_id=e.tenant_id AND a.device_id=e.device_id AND a.desired_contract_id=e.contract_id
+JOIN device_contracts c ON c.tenant_id=e.tenant_id AND c.device_id=e.device_id AND c.id=e.contract_id
+JOIN device_metric_samples lat ON lat.tenant_id=e.tenant_id AND lat.device_id=e.device_id AND lat.event_id=e.id AND lat.occurred_at=e.occurred_at
+JOIN device_metric_samples lon ON lon.tenant_id=e.tenant_id AND lon.device_id=e.device_id AND lon.event_id=e.id AND lon.occurred_at=e.occurred_at
+WHERE e.tenant_id=$1 AND e.device_id=ANY($2) AND e.occurred_at <= $3
+AND e.occurred_at >= $3 - ((c.document #>> '{location,maxAgeMs}')::double precision * INTERVAL '1 millisecond')
+AND c.document #>> '{deviceId}'=e.device_id
+AND c.document #>> '{location,coordinateSystem}'='wgs84' AND c.document #>> '{location,unit}'='degrees'
+AND lat.stream_key=c.document #>> '{location,stream}' AND lon.stream_key=lat.stream_key
+AND lat.field_path=c.document #>> '{location,latitudePath}' AND lon.field_path=c.document #>> '{location,longitudePath}'
+), ranked AS (
+SELECT *,row_number() OVER (PARTITION BY device_id ORDER BY occurred_at DESC,event_id COLLATE "C" DESC) AS position_rank
+FROM positions WHERE latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180
+)
+SELECT device_id,contract_id,event_id,occurred_at,latitude,longitude FROM ranked WHERE position_rank=1 ORDER BY device_id"#)
+                .bind::<Text,_>(tenant_id)
+                .bind::<diesel::sql_types::Array<Text>,_>(device_ids)
+                .bind::<Timestamptz,_>(now)
+                .load::<LocatedRow>(connection)
+                .map(|rows|rows.into_iter().map(|r|extrittio_backend_core::events::LocatedDeviceRecord {
+                    device_id:r.device_id,location:DeviceLocationRecord {
+                        contract_id:r.location.contract_id,event_id:r.location.event_id,
+                        latitude:r.location.latitude,longitude:r.location.longitude,occurred_at:r.location.occurred_at,
+                    }
+                }).collect()).map_err(crate::error::map_diesel_error)
+        }).await
+    }
+
+    async fn latest_location(
+        &self,
+        tenant: &TenantId,
+        device_id: &str,
+        query: DeviceLocationQuery,
+    ) -> Result<Option<DeviceLocationRecord>, PersistenceError> {
+        let tenant_id = tenant.as_str().to_owned();
+        let device_id = device_id.to_owned();
+        self.executor.run(move |connection| {
+            diesel::sql_query(r#"SELECT * FROM (SELECT e.contract_id, e.id AS event_id, e.occurred_at,
+    CASE lat.value_type WHEN 'float64' THEN lat.value_double WHEN 'int64' THEN CAST(lat.value_int AS double precision) END AS latitude,
+    CASE lon.value_type WHEN 'float64' THEN lon.value_double WHEN 'int64' THEN CAST(lon.value_int AS double precision) END AS longitude
+FROM device_events e
+JOIN device_contract_assignments a
+  ON a.tenant_id = e.tenant_id AND a.device_id = e.device_id AND a.desired_contract_id = e.contract_id
+JOIN device_metric_samples lat
+  ON lat.tenant_id = e.tenant_id AND lat.device_id = e.device_id AND lat.event_id = e.id AND lat.occurred_at = e.occurred_at
+JOIN device_metric_samples lon
+  ON lon.tenant_id = e.tenant_id AND lon.device_id = e.device_id AND lon.event_id = e.id AND lon.occurred_at = e.occurred_at
+WHERE e.tenant_id = $1 AND e.device_id = $2 AND e.contract_id = $3
+  AND lat.stream_key = $4 AND lon.stream_key = $4
+  AND lat.field_path = $5 AND lon.field_path = $6
+  AND e.occurred_at >= $7 AND e.occurred_at <= $8) AS positions
+WHERE latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180
+ORDER BY occurred_at DESC, event_id COLLATE "C" DESC LIMIT 1"#)
+                .bind::<Text, _>(tenant_id)
+                .bind::<Text, _>(device_id)
+                .bind::<Text, _>(query.contract_id)
+                .bind::<Text, _>(query.stream_key)
+                .bind::<Text, _>(query.latitude_path)
+                .bind::<Text, _>(query.longitude_path)
+                .bind::<Timestamptz, _>(query.since)
+                .bind::<Timestamptz, _>(query.now)
+                .get_result::<LocationRow>(connection).optional()
+                .map(|result| result.map(|r| DeviceLocationRecord {
+                    contract_id: r.contract_id, event_id: r.event_id,
+                    latitude: r.latitude, longitude: r.longitude, occurred_at: r.occurred_at,
+                }))
+                .map_err(crate::error::map_diesel_error)
+        }).await
+    }
+
     async fn record(
         &self,
         tenant: &TenantId,
@@ -234,7 +343,8 @@ impl DeviceEventRepository for PostgresEventRepository {
                 let rows = diesel::sql_query(
                     "SELECT event_id, device_id, stream_key, field_path, value_type,
                             value_double, value_int, value_text, value_bool, value_json,
-                            occurred_at
+                            occurred_at,
+                            (SELECT contract_id FROM device_events e WHERE e.tenant_id = device_metric_samples.tenant_id AND e.id = device_metric_samples.event_id) AS contract_id
                      FROM device_metric_samples
                      WHERE tenant_id = $1 AND device_id = $2
                        AND ($3::text IS NULL OR stream_key = $3)

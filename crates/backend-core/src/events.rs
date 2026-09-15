@@ -36,6 +36,7 @@ pub struct DeviceMetricSample {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeviceMetricRecord {
+    pub contract_id: String,
     pub event_id: String,
     pub device_id: String,
     pub stream_key: String,
@@ -51,6 +52,31 @@ pub struct DeviceMetricQuery {
     pub since: Option<NaiveDateTime>,
     pub before: Option<NaiveDateTime>,
     pub limit: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct DeviceLocationQuery {
+    pub contract_id: String,
+    pub stream_key: String,
+    pub latitude_path: String,
+    pub longitude_path: String,
+    pub since: DateTime<Utc>,
+    pub now: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeviceLocationRecord {
+    pub contract_id: String,
+    pub event_id: String,
+    pub latitude: f64,
+    pub longitude: f64,
+    pub occurred_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LocatedDeviceRecord {
+    pub device_id: String,
+    pub location: DeviceLocationRecord,
 }
 
 #[derive(Debug, Clone)]
@@ -75,6 +101,24 @@ pub struct RecordDeviceEventOutcome {
 
 #[async_trait]
 pub trait DeviceEventRepository: Send + Sync {
+    /// One bounded read of current contract-declared locations. Missing bindings
+    /// and devices without fresh valid observations are omitted, never zeroed.
+    async fn latest_locations(
+        &self,
+        tenant: &TenantId,
+        device_ids: Vec<String>,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<LocatedDeviceRecord>, PersistenceError>;
+
+    /// Latest fresh, valid coordinate pair from one event under the current
+    /// assignment. Must not combine events, contracts, streams or devices.
+    async fn latest_location(
+        &self,
+        tenant: &TenantId,
+        device_id: &str,
+        query: DeviceLocationQuery,
+    ) -> Result<Option<DeviceLocationRecord>, PersistenceError>;
+
     /// Idempotently stores a validated event and all extracted typed metrics in
     /// one transaction. A duplicate event ID returns `recorded=false`.
     async fn record(

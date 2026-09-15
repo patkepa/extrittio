@@ -147,12 +147,6 @@ impl AlertWorkerApplication {
             }
         }
     }
-    pub async fn apply_legacy_cooldown(
-        &self,
-        record: crate::alerts::CooldownRecord,
-    ) -> Result<(), ApplicationError> {
-        Ok(self.repository.persist_cooldowns(vec![record]).await?)
-    }
     pub async fn create_for_action(
         &self,
         tenant: &crate::TenantId,

@@ -25,6 +25,20 @@ const rule: Rule = {
   created_at: '',
   updated_at: '',
 };
+
+test('blueprint targeting preserves opaque IDs and rejects retired target kinds', () => {
+  const form = createRuleForm(rule);
+  form.targetType = 'blueprint';
+  form.targetId = 'blueprint-uuid';
+  assert.equal(validateRuleForm(form).hasMissingTarget, false);
+  assert.equal(ruleFormRequest(form).target_type, 'blueprint');
+  assert.equal(ruleFormRequest(form).target_id, 'blueprint-uuid');
+  for (const target of ['device_type', 'unknown', '']) {
+    form.targetType = target;
+    assert.equal(validateRuleForm(form).hasMissingTarget, true);
+    assert.throws(() => ruleFormRequest(form), /Unsupported rule target/);
+  }
+});
 test('editing drafts preserve stored values and do not mutate query data', () => {
   const form = createRuleForm(rule);
   assert.equal(form.cooldownSeconds, 0);

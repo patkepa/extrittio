@@ -1,0 +1,23 @@
+.blueprint-tag {
+  --blueprint-color: #8abbff;
+  --blueprint-bg: rgba(138, 187, 255, 0.14);
+  --blueprint-border: rgba(138, 187, 255, 0.35);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  background-color: var(--blueprint-bg) !important;
+  border: 1px solid var(--blueprint-border);
+  color: hsl(var(--foreground)) !important;
+}
+
+.blueprint-tag .bp6-icon {
+  color: var(--blueprint-color);
+  flex: 0 0 auto;
+}
+
+.blueprint-tag__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -17,6 +17,7 @@ use crate::{
 pub(crate) fn flash_esp32_nvs(
     device: &DeviceResponse,
     args: &ProvisionArgs,
+    zenoh_endpoint: &str,
 ) -> Result<Esp32NvsFlashResult> {
     let wifi_ssid = args
         .wifi_ssid
@@ -61,7 +62,7 @@ pub(crate) fn flash_esp32_nvs(
             ("device_id", device.id.as_str()),
             ("wifi_ssid", wifi_ssid),
             ("wifi_pass", wifi_password),
-            ("zenoh", args.zenoh_connect.as_str()),
+            ("zenoh", zenoh_endpoint),
             ("fw_version", firmware_version),
         ],
     )?;

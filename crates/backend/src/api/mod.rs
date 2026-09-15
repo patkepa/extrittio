@@ -22,8 +22,6 @@ pub mod configs;
 pub mod dashboard;
 #[path = "../domains/device_blueprints/device_blueprints.rs"]
 pub mod device_blueprints;
-#[path = "../domains/device_types/device_types.rs"]
-pub mod device_types;
 #[path = "../domains/devices/devices.rs"]
 pub mod devices;
 #[path = "../domains/firmware/firmware_updates.rs"]
@@ -78,7 +76,6 @@ pub fn router(max_firmware_size: usize, enable_api_docs: bool) -> Router<Arc<App
         .merge(dashboard::router())
         .merge(telemetry::router())
         .merge(device_blueprints::router())
-        .merge(device_types::router())
         .merge(fleets::router())
         .merge(shadows::router())
         .merge(users::router())

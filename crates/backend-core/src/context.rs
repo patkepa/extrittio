@@ -70,7 +70,6 @@ pub enum Permission {
     ManageAlerts,
     ManageApiKeys,
     ManageDeviceBlueprints,
-    ManageDeviceTypes,
     ManageDevices,
     ManageFirmware,
     ManageFleets,
@@ -82,7 +81,6 @@ pub enum Permission {
     ReadAlerts,
     ReadCommands,
     ReadDeviceBlueprints,
-    ReadDeviceTypes,
     ReadDevices,
     ReadFirmware,
     ReadFleets,
@@ -111,7 +109,6 @@ impl Permission {
             Self::ManageAlerts => "alerts.manage",
             Self::ManageApiKeys => "api_keys.manage",
             Self::ManageDeviceBlueprints => "device_blueprints.manage",
-            Self::ManageDeviceTypes => "device_types.manage",
             Self::ManageDevices => "devices.manage",
             Self::ManageFirmware => "firmware.manage",
             Self::ManageFleets => "fleets.manage",
@@ -123,7 +120,6 @@ impl Permission {
             Self::ReadAlerts => "alerts.read",
             Self::ReadCommands => "commands.read",
             Self::ReadDeviceBlueprints => "device_blueprints.read",
-            Self::ReadDeviceTypes => "device_types.read",
             Self::ReadDevices => "devices.read",
             Self::ReadFirmware => "firmware.read",
             Self::ReadFleets => "fleets.read",
@@ -168,7 +164,6 @@ const ALL_PERMISSIONS: &[Permission] = &[
     Permission::DeployFirmware,
     Permission::ManageAlerts,
     Permission::ManageDeviceBlueprints,
-    Permission::ManageDeviceTypes,
     Permission::ManageDevices,
     Permission::ManageApiKeys,
     Permission::ManageFirmware,
@@ -181,7 +176,6 @@ const ALL_PERMISSIONS: &[Permission] = &[
     Permission::ReadCommands,
     Permission::ReadAlerts,
     Permission::ReadDeviceBlueprints,
-    Permission::ReadDeviceTypes,
     Permission::ReadDevices,
     Permission::ReadFleets,
     Permission::ReadFirmware,
@@ -231,7 +225,6 @@ fn implied_permissions(permission: Permission) -> &'static [Permission] {
         Permission::ReadAlerts => &[Permission::ManageAlerts],
         Permission::ReadCommands => &[Permission::SendCommands],
         Permission::ReadDeviceBlueprints => &[Permission::ManageDeviceBlueprints],
-        Permission::ReadDeviceTypes => &[Permission::ManageDeviceTypes],
         Permission::ReadDevices => &[Permission::ManageDevices],
         Permission::ReadFirmware => &[Permission::ManageFirmware, Permission::DeployFirmware],
         Permission::ReadFleets => &[Permission::ManageFleets],
@@ -281,6 +274,19 @@ impl TenantContext {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retired_device_type_keys_grant_no_blueprint_permissions() {
+        for key in ["device_types.read", "device_types.manage"] {
+            assert_eq!(Permission::from_key(key), None);
+        }
+        let permissions = PermissionSet::from_keys(["device_types.read", "device_types.manage"]);
+        assert!(!permissions.contains(Permission::ReadDeviceBlueprints));
+        assert!(!permissions.contains(Permission::ManageDeviceBlueprints));
+        let permissions = PermissionSet::from_keys(["device_blueprints.manage"]);
+        assert!(permissions.contains(Permission::ReadDeviceBlueprints));
+        assert!(permissions.contains(Permission::ManageDeviceBlueprints));
+    }
 
     #[test]
     fn tenant_deserialization_validates_the_identifier() {

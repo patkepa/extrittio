@@ -22,10 +22,109 @@ impl TursoAnalyticsRepository {
 
 const SCOPE_FILTER: &str = r#"
     d.tenant_id = ?1
-    AND (?2 = '[]' OR d.device_type_id IN (SELECT value FROM json_each(?2)))
-    AND (?3 = '[]' OR d.fleet_id IN (SELECT value FROM json_each(?3)))
-    AND (?4 = '[]' OR d.id IN (SELECT value FROM json_each(?4)))
+    AND (?2 = '[]' OR d.fleet_id IN (SELECT value FROM json_each(?2)))
+    AND (?3 = '[]' OR d.id IN (SELECT value FROM json_each(?3)))
 "#;
+
+#[cfg(test)]
+mod blueprint_scope_tests {
+    use super::*;
+    use extrittio_backend_core::analytics::{
+        AnalyticsMetric, AnalyticsMetricSelector, AnalyticsScope,
+    };
+
+    #[tokio::test]
+    async fn analytics_queries_blueprint_baseline_without_device_types() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = crate::TursoDatabase::open(
+            directory.path(),
+            &directory.path().join("analytics.db"),
+            std::time::Duration::from_secs(1),
+        )
+        .await
+        .unwrap();
+        database.migrate().await.unwrap();
+        let connection = database.shared_handles().connect().unwrap();
+        connection.execute_batch(r#"
+            PRAGMA foreign_keys = ON;
+            INSERT INTO device_blueprints VALUES ('blueprint','default','sensor','Sensor',NULL,0,0);
+            INSERT INTO device_blueprint_revisions VALUES ('revision','default','blueprint',1,'{}',
+                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','{}',0);
+            INSERT INTO devices (id,tenant_id,name,status,firmware,created_at,updated_at)
+                VALUES ('device','default','Device','online','1',0,0),
+                       ('unassigned','default','Unassigned','online','1',0,0);
+            INSERT INTO device_contracts VALUES ('contract','default','device','revision','{}',
+                'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',0);
+            INSERT INTO device_contract_assignments
+                (tenant_id,device_id,desired_contract_id,created_at,updated_at)
+                VALUES ('default','device','contract',0,0);
+            INSERT INTO device_events VALUES ('event','default','device','contract','readings',1000000,1000000,'{}');
+            INSERT INTO device_metric_samples
+                (event_id,tenant_id,device_id,stream_key,field_path,value_type,value_int,occurred_at)
+                VALUES ('event','default','device','readings','/arbitrary','int64',42,1000000);
+        "#).await.unwrap();
+        let repository = TursoAnalyticsRepository::from_handles(database.shared_handles());
+        let tenant = TenantId::new("default").unwrap();
+        let mut query = AnalyticsQuery {
+            scope: AnalyticsScope::default(),
+            metric: AnalyticsMetric {
+                selector: AnalyticsMetricSelector {
+                    blueprint_id: "blueprint".into(),
+                    stream_key: "readings".into(),
+                    field_path: "/arbitrary".into(),
+                },
+                blueprint_key: "sensor".into(),
+                blueprint_name: "Sensor".into(),
+                label: "Arbitrary".into(),
+                unit: None,
+                value_type: "int64".into(),
+                aggregates: vec!["average".into()],
+                precision: None,
+            },
+            start: chrono::DateTime::from_timestamp(0, 0).unwrap().naive_utc(),
+            end: chrono::DateTime::from_timestamp(60, 0).unwrap().naive_utc(),
+            bucket_seconds: 60,
+            max_devices: 10,
+            max_rows: 10,
+        };
+        let result = repository.query(&tenant, query.clone()).await.unwrap();
+        assert_eq!((result.selected_devices, result.compatible_devices), (2, 1));
+        assert_eq!(result.devices[0].id, "device");
+        assert_eq!(result.buckets.len(), 1);
+        assert_eq!(result.buckets[0].average, 42.0);
+        query.scope.device_ids = vec!["unassigned".into()];
+        let result = repository.query(&tenant, query.clone()).await.unwrap();
+        assert_eq!((result.selected_devices, result.compatible_devices), (1, 0));
+        query.scope.device_ids.clear();
+        query.scope.fleet_ids = vec![999];
+        assert_eq!(
+            repository
+                .query(&tenant, query.clone())
+                .await
+                .unwrap()
+                .selected_devices,
+            0
+        );
+        query.scope.fleet_ids.clear();
+        query.metric.selector.blueprint_id = "another-blueprint".into();
+        assert_eq!(
+            repository
+                .query(&tenant, query.clone())
+                .await
+                .unwrap()
+                .compatible_devices,
+            0
+        );
+        assert_eq!(
+            repository
+                .query(&TenantId::new("another-tenant").unwrap(), query)
+                .await
+                .unwrap()
+                .selected_devices,
+            0
+        );
+    }
+}
 
 #[async_trait]
 impl AnalyticsRepository for TursoAnalyticsRepository {
@@ -90,8 +189,6 @@ impl AnalyticsRepository for TursoAnalyticsRepository {
             .transaction()
             .await
             .map_err(row::legacy_error)?;
-        let type_ids = serde_json::to_string(&query.scope.device_type_ids)
-            .map_err(|error| PersistenceError::Internal(error.to_string()))?;
         let fleet_ids = serde_json::to_string(&query.scope.fleet_ids)
             .map_err(|error| PersistenceError::Internal(error.to_string()))?;
         let requested_device_ids = serde_json::to_string(&query.scope.device_ids)
@@ -103,7 +200,6 @@ impl AnalyticsRepository for TursoAnalyticsRepository {
                 &count_sql,
                 params![
                     tenant.as_str(),
-                    type_ids.clone(),
                     fleet_ids.clone(),
                     requested_device_ids.clone()
                 ],
@@ -139,7 +235,7 @@ impl AnalyticsRepository for TursoAnalyticsRepository {
               ON r.tenant_id = c.tenant_id
              AND r.id = c.blueprint_revision_id
             WHERE {SCOPE_FILTER}
-              AND r.blueprint_id = ?5
+              AND r.blueprint_id = ?4
             "#
         );
         let mut compatible_rows = connection
@@ -147,7 +243,6 @@ impl AnalyticsRepository for TursoAnalyticsRepository {
                 &compatible_sql,
                 params![
                     tenant.as_str(),
-                    type_ids.clone(),
                     fleet_ids.clone(),
                     requested_device_ids.clone(),
                     query.metric.selector.blueprint_id.clone()
@@ -186,9 +281,9 @@ impl AnalyticsRepository for TursoAnalyticsRepository {
               ON r.tenant_id = c.tenant_id
              AND r.id = c.blueprint_revision_id
             WHERE {SCOPE_FILTER}
-              AND r.blueprint_id = ?5
+              AND r.blueprint_id = ?4
             ORDER BY d.name COLLATE BINARY, d.id COLLATE BINARY
-            LIMIT ?6
+            LIMIT ?5
             "#
         );
         let device_limit = i64::try_from(query.max_devices.saturating_add(1)).unwrap_or(i64::MAX);
@@ -197,7 +292,6 @@ impl AnalyticsRepository for TursoAnalyticsRepository {
                 &device_sql,
                 params![
                     tenant.as_str(),
-                    type_ids,
                     fleet_ids,
                     requested_device_ids,
                     query.metric.selector.blueprint_id.clone(),

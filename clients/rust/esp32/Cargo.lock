@@ -279,8 +279,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c673075a2e0e5f4a1dde27ce9dee1ea4558c7ffe648f576438a20ca1d2acc4b0"
 dependencies = [
  "iana-time-zone",
+ "js-sys",
  "num-traits",
  "serde",
+ "wasm-bindgen",
  "windows-link",
 ]
 
@@ -856,12 +858,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "extrittio-client-contract"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "extrittio-device-contract",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "uuid",
+]
+
+[[package]]
 name = "extrittio-client-esp32"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "embedded-svc",
  "embuild",
  "esp-idf-svc",
+ "extrittio-client-contract",
  "extrittio-common",
  "extrittio-sdk",
  "log",
@@ -879,6 +895,16 @@ dependencies = [
  "prost",
  "prost-build",
  "serde_json",
+]
+
+[[package]]
+name = "extrittio-device-contract"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -2925,6 +2951,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "uuid"
+version = "1.26.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ef6dac1e96601b4fb3acccccff2139741fcb757cb9a36089bf5be91cfb285ce"
+dependencies = [
+ "getrandom 0.4.2",
+ "js-sys",
+ "wasm-bindgen",
 ]
 
 [[package]]

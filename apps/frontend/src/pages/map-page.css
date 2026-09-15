@@ -45,3 +45,13 @@
     margin: -16px;
   }
 }
+.map-location-status {
+  position: absolute;
+  top: 12px;
+  left: 52px;
+  z-index: 500;
+  padding: 8px 12px;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  border-radius: 4px;
+}

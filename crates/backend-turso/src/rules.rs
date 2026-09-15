@@ -112,36 +112,6 @@ async fn insert_children(
 
 #[async_trait]
 impl RuleRepository for TursoRuleRepository {
-    async fn apply_legacy_zone_entry(
-        &self,
-        tenant: &TenantId,
-        entry: extrittio_backend_core::rule_snapshots::LegacyZoneEntry,
-    ) -> Result<(), PersistenceError> {
-        let mut writer = self.handles.lock_writer().await;
-        let tx = writer.transaction().await.map_err(row::legacy_error)?;
-        let found = tx
-            .execute(
-                "UPDATE devices SET id=id WHERE tenant_id=?1 AND id=?2",
-                params![tenant.as_str(), entry.device_id.as_str()],
-            )
-            .await
-            .map_err(row::legacy_error)?;
-        if found == 0 {
-            return Err(PersistenceError::NotFound);
-        }
-        let changed=tx.execute("INSERT INTO rule_zone_handoffs(tenant_id,rule_id,device_id,live_seen,legacy_created_at,legacy_event_id)
-            VALUES(?1,?2,?3,0,?4,?5) ON CONFLICT(tenant_id,rule_id,device_id) DO UPDATE SET legacy_created_at=excluded.legacy_created_at,legacy_event_id=excluded.legacy_event_id
-            WHERE rule_zone_handoffs.live_seen=0 AND (rule_zone_handoffs.legacy_created_at IS NULL OR rule_zone_handoffs.legacy_created_at<?4 OR (rule_zone_handoffs.legacy_created_at=?4 AND rule_zone_handoffs.legacy_event_id COLLATE BINARY < ?5 COLLATE BINARY))",params![tenant.as_str(),entry.rule_id.as_str(),entry.device_id.as_str(),entry.created_at.and_utc().timestamp_micros(),entry.event_id.as_str()]).await.map_err(row::legacy_error)?;
-        if changed > 0 {
-            if let Some(time) = entry.entered_at {
-                tx.execute("INSERT INTO rule_zone_entries(tenant_id,rule_id,device_id,entered_at) VALUES(?1,?2,?3,?4) ON CONFLICT(tenant_id,rule_id,device_id) DO UPDATE SET entered_at=excluded.entered_at",params![tenant.as_str(),entry.rule_id.as_str(),entry.device_id.as_str(),time.and_utc().timestamp_micros()]).await.map_err(row::legacy_error)?;
-            } else {
-                tx.execute("DELETE FROM rule_zone_entries WHERE tenant_id=?1 AND rule_id=?2 AND device_id=?3",params![tenant.as_str(),entry.rule_id.as_str(),entry.device_id.as_str()]).await.map_err(row::legacy_error)?;
-            }
-        }
-        tx.commit().await.map_err(row::legacy_error)
-    }
-
     async fn list(
         &self,
         t: &TenantId,

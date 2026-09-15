@@ -39,6 +39,8 @@ pub struct BlueprintSpec {
     pub schemas: Vec<SchemaDefinition>,
     #[serde(default)]
     pub streams: Vec<StreamDefinition>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<LocationDefinition>,
     #[serde(default)]
     pub commands: Vec<CommandDefinition>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -194,6 +196,30 @@ pub struct StreamDefinition {
 
 fn default_timestamp_source() -> String {
     "envelope.occurred_at".to_string()
+}
+
+/// Coordinates are taken from one event in the declared stream, in WGS84 degrees.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocationDefinition {
+    pub stream: String,
+    pub latitude_path: String,
+    pub longitude_path: String,
+    pub coordinate_system: CoordinateSystem,
+    pub unit: CoordinateUnit,
+    pub max_age: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CoordinateSystem {
+    Wgs84,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CoordinateUnit {
+    Degrees,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

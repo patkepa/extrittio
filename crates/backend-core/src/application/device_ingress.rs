@@ -23,7 +23,6 @@ fn prepare_evaluation(
         })?,
         tenant: context.identity.tenant_id().clone(),
         device_id: context.identity.device_id().to_owned(),
-        device_type_id: context.device_type_id,
         fleet_id: context.fleet_id,
         blueprint_id: context.blueprint_id.clone(),
         input: crate::rule_snapshots::RuleEvaluationInput::Status(StatusChange {

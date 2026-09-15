@@ -10,11 +10,41 @@ use crate::rules::{
 use crate::{ApplicationError, Clock, Permission, TenantContext};
 use std::sync::Arc;
 
-const TELEMETRY_FIELDS: &[&str] = &["temperature", "humidity", "battery_level"];
 const TELEMETRY_OPERATORS: &[&str] = &["gt", "gte", "lt", "lte", "eq", "neq"];
 const STATUS_VALUES: &[&str] = &["online", "offline", "warning"];
-const TARGET_TYPES: &[&str] = &["global", "blueprint", "device_type", "fleet", "device"];
+const TARGET_TYPES: &[&str] = &["global", "blueprint", "fleet", "device"];
 const TRIGGER_TYPES: &[&str] = &["telemetry", "device_status"];
+
+#[cfg(test)]
+mod metric_validation_tests {
+    use super::*;
+    struct NoWebhooks;
+    impl WebhookUrlPolicy for NoWebhooks {
+        fn validate(&self, _: &str) -> Result<(), ApplicationError> {
+            panic!("no webhook action")
+        }
+    }
+
+    #[test]
+    fn validates_arbitrary_stream_fields_and_rejects_fixed_names_or_nonfinite_values() {
+        let validate = |field: &str, threshold: &str| {
+            validate_rule(
+                &NoWebhooks,
+                "counter rule",
+                "telemetry",
+                "blueprint",
+                &Some("blueprint-a".into()),
+                0,
+                &[(field.into(), "gt".into(), threshold.into())],
+                &[("alert".into(), serde_json::json!({}))],
+            )
+        };
+        assert!(validate("machine.v2./counter/total", "9007199254740993").is_ok());
+        assert!(validate("temperature", "20").is_err());
+        assert!(validate("machine./counter", "NaN").is_err());
+        assert!(validate("machine./counter", "inf").is_err());
+    }
+}
 
 fn condition_records(conditions: Vec<(String, String, String)>) -> Vec<RuleConditionRecord> {
     conditions
@@ -280,14 +310,14 @@ fn validate_rule(
     }
     for (field, operator, value) in conditions {
         if trigger_type == "telemetry" {
-            if !TELEMETRY_FIELDS.contains(&field.as_str())
+            if crate::rule_engine::metric::MetricSelector::parse(field).is_none()
                 || !TELEMETRY_OPERATORS.contains(&operator.as_str())
             {
                 return Err(ApplicationError::InvalidInput(
                     "invalid telemetry condition field or operator".into(),
                 ));
             }
-            value.parse::<f32>().map_err(|_| {
+            crate::rule_engine::number::MetricNumber::parse(value).ok_or_else(|| {
                 ApplicationError::InvalidInput(format!(
                     "telemetry condition value '{value}' is not a valid number"
                 ))
@@ -337,30 +367,4 @@ fn validate_rule(
         }
     }
     Ok(())
-}
-
-/// System worker compatibility operations; never exposed through tenant routes.
-#[derive(Clone)]
-pub struct RuleRuntimeApplication {
-    repository: std::sync::Arc<dyn crate::rules::RuleRepository>,
-}
-impl RuleRuntimeApplication {
-    pub fn new(repository: std::sync::Arc<dyn crate::rules::RuleRepository>) -> Self {
-        Self { repository }
-    }
-    pub async fn apply_legacy_zone_entry(
-        &self,
-        tenant: &crate::TenantId,
-        entry: crate::rule_snapshots::LegacyZoneEntry,
-    ) -> Result<(), crate::ApplicationError> {
-        if entry.event_id.is_empty() {
-            return Err(crate::ApplicationError::InvalidInput(
-                "legacy zone update requires its durable event ID".into(),
-            ));
-        }
-        Ok(self
-            .repository
-            .apply_legacy_zone_entry(tenant, entry)
-            .await?)
-    }
 }

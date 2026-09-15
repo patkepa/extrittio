@@ -97,7 +97,7 @@ export const FirmwareSettings = () => {
                     )}
                   </td>
                   <td className="mono-data">
-                    {fw.blueprint_revision_id ?? `legacy:${fw.device_type_name}`}
+                    {fw.blueprint_revision_id}
                   </td>
                   <td>
                     <Tag minimal intent={fw.source === 'ci' ? 'primary' : 'none'}>

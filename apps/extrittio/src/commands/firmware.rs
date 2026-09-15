@@ -1,5 +1,6 @@
 use std::{fmt::Write as _, fs};
 
+use super::pagination::percent_encode;
 use anyhow::{Context, Result};
 use reqwest::{Method, multipart};
 use serde_json::json;
@@ -58,7 +59,6 @@ async fn upload_firmware(
         .mime_str("application/octet-stream")
         .context("failed to build firmware file part")?;
     let mut form = multipart::Form::new()
-        .text("device_type_id", args.device_type_id.to_string())
         .text("blueprint_revision_id", args.blueprint_revision_id)
         .part("file", file_part);
 
@@ -79,8 +79,11 @@ fn firmware_list_query(args: &ListFirmwareArgs) -> String {
         format!("limit={}", args.limit),
         format!("offset={}", args.offset),
     ];
-    if let Some(device_type_id) = args.device_type_id {
-        params.push(format!("device_type_id={device_type_id}"));
+    if let Some(revision) = &args.blueprint_revision_id {
+        params.push(format!(
+            "blueprint_revision_id={}",
+            percent_encode(revision)
+        ));
     }
     format!("?{}", params.join("&"))
 }
@@ -90,7 +93,7 @@ fn format_firmware_list(firmware: &Paginated<FirmwareUpdateResponse>) -> String 
     let _ = writeln!(
         out,
         "{:<8} {:<22} {:<28} {:<9} {:<10} FILE",
-        "ID", "VERSION", "DEVICE_TYPE", "BLOB", "SIZE"
+        "ID", "VERSION", "BLUEPRINT_REVISION", "BLOB", "SIZE"
     );
     for fw in &firmware.data {
         let _ = writeln!(
@@ -98,7 +101,7 @@ fn format_firmware_list(firmware: &Paginated<FirmwareUpdateResponse>) -> String 
             "{:<8} {:<22} {:<28} {:<9} {:<10} {}",
             fw.id,
             truncate(&fw.version, 22),
-            truncate(&fw.device_type_name, 28),
+            truncate(&fw.blueprint_revision_id, 28),
             if fw.has_blob { "yes" } else { "no" },
             fw.file_size
                 .map(|size| size.to_string())
@@ -119,10 +122,9 @@ fn format_firmware_list(firmware: &Paginated<FirmwareUpdateResponse>) -> String 
 
 fn format_firmware(fw: &FirmwareUpdateResponse) -> String {
     format!(
-        "id={}\ndevice_type={} ({})\nversion={}\nurl={}\nsha256={}\nfile={}\nsize={}",
+        "id={}\nblueprint_revision_id={}\nversion={}\nurl={}\nsha256={}\nfile={}\nsize={}",
         fw.id,
-        fw.device_type_name,
-        fw.device_type_id,
+        fw.blueprint_revision_id,
         fw.version,
         fw.url,
         fw.sha256.as_deref().unwrap_or("-"),

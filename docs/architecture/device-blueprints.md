@@ -100,8 +100,37 @@ eligibility is checked against the device's assigned revision.
 
 ## Compatibility surfaces
 
-The repository still contains fixed Protobuf telemetry, a compatibility
-`device_types` model, legacy telemetry views, and some CLI arguments based on
-device types. They support existing clients but are not the model for new
-features. Do not add new device-family-specific branches to these paths; new
-capabilities should be declared in a blueprint and consumed generically.
+The blueprint-only removal is in progress; see the
+[implementation plan](../design/blueprint-only-migration-plan.md). Fixed Protobuf
+telemetry is no longer ingested. Remaining legacy read views, device-type models
+and client interfaces are pending removal, not supported compatibility surfaces.
+
+## Rule metrics
+
+Rule metric fields currently use `streamKey./exact/json/pointer`, for example
+`environment./temperature`. Pointer segments are not converted to dots, so
+`environment./a/b` and `environment./a.b` identify different fields. Semantic
+labels do not add implicit rule aliases. Contract integer observations retain
+their integer type during rule comparison and in alert/webhook values. Public
+structured rule selectors are still being migrated.
+
+## Location bindings
+
+A blueprint can declare `spec.location` to bind one stream's numeric JSON field
+paths to a WGS84 position. For example, when `position` declares numeric
+`/coordinates/north` and `/coordinates/east` fields:
+
+```yaml
+location:
+  stream: position
+  latitudePath: /coordinates/north
+  longitudePath: /coordinates/east
+  coordinateSystem: wgs84
+  unit: degrees
+  maxAge: 30s
+```
+
+Contract-event geofence evaluation reads both coordinates from the same event.
+Missing, out-of-range, future-dated and expired observations are ignored; `(0, 0)`
+is valid. The binding and freshness limit participate in the contract hash and
+revision change analysis. Map/latest-position persistence is still being migrated.

@@ -2,38 +2,21 @@ use chrono::Utc;
 use serde_json::{Value, json};
 
 use super::cache::RuleCache;
-use super::compiler::{
-    compile_action, compile_condition, compile_operator, compile_telemetry_field, compile_trigger,
-};
+use super::compiler::{compile_action, compile_condition, compile_operator, compile_trigger};
 use super::geo::{point_in_circle, point_in_polygon};
-use super::model::{
-    ConditionField, ConditionOperator, RuleActionKind, RuleTrigger, TelemetryField,
-};
+use super::model::{ConditionField, ConditionOperator, RuleActionKind, RuleTrigger};
 use super::types::{CachedCondition, PendingAction, StatusChange, TelemetryData, ZoneGeometry};
 
 // ---------------------------------------------------------------------------
 // Field extraction
 // ---------------------------------------------------------------------------
 
-/// Maps a field name string to the corresponding value in `TelemetryData`.
-/// Returns `None` for unknown field names.
-pub fn get_field_value(field: &str, data: &TelemetryData) -> Option<f64> {
-    data.metrics.get(field).copied().or_else(|| {
-        compile_telemetry_field(field).and_then(|field| get_telemetry_field_value(field, data))
-    })
-}
-
-fn get_telemetry_field_value(field: TelemetryField, data: &TelemetryData) -> Option<f64> {
-    match field {
-        TelemetryField::Temperature => Some(data.temperature as f64),
-        TelemetryField::Humidity => Some(data.humidity as f64),
-        TelemetryField::BatteryLevel => Some(data.battery_level as f64),
-        TelemetryField::Latitude => data.latitude,
-        TelemetryField::Longitude => data.longitude,
-        TelemetryField::Speed => Some(data.speed as f64),
-        TelemetryField::Altitude => Some(data.altitude as f64),
-        TelemetryField::Heading => Some(data.heading as f64),
-    }
+/// Reads an observed metric. Missing fields never acquire a synthetic value.
+pub fn get_field_value(field: &str, data: &TelemetryData) -> Option<crate::number::MetricNumber> {
+    data.metrics
+        .get(field)
+        .copied()
+        .filter(|value| value.is_finite())
 }
 
 // ---------------------------------------------------------------------------
@@ -50,10 +33,20 @@ pub fn evaluate_condition(condition: &CachedCondition, data: &TelemetryData) -> 
     let Some(operator) = compile_operator(&condition.operator) else {
         return false;
     };
-    let Ok(threshold) = condition.value.parse::<f64>() else {
+    let Some(threshold) = crate::number::MetricNumber::parse(&condition.value) else {
         return false;
     };
-    compare_f64(value, threshold, operator)
+    let Some(ordering) = value.compare(threshold) else {
+        return false;
+    };
+    match operator {
+        ConditionOperator::Gt => ordering.is_gt(),
+        ConditionOperator::Gte => ordering.is_ge(),
+        ConditionOperator::Lt => ordering.is_lt(),
+        ConditionOperator::Lte => ordering.is_le(),
+        ConditionOperator::Eq => ordering.is_eq(),
+        ConditionOperator::Neq => !ordering.is_eq(),
+    }
 }
 
 /// Evaluates a single condition against a status string.
@@ -69,17 +62,6 @@ pub fn evaluate_status_condition(condition: &CachedCondition, new_status: &str) 
         ConditionOperator::Eq => condition.value == new_status,
         ConditionOperator::Neq => condition.value != new_status,
         _ => false,
-    }
-}
-
-fn compare_f64(left: f64, right: f64, operator: ConditionOperator) -> bool {
-    match operator {
-        ConditionOperator::Gt => left > right,
-        ConditionOperator::Gte => left >= right,
-        ConditionOperator::Lt => left < right,
-        ConditionOperator::Lte => left <= right,
-        ConditionOperator::Eq => (left - right).abs() < f64::EPSILON,
-        ConditionOperator::Neq => (left - right).abs() >= f64::EPSILON,
     }
 }
 
@@ -155,7 +137,7 @@ pub fn build_alert_message(conditions: &[CachedCondition], data: &TelemetryData)
         .map(|c| {
             let phrase = operator_phrase(&c.operator);
             if let Some(val) = get_field_value(&c.field, data) {
-                format!("{} ({}) {} {}", c.field, format_value(val), phrase, c.value)
+                format!("{} ({}) {} {}", c.field, val, phrase, c.value)
             } else {
                 format!("{} {} {}", c.field, phrase, c.value)
             }
@@ -181,7 +163,7 @@ fn triggered_value_for(conditions: &[CachedCondition], data: &TelemetryData) -> 
     conditions
         .first()
         .and_then(|c| get_field_value(&c.field, data))
-        .map(format_value)
+        .map(|value| value.to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -200,24 +182,16 @@ fn triggered_value_for(conditions: &[CachedCondition], data: &TelemetryData) -> 
 pub fn evaluate_telemetry_for_tenant_at(
     tenant_id: &str,
     device_id: &str,
-    device_type_id: i32,
     fleet_id: Option<i32>,
     blueprint_id: Option<&str>,
     data: &TelemetryData,
     cache: &RuleCache,
     now: chrono::NaiveDateTime,
 ) -> Vec<PendingAction> {
-    let device_type_str = device_type_id.to_string();
     let fleet_str = fleet_id.map(|f| f.to_string());
     let fleet_ref = fleet_str.as_deref();
 
-    let rules = cache.rules_for_tenant_device(
-        tenant_id,
-        device_id,
-        &device_type_str,
-        fleet_ref,
-        blueprint_id,
-    );
+    let rules = cache.rules_for_tenant_device(tenant_id, device_id, fleet_ref, blueprint_id);
 
     let mut actions: Vec<PendingAction> = Vec::new();
 
@@ -227,6 +201,16 @@ pub fn evaluate_telemetry_for_tenant_at(
             continue;
         }
 
+        // An event from another stream is not evidence of recovery. Evaluate
+        // only when this observation contains every metric the rule needs.
+        if rule.conditions.is_empty()
+            || rule
+                .conditions
+                .iter()
+                .any(|condition| get_field_value(&condition.field, data).is_none())
+        {
+            continue;
+        }
         let conditions_met = rule.conditions.iter().all(|c| evaluate_condition(c, data));
 
         let alert_key = (
@@ -304,11 +288,7 @@ pub fn evaluate_telemetry_for_tenant_at(
                                     "id": device_id,
                                 },
                                 "trigger": "telemetry",
-                                "triggered_values": {
-                                    "temperature": data.temperature,
-                                    "humidity": data.humidity,
-                                    "battery_level": data.battery_level,
-                                },
+                                "triggered_values": data.metrics,
                             });
                             let mut headers = std::collections::HashMap::new();
                             headers.insert(
@@ -374,24 +354,16 @@ pub fn evaluate_telemetry_for_tenant_at(
 pub fn evaluate_status_change_for_tenant_at(
     tenant_id: &str,
     device_id: &str,
-    device_type_id: i32,
     fleet_id: Option<i32>,
     blueprint_id: Option<&str>,
     change: &StatusChange,
     cache: &RuleCache,
     now: chrono::NaiveDateTime,
 ) -> Vec<PendingAction> {
-    let device_type_str = device_type_id.to_string();
     let fleet_str = fleet_id.map(|f| f.to_string());
     let fleet_ref = fleet_str.as_deref();
 
-    let rules = cache.rules_for_tenant_device(
-        tenant_id,
-        device_id,
-        &device_type_str,
-        fleet_ref,
-        blueprint_id,
-    );
+    let rules = cache.rules_for_tenant_device(tenant_id, device_id, fleet_ref, blueprint_id);
 
     let mut actions: Vec<PendingAction> = Vec::new();
 
@@ -569,7 +541,6 @@ pub fn valid_location(data: &TelemetryData) -> Option<(f64, f64)> {
 pub fn evaluate_geofence_for_tenant_at(
     tenant_id: &str,
     device_id: &str,
-    device_type_id: i32,
     fleet_id: Option<i32>,
     blueprint_id: Option<&str>,
     data: &TelemetryData,
@@ -580,17 +551,10 @@ pub fn evaluate_geofence_for_tenant_at(
         return Vec::new();
     };
 
-    let device_type_str = device_type_id.to_string();
     let fleet_str = fleet_id.map(|f| f.to_string());
     let fleet_ref = fleet_str.as_deref();
 
-    let rules = cache.rules_for_tenant_device(
-        tenant_id,
-        device_id,
-        &device_type_str,
-        fleet_ref,
-        blueprint_id,
-    );
+    let rules = cache.rules_for_tenant_device(tenant_id, device_id, fleet_ref, blueprint_id);
 
     let mut actions: Vec<PendingAction> = Vec::new();
 
@@ -800,7 +764,6 @@ pub fn is_in_cooldown_for_tenant(
 pub fn evaluate_telemetry_for_tenant(
     tenant_id: &str,
     device_id: &str,
-    device_type_id: i32,
     fleet_id: Option<i32>,
     blueprint_id: Option<&str>,
     data: &TelemetryData,
@@ -809,7 +772,6 @@ pub fn evaluate_telemetry_for_tenant(
     evaluate_telemetry_for_tenant_at(
         tenant_id,
         device_id,
-        device_type_id,
         fleet_id,
         blueprint_id,
         data,
@@ -821,7 +783,6 @@ pub fn evaluate_telemetry_for_tenant(
 pub fn evaluate_status_change_for_tenant(
     tenant_id: &str,
     device_id: &str,
-    device_type_id: i32,
     fleet_id: Option<i32>,
     blueprint_id: Option<&str>,
     change: &StatusChange,
@@ -830,7 +791,6 @@ pub fn evaluate_status_change_for_tenant(
     evaluate_status_change_for_tenant_at(
         tenant_id,
         device_id,
-        device_type_id,
         fleet_id,
         blueprint_id,
         change,
@@ -842,7 +802,6 @@ pub fn evaluate_status_change_for_tenant(
 pub fn evaluate_geofence_for_tenant(
     tenant_id: &str,
     device_id: &str,
-    device_type_id: i32,
     fleet_id: Option<i32>,
     blueprint_id: Option<&str>,
     data: &TelemetryData,
@@ -851,7 +810,6 @@ pub fn evaluate_geofence_for_tenant(
     evaluate_geofence_for_tenant_at(
         tenant_id,
         device_id,
-        device_type_id,
         fleet_id,
         blueprint_id,
         data,
@@ -878,15 +836,13 @@ mod tests {
 
     fn make_telemetry(temperature: f32, humidity: f32, battery_level: f32) -> TelemetryData {
         TelemetryData {
-            temperature,
-            humidity,
-            battery_level,
             latitude: None,
             longitude: None,
-            speed: 0.0,
-            altitude: 0.0,
-            heading: 0.0,
-            metrics: std::collections::BTreeMap::new(),
+            metrics: std::collections::BTreeMap::from([
+                ("temperature".into(), f64::from(temperature).into()),
+                ("humidity".into(), f64::from(humidity).into()),
+                ("battery_level".into(), f64::from(battery_level).into()),
+            ]),
         }
     }
 
@@ -980,7 +936,7 @@ mod tests {
     }
 
     fn evaluate_geofence(data: &TelemetryData, cache: &RuleCache) -> Vec<PendingAction> {
-        evaluate_geofence_for_tenant(DEFAULT_TENANT_ID, "dev1", 1, None, None, data, cache)
+        evaluate_geofence_for_tenant(DEFAULT_TENANT_ID, "dev1", None, None, data, cache)
     }
 
     fn is_in_cooldown(
@@ -1000,25 +956,15 @@ mod tests {
 
     fn evaluate_telemetry(
         device_id: &str,
-        device_type_id: i32,
         fleet_id: Option<i32>,
         data: &TelemetryData,
         cache: &RuleCache,
     ) -> Vec<PendingAction> {
-        evaluate_telemetry_for_tenant(
-            DEFAULT_TENANT_ID,
-            device_id,
-            device_type_id,
-            fleet_id,
-            None,
-            data,
-            cache,
-        )
+        evaluate_telemetry_for_tenant(DEFAULT_TENANT_ID, device_id, fleet_id, None, data, cache)
     }
 
     fn evaluate_status_change(
         device_id: &str,
-        device_type_id: i32,
         fleet_id: Option<i32>,
         change: &StatusChange,
         cache: &RuleCache,
@@ -1026,7 +972,6 @@ mod tests {
         evaluate_status_change_for_tenant(
             DEFAULT_TENANT_ID,
             device_id,
-            device_type_id,
             fleet_id,
             None,
             change,
@@ -1041,25 +986,85 @@ mod tests {
     #[test]
     fn test_get_field_value_temperature() {
         let data = make_telemetry(22.5, 60.0, 80.0);
-        assert_eq!(get_field_value("temperature", &data), Some(22.5));
+        assert_eq!(get_field_value("temperature", &data), Some(22.5.into()));
     }
 
     #[test]
     fn test_get_field_value_humidity() {
         let data = make_telemetry(22.5, 60.0, 80.0);
-        assert_eq!(get_field_value("humidity", &data), Some(60.0));
+        assert_eq!(get_field_value("humidity", &data), Some(60.0.into()));
     }
 
     #[test]
     fn test_get_field_value_battery_level() {
         let data = make_telemetry(22.5, 60.0, 80.0);
-        assert_eq!(get_field_value("battery_level", &data), Some(80.0));
+        assert_eq!(get_field_value("battery_level", &data), Some(80.0.into()));
     }
 
     #[test]
     fn test_get_field_value_unknown_field() {
         let data = make_telemetry(22.5, 60.0, 80.0);
         assert_eq!(get_field_value("pressure", &data), None);
+    }
+
+    #[test]
+    fn integer_rules_compare_and_report_large_counters_exactly() {
+        let data = TelemetryData {
+            latitude: None,
+            longitude: None,
+            metrics: std::collections::BTreeMap::from([(
+                "machine./counter".into(),
+                crate::number::MetricNumber::Integer(9_007_199_254_740_993),
+            )]),
+        };
+        let condition = make_condition("machine./counter", "gt", "9007199254740992");
+        assert!(evaluate_condition(&condition, &data));
+        assert!(!evaluate_condition(
+            &make_condition("machine./counter", "eq", "9007199254740992"),
+            &data
+        ));
+        assert_eq!(
+            triggered_value_for(&[condition], &data).as_deref(),
+            Some("9007199254740993")
+        );
+    }
+
+    #[test]
+    fn absent_metrics_do_not_trigger_even_for_zero_or_inequality() {
+        let data = TelemetryData {
+            latitude: None,
+            longitude: None,
+            metrics: Default::default(),
+        };
+        for field in ["temperature", "battery_level", "environment.co2_ppm"] {
+            assert_eq!(get_field_value(field, &data), None);
+            for (operator, threshold) in [("eq", "0"), ("lt", "20"), ("neq", "1")] {
+                assert!(!evaluate_condition(
+                    &make_condition(field, operator, threshold),
+                    &data
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn observed_zero_is_distinct_from_absent_and_nonfinite_metrics() {
+        let mut data = TelemetryData {
+            latitude: None,
+            longitude: None,
+            metrics: Default::default(),
+        };
+        let condition = make_condition("process.pressure", "eq", "0");
+        assert!(!evaluate_condition(&condition, &data));
+        data.metrics.insert(condition.field.clone(), 0.0.into());
+        assert!(evaluate_condition(&condition, &data));
+        for invalid in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            data.metrics.insert(condition.field.clone(), invalid.into());
+            assert!(!evaluate_condition(
+                &make_condition(&condition.field, "neq", "0"),
+                &data
+            ));
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -1161,7 +1166,7 @@ mod tests {
     fn evaluates_contract_defined_metric_field() {
         let mut data = make_telemetry(0.0, 0.0, 0.0);
         data.metrics
-            .insert("environment.co2_ppm".to_string(), 1_250.0);
+            .insert("environment.co2_ppm".to_string(), 1_250.0.into());
         let condition = make_condition("environment.co2_ppm", "gt", "1000");
         assert!(evaluate_condition(&condition, &data));
     }
@@ -1345,7 +1350,7 @@ mod tests {
         cache.insert_rule(rule);
 
         let data = make_telemetry(85.0, 50.0, 90.0);
-        let actions = evaluate_telemetry("dev1", 1, None, &data, &cache);
+        let actions = evaluate_telemetry("dev1", None, &data, &cache);
 
         // Should produce CreateAlert + UpdateCooldown
         assert_eq!(actions.len(), 2);
@@ -1376,7 +1381,7 @@ mod tests {
         cache.insert_rule(rule);
 
         let data = make_telemetry(75.0, 50.0, 90.0);
-        let actions = evaluate_telemetry("dev1", 1, None, &data, &cache);
+        let actions = evaluate_telemetry("dev1", None, &data, &cache);
 
         assert!(actions.is_empty());
     }
@@ -1400,7 +1405,7 @@ mod tests {
 
         // temperature OK, humidity NOT → no fire
         let data_no_fire = make_telemetry(85.0, 70.0, 90.0);
-        let actions = evaluate_telemetry("dev1", 1, None, &data_no_fire, &cache);
+        let actions = evaluate_telemetry("dev1", None, &data_no_fire, &cache);
         assert!(
             actions.is_empty(),
             "Should not fire when only one condition matches"
@@ -1408,7 +1413,7 @@ mod tests {
 
         // Both conditions met → fire
         let data_fire = make_telemetry(85.0, 90.0, 90.0);
-        let actions = evaluate_telemetry("dev1", 1, None, &data_fire, &cache);
+        let actions = evaluate_telemetry("dev1", None, &data_fire, &cache);
         assert!(!actions.is_empty(), "Should fire when all conditions match");
     }
 
@@ -1438,7 +1443,7 @@ mod tests {
         );
 
         let data = make_telemetry(85.0, 50.0, 90.0);
-        let actions = evaluate_telemetry("dev1", 1, None, &data, &cache);
+        let actions = evaluate_telemetry("dev1", None, &data, &cache);
         assert!(
             actions.is_empty(),
             "Should not fire while in cooldown window"
@@ -1469,9 +1474,16 @@ mod tests {
             "alert-42".to_string(),
         );
 
+        let unrelated = TelemetryData {
+            latitude: None,
+            longitude: None,
+            metrics: std::collections::BTreeMap::from([("process.pressure".into(), 1.0.into())]),
+        };
+        assert!(evaluate_telemetry("dev1", None, &unrelated, &cache).is_empty());
+
         // Temperature now below threshold.
         let data = make_telemetry(70.0, 50.0, 90.0);
-        let actions = evaluate_telemetry("dev1", 1, None, &data, &cache);
+        let actions = evaluate_telemetry("dev1", None, &data, &cache);
 
         assert_eq!(actions.len(), 1);
         assert!(matches!(&actions[0],
@@ -1505,45 +1517,13 @@ mod tests {
 
         // Conditions still met (temperature still high).
         let data = make_telemetry(90.0, 50.0, 90.0);
-        let actions = evaluate_telemetry("dev1", 1, None, &data, &cache);
+        let actions = evaluate_telemetry("dev1", None, &data, &cache);
 
         assert_eq!(actions.len(), 1);
         assert!(matches!(&actions[0],
             PendingAction::UpdateAlertValue { alert_id, triggered_value, .. }
                 if alert_id == "alert-99" && triggered_value == "90"
         ));
-    }
-
-    #[test]
-    fn test_evaluate_telemetry_device_type_targeting() {
-        let mut cache = empty_cache();
-        // Rule targets device_type_id = "2".
-        let rule = make_rule(
-            "r1",
-            "telemetry",
-            "device_type",
-            Some("2"),
-            0,
-            vec![make_condition("temperature", "gt", "80")],
-            vec![make_alert_action("warning")],
-        );
-        cache.insert_rule(rule);
-
-        let data = make_telemetry(85.0, 50.0, 90.0);
-
-        // Device of type 1 → rule should NOT apply.
-        let actions_type1 = evaluate_telemetry("dev1", 1, None, &data, &cache);
-        assert!(
-            actions_type1.is_empty(),
-            "Rule should not apply to device_type 1"
-        );
-
-        // Device of type 2 → rule SHOULD apply.
-        let actions_type2 = evaluate_telemetry("dev1", 2, None, &data, &cache);
-        assert!(
-            !actions_type2.is_empty(),
-            "Rule should apply to device_type 2"
-        );
     }
 
     #[test]
@@ -1564,7 +1544,6 @@ mod tests {
             evaluate_telemetry_for_tenant(
                 DEFAULT_TENANT_ID,
                 "dev1",
-                1,
                 None,
                 Some("blueprint-2"),
                 &data,
@@ -1576,7 +1555,6 @@ mod tests {
             !evaluate_telemetry_for_tenant(
                 DEFAULT_TENANT_ID,
                 "dev1",
-                1,
                 None,
                 Some("blueprint-1"),
                 &data,
@@ -1612,8 +1590,7 @@ mod tests {
         ));
 
         let data = make_telemetry(90.0, 50.0, 90.0);
-        let actions =
-            evaluate_telemetry_for_tenant("tenant-b", "dev1", 1, None, None, &data, &cache);
+        let actions = evaluate_telemetry_for_tenant("tenant-b", "dev1", None, None, &data, &cache);
 
         assert_eq!(actions.len(), 2);
         assert!(actions.iter().any(|a| matches!(a,
@@ -1640,7 +1617,7 @@ mod tests {
         cache.insert_rule(rule);
 
         let data = make_telemetry(85.0, 50.0, 90.0);
-        let actions = evaluate_telemetry("dev1", 1, None, &data, &cache);
+        let actions = evaluate_telemetry("dev1", None, &data, &cache);
 
         let has_webhook = actions.iter().any(|a| {
             matches!(a, PendingAction::SendWebhook { url, .. } if url == "https://example.com/hook")
@@ -1663,7 +1640,7 @@ mod tests {
         cache.insert_rule(rule);
 
         let data = make_telemetry(85.0, 50.0, 90.0);
-        let actions = evaluate_telemetry("dev1", 1, None, &data, &cache);
+        let actions = evaluate_telemetry("dev1", None, &data, &cache);
 
         let has_command = actions.iter().any(|a| {
             matches!(a, PendingAction::SendCommand { device_id, command, .. }
@@ -1694,7 +1671,7 @@ mod tests {
             old_status: "online".to_string(),
             new_status: "offline".to_string(),
         };
-        let actions = evaluate_status_change("dev1", 1, None, &change, &cache);
+        let actions = evaluate_status_change("dev1", None, &change, &cache);
 
         assert!(!actions.is_empty());
         let has_create = actions.iter().any(|a| {
@@ -1722,7 +1699,7 @@ mod tests {
             old_status: "offline".to_string(),
             new_status: "online".to_string(), // not "offline"
         };
-        let actions = evaluate_status_change("dev1", 1, None, &change, &cache);
+        let actions = evaluate_status_change("dev1", None, &change, &cache);
         assert!(actions.is_empty());
     }
 
@@ -1755,7 +1732,7 @@ mod tests {
             old_status: "offline".to_string(),
             new_status: "online".to_string(),
         };
-        let actions = evaluate_status_change("dev1", 1, None, &change, &cache);
+        let actions = evaluate_status_change("dev1", None, &change, &cache);
 
         assert_eq!(actions.len(), 1);
         assert!(matches!(&actions[0],
@@ -1781,7 +1758,7 @@ mod tests {
             old_status: "online".to_string(),
             new_status: "offline".to_string(),
         };
-        let actions = evaluate_status_change("dev1", 1, None, &change, &cache);
+        let actions = evaluate_status_change("dev1", None, &change, &cache);
 
         let has_webhook = actions.iter().any(|a| {
             matches!(a, PendingAction::SendWebhook { url, .. }
@@ -1808,7 +1785,7 @@ mod tests {
             old_status: "online".to_string(),
             new_status: "offline".to_string(),
         };
-        let actions = evaluate_status_change("dev1", 1, None, &change, &cache);
+        let actions = evaluate_status_change("dev1", None, &change, &cache);
 
         let has_command = actions.iter().any(
             |a| matches!(a, PendingAction::SendCommand { command, .. } if command == "reboot"),
@@ -1834,7 +1811,7 @@ mod tests {
             old_status: "online".to_string(),
             new_status: "offline".to_string(),
         };
-        let actions = evaluate_status_change("dev1", 1, None, &change, &cache);
+        let actions = evaluate_status_change("dev1", None, &change, &cache);
 
         let alert_msg = actions.iter().find_map(|a| {
             if let PendingAction::CreateAlert { message, .. } = a {
@@ -1862,7 +1839,7 @@ mod tests {
         cache.insert_rule(rule);
 
         let data = make_telemetry(85.0, 50.0, 90.0);
-        let actions = evaluate_telemetry("dev1", 1, None, &data, &cache);
+        let actions = evaluate_telemetry("dev1", None, &data, &cache);
         assert!(
             actions.is_empty(),
             "evaluate_telemetry should ignore status rules"
@@ -1888,7 +1865,7 @@ mod tests {
             old_status: "online".to_string(),
             new_status: "offline".to_string(),
         };
-        let actions = evaluate_status_change("dev1", 1, None, &change, &cache);
+        let actions = evaluate_status_change("dev1", None, &change, &cache);
         assert!(
             actions.is_empty(),
             "evaluate_status_change should ignore telemetry rules"

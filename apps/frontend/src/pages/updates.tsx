@@ -69,7 +69,7 @@ function formatTime(value: string | null): string {
   return date.toLocaleString();
 }
 
-function formatDuration(startValue: string, endValue: string | null): string {
+function formatDuration(startValue: string, endValue: string | null | undefined): string {
   const start = new Date(startValue).getTime();
   const end = endValue ? new Date(endValue).getTime() : Date.now();
 
@@ -264,7 +264,7 @@ function UpdateRow({ deployment, onDeviceClick }: UpdateRowProps) {
         <Tag minimal intent="primary" className="mono-data">
           v{deployment.firmware_version}
         </Tag>
-        <div className="updates-device-meta">{deployment.device_type_name}</div>
+        <div className="updates-device-meta">{deployment.blueprint_revision_id}</div>
       </td>
       <td>
         <Tag minimal intent={intent}>

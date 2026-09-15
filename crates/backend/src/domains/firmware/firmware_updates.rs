@@ -25,8 +25,6 @@ use extrittio_backend_core::firmware::{FirmwareRecord, GlobalOtaDeploymentRecord
 #[derive(Debug, Serialize, ToSchema)]
 pub struct FirmwareUpdateResponse {
     pub id: i32,
-    pub device_type_id: i32,
-    pub device_type_name: String,
     pub version: String,
     pub url: String,
     pub sha256: Option<String>,
@@ -41,7 +39,7 @@ pub struct FirmwareUpdateResponse {
     pub build_timestamp: Option<String>,
     pub changelog: Option<String>,
     pub source: String,
-    pub blueprint_revision_id: Option<String>,
+    pub blueprint_revision_id: String,
     pub compatibility: serde_json::Value,
     pub update_strategy: Option<String>,
 }
@@ -56,13 +54,40 @@ pub struct NewFirmwareUpdateRequest {
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
+#[serde(deny_unknown_fields)]
 pub struct ListFirmwareUpdatesQuery {
-    /// Filter by device type.
-    pub device_type_id: Option<i32>,
     /// Filter by an immutable device blueprint revision.
     pub blueprint_revision_id: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
+}
+
+#[cfg(test)]
+mod firmware_query_tests {
+    use super::ListFirmwareUpdatesQuery;
+    use axum::{extract::Query, http::Uri};
+
+    #[test]
+    fn accepts_blueprint_filter_and_rejects_retired_device_type_filter() {
+        let uri: Uri =
+            "/api/v1/firmware-updates?blueprint_revision_id=revision-1&limit=10&offset=20"
+                .parse()
+                .unwrap();
+        let query = Query::<ListFirmwareUpdatesQuery>::try_from_uri(&uri)
+            .unwrap()
+            .0;
+        assert_eq!(query.blueprint_revision_id.as_deref(), Some("revision-1"));
+        assert_eq!(query.limit, Some(10));
+        assert_eq!(query.offset, Some(20));
+        for path in [
+            "/api/v1/firmware-updates?device_type_id=1",
+            "/api/v1/firmware-updates?blueprint_revision_id=revision-1&device_type_id=1",
+        ] {
+            assert!(
+                Query::<ListFirmwareUpdatesQuery>::try_from_uri(&path.parse().unwrap()).is_err()
+            );
+        }
+    }
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -85,8 +110,8 @@ pub struct GlobalOtaDeploymentResponse {
     pub device_name: String,
     pub device_status: String,
     pub current_firmware: String,
-    pub device_type_id: i32,
-    pub device_type_name: String,
+    /// Revision targeted by the deployed firmware artifact.
+    pub blueprint_revision_id: String,
     pub fleet_id: Option<i32>,
     pub fleet_name: Option<String>,
     pub firmware_update_id: i32,
@@ -101,8 +126,6 @@ impl From<FirmwareRecord> for FirmwareUpdateResponse {
     fn from(firmware: FirmwareRecord) -> Self {
         Self {
             id: firmware.id,
-            device_type_id: firmware.device_type_id,
-            device_type_name: firmware.device_type_name,
             version: firmware.version,
             url: firmware.url,
             sha256: firmware.sha256,
@@ -134,8 +157,7 @@ impl From<GlobalOtaDeploymentRecord> for GlobalOtaDeploymentResponse {
             device_name: deployment.device_name,
             device_status: deployment.device_status,
             current_firmware: deployment.current_firmware,
-            device_type_id: deployment.device_type_id,
-            device_type_name: deployment.device_type_name,
+            blueprint_revision_id: deployment.blueprint_revision_id,
             fleet_id: deployment.fleet_id,
             fleet_name: deployment.fleet_name,
             firmware_update_id: deployment.firmware_update_id,
@@ -174,10 +196,6 @@ pub fn router(max_firmware_size: usize) -> Router<Arc<AppState>> {
             get(download_firmware_blob),
         )
         .route(
-            "/api/v1/firmware-updates/next-version/{device_type_id}",
-            get(get_next_version),
-        )
-        .route(
             "/api/v1/firmware-updates/next-version/blueprint/{revision_id}",
             get(get_next_blueprint_version),
         )
@@ -210,7 +228,6 @@ pub(crate) async fn list_firmware_updates(
         .firmware()
         .list(
             &ctx.tenant_context(),
-            params.device_type_id,
             params.blueprint_revision_id,
             limit,
             offset,
@@ -300,7 +317,6 @@ pub(crate) async fn create_firmware_update(
         .prepare_blueprint(
             &ctx.tenant_context(),
             state.application().device_blueprints(),
-            state.application().device_types(),
             &body.blueprint_revision_id,
         )
         .await?;
@@ -320,13 +336,7 @@ pub(crate) async fn create_firmware_update(
         .firmware()
         .create(
             &ctx.tenant_context(),
-            prepared.into_record(
-                body.blueprint_revision_id,
-                version,
-                body.url,
-                body.sha256,
-                body.description,
-            ),
+            prepared.into_record(version, body.url, body.sha256, body.description),
             None,
         )
         .await?;
@@ -419,7 +429,6 @@ pub(crate) async fn upload_firmware_update(
         .prepare_blueprint(
             &ctx.tenant_context(),
             state.application().device_blueprints(),
-            state.application().device_types(),
             &blueprint_revision_id,
         )
         .await?;
@@ -451,13 +460,7 @@ pub(crate) async fn upload_firmware_update(
         &ctx,
         state.application().firmware(),
         state.firmware_store(),
-        prepared.into_record(
-            blueprint_revision_id,
-            version,
-            String::new(),
-            None,
-            description,
-        ),
+        prepared.into_record(version, String::new(), None, description),
         filename,
         file_data,
     )
@@ -555,33 +558,6 @@ pub(crate) async fn delete_firmware_update(
     .await?;
 
     Ok(StatusCode::NO_CONTENT)
-}
-
-/// Get the next auto-generated version for a device type.
-#[utoipa::path(
-    get,
-    path = "/api/v1/firmware-updates/next-version/{device_type_id}",
-    tag = "firmware",
-    security(("bearer_auth" = [])),
-    params(("device_type_id" = i32, Path, description = "Device type ID")),
-    responses(
-        (status = 200, description = "Next version string", body = NextVersionResponse),
-    ),
-)]
-pub(crate) async fn get_next_version(
-    State(state): State<Arc<AppState>>,
-    Extension(ctx): Extension<RequestContext>,
-    Path(device_type_id): Path<i32>,
-) -> Result<Json<NextVersionResponse>, AppError> {
-    let version = state
-        .application()
-        .firmware()
-        .next_version(&ctx.tenant_context(), device_type_id)
-        .await?;
-
-    Ok(Json(NextVersionResponse {
-        next_version: version,
-    }))
 }
 
 /// Get the next auto-generated version for a published blueprint revision.

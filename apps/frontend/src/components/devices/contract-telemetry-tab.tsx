@@ -6,7 +6,7 @@ import type { DeviceContract, DeviceMetric } from '../../types/api';
 import { hexToRgba } from '../../utils/color';
 import { UPlotChart, type UPlotXRange } from '../charts/UPlot';
 import { toAlignedData, tooltipPlugin } from '../charts/uplot-helpers';
-import { computeSince, RANGE_OPTIONS, RANGES, type RangeKey } from './telemetry-profiles';
+import { computeSince, RANGE_OPTIONS, RANGES, type RangeKey } from './telemetry-ranges';
 import {
   contractMetricDefinitions,
   metricKey,

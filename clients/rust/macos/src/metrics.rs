@@ -40,14 +40,13 @@ impl MetricsCollector {
         self.networks.refresh(true);
     }
 
-    /// Battery level as a percentage (0.0-100.0). Returns 0.0 if no battery.
-    pub fn battery_level(&self) -> f32 {
+    /// Battery level as a percentage; absent when no battery is available.
+    pub fn battery_level(&self) -> Option<f32> {
         self.first_battery()
             .map(|b| b.state_of_charge().get::<battery::units::ratio::percent>())
-            .unwrap_or(0.0)
     }
 
-    /// Collect all extended metrics into a string-string map for the metadata field.
+    /// Collect system readings; the event builder preserves numeric JSON types.
     pub fn extended_metrics(&self) -> HashMap<String, String> {
         let mut m = HashMap::new();
 
@@ -78,7 +77,7 @@ impl MetricsCollector {
         m.insert("net_rx_bytes".into(), rx_total.to_string());
         m.insert("net_tx_bytes".into(), tx_total.to_string());
 
-        // Battery — all keys always present, degrading to 0.0/"unknown" if no battery
+        // Battery readings are absent on devices without a battery.
         if let Some(bat) = self.first_battery() {
             let state = match bat.state() {
                 battery::State::Charging => "charging",
@@ -87,19 +86,13 @@ impl MetricsCollector {
                 _ => "unknown",
             };
             m.insert("battery_state".into(), state.into());
-            m.insert(
-                "battery_cycles".into(),
-                bat.cycle_count().unwrap_or(0).to_string(),
-            );
+            if let Some(cycles) = bat.cycle_count() {
+                m.insert("battery_cycles".into(), cycles.to_string());
+            }
             let health = bat
                 .state_of_health()
                 .get::<battery::units::ratio::percent>();
             m.insert("battery_health_percent".into(), format!("{health:.1}"));
-        } else {
-            // Desktop Macs (Mac Mini/Studio/Pro) — graceful degradation per spec
-            m.insert("battery_state".into(), "unknown".into());
-            m.insert("battery_cycles".into(), "0".into());
-            m.insert("battery_health_percent".into(), "0.0".into());
         }
 
         // System info

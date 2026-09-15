@@ -1,10 +1,6 @@
-import type { Device, DeviceType, Fleet } from '../../types/api';
-import { STATUS_COLORS, FLEET_COLOR, DEFAULT_COLOR, TYPE_ABBREVS } from './constants';
+import type { Device, Fleet } from '../../types/api';
+import { STATUS_COLORS, FLEET_COLOR, DEFAULT_COLOR } from './constants';
 import { getUptimeArcAngle, getHealthTier } from './health-utils';
-
-function getTypeAbbrev(deviceTypeName: string): string {
-  return TYPE_ABBREVS[deviceTypeName.toLowerCase()] ?? '?';
-}
 
 // --- Graph types ---
 export interface GraphNode {
@@ -22,7 +18,6 @@ export interface GraphNode {
   deviceTypeName?: string;
   deviceTypeIcon?: string;
   deviceTypeColor?: string;
-  typeAbbrev?: string;
   /** Centers the initial viewport on this node instead of fitting every node. */
   initialViewportAnchor?: boolean;
   // Health data (computed from last_seen_at / uptime_seconds)
@@ -193,15 +188,11 @@ export function buildForceGraphData(
   devices: Device[],
   fleets: Fleet[],
   prevNodes?: GraphNode[],
-  deviceTypes?: DeviceType[],
 ): GraphData {
   const nodes: GraphNode[] = [];
   const links: GraphLink[] = [];
   const nodeMap = new Map<string, GraphNode>();
   const deviceNodeIdByDeviceId = new Map<string, string>();
-  const deviceTypeByName = new Map(
-    (deviceTypes ?? []).map((deviceType) => [normalizeDeviceTypeKey(deviceType.name), deviceType]),
-  );
 
   const prevNodeMap = new Map<string, GraphNode>();
   if (prevNodes) {
@@ -335,10 +326,9 @@ export function buildForceGraphData(
       color: STATUS_COLORS[device.status] ?? DEFAULT_COLOR,
       device,
       status: device.status,
-      deviceTypeName: device.device_type_name,
-      deviceTypeIcon: device.device_type_icon,
-      deviceTypeColor: device.device_type_color_hex,
-      typeAbbrev: getTypeAbbrev(device.device_type_name),
+      deviceTypeName: device.blueprint_name,
+      deviceTypeIcon: device.blueprint_icon ?? undefined,
+      deviceTypeColor: device.blueprint_color ?? undefined,
       lastSeenTimestamp,
       uptimeSeconds,
       uptimeArcAngle: getUptimeArcAngle(uptimeSeconds),
@@ -386,7 +376,6 @@ export function buildForceGraphData(
           const prev = prevNodeMap.get(targetNodeId);
           const sourceLayout = deviceLayoutById.get(device.id);
           const deviceTypeName = connection.device_type ?? connection.connection_type;
-          const deviceType = deviceTypeByName.get(normalizeDeviceTypeKey(deviceTypeName));
           const visual = getConnectionVisual(connection);
           const node: GraphNode = {
             ...prev,
@@ -394,14 +383,12 @@ export function buildForceGraphData(
             name: getConnectionLabel(connection),
             type: 'external',
             val: 2,
-            color:
-              STATUS_COLORS[connection.status ?? ''] ?? deviceType?.color_hex ?? EXTERNAL_COLOR,
+            color: STATUS_COLORS[connection.status ?? ''] ?? EXTERNAL_COLOR,
             connection,
             status: connection.status ?? 'external',
             deviceTypeName,
-            deviceTypeIcon: deviceType?.icon ?? visual.icon,
-            deviceTypeColor: deviceType?.color_hex ?? visual.color,
-            typeAbbrev: '?',
+            deviceTypeIcon: visual.icon,
+            deviceTypeColor: visual.color,
             neighbors: [],
             links: [],
             layoutX: sourceLayout ? sourceLayout.x + 72 : undefined,

@@ -9,8 +9,7 @@ use extrittio_backend_core::PersistenceError;
 use extrittio_backend_core::TenantId;
 use extrittio_backend_core::alerts::AlertRepository;
 use extrittio_backend_core::alerts::{
-    AlertListFilter, AlertRecord, AlertTransition, AlertTransitionOutcome, CooldownRecord,
-    NewRuleAlertRecord,
+    AlertListFilter, AlertRecord, AlertTransition, AlertTransitionOutcome, NewRuleAlertRecord,
 };
 
 use crate::{PostgresExecutor, PostgresPool};
@@ -26,6 +25,51 @@ impl PostgresAlertRepository {
     }
 }
 use crate::error::map_diesel_error;
+
+#[cfg(test)]
+mod fresh_database_tests {
+    use super::*;
+    use diesel::connection::SimpleConnection;
+
+    #[test]
+    #[ignore = "requires EXTRITTIO_TEST_EMPTY_POSTGRES_URL for a disposable empty database"]
+    fn cooldowns_and_reactivation_use_the_fresh_schema() {
+        let url = std::env::var("EXTRITTIO_TEST_EMPTY_POSTGRES_URL").unwrap();
+        let mut connection = PgConnection::establish(&url).unwrap();
+        connection.test_transaction::<_, diesel::result::Error, _>(|connection| {
+            assert_eq!(crate::run_pending_migrations(connection).unwrap().len(), 1);
+            connection.batch_execute(
+                "INSERT INTO devices(id,name) VALUES('device','Device');
+                 INSERT INTO rules(id,name,trigger_type,target_type) VALUES('rule','Rule','telemetry','global');
+                 INSERT INTO alerts(id,rule_id,device_id,severity,status,message)
+                 VALUES('alert','rule','device','warning','resolved','Test');",
+            )?;
+            let newest = chrono::DateTime::from_timestamp(20, 0).unwrap().naive_utc();
+            let mut cooldown = RuleCooldown {
+                tenant_id: "default".into(), rule_id: "rule".into(),
+                device_id: "device".into(), last_fired_at: newest,
+            };
+            // Same device-lock protocol as ingestion and manual transitions.
+            connection.batch_execute("SELECT id FROM devices WHERE id='device' FOR UPDATE")?;
+            alert_repo::upsert_cooldown(connection, &cooldown)?;
+            cooldown.last_fired_at = chrono::DateTime::from_timestamp(10, 0).unwrap().naive_utc();
+            alert_repo::upsert_cooldown(connection, &cooldown)?;
+            use crate::schema::rule_cooldowns;
+            let stored = rule_cooldowns::table.select(rule_cooldowns::last_fired_at)
+                .first::<NaiveDateTime>(connection)?;
+            assert_eq!(stored, newest);
+            assert!(matches!(transition_alert(connection, "default", "alert", AlertTransition::Reactivate)?, AlertTransitionOutcome::Updated(_)));
+            assert_eq!(rule_cooldowns::table.count().get_result::<i64>(connection)?, 0);
+            let rollback = connection.transaction::<(), diesel::result::Error, _>(|connection| {
+                alert_repo::upsert_cooldown(connection, &cooldown)?;
+                Err(diesel::result::Error::RollbackTransaction)
+            });
+            assert!(matches!(rollback, Err(diesel::result::Error::RollbackTransaction)));
+            assert_eq!(rule_cooldowns::table.count().get_result::<i64>(connection)?, 0);
+            Ok(())
+        });
+    }
+}
 
 fn alert_record(alert: Alert) -> AlertRecord {
     AlertRecord {
@@ -127,11 +171,6 @@ fn transition_alert(
                 },
             )?,
             AlertTransition::Reactivate => {
-                diesel::sql_query("INSERT INTO rule_cooldown_resets(tenant_id,rule_id,device_id,reset_at) VALUES($1,$2,$3,$4) ON CONFLICT(tenant_id,rule_id,device_id) DO UPDATE SET reset_at=GREATEST(rule_cooldown_resets.reset_at,EXCLUDED.reset_at)")
-                    .bind::<diesel::sql_types::Text,_>(tenant_id)
-                    .bind::<diesel::sql_types::Text,_>(rule_id)
-                    .bind::<diesel::sql_types::Text,_>(&alert.device_id)
-                    .bind::<diesel::sql_types::Timestamptz,_>(now).execute(connection)?;
                 use crate::schema::rule_cooldowns;
                 diesel::delete(
                     rule_cooldowns::table
@@ -357,47 +396,6 @@ impl AlertRepository for PostgresAlertRepository {
         self.executor
             .run(move |connection| {
                 alert_repo::count_by_status_and_severity(connection, &tenant_id)
-                    .map_err(map_diesel_error)
-            })
-            .await
-    }
-
-    async fn persist_cooldowns(
-        &self,
-        cooldowns: Vec<CooldownRecord>,
-    ) -> Result<(), PersistenceError> {
-        self.executor
-            .run(move |connection| {
-                connection
-                    .transaction(|connection| {
-                        // Join the same parent-lock protocol as ingress and alert
-                        // transitions, including legacy queued cooldown writes.
-                        use crate::schema::devices;
-                        let parents = cooldowns
-                            .iter()
-                            .map(|c| (c.tenant_id.clone(), c.device_id.clone()))
-                            .collect::<std::collections::BTreeSet<_>>();
-                        for (tenant, device) in parents {
-                            devices::table
-                                .filter(devices::tenant_id.eq(tenant))
-                                .filter(devices::id.eq(device))
-                                .for_update()
-                                .select(devices::id)
-                                .first::<String>(connection)?;
-                        }
-                        for cooldown in cooldowns {
-                            alert_repo::upsert_legacy_cooldown(
-                                connection,
-                                &RuleCooldown {
-                                    tenant_id: cooldown.tenant_id,
-                                    rule_id: cooldown.rule_id,
-                                    device_id: cooldown.device_id,
-                                    last_fired_at: cooldown.last_fired_at,
-                                },
-                            )?;
-                        }
-                        Ok(())
-                    })
                     .map_err(map_diesel_error)
             })
             .await

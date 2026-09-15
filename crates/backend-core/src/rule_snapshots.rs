@@ -58,7 +58,6 @@ pub struct DeviceRuleEvaluation {
     pub snapshot: RuleEvaluationSnapshot,
     pub tenant: TenantId,
     pub device_id: String,
-    pub device_type_id: i32,
     pub fleet_id: Option<i32>,
     pub blueprint_id: Option<String>,
     pub input: RuleEvaluationInput,
@@ -79,20 +78,17 @@ pub struct DeviceRuleDecision {
     pub deliveries: Vec<PendingAction>,
     pub cooldowns: Vec<crate::alerts::CooldownRecord>,
     pub zone_entries: Vec<ZoneEntryMutation>,
-    pub zone_observations: Vec<String>,
 }
 impl DeviceRuleEvaluation {
     /// Candidate definitions only; adapters confirm identities/eligibility under
     /// their transaction before asking core for any runtime mutations.
     pub fn candidate_rule_ids(&self) -> Vec<String> {
-        let device_type = self.device_type_id.to_string();
         let fleet = self.fleet_id.map(|id| id.to_string());
         self.snapshot
             .cache
             .rules_for_tenant_device(
                 self.tenant.as_str(),
                 &self.device_id,
-                &device_type,
                 fleet.as_deref(),
                 self.blueprint_id.as_deref(),
             )
@@ -111,7 +107,6 @@ impl DeviceRuleEvaluation {
             RuleEvaluationInput::Status(change) => evaluate::evaluate_status_change_for_tenant_at(
                 self.tenant.as_str(),
                 &self.device_id,
-                self.device_type_id,
                 self.fleet_id,
                 self.blueprint_id.as_deref(),
                 change,
@@ -122,7 +117,6 @@ impl DeviceRuleEvaluation {
                 let mut actions = evaluate::evaluate_telemetry_for_tenant_at(
                     self.tenant.as_str(),
                     &self.device_id,
-                    self.device_type_id,
                     self.fleet_id,
                     self.blueprint_id.as_deref(),
                     data,
@@ -133,7 +127,6 @@ impl DeviceRuleEvaluation {
                     actions.extend(evaluate::evaluate_geofence_for_tenant_at(
                         self.tenant.as_str(),
                         &self.device_id,
-                        self.device_type_id,
                         self.fleet_id,
                         self.blueprint_id.as_deref(),
                         data,
@@ -148,33 +141,7 @@ impl DeviceRuleEvaluation {
             deliveries: Vec::new(),
             cooldowns: Vec::new(),
             zone_entries: Vec::new(),
-            zone_observations: Vec::new(),
         };
-        if let RuleEvaluationInput::Telemetry {
-            data,
-            geofence: true,
-        } = &self.input
-        {
-            if evaluate::valid_location(data).is_some() {
-                let device_type = self.device_type_id.to_string();
-                let fleet = self.fleet_id.map(|id| id.to_string());
-                decision.zone_observations = cache
-                    .rules_for_tenant_device(
-                        self.tenant.as_str(),
-                        &self.device_id,
-                        &device_type,
-                        fleet.as_deref(),
-                        self.blueprint_id.as_deref(),
-                    )
-                    .into_iter()
-                    .filter(|rule| {
-                        crate::rule_engine::compiler::compile_trigger(&rule.trigger_type)
-                            == Some(crate::rule_engine::model::RuleTrigger::Geofence)
-                    })
-                    .map(|rule| rule.id.clone())
-                    .collect();
-            }
-        }
         for action in actions {
             match action {
                 PendingAction::UpdateCooldown {
@@ -208,15 +175,6 @@ impl DeviceRuleEvaluation {
         }
         decision
     }
-}
-
-/// Original outbox ordering metadata is retained across retries and replay.
-pub struct LegacyZoneEntry {
-    pub rule_id: String,
-    pub device_id: String,
-    pub entered_at: Option<chrono::NaiveDateTime>,
-    pub event_id: String,
-    pub created_at: chrono::NaiveDateTime,
 }
 
 /// Host-owned definition acquisition. Core controls when decisions need a snapshot.

@@ -131,9 +131,6 @@ export interface PaginatedResponse<T> {
 // Device Types
 // ---------------------------------------------------------------------------
 
-export type DeviceType = components['schemas']['DeviceTypeResponse'];
-export type CreateDeviceTypeRequest = components['schemas']['NewDeviceTypeRequest'];
-export type UpdateDeviceTypeRequest = components['schemas']['UpdateDeviceTypeRequest'];
 
 // ---------------------------------------------------------------------------
 // Fleets
@@ -152,12 +149,8 @@ export type DeviceShadow = components['schemas']['ShadowResponse'];
 // Telemetry
 // ---------------------------------------------------------------------------
 
-export type TelemetryRecord = components['schemas']['TelemetryResponse'];
 export type DeviceMetric = components['schemas']['DeviceMetricResponse'];
 
-export type TelemetryParams = NonNullable<
-  operations['get_device_telemetry']['parameters']['query']
->;
 export type DeviceMetricParams = NonNullable<
   operations['get_device_metrics']['parameters']['query']
 >;
@@ -187,23 +180,7 @@ export type CreateFirmwareUpdateRequest = components['schemas']['NewFirmwareUpda
 export type NextVersionResponse = components['schemas']['NextVersionResponse'];
 export type TriggerOtaRequest = components['schemas']['TriggerOtaRequest'];
 export type OtaDeployment = components['schemas']['OtaDeploymentResponse'];
-export interface GlobalOtaDeployment {
-  id: number;
-  device_id: string;
-  device_name: string;
-  device_status: string;
-  current_firmware: string;
-  device_type_id: number;
-  device_type_name: string;
-  fleet_id: number | null;
-  fleet_name: string | null;
-  firmware_update_id: number;
-  firmware_version: string;
-  status: string;
-  error_message: string | null;
-  initiated_at: string;
-  completed_at: string | null;
-}
+export type GlobalOtaDeployment = components['schemas']['GlobalOtaDeploymentResponse'];
 
 export interface OtaDeploymentsParams {
   status?: string;
@@ -389,28 +366,9 @@ export interface ThreadMeshDevice {
 // API Keys
 // ---------------------------------------------------------------------------
 
-export interface ApiKey {
-  id: number;
-  name: string;
-  key_prefix: string;
-  device_type_id: number | null;
-  device_type_name: string | null;
-  created_at: string;
-  last_used_at: string | null;
-}
-
-export interface CreateApiKeyRequest {
-  name: string;
-  device_type_id?: number;
-}
-
-export interface CreateApiKeyResponse {
-  id: number;
-  name: string;
-  key: string;
-  key_prefix: string;
-  device_type_id: number | null;
-}
+export type ApiKey = components['schemas']['ApiKeyResponse'];
+export type CreateApiKeyRequest = components['schemas']['CreateApiKeyRequest'];
+export type CreateApiKeyResponse = components['schemas']['CreateApiKeyResponse'];
 
 // ---------------------------------------------------------------------------
 // Health
@@ -461,11 +419,4 @@ export interface MetricsHistoryResponse {
   app: AppMetricsSnapshot[];
 }
 
-export interface LocationPoint {
-  latitude: number;
-  longitude: number;
-  speed: number | null;
-  altitude: number | null;
-  heading: number | null;
-  timestamp: string;
-}
+export type LocationPoint = components['schemas']['LocationResponse'];

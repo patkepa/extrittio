@@ -58,6 +58,12 @@ export function createRuleForm(rule?: Rule): RuleForm {
   };
 }
 
+const ruleTargets = new Set(['global', 'blueprint', 'fleet', 'device']);
+
+function isRuleTarget(value: string): value is Rule['target_type'] {
+  return ruleTargets.has(value);
+}
+
 export function validateRuleForm(form: RuleForm) {
   return {
     hasEmptyConditions: form.conditions.some(
@@ -73,11 +79,14 @@ export function validateRuleForm(form: RuleForm) {
       }
       return a.action_type === 'command' && !((a.config.command as string) ?? '').trim();
     }),
-    hasMissingTarget: form.targetType !== 'global' && form.targetId.trim() === '',
+    hasMissingTarget:
+      !ruleTargets.has(form.targetType) ||
+      (form.targetType !== 'global' && form.targetId.trim() === ''),
   };
 }
 
 export function ruleFormRequest(form: RuleForm): CreateRuleRequest {
+  if (!isRuleTarget(form.targetType)) throw new Error('Unsupported rule target');
   return {
     name: form.name,
     description: form.description || undefined,

@@ -8,8 +8,8 @@ use crate::models::{
 use extrittio_backend_core::firmware::FirmwareRepository;
 use extrittio_backend_core::firmware::{
     FirmwareBlobRecord, FirmwarePage, FirmwareRecord, GlobalOtaDeploymentPage,
-    GlobalOtaDeploymentRecord, LegacyFirmwareBlob, NewFirmwareBlobRecord, NewFirmwareRecord,
-    OtaDeploymentPage, OtaDeploymentRecord, OtaStatusUpdate, TriggerOtaOutcome,
+    GlobalOtaDeploymentRecord, NewFirmwareBlobRecord, NewFirmwareRecord, OtaDeploymentPage,
+    OtaDeploymentRecord, OtaStatusUpdate, TriggerOtaOutcome,
 };
 
 use crate::firmware_sql as firmware_repo;
@@ -46,14 +46,11 @@ fn map_app_error(error: FirmwareTransactionError) -> PersistenceError {
 
 fn firmware_record(
     firmware: FirmwareUpdate,
-    device_type_name: String,
     file_size: Option<i32>,
     filename: Option<String>,
 ) -> FirmwareRecord {
     FirmwareRecord {
         id: firmware.id,
-        device_type_id: firmware.device_type_id,
-        device_type_name,
         version: firmware.version,
         url: firmware.url,
         sha256: firmware.sha256,
@@ -75,7 +72,6 @@ fn firmware_record(
 
 fn blob_record(blob: FirmwareBlob) -> FirmwareBlobRecord {
     FirmwareBlobRecord {
-        data: blob.data,
         size: blob.size,
         filename: blob.filename,
         storage_key: blob.storage_key,
@@ -129,7 +125,6 @@ impl FirmwareRepository for PostgresFirmwareRepository {
     async fn list(
         &self,
         tenant: &TenantId,
-        device_type_id: Option<i32>,
         blueprint_revision_id: Option<String>,
         limit: i64,
         offset: i64,
@@ -140,7 +135,6 @@ impl FirmwareRepository for PostgresFirmwareRepository {
                 let (records, total) = firmware_repo::list_firmware_updates(
                     connection,
                     &tenant_id,
-                    device_type_id,
                     blueprint_revision_id.as_deref(),
                     limit,
                     offset,
@@ -149,9 +143,7 @@ impl FirmwareRepository for PostgresFirmwareRepository {
                 Ok(FirmwarePage {
                     records: records
                         .into_iter()
-                        .map(|(firmware, device_type, size, filename)| {
-                            firmware_record(firmware, device_type.name, size, filename)
-                        })
+                        .map(|(firmware, size, filename)| firmware_record(firmware, size, filename))
                         .collect(),
                     total,
                 })
@@ -180,15 +172,14 @@ impl FirmwareRepository for PostgresFirmwareRepository {
                 Ok(GlobalOtaDeploymentPage {
                     records: records
                         .into_iter()
-                        .map(|(deployment, firmware, device, device_type, fleet)| {
-                            GlobalOtaDeploymentRecord {
+                        .map(
+                            |(deployment, firmware, device, fleet)| GlobalOtaDeploymentRecord {
                                 id: deployment.id,
                                 device_id: device.id,
                                 device_name: device.name,
                                 device_status: device.status,
                                 current_firmware: device.firmware,
-                                device_type_id: device_type.id,
-                                device_type_name: device_type.name,
+                                blueprint_revision_id: firmware.blueprint_revision_id,
                                 fleet_id: fleet.as_ref().map(|fleet| fleet.id),
                                 fleet_name: fleet.map(|fleet| fleet.name),
                                 firmware_update_id: firmware.id,
@@ -197,8 +188,8 @@ impl FirmwareRepository for PostgresFirmwareRepository {
                                 error_message: deployment.error_message,
                                 initiated_at: deployment.initiated_at,
                                 completed_at: deployment.completed_at,
-                            }
-                        })
+                            },
+                        )
                         .collect(),
                     total,
                 })
@@ -217,21 +208,18 @@ impl FirmwareRepository for PostgresFirmwareRepository {
             .run(move |connection| {
                 connection
                     .transaction::<_, diesel::result::Error, _>(|connection| {
-                        let device_type = firmware_repo::find_device_type_by_id(
+                        if !firmware_repo::blueprint_revision_exists(
                             connection,
                             &tenant_id,
-                            record.device_type_id,
-                        )
-                        .optional()?;
-                        let Some(device_type) = device_type else {
+                            &record.blueprint_revision_id,
+                        )? {
                             return Ok(None);
-                        };
+                        }
                         let firmware = firmware_repo::insert_firmware_update(
                             connection,
                             &tenant_id,
                             &NewFirmwareUpdate {
                                 tenant_id: tenant_id.clone(),
-                                device_type_id: record.device_type_id,
                                 version: record.version,
                                 url: record.url,
                                 description: record.description,
@@ -253,10 +241,9 @@ impl FirmwareRepository for PostgresFirmwareRepository {
                                 &NewFirmwareBlob {
                                     firmware_update_id: firmware.id,
                                     tenant_id: tenant_id.clone(),
-                                    data: None,
                                     size: blob.size,
                                     filename: blob.filename.clone(),
-                                    storage_key: Some(blob.storage_key),
+                                    storage_key: blob.storage_key,
                                     storage_backend: blob.storage_backend,
                                 },
                             )?;
@@ -276,32 +263,7 @@ impl FirmwareRepository for PostgresFirmwareRepository {
                         } else {
                             (firmware, None, None)
                         };
-                        Ok(Some(firmware_record(
-                            firmware,
-                            device_type.name,
-                            size,
-                            filename,
-                        )))
-                    })
-                    .map_err(map_diesel_error)
-            })
-            .await
-    }
-
-    async fn next_version(
-        &self,
-        tenant: &TenantId,
-        device_type_id: i32,
-    ) -> Result<String, PersistenceError> {
-        let tenant_id = tenant.as_str().to_string();
-        self.executor
-            .run(move |connection| {
-                firmware_repo::find_next_version(connection, &tenant_id, device_type_id)
-                    .map(|version| {
-                        version.map_or_else(
-                            || "1.0.0".to_string(),
-                            |v| extrittio_backend_core::firmware::increment_firmware_version(&v),
-                        )
+                        Ok(Some(firmware_record(firmware, size, filename)))
                     })
                     .map_err(map_diesel_error)
             })
@@ -504,7 +466,7 @@ impl FirmwareRepository for PostgresFirmwareRepository {
                             connection, &tenant_id, &device_id,
                         )
                         .optional()?;
-                        let Some(device) = device else {
+                        let Some(_device) = device else {
                             return Ok(TriggerOtaOutcome::DeviceNotFound);
                         };
                         let firmware = firmware_repo::find_firmware_update(
@@ -516,14 +478,11 @@ impl FirmwareRepository for PostgresFirmwareRepository {
                         let Some(firmware) = firmware else {
                             return Ok(TriggerOtaOutcome::FirmwareNotFound);
                         };
-                        if let Some(target_revision) = firmware.blueprint_revision_id.as_deref() {
-                            if assigned_blueprint_revision(connection, &tenant_id, &device_id)?
-                                .as_deref()
-                                != Some(target_revision)
-                            {
-                                return Ok(TriggerOtaOutcome::Incompatible);
-                            }
-                        } else if firmware.device_type_id != device.device_type_id {
+                        if !extrittio_backend_core::firmware::ota_revision_matches(
+                            assigned_blueprint_revision(connection, &tenant_id, &device_id)?
+                                .as_deref(),
+                            &firmware.blueprint_revision_id,
+                        ) {
                             return Ok(TriggerOtaOutcome::Incompatible);
                         }
 
@@ -568,49 +527,6 @@ impl FirmwareRepository for PostgresFirmwareRepository {
                         Ok(TriggerOtaOutcome::Ready { delta, version })
                     })
                     .map_err(map_app_error)
-            })
-            .await
-    }
-
-    async fn next_legacy_blob(&self) -> Result<Option<LegacyFirmwareBlob>, PersistenceError> {
-        self.executor
-            .run(move |connection| {
-                firmware_repo::list_legacy_firmware_blobs(connection, 1)
-                    .map_err(map_diesel_error)
-                    .map(|mut blobs| {
-                        blobs.pop().and_then(|blob| {
-                            blob.data.map(|data| LegacyFirmwareBlob {
-                                tenant_id: blob.tenant_id,
-                                firmware_update_id: blob.firmware_update_id,
-                                filename: blob.filename,
-                                data,
-                            })
-                        })
-                    })
-            })
-            .await
-    }
-
-    async fn mark_blob_migrated(
-        &self,
-        tenant_id: &str,
-        firmware_update_id: i32,
-        storage_backend: &str,
-        storage_key: &str,
-    ) -> Result<bool, PersistenceError> {
-        let tenant_id = tenant_id.to_string();
-        let storage_backend = storage_backend.to_string();
-        let storage_key = storage_key.to_string();
-        self.executor
-            .run(move |connection| {
-                firmware_repo::move_firmware_blob_to_object_storage(
-                    connection,
-                    &tenant_id,
-                    firmware_update_id,
-                    &storage_backend,
-                    &storage_key,
-                )
-                .map_err(map_diesel_error)
             })
             .await
     }

@@ -226,7 +226,7 @@ export const FleetGraphBottomToolbar = ({
       'id',
       'name',
       'status',
-      'device_type',
+      'blueprint',
       'fleet',
       'firmware',
       'last_seen',
@@ -239,7 +239,7 @@ export const FleetGraphBottomToolbar = ({
           device.id,
           device.name,
           device.status,
-          device.device_type_name,
+          device.blueprint_name,
           device.fleet_name ?? '',
           device.firmware,
           device.last_seen,
@@ -324,7 +324,8 @@ export const FleetGraphBottomToolbar = ({
                 {(firmwareUpdates ?? []).map((fw) => (
                   <MenuItem
                     key={fw.id}
-                    text={`${fw.version} (${fw.device_type_name})`}
+                    text={`${fw.version} (${fw.blueprint_revision_id})`}
+                    disabled={!fw.blueprint_revision_id}
                     onClick={() => void handleOta(fw.id)}
                   />
                 ))}

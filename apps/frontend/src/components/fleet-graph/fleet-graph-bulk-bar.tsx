@@ -155,7 +155,8 @@ export const FleetGraphBulkBar = () => {
               {(firmwareUpdates ?? []).map((fw) => (
                 <MenuItem
                   key={fw.id}
-                  text={`${fw.version} (${fw.device_type_name})`}
+                  text={`${fw.version} (${fw.blueprint_revision_id})`}
+                  disabled={!fw.blueprint_revision_id}
                   onClick={() => void handleOta(fw.id)}
                 />
               ))}

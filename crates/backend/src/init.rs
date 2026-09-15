@@ -46,13 +46,6 @@ fn bootstrap_tenant() -> crate::tenancy::TenantId {
         .expect("default tenant id is valid")
 }
 
-pub async fn seed_persistence_device_types(persistence: &RepositorySetInput) -> anyhow::Result<()> {
-    bootstrap_application(persistence)
-        .seed_device_types(&bootstrap_tenant())
-        .await?;
-    Ok(())
-}
-
 pub async fn init_persistence_jwt_secret(
     persistence: &RepositorySetInput,
 ) -> anyhow::Result<String> {

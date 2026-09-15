@@ -208,8 +208,7 @@ const fn aggregate_name(aggregate: AggregateKind) -> &'static str {
 }
 
 fn validate_scope(request: &AnalyticsRequest) -> Result<(), ApplicationError> {
-    if request.scope.device_type_ids.len() > MAX_SCOPE_VALUES
-        || request.scope.fleet_ids.len() > MAX_SCOPE_VALUES
+    if request.scope.fleet_ids.len() > MAX_SCOPE_VALUES
         || request.scope.device_ids.len() > MAX_SCOPE_VALUES
     {
         return Err(ApplicationError::InvalidInput(format!(

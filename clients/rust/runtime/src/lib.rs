@@ -2,16 +2,14 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use extrittio_common::extrittio::{
-    DeviceHeartbeat, DeviceTelemetry, ShadowDelta, ShadowGet, ShadowReport,
-};
+use extrittio_common::extrittio::{DeviceHeartbeat, ShadowDelta, ShadowGet, ShadowReport};
 use extrittio_common::{device_status, ota::fields as ota_fields, topics};
 use prost::Message;
 use sha2::{Digest, Sha256};
 use tokio::sync::Mutex;
 use tracing::info;
 
-pub mod contract;
+pub use extrittio_client_contract as contract;
 pub use extrittio_sdk::native_ota::watchdog_entry;
 
 // ---------------------------------------------------------------------------
@@ -75,9 +73,8 @@ pub fn patch_device_id_in_binary(binary: &mut [u8], device_id: &str) -> bool {
 pub struct NativeClientConfig {
     pub device_id: Option<String>,
     /// JSON response downloaded from `/api/v1/devices/{id}/contract` during provisioning.
-    pub contract_path: Option<String>,
+    pub contract_path: String,
     pub telemetry_interval: Duration,
-    pub heartbeat_interval: Duration,
     pub connect: Option<String>,
     pub ca_cert: Option<String>,
     pub client_cert: Option<String>,
@@ -85,23 +82,20 @@ pub struct NativeClientConfig {
     pub client_name: &'static str,
 }
 
-pub trait TelemetrySource {
-    fn sample(&mut self, device_id: &str, timestamp: i64) -> DeviceTelemetry;
+pub trait EventSource {
+    /// Sample directly into a declared stream payload. The runtime validates
+    /// its schema and supplies contract identity, route and envelope metadata.
+    fn sample(&mut self) -> contract::ContractEvent;
 
-    fn summary(&self, telemetry: &DeviceTelemetry) -> String;
-
-    /// Convert one device-specific sensor sample into a contract stream event.
-    /// The shared runtime owns route lookup, schema validation, envelope fields,
-    /// contract identity, and transport publication.
-    fn contract_event(&self, _telemetry: &DeviceTelemetry) -> Option<contract::ContractEvent> {
-        None
+    fn summary(&self, event: &contract::ContractEvent) -> String {
+        format!("{}: {}", event.stream_key, event.payload)
     }
 }
 
 /// Run the shared native-device lifecycle: Zenoh, heartbeats, shadows, OTA,
 /// and periodic telemetry publishing.
 #[allow(clippy::too_many_lines)]
-pub async fn run_native_client<T: TelemetrySource>(
+pub async fn run_native_client<T: EventSource>(
     config: NativeClientConfig,
     mut telemetry_source: T,
     embedded_slot: &[u8],
@@ -109,43 +103,24 @@ pub async fn run_native_client<T: TelemetrySource>(
     let installed_version =
         extrittio_sdk::native_ota::boot(&std::env::current_exe().expect("executable path"))
             .expect("OTA journal");
-    let provisioned_contract = match config.contract_path.as_deref() {
-        Some(path) => match contract::ProvisionedContract::load(path).await {
-            Ok(contract) => Some(contract),
+    let provisioned_contract =
+        match contract::ProvisionedContract::load(&config.contract_path).await {
+            Ok(contract) => contract,
             Err(error) => {
                 eprintln!("Error: failed to load provisioned device contract: {error}");
                 std::process::exit(1);
             }
-        },
-        None => None,
-    };
+        };
     let device_id = config
         .device_id
         .clone()
-        .or_else(|| {
-            provisioned_contract
-                .as_ref()
-                .map(|contract| contract.device_id().to_string())
-        })
         .or_else(|| read_embedded_device_id(embedded_slot))
-        .unwrap_or_else(|| {
-            eprintln!(
-                "Error: no device ID available.\n\
-                 Provide --device-id on first run. After OTA the ID is embedded automatically."
-            );
-            std::process::exit(1);
-        });
-    if let Some(contract) = &provisioned_contract
-        && let Err(error) = contract.validate_device_id(&device_id)
-    {
+        .unwrap_or_else(|| provisioned_contract.device_id().to_string());
+    if let Err(error) = provisioned_contract.validate_device_id(&device_id) {
         eprintln!("Error: {error}");
         std::process::exit(1);
     }
-    let heartbeat_interval = provisioned_contract
-        .as_ref()
-        .map_or(config.heartbeat_interval, |contract| {
-            contract.heartbeat_interval()
-        });
+    let heartbeat_interval = provisioned_contract.heartbeat_interval();
 
     info!(
         "Starting {} '{}' (telemetry every {}s, heartbeat every {}s)",
@@ -154,26 +129,21 @@ pub async fn run_native_client<T: TelemetrySource>(
         config.telemetry_interval.as_secs(),
         heartbeat_interval.as_secs()
     );
-    if let Some(contract) = &provisioned_contract {
-        info!(
-            "Loaded verified device contract {} ({})",
-            contract.contract_id(),
-            contract.hash()
-        );
-    } else {
-        tracing::warn!(
-            "No provisioned contract supplied; running the temporary legacy telemetry adapter"
-        );
-    }
+    info!(
+        "Loaded verified device contract {} ({})",
+        provisioned_contract.contract_id(),
+        provisioned_contract.hash()
+    );
 
     let mut zenoh_config = zenoh::Config::default();
 
     let contract_endpoint = provisioned_contract
-        .as_ref()
-        .and_then(|contract| contract.zenoh_endpoint().ok());
-    if let Some(endpoint) = config.connect.as_deref().or(contract_endpoint) {
+        .zenoh_endpoint()
+        .expect("contract must declare a Zenoh transport");
+    {
+        let endpoint = config.connect.as_deref().unwrap_or(contract_endpoint);
         zenoh_config
-            .insert_json5("connect/endpoints", &format!("[\"{endpoint}\"]"))
+            .insert_json5("connect/endpoints", &serde_json::json!([endpoint]).to_string())
             .expect("Failed to set Zenoh connect endpoint");
 
         // Disable multicast scouting when connecting to a specific endpoint
@@ -222,7 +192,6 @@ pub async fn run_native_client<T: TelemetrySource>(
 
     info!("Zenoh session opened");
 
-    let telemetry_topic = topics::telemetry(&device_id);
     let heartbeat_topic = topics::heartbeat(&device_id);
     let shadow_get_topic = topics::shadow_get(&device_id);
     let shadow_delta_topic = topics::shadow_delta(&device_id);
@@ -417,40 +386,19 @@ pub async fn run_native_client<T: TelemetrySource>(
 
     let mut interval = tokio::time::interval(config.telemetry_interval);
 
-    if provisioned_contract.is_some() {
-        info!("Sending validated contract events");
-    } else {
-        info!("Sending legacy telemetry to '{}'", telemetry_topic);
-    }
-
+    info!("Sending validated contract events");
     loop {
         interval.tick().await;
-        let telemetry = telemetry_source.sample(&device_id, extrittio_sdk::time::now_millis());
-
-        if let Some(contract) = &provisioned_contract {
-            let Some(event) = telemetry_source.contract_event(&telemetry) else {
-                tracing::warn!(
-                    "Telemetry source did not provide a contract event; sample was not published"
-                );
-                continue;
-            };
-            match contract.encode_event(&event, chrono::Utc::now()) {
-                Ok(encoded) => {
-                    if let Err(error) = session.put(&encoded.address, encoded.payload).await {
-                        tracing::warn!("Failed to send contract event: {error}");
-                    } else {
-                        info!("{}", telemetry_source.summary(&telemetry));
-                    }
+        let event = telemetry_source.sample();
+        match provisioned_contract.encode_event(&event, chrono::Utc::now()) {
+            Ok(encoded) => {
+                if let Err(error) = session.put(&encoded.address, encoded.payload).await {
+                    tracing::warn!("Failed to send contract event: {error}");
+                } else {
+                    info!("{}", telemetry_source.summary(&event));
                 }
-                Err(error) => tracing::warn!("Contract rejected local event: {error}"),
             }
-        } else {
-            let payload = telemetry.encode_to_vec();
-            if let Err(error) = session.put(&telemetry_topic, payload).await {
-                tracing::warn!("Failed to send telemetry: {error}");
-            } else {
-                info!("{}", telemetry_source.summary(&telemetry));
-            }
+            Err(error) => tracing::warn!("Contract rejected local event: {error}"),
         }
     }
 }

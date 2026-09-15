@@ -6,8 +6,8 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::{
-    defaults::{DEFAULT_ESP32_NVS_OFFSET, DEFAULT_ESP32_NVS_SIZE, DEFAULT_ZENOH_CONNECT},
-    models::{ApiKeyResponse, DeviceResponse, DeviceTypeResponse, FleetResponse, Paginated},
+    defaults::{DEFAULT_ESP32_NVS_OFFSET, DEFAULT_ESP32_NVS_SIZE},
+    models::{ApiKeyResponse, DeviceResponse, FleetResponse, Paginated},
 };
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -38,7 +38,7 @@ pub(crate) fn format_devices(devices: &Paginated<DeviceResponse>) -> String {
     let _ = writeln!(
         out,
         "{:<38} {:<24} {:<14} {:<12} {:<16} FIRMWARE",
-        "ID", "NAME", "TYPE", "STATUS", "FLEET"
+        "ID", "NAME", "BLUEPRINT", "STATUS", "FLEET"
     );
     for device in &devices.data {
         let _ = writeln!(
@@ -46,7 +46,7 @@ pub(crate) fn format_devices(devices: &Paginated<DeviceResponse>) -> String {
             "{:<38} {:<24} {:<14} {:<12} {:<16} {}",
             truncate(&device.id, 38),
             truncate(&device.name, 24),
-            truncate(&device.device_type_name, 14),
+            truncate(&device.blueprint_name, 14),
             truncate(&device.status, 12),
             truncate(device.fleet_name.as_deref().unwrap_or("-"), 16),
             device.firmware
@@ -65,32 +65,19 @@ pub(crate) fn format_devices(devices: &Paginated<DeviceResponse>) -> String {
 
 pub(crate) fn format_device(device: &DeviceResponse) -> String {
     format!(
-        "id={}\nname={}\ntype={} ({})\nfleet={}\nstatus={}\nlast_seen={}\nfirmware={}\nuptime={}",
+        "id={}\nname={}\nblueprint={} ({})\nblueprint_key={}\nblueprint_revision={}\nfleet={}\nstatus={}\nlast_seen={}\nfirmware={}\nuptime={}",
         device.id,
         device.name,
-        device.device_type_name,
-        device.device_type_id,
+        device.blueprint_name,
+        device.blueprint_id,
+        device.blueprint_key,
+        device.blueprint_revision_id,
         device.fleet_name.as_deref().unwrap_or("-"),
         device.status,
         device.last_seen,
         device.firmware,
         device.uptime,
     )
-}
-
-pub(crate) fn format_device_types(device_types: &Paginated<DeviceTypeResponse>) -> String {
-    let mut out = String::new();
-    let _ = writeln!(out, "{:<8} NAME", "ID");
-    for device_type in &device_types.data {
-        let _ = writeln!(out, "{:<8} {}", device_type.id, device_type.name);
-    }
-    let _ = write!(
-        out,
-        "\nshowing {} of {}",
-        device_types.data.len(),
-        device_types.total
-    );
-    out
 }
 
 pub(crate) fn format_fleets(fleets: &Paginated<FleetResponse>) -> String {
@@ -114,7 +101,7 @@ pub(crate) fn format_api_keys(api_keys: &[ApiKeyResponse]) -> String {
     let _ = writeln!(
         out,
         "{:<8} {:<24} {:<16} {:<18} LAST_USED",
-        "ID", "NAME", "PREFIX", "DEVICE_TYPE"
+        "ID", "NAME", "PREFIX", "BLUEPRINT"
     );
     for key in api_keys {
         let _ = writeln!(
@@ -123,7 +110,13 @@ pub(crate) fn format_api_keys(api_keys: &[ApiKeyResponse]) -> String {
             key.id,
             truncate(&key.name, 24),
             key.key_prefix,
-            truncate(key.device_type_name.as_deref().unwrap_or("-"), 18),
+            truncate(
+                key.blueprint_name
+                    .as_deref()
+                    .or(key.blueprint_id.as_deref())
+                    .unwrap_or("Tenant-wide"),
+                18
+            ),
             key.last_used_at.as_deref().unwrap_or("-")
         );
     }
@@ -140,9 +133,8 @@ pub(crate) fn format_provisioning(value: &Value) -> String {
     let _ = writeln!(out, "name={}", value["name"].as_str().unwrap_or_default());
     let _ = writeln!(
         out,
-        "device_type={} ({})",
-        value["device_type_name"].as_str().unwrap_or_default(),
-        value["device_type_id"].as_i64().unwrap_or_default(),
+        "blueprint_revision_id={}",
+        value["blueprint_revision_id"].as_str().unwrap_or_default(),
     );
     if let Some(fleet_name) = value["fleet_name"].as_str() {
         let _ = writeln!(out, "fleet={fleet_name}");
@@ -155,10 +147,11 @@ pub(crate) fn format_provisioning(value: &Value) -> String {
     let _ = writeln!(
         out,
         "zenoh_connect={}",
-        value["zenoh_connect"]
-            .as_str()
-            .unwrap_or(DEFAULT_ZENOH_CONNECT)
+        value["zenoh_connect"].as_str().unwrap_or_default()
     );
+    if let Some(path) = value["contract_file"].as_str() {
+        let _ = writeln!(out, "contract_file={path}");
+    }
     if let Some(cert_dir) = value["certificate_dir"].as_str() {
         let _ = writeln!(out, "certificate_dir={cert_dir}");
     }

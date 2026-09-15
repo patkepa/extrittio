@@ -68,7 +68,6 @@ fn to_ingress_context(
     })?;
     Ok(DeviceIngressContext {
         identity,
-        device_type_id: device.device_type_id,
         fleet_id: device.fleet_id,
         blueprint_id,
         status: device.status,

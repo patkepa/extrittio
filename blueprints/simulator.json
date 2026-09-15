@@ -1,0 +1,59 @@
+{
+  "apiVersion": "extrittio.io/v1alpha1",
+  "kind": "DeviceBlueprint",
+  "metadata": { "key": "simulated-sensor", "name": "Simulated sensor" },
+  "spec": {
+    "runtime": {
+      "minimumContractApi": 1,
+      "heartbeat": { "interval": "30s", "offlineAfter": "95s" },
+      "limits": { "maxMessageBytes": 8192, "maxMessagesPerMinute": 300 }
+    },
+    "transports": [{ "key": "primary", "binding": "primary_zenoh", "protocol": "zenoh" }],
+    "routes": [{
+      "key": "readings", "transport": "primary", "direction": "device_to_cloud",
+      "address": "extrittio/devices/{device.id}/events/readings",
+      "messageSchema": "readings@1", "encoding": "json"
+    }],
+    "schemas": [{
+      "key": "readings@1", "format": "json_schema",
+      "schema": {
+        "type": "object", "additionalProperties": false,
+        "required": ["temperature", "humidity", "batteryLevel"],
+        "properties": {
+          "temperature": { "type": "number", "minimum": 15, "maximum": 95 },
+          "humidity": { "type": "number", "minimum": 20, "maximum": 80 },
+          "batteryLevel": { "type": "number", "minimum": 0, "maximum": 100 },
+          "position": {
+            "type": "object", "additionalProperties": false,
+            "required": ["latitude", "longitude", "speed", "altitude", "heading"],
+            "properties": {
+              "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
+              "longitude": { "type": "number", "minimum": -180, "maximum": 180 },
+              "speed": { "type": "number", "minimum": 0, "maximum": 60 },
+              "altitude": { "type": "number", "minimum": -100, "maximum": 5000 },
+              "heading": { "type": "number", "minimum": 0, "maximum": 360 }
+            }
+          }
+        }
+      }
+    }],
+    "streams": [{
+      "key": "environment", "route": "readings",
+      "fields": [
+        { "path": "/temperature", "type": "float64", "label": "Temperature", "unit": "°C", "aggregates": ["min", "max", "avg", "last"] },
+        { "path": "/humidity", "type": "float64", "label": "Humidity", "unit": "%", "aggregates": ["min", "max", "avg", "last"] },
+        { "path": "/batteryLevel", "type": "float64", "label": "Battery", "unit": "%", "aggregates": ["last"] },
+        { "path": "/position/latitude", "type": "float64", "label": "Latitude", "unit": "deg" },
+        { "path": "/position/longitude", "type": "float64", "label": "Longitude", "unit": "deg" },
+        { "path": "/position/speed", "type": "float64", "label": "Speed", "unit": "m/s" },
+        { "path": "/position/altitude", "type": "float64", "label": "Altitude", "unit": "m" },
+        { "path": "/position/heading", "type": "float64", "label": "Heading", "unit": "deg" }
+      ]
+    }],
+    "location": {
+      "stream": "environment", "latitudePath": "/position/latitude",
+      "longitudePath": "/position/longitude", "coordinateSystem": "wgs84",
+      "unit": "degrees", "maxAge": "30s"
+    }
+  }
+}

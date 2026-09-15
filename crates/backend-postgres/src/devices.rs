@@ -1,16 +1,14 @@
 use crate::error::map_diesel_error;
 use crate::models::{
-    Device, DeviceCertificate, DeviceType, Fleet, NewDevice, NewDeviceCertificate, NewDeviceShadow,
-    UpdateDevice,
+    DeviceCertificate, NewDevice, NewDeviceCertificate, NewDeviceShadow, UpdateDevice,
 };
-use crate::schema::{device_certificates, device_shadows, device_types, devices, fleets};
+use crate::schema::{device_certificates, device_shadows, devices};
 use crate::{PostgresExecutor, PostgresPool};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use diesel::sql_types::{Jsonb, Nullable, Text, Timestamptz};
-use diesel::{Connection, PgTextExpressionMethods, prelude::*};
+use diesel::sql_types::{BigInt, Integer, Jsonb, Nullable, Text, Timestamptz};
+use diesel::{Connection, prelude::*};
 use extrittio_backend_core::certificates::NewDeviceCertificateRecord;
-use extrittio_backend_core::device_types::DeviceTypeRecord;
 use extrittio_backend_core::devices::*;
 use extrittio_backend_core::fleets::FleetRecord;
 use extrittio_backend_core::{PersistenceError, TenantId};
@@ -26,16 +24,68 @@ impl PostgresDeviceRepository {
         }
     }
 }
-type JoinedDevice = (Device, DeviceType, Option<Fleet>);
+#[derive(QueryableByName)]
+struct JoinedDevice {
+    #[diesel(sql_type = Text)]
+    id: String,
+    #[diesel(sql_type = Text)]
+    name: String,
+    #[diesel(sql_type = Nullable<Integer>)]
+    fleet_id: Option<i32>,
+    #[diesel(sql_type = Nullable<Text>)]
+    fleet_name: Option<String>,
+    #[diesel(sql_type = Text)]
+    status: String,
+    #[diesel(sql_type = Text)]
+    firmware: String,
+    #[diesel(sql_type = Nullable<Timestamptz>)]
+    last_seen: Option<DateTime<Utc>>,
+    #[diesel(sql_type = Integer)]
+    uptime_seconds: i32,
+    #[diesel(sql_type = Jsonb)]
+    declared_connections: Value,
+    #[diesel(sql_type = Text)]
+    blueprint_id: String,
+    #[diesel(sql_type = Text)]
+    revision_id: String,
+    #[diesel(sql_type = Text)]
+    blueprint_key: String,
+    #[diesel(sql_type = Text)]
+    blueprint_name: String,
+    #[diesel(sql_type = Nullable<Text>)]
+    blueprint_icon: Option<String>,
+    #[diesel(sql_type = Nullable<Text>)]
+    blueprint_color: Option<String>,
+}
+#[derive(QueryableByName)]
+struct CountRow {
+    #[diesel(sql_type = BigInt)]
+    count: i64,
+}
+#[derive(QueryableByName)]
+struct IdRow {
+    #[diesel(sql_type = Text)]
+    id: String,
+}
 
-type BoxedDeviceQuery<'a> = diesel::dsl::IntoBoxed<
-    'a,
-    diesel::dsl::LeftJoin<
-        diesel::dsl::InnerJoin<devices::table, device_types::table>,
-        fleets::table,
-    >,
-    diesel::pg::Pg,
->;
+const DEVICE_JOINS: &str = "FROM devices d
+    JOIN device_contract_assignments a ON a.tenant_id=d.tenant_id AND a.device_id=d.id
+    JOIN device_contracts c ON c.tenant_id=a.tenant_id AND c.device_id=a.device_id AND c.id=a.desired_contract_id
+    JOIN device_blueprint_revisions r ON r.tenant_id=c.tenant_id AND r.id=c.blueprint_revision_id
+    JOIN device_blueprints b ON b.tenant_id=r.tenant_id AND b.id=r.blueprint_id
+    LEFT JOIN fleets f ON f.tenant_id=d.tenant_id AND f.id=d.fleet_id";
+const DEVICE_FILTER: &str = "d.tenant_id=$1 AND ($2::text IS NULL OR d.status=$2)
+    AND ($3::text IS NULL OR d.name ILIKE $3 OR b.name ILIKE $3)
+    AND ($4::integer IS NULL OR d.fleet_id=$4)";
+fn details_sql() -> String {
+    format!(
+        "SELECT d.id,d.name,d.fleet_id,f.name AS fleet_name,d.status,d.firmware,
+        d.last_seen,d.uptime_seconds,d.declared_connections,
+        b.id AS blueprint_id,r.id AS revision_id,b.blueprint_key,b.name AS blueprint_name,
+        r.document->'metadata'->>'icon' AS blueprint_icon,
+        r.document->'metadata'->>'color' AS blueprint_color {DEVICE_JOINS}"
+    )
+}
 
 #[derive(QueryableByName)]
 struct DeviceContractRow {
@@ -75,73 +125,44 @@ impl From<DeviceContractRow> for DeviceContractRecord {
     }
 }
 
-fn filtered_query<'a>(tenant_id: &'a str, filter: &'a DeviceFilter) -> BoxedDeviceQuery<'a> {
-    let mut query = devices::table
-        .inner_join(device_types::table)
-        .left_join(fleets::table)
-        .filter(devices::tenant_id.eq(tenant_id))
-        .into_boxed();
-    if let Some(status) = &filter.status {
-        query = query.filter(devices::status.eq(status));
-    }
-    if let Some(search) = &filter.search {
-        let pattern = format!("%{search}%");
-        query = query.filter(
-            devices::name
-                .ilike(pattern.clone())
-                .or(device_types::name.ilike(pattern)),
-        );
-    }
-    if let Some(fleet_id) = filter.fleet_id {
-        query = query.filter(devices::fleet_id.eq(fleet_id));
-    }
-    query
-}
-
 fn joined_for_device(
     connection: &mut PgConnection,
     tenant_id: &str,
     device_id: &str,
 ) -> QueryResult<Option<JoinedDevice>> {
-    devices::table
-        .inner_join(device_types::table)
-        .left_join(fleets::table)
-        .filter(devices::tenant_id.eq(tenant_id))
-        .filter(devices::id.eq(device_id))
-        .select((
-            Device::as_select(),
-            DeviceType::as_select(),
-            Option::<Fleet>::as_select(),
-        ))
-        .first(connection)
-        .optional()
+    diesel::sql_query(format!(
+        "{} WHERE d.tenant_id=$1 AND d.id=$2",
+        details_sql()
+    ))
+    .bind::<Text, _>(tenant_id)
+    .bind::<Text, _>(device_id)
+    .get_result(connection)
+    .optional()
 }
-
-fn to_details((device, device_type, fleet): JoinedDevice) -> DeviceDetails {
+fn to_details(row: JoinedDevice) -> DeviceDetails {
     DeviceDetails {
         device: DeviceRecord {
-            id: device.id,
-            name: device.name,
-            device_type_id: device.device_type_id,
-            fleet_id: device.fleet_id,
-            status: device.status,
-            firmware: device.firmware,
-            last_seen: device.last_seen.map(|value| value.and_utc()),
-            uptime_seconds: device.uptime_seconds,
-            latest_latitude: device.latest_latitude,
-            latest_longitude: device.latest_longitude,
-            declared_connections: device.declared_connections,
+            id: row.id,
+            name: row.name,
+            fleet_id: row.fleet_id,
+            status: row.status,
+            firmware: row.firmware,
+            last_seen: row.last_seen,
+            uptime_seconds: row.uptime_seconds,
+            declared_connections: row.declared_connections,
         },
-        device_type: DeviceTypeRecord {
-            id: device_type.id,
-            name: device_type.name,
-            icon: device_type.icon,
-            color_hex: device_type.color_hex,
+        blueprint: DeviceBlueprintIdentity {
+            id: row.blueprint_id,
+            revision_id: row.revision_id,
+            key: row.blueprint_key,
+            name: row.blueprint_name,
+            icon: row.blueprint_icon,
+            color: row.blueprint_color,
         },
-        fleet: fleet.map(|fleet| FleetRecord {
-            id: fleet.id,
-            name: fleet.name,
-        }),
+        fleet: row
+            .fleet_id
+            .zip(row.fleet_name)
+            .map(|(id, name)| FleetRecord { id, name }),
     }
 }
 
@@ -155,26 +176,29 @@ impl DeviceRepository for PostgresDeviceRepository {
         let tenant_id = tenant.as_str().to_owned();
         self.executor
             .run(move |connection| {
-                let filter = DeviceFilter {
-                    status: query.status,
-                    search: query.search,
-                    fleet_id: query.fleet_id,
-                };
-                let total = filtered_query(&tenant_id, &filter)
-                    .count()
-                    .get_result::<i64>(connection)
-                    .map_err(map_diesel_error)?;
-                let rows = filtered_query(&tenant_id, &filter)
-                    .select((
-                        Device::as_select(),
-                        DeviceType::as_select(),
-                        Option::<Fleet>::as_select(),
-                    ))
-                    .order((devices::name.asc(), devices::id.asc()))
-                    .limit(query.limit)
-                    .offset(query.offset)
-                    .load::<JoinedDevice>(connection)
-                    .map_err(map_diesel_error)?;
+                let search = query.search.map(|value| format!("%{value}%"));
+                let total = diesel::sql_query(format!(
+                    "SELECT count(*) AS count {DEVICE_JOINS} WHERE {DEVICE_FILTER}"
+                ))
+                .bind::<Text, _>(&tenant_id)
+                .bind::<Nullable<Text>, _>(&query.status)
+                .bind::<Nullable<Text>, _>(&search)
+                .bind::<Nullable<Integer>, _>(query.fleet_id)
+                .get_result::<CountRow>(connection)
+                .map_err(map_diesel_error)?
+                .count;
+                let rows = diesel::sql_query(format!(
+                    "{} WHERE {DEVICE_FILTER} ORDER BY d.name,d.id LIMIT $5 OFFSET $6",
+                    details_sql()
+                ))
+                .bind::<Text, _>(&tenant_id)
+                .bind::<Nullable<Text>, _>(&query.status)
+                .bind::<Nullable<Text>, _>(&search)
+                .bind::<Nullable<Integer>, _>(query.fleet_id)
+                .bind::<BigInt, _>(query.limit)
+                .bind::<BigInt, _>(query.offset)
+                .load::<JoinedDevice>(connection)
+                .map_err(map_diesel_error)?;
                 Ok(DeviceList {
                     records: rows.into_iter().map(to_details).collect(),
                     total,
@@ -249,7 +273,6 @@ impl DeviceRepository for PostgresDeviceRepository {
                                 id: record.id,
                                 tenant_id: tenant_id.clone(),
                                 name: record.name,
-                                device_type_id: record.device_type_id,
                                 fleet_id: record.fleet_id,
                                 firmware: record.firmware,
                             })
@@ -337,7 +360,6 @@ impl DeviceRepository for PostgresDeviceRepository {
                         )
                         .set(UpdateDevice {
                             name: record.name,
-                            device_type_id: record.device_type_id,
                             fleet_id: record.fleet_id,
                             firmware: record.firmware,
                             updated_at: record.updated_at.map(|value| value.naive_utc()),
@@ -380,11 +402,17 @@ impl DeviceRepository for PostgresDeviceRepository {
         let tenant_id = tenant.as_str().to_owned();
         self.executor
             .run(move |connection| {
-                filtered_query(&tenant_id, &filter)
-                    .select(devices::id)
-                    .order((devices::name.asc(), devices::id.asc()))
-                    .load(connection)
-                    .map_err(map_diesel_error)
+                let search = filter.search.map(|value| format!("%{value}%"));
+                diesel::sql_query(format!(
+                    "SELECT d.id {DEVICE_JOINS} WHERE {DEVICE_FILTER} ORDER BY d.name,d.id"
+                ))
+                .bind::<Text, _>(&tenant_id)
+                .bind::<Nullable<Text>, _>(&filter.status)
+                .bind::<Nullable<Text>, _>(&search)
+                .bind::<Nullable<Integer>, _>(filter.fleet_id)
+                .load::<IdRow>(connection)
+                .map(|rows| rows.into_iter().map(|row| row.id).collect())
+                .map_err(map_diesel_error)
             })
             .await
     }

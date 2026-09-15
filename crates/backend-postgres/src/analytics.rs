@@ -137,13 +137,11 @@ impl AnalyticsRepository for PostgresAnalyticsRepository {
                     SELECT count(*)::bigint AS count
                     FROM devices d
                     WHERE d.tenant_id = $1
-                      AND (cardinality($2) = 0 OR d.device_type_id = ANY($2))
-                      AND (cardinality($3) = 0 OR d.fleet_id = ANY($3))
-                      AND (cardinality($4) = 0 OR d.id = ANY($4))
+                      AND (cardinality($2) = 0 OR d.fleet_id = ANY($2))
+                      AND (cardinality($3) = 0 OR d.id = ANY($3))
                     "#,
                         )
                         .bind::<Text, _>(&tenant_id)
-                        .bind::<Array<Integer>, _>(&query.scope.device_type_ids)
                         .bind::<Array<Integer>, _>(&query.scope.fleet_ids)
                         .bind::<Array<Text>, _>(&query.scope.device_ids)
                         .get_result::<CountRow>(connection)
@@ -166,14 +164,12 @@ impl AnalyticsRepository for PostgresAnalyticsRepository {
                       ON r.tenant_id = c.tenant_id
                      AND r.id = c.blueprint_revision_id
                     WHERE d.tenant_id = $1
-                      AND (cardinality($2) = 0 OR d.device_type_id = ANY($2))
-                      AND (cardinality($3) = 0 OR d.fleet_id = ANY($3))
-                      AND (cardinality($4) = 0 OR d.id = ANY($4))
-                      AND r.blueprint_id = $5
+                      AND (cardinality($2) = 0 OR d.fleet_id = ANY($2))
+                      AND (cardinality($3) = 0 OR d.id = ANY($3))
+                      AND r.blueprint_id = $4
                     "#,
                         )
                         .bind::<Text, _>(&tenant_id)
-                        .bind::<Array<Integer>, _>(&query.scope.device_type_ids)
                         .bind::<Array<Integer>, _>(&query.scope.fleet_ids)
                         .bind::<Array<Text>, _>(&query.scope.device_ids)
                         .bind::<Text, _>(&query.metric.selector.blueprint_id)
@@ -200,16 +196,14 @@ impl AnalyticsRepository for PostgresAnalyticsRepository {
                       ON r.tenant_id = c.tenant_id
                      AND r.id = c.blueprint_revision_id
                     WHERE d.tenant_id = $1
-                      AND (cardinality($2) = 0 OR d.device_type_id = ANY($2))
-                      AND (cardinality($3) = 0 OR d.fleet_id = ANY($3))
-                      AND (cardinality($4) = 0 OR d.id = ANY($4))
-                      AND r.blueprint_id = $5
+                      AND (cardinality($2) = 0 OR d.fleet_id = ANY($2))
+                      AND (cardinality($3) = 0 OR d.id = ANY($3))
+                      AND r.blueprint_id = $4
                     ORDER BY d.name COLLATE "C", d.id COLLATE "C"
-                    LIMIT $6
+                    LIMIT $5
                     "#,
                         )
                         .bind::<Text, _>(&tenant_id)
-                        .bind::<Array<Integer>, _>(&query.scope.device_type_ids)
                         .bind::<Array<Integer>, _>(&query.scope.fleet_ids)
                         .bind::<Array<Text>, _>(&query.scope.device_ids)
                         .bind::<Text, _>(&query.metric.selector.blueprint_id)

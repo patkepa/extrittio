@@ -5,10 +5,10 @@ use serde_json::Value as JsonValue;
 
 use super::schema::{
     alerts, api_keys, app_metrics, audit_events, ca_certificates, command_history,
-    device_certificates, device_configs, device_logs, device_shadows, device_types, devices,
+    device_certificates, device_configs, device_logs, device_shadows, devices,
     firmware_blobs, firmware_updates, fleets, ota_deployments, role_permissions, roles,
     rule_action_outbox, rule_actions, rule_conditions, rule_cooldowns, rules, server_config,
-    server_metrics, telemetry, telemetry_rollups_hourly, user_roles, users, zones,
+    server_metrics, user_roles, users, zones,
 };
 
 // ---------------------------------------------------------------------------
@@ -139,35 +139,6 @@ pub struct NewDeviceCertificate {
 // Device Types
 // ---------------------------------------------------------------------------
 
-#[derive(Queryable, Selectable, Debug, Clone)]
-#[diesel(table_name = device_types)]
-#[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct DeviceType {
-    pub id: i32,
-    pub name: String,
-    pub icon: String,
-    pub color_hex: String,
-    pub created_at: NaiveDateTime,
-    pub tenant_id: String,
-}
-
-#[derive(Insertable, Debug)]
-#[diesel(table_name = device_types)]
-pub struct NewDeviceType {
-    pub tenant_id: String,
-    pub name: String,
-    pub icon: String,
-    pub color_hex: String,
-}
-
-#[derive(AsChangeset, Debug)]
-#[diesel(table_name = device_types)]
-pub struct UpdateDeviceType {
-    pub name: Option<String>,
-    pub icon: Option<String>,
-    pub color_hex: Option<String>,
-}
-
 // ---------------------------------------------------------------------------
 // Firmware Updates
 // ---------------------------------------------------------------------------
@@ -177,7 +148,6 @@ pub struct UpdateDeviceType {
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct FirmwareUpdate {
     pub id: i32,
-    pub device_type_id: i32,
     pub version: String,
     pub url: String,
     pub description: Option<String>,
@@ -189,7 +159,7 @@ pub struct FirmwareUpdate {
     pub build_timestamp: Option<NaiveDateTime>,
     pub changelog: Option<String>,
     pub source: String,
-    pub blueprint_revision_id: Option<String>,
+    pub blueprint_revision_id: String,
     pub compatibility: serde_json::Value,
     pub update_strategy: Option<String>,
 }
@@ -198,7 +168,6 @@ pub struct FirmwareUpdate {
 #[diesel(table_name = firmware_updates)]
 pub struct NewFirmwareUpdate {
     pub tenant_id: String,
-    pub device_type_id: i32,
     pub version: String,
     pub url: String,
     pub description: Option<String>,
@@ -209,7 +178,7 @@ pub struct NewFirmwareUpdate {
     pub build_timestamp: Option<NaiveDateTime>,
     pub changelog: Option<String>,
     pub source: Option<String>,
-    pub blueprint_revision_id: Option<String>,
+    pub blueprint_revision_id: String,
     pub compatibility: serde_json::Value,
     pub update_strategy: Option<String>,
 }
@@ -224,10 +193,9 @@ pub struct NewFirmwareUpdate {
 pub struct FirmwareBlob {
     pub firmware_update_id: i32,
     pub tenant_id: String,
-    pub data: Option<Vec<u8>>,
     pub size: i32,
     pub filename: String,
-    pub storage_key: Option<String>,
+    pub storage_key: String,
     pub storage_backend: String,
     pub created_at: NaiveDateTime,
 }
@@ -237,10 +205,9 @@ pub struct FirmwareBlob {
 pub struct NewFirmwareBlob {
     pub firmware_update_id: i32,
     pub tenant_id: String,
-    pub data: Option<Vec<u8>>,
     pub size: i32,
     pub filename: String,
-    pub storage_key: Option<String>,
+    pub storage_key: String,
     pub storage_backend: String,
 }
 
@@ -301,7 +268,6 @@ pub struct Device {
     pub id: String,
     pub tenant_id: String,
     pub name: String,
-    pub device_type_id: i32,
     pub fleet_id: Option<i32>,
     pub status: String,
     pub firmware: String,
@@ -309,8 +275,6 @@ pub struct Device {
     pub uptime_seconds: i32,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
-    pub latest_latitude: Option<f64>,
-    pub latest_longitude: Option<f64>,
     pub declared_connections: JsonValue,
 }
 
@@ -320,7 +284,6 @@ pub struct NewDevice {
     pub id: String,
     pub tenant_id: String,
     pub name: String,
-    pub device_type_id: i32,
     pub fleet_id: Option<i32>,
     pub firmware: String,
 }
@@ -329,7 +292,6 @@ pub struct NewDevice {
 #[diesel(table_name = devices)]
 pub struct UpdateDevice {
     pub name: Option<String>,
-    pub device_type_id: Option<i32>,
     pub fleet_id: Option<Option<i32>>,
     pub firmware: Option<String>,
     pub status: Option<String>,
@@ -337,68 +299,6 @@ pub struct UpdateDevice {
     pub uptime_seconds: Option<i32>,
     pub updated_at: Option<NaiveDateTime>,
     pub declared_connections: Option<JsonValue>,
-}
-
-// ---------------------------------------------------------------------------
-// Telemetry
-// ---------------------------------------------------------------------------
-
-#[derive(Queryable, Selectable, Debug)]
-#[diesel(table_name = telemetry)]
-#[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct TelemetryRecord {
-    pub id: i64,
-    pub tenant_id: String,
-    pub device_id: String,
-    pub payload: Vec<u8>,
-    pub temperature: Option<f32>,
-    pub humidity: Option<f32>,
-    pub battery_level: Option<f32>,
-    pub custom_json: Option<JsonValue>,
-    pub received_at: NaiveDateTime,
-    pub latitude: Option<f64>,
-    pub longitude: Option<f64>,
-    pub speed: Option<f32>,
-    pub altitude: Option<f32>,
-    pub heading: Option<f32>,
-}
-
-#[derive(Insertable, Debug)]
-#[diesel(table_name = telemetry)]
-pub struct NewTelemetryRecord {
-    pub tenant_id: String,
-    pub device_id: String,
-    pub payload: Vec<u8>,
-    pub temperature: Option<f32>,
-    pub humidity: Option<f32>,
-    pub battery_level: Option<f32>,
-    pub custom_json: Option<JsonValue>,
-    pub latitude: Option<f64>,
-    pub longitude: Option<f64>,
-    pub speed: Option<f32>,
-    pub altitude: Option<f32>,
-    pub heading: Option<f32>,
-}
-
-#[derive(Queryable, Selectable, Debug, Clone)]
-#[diesel(table_name = telemetry_rollups_hourly)]
-#[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct TelemetryRollupHourly {
-    pub tenant_id: String,
-    pub device_id: String,
-    pub bucket_start: NaiveDateTime,
-    pub sample_count: i64,
-    pub avg_temperature: Option<f32>,
-    pub min_temperature: Option<f32>,
-    pub max_temperature: Option<f32>,
-    pub avg_humidity: Option<f32>,
-    pub min_humidity: Option<f32>,
-    pub max_humidity: Option<f32>,
-    pub avg_battery_level: Option<f32>,
-    pub min_battery_level: Option<f32>,
-    pub max_battery_level: Option<f32>,
-    pub created_at: NaiveDateTime,
-    pub updated_at: NaiveDateTime,
 }
 
 // ---------------------------------------------------------------------------
@@ -637,7 +537,7 @@ pub struct ApiKey {
     pub name: String,
     pub key_hash: String,
     pub key_prefix: String,
-    pub device_type_id: Option<i32>,
+    pub blueprint_id: Option<String>,
     pub created_at: NaiveDateTime,
     pub last_used_at: Option<NaiveDateTime>,
     pub tenant_id: String,
@@ -650,7 +550,7 @@ pub struct NewApiKey {
     pub name: String,
     pub key_hash: String,
     pub key_prefix: String,
-    pub device_type_id: Option<i32>,
+    pub blueprint_id: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

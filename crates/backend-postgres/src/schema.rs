@@ -22,7 +22,7 @@ diesel::table! {
         name -> Text,
         key_hash -> Text,
         key_prefix -> Text,
-        device_type_id -> Nullable<Int4>,
+        blueprint_id -> Nullable<Text>,
         created_at -> Timestamptz,
         last_used_at -> Nullable<Timestamptz>,
         tenant_id -> Text,
@@ -181,26 +181,6 @@ diesel::table! {
 }
 
 diesel::table! {
-    device_latest_state (tenant_id, device_id) {
-        tenant_id -> Text,
-        device_id -> Text,
-        telemetry_id -> Int8,
-        payload -> Bytea,
-        temperature -> Nullable<Float4>,
-        humidity -> Nullable<Float4>,
-        battery_level -> Nullable<Float4>,
-        custom_json -> Nullable<Jsonb>,
-        latitude -> Nullable<Float8>,
-        longitude -> Nullable<Float8>,
-        speed -> Nullable<Float4>,
-        altitude -> Nullable<Float4>,
-        heading -> Nullable<Float4>,
-        received_at -> Timestamptz,
-        updated_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
     device_logs (id) {
         id -> Int8,
         device_id -> Text,
@@ -241,28 +221,14 @@ diesel::table! {
 }
 
 diesel::table! {
-    device_types (id) {
-        id -> Int4,
-        name -> Text,
-        created_at -> Timestamptz,
-        icon -> Text,
-        color_hex -> Text,
-        tenant_id -> Text,
-    }
-}
-
-diesel::table! {
     devices (id) {
         id -> Text,
         name -> Text,
-        device_type_id -> Int4,
         fleet_id -> Nullable<Int4>,
         status -> Text,
         firmware -> Text,
         last_seen -> Nullable<Timestamptz>,
         uptime_seconds -> Int4,
-        latest_latitude -> Nullable<Float8>,
-        latest_longitude -> Nullable<Float8>,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
         declared_connections -> Jsonb,
@@ -273,11 +239,10 @@ diesel::table! {
 diesel::table! {
     firmware_blobs (firmware_update_id) {
         firmware_update_id -> Int4,
-        data -> Nullable<Bytea>,
         size -> Int4,
         filename -> Text,
         tenant_id -> Text,
-        storage_key -> Nullable<Text>,
+        storage_key -> Text,
         storage_backend -> Text,
         created_at -> Timestamptz,
     }
@@ -286,7 +251,6 @@ diesel::table! {
 diesel::table! {
     firmware_updates (id) {
         id -> Int4,
-        device_type_id -> Int4,
         version -> Text,
         url -> Text,
         description -> Nullable<Text>,
@@ -299,7 +263,7 @@ diesel::table! {
         source -> Text,
         created_at -> Timestamptz,
         tenant_id -> Text,
-        blueprint_revision_id -> Nullable<Text>,
+        blueprint_revision_id -> Text,
         compatibility -> Jsonb,
         update_strategy -> Nullable<Text>,
     }
@@ -449,140 +413,6 @@ diesel::table! {
 }
 
 diesel::table! {
-    telemetry (id, received_at) {
-        id -> Int8,
-        device_id -> Text,
-        payload -> Bytea,
-        temperature -> Nullable<Float4>,
-        humidity -> Nullable<Float4>,
-        battery_level -> Nullable<Float4>,
-        custom_json -> Nullable<Jsonb>,
-        latitude -> Nullable<Float8>,
-        longitude -> Nullable<Float8>,
-        speed -> Nullable<Float4>,
-        altitude -> Nullable<Float4>,
-        heading -> Nullable<Float4>,
-        received_at -> Timestamptz,
-        tenant_id -> Text,
-    }
-}
-
-diesel::table! {
-    telemetry_default (id, received_at) {
-        id -> Int8,
-        device_id -> Text,
-        payload -> Bytea,
-        temperature -> Nullable<Float4>,
-        humidity -> Nullable<Float4>,
-        battery_level -> Nullable<Float4>,
-        custom_json -> Nullable<Jsonb>,
-        latitude -> Nullable<Float8>,
-        longitude -> Nullable<Float8>,
-        speed -> Nullable<Float4>,
-        altitude -> Nullable<Float4>,
-        heading -> Nullable<Float4>,
-        received_at -> Timestamptz,
-        tenant_id -> Text,
-    }
-}
-
-diesel::table! {
-    telemetry_rollups_hourly (tenant_id, device_id, bucket_start) {
-        tenant_id -> Text,
-        device_id -> Text,
-        bucket_start -> Timestamptz,
-        sample_count -> Int8,
-        avg_temperature -> Nullable<Float4>,
-        min_temperature -> Nullable<Float4>,
-        max_temperature -> Nullable<Float4>,
-        avg_humidity -> Nullable<Float4>,
-        min_humidity -> Nullable<Float4>,
-        max_humidity -> Nullable<Float4>,
-        avg_battery_level -> Nullable<Float4>,
-        min_battery_level -> Nullable<Float4>,
-        max_battery_level -> Nullable<Float4>,
-        created_at -> Timestamptz,
-        updated_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
-    telemetry_y202608 (id, received_at) {
-        id -> Int8,
-        device_id -> Text,
-        payload -> Bytea,
-        temperature -> Nullable<Float4>,
-        humidity -> Nullable<Float4>,
-        battery_level -> Nullable<Float4>,
-        custom_json -> Nullable<Jsonb>,
-        latitude -> Nullable<Float8>,
-        longitude -> Nullable<Float8>,
-        speed -> Nullable<Float4>,
-        altitude -> Nullable<Float4>,
-        heading -> Nullable<Float4>,
-        received_at -> Timestamptz,
-        tenant_id -> Text,
-    }
-}
-
-diesel::table! {
-    telemetry_y202609 (id, received_at) {
-        id -> Int8,
-        device_id -> Text,
-        payload -> Bytea,
-        temperature -> Nullable<Float4>,
-        humidity -> Nullable<Float4>,
-        battery_level -> Nullable<Float4>,
-        custom_json -> Nullable<Jsonb>,
-        latitude -> Nullable<Float8>,
-        longitude -> Nullable<Float8>,
-        speed -> Nullable<Float4>,
-        altitude -> Nullable<Float4>,
-        heading -> Nullable<Float4>,
-        received_at -> Timestamptz,
-        tenant_id -> Text,
-    }
-}
-
-diesel::table! {
-    telemetry_y202610 (id, received_at) {
-        id -> Int8,
-        device_id -> Text,
-        payload -> Bytea,
-        temperature -> Nullable<Float4>,
-        humidity -> Nullable<Float4>,
-        battery_level -> Nullable<Float4>,
-        custom_json -> Nullable<Jsonb>,
-        latitude -> Nullable<Float8>,
-        longitude -> Nullable<Float8>,
-        speed -> Nullable<Float4>,
-        altitude -> Nullable<Float4>,
-        heading -> Nullable<Float4>,
-        received_at -> Timestamptz,
-        tenant_id -> Text,
-    }
-}
-
-diesel::table! {
-    telemetry_y202611 (id, received_at) {
-        id -> Int8,
-        device_id -> Text,
-        payload -> Bytea,
-        temperature -> Nullable<Float4>,
-        humidity -> Nullable<Float4>,
-        battery_level -> Nullable<Float4>,
-        custom_json -> Nullable<Jsonb>,
-        latitude -> Nullable<Float8>,
-        longitude -> Nullable<Float8>,
-        speed -> Nullable<Float4>,
-        altitude -> Nullable<Float4>,
-        heading -> Nullable<Float4>,
-        received_at -> Timestamptz,
-        tenant_id -> Text,
-    }
-}
-
-diesel::table! {
     user_roles (user_id, role_id) {
         user_id -> Int4,
         role_id -> Int4,
@@ -623,7 +453,7 @@ diesel::table! {
 diesel::joinable!(alerts -> devices (device_id));
 diesel::joinable!(alerts -> organizations (tenant_id));
 diesel::joinable!(alerts -> rules (rule_id));
-diesel::joinable!(api_keys -> device_types (device_type_id));
+diesel::joinable!(api_keys -> device_blueprints (blueprint_id));
 diesel::joinable!(api_keys -> organizations (tenant_id));
 diesel::joinable!(audit_events -> organizations (tenant_id));
 diesel::joinable!(command_history -> devices (device_id));
@@ -636,20 +466,16 @@ diesel::joinable!(device_configs -> organizations (tenant_id));
 diesel::joinable!(device_contract_assignments -> organizations (tenant_id));
 diesel::joinable!(device_contracts -> organizations (tenant_id));
 diesel::joinable!(device_events -> organizations (tenant_id));
-diesel::joinable!(device_latest_state -> organizations (tenant_id));
 diesel::joinable!(device_logs -> devices (device_id));
 diesel::joinable!(device_logs -> organizations (tenant_id));
 diesel::joinable!(device_metric_samples -> device_events (event_id));
 diesel::joinable!(device_metric_samples -> organizations (tenant_id));
 diesel::joinable!(device_shadows -> devices (device_id));
 diesel::joinable!(device_shadows -> organizations (tenant_id));
-diesel::joinable!(device_types -> organizations (tenant_id));
-diesel::joinable!(devices -> device_types (device_type_id));
 diesel::joinable!(devices -> fleets (fleet_id));
 diesel::joinable!(devices -> organizations (tenant_id));
 diesel::joinable!(firmware_blobs -> firmware_updates (firmware_update_id));
 diesel::joinable!(firmware_blobs -> organizations (tenant_id));
-diesel::joinable!(firmware_updates -> device_types (device_type_id));
 diesel::joinable!(firmware_updates -> organizations (tenant_id));
 diesel::joinable!(fleets -> organizations (tenant_id));
 diesel::joinable!(ota_deployments -> devices (device_id));
@@ -667,15 +493,6 @@ diesel::joinable!(rule_cooldowns -> devices (device_id));
 diesel::joinable!(rule_cooldowns -> organizations (tenant_id));
 diesel::joinable!(rule_cooldowns -> rules (rule_id));
 diesel::joinable!(rules -> organizations (tenant_id));
-diesel::joinable!(telemetry -> devices (device_id));
-diesel::joinable!(telemetry -> organizations (tenant_id));
-diesel::joinable!(telemetry_default -> organizations (tenant_id));
-diesel::joinable!(telemetry_rollups_hourly -> devices (device_id));
-diesel::joinable!(telemetry_rollups_hourly -> organizations (tenant_id));
-diesel::joinable!(telemetry_y202608 -> organizations (tenant_id));
-diesel::joinable!(telemetry_y202609 -> organizations (tenant_id));
-diesel::joinable!(telemetry_y202610 -> organizations (tenant_id));
-diesel::joinable!(telemetry_y202611 -> organizations (tenant_id));
 diesel::joinable!(user_roles -> organizations (tenant_id));
 diesel::joinable!(user_roles -> roles (role_id));
 diesel::joinable!(user_roles -> users (user_id));
@@ -702,26 +519,6 @@ diesel::table! {
 }
 diesel::joinable!(rule_zone_entries -> organizations (tenant_id));
 
-diesel::table! {
-    rule_cooldown_resets (tenant_id, rule_id, device_id) {
-        tenant_id -> Text,
-        rule_id -> Text,
-        device_id -> Text,
-        reset_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
-    rule_zone_handoffs (tenant_id,rule_id,device_id) {
-        tenant_id -> Text,
-        rule_id -> Text,
-        device_id -> Text,
-        live_seen -> Bool,
-        legacy_created_at -> Nullable<Timestamptz>,
-        legacy_event_id -> Nullable<Text>,
-    }
-}
-
 diesel::allow_tables_to_appear_in_same_query!(
     alerts,
     api_keys,
@@ -737,11 +534,9 @@ diesel::allow_tables_to_appear_in_same_query!(
     device_contract_assignments,
     device_contracts,
     device_events,
-    device_latest_state,
     device_logs,
     device_metric_samples,
     device_shadows,
-    device_types,
     devices,
     firmware_blobs,
     firmware_updates,
@@ -755,19 +550,10 @@ diesel::allow_tables_to_appear_in_same_query!(
     rule_actions,
     rule_conditions,
     rule_cooldowns,
-    rule_cooldown_resets,
     rule_zone_entries,
-    rule_zone_handoffs,
     rules,
     server_config,
     server_metrics,
-    telemetry,
-    telemetry_default,
-    telemetry_rollups_hourly,
-    telemetry_y202608,
-    telemetry_y202609,
-    telemetry_y202610,
-    telemetry_y202611,
     user_roles,
     users,
     zones,
