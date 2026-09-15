@@ -5,16 +5,18 @@ updates:
     schedule:
       interval: weekly
     groups:
-      rust-dependencies:
+      rust-minor-and-patch:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: npm
     directory: /apps/frontend
     schedule:
       interval: weekly
     groups:
-      frontend-dependencies:
+      frontend-minor-and-patch:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: github-actions
     directory: /

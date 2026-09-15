@@ -4,116 +4,151 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
+    paths-ignore: ["docs/**", "**/*.md"]
   pull_request:
     branches: [main]
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
+    paths-ignore: ["docs/**", "**/*.md"]
+
+permissions:
+  contents: read
+  pull-requests: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 env:
   CARGO_TERM_COLOR: always
   RUST_VERSION: "1.90"
 
 jobs:
-  dependency-review:
-    name: Dependency Review
-    # GitHub does not provide Dependency Review for this private repository
-    # without GitHub Advanced Security. Keep the gate active if it becomes public.
-    if: github.event_name == 'pull_request' && github.event.repository.private == false
+  changes:
+    name: Select Checks
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    timeout-minutes: 5
+    outputs:
+      apple: ${{ steps.filter.outputs.apple }}
+      backend: ${{ steps.filter.outputs.backend }}
+      container: ${{ steps.filter.outputs.container }}
+      dependencies: ${{ steps.filter.outputs.dependencies }}
+      edge: ${{ steps.filter.outputs.edge }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      protocol: ${{ steps.filter.outputs.protocol }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4
-
-  dependency-audit:
-    name: Dependency Audit
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          toolchain: ${{ env.RUST_VERSION }}
-      - name: Install pinned cargo-audit
-        run: cargo install cargo-audit --version 0.22.1 --locked
-      - name: Audit dependencies
-        # RUSTSEC-2026-0041 is unreachable because Zenoh transport compression
-        # is disabled; the time-bounded exception is documented with the
-        # matching cargo-deny policy.
-        run: cargo audit --ignore RUSTSEC-2026-0041
+          fetch-depth: 0
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - '.cargo/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - 'apps/extrittio/**'
+              - 'crates/**'
+              - 'clients/rust/**'
+              - 'deploy/**'
+              - 'tools/xtask/**'
+              - '.github/workflows/ci.yml'
+            frontend:
+              - 'api/openapi.json'
+              - 'apps/frontend/**'
+              - '.github/workflows/ci.yml'
+            protocol:
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - 'crates/common/**'
+              - 'crates/device-contract/**'
+              - 'clients/c/**'
+              - 'clients/arduino/**'
+              - 'clients/rust/**'
+              - 'tools/xtask/**'
+              - '.github/workflows/ci.yml'
+            apple:
+              - 'api/openapi.json'
+              - 'apps/mobile-app-ios/**'
+              - 'clients/rust/macos/**'
+              - '.github/workflows/ci.yml'
+            dependencies:
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - '**/Cargo.toml'
+              - 'deny.toml'
+              - 'apps/frontend/package*.json'
+              - '.github/workflows/ci.yml'
+            edge:
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - 'apps/extrittio/**'
+              - 'apps/frontend/**'
+              - 'crates/**'
+              - 'tools/xtask/**'
+              - '.github/workflows/ci.yml'
+            container:
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - '**/Cargo.toml'
+              - 'apps/frontend/package*.json'
+              - 'deploy/docker/**'
+              - '.dockerignore'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/docker.yml'
 
   dependency-policy:
     name: Dependency Policy
+    needs: changes
+    if: startsWith(github.ref, 'refs/tags/v') || needs.changes.outputs.dependencies == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2
         with:
           command: check
 
-  backend-fmt:
-    name: Backend Format
+  backend-quality:
+    name: Backend Quality
+    needs: changes
+    if: startsWith(github.ref, 'refs/tags/v') || needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
           toolchain: ${{ env.RUST_VERSION }}
-          components: rustfmt
-      - run: cargo fmt --all -- --check
-
-  backend-architecture:
-    name: Backend Architecture
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
-        with:
-          toolchain: ${{ env.RUST_VERSION }}
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-        with:
-          cache-on-failure: true
-      - run: cargo xtask architecture
-
-  backend-clippy:
-    name: Backend Clippy
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
-        with:
-          toolchain: ${{ env.RUST_VERSION }}
-          components: clippy
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+          components: clippy,rustfmt
+      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
         with:
           cache-on-failure: true
       - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler libpq-dev libssl-dev
+      - name: Check formatting and architecture
+        run: |
+          cargo fmt --all -- --check
+          cargo xtask architecture
       - name: Verify backend host feature matrix
         run: |
-          cargo check -p extrittio-backend --no-default-features --features openapi
-          cargo check -p extrittio-backend --no-default-features --features postgres
-          cargo check -p extrittio-backend --no-default-features --features turso
-          cargo check -p extrittio-backend --no-default-features --features all-databases
+          cargo check --locked -p extrittio-backend --no-default-features --features openapi
+          cargo check --locked -p extrittio-backend --no-default-features --features postgres
+          cargo check --locked -p extrittio-backend --no-default-features --features turso
+          cargo check --locked -p extrittio-backend --no-default-features --features all-databases
       - name: Lint extracted backend packages
         run: |
-          cargo clippy -p extrittio-backend-core --all-targets -- -D warnings
-          cargo clippy -p extrittio-backend-postgres --all-targets -- -D warnings
-          cargo clippy -p extrittio-backend-turso --all-targets -- -D warnings
-          cargo clippy -p extrittio-backend-adapter-tests --all-features --all-targets -- -D warnings
+          cargo clippy --locked -p extrittio-backend-core --all-targets -- -D warnings
+          cargo clippy --locked -p extrittio-backend-postgres --all-targets -- -D warnings
+          cargo clippy --locked -p extrittio-backend-turso --all-targets -- -D warnings
+          cargo clippy --locked -p extrittio-backend-adapter-tests --all-features --all-targets -- -D warnings
       - name: Lint remaining workspace packages
         run: >-
-          cargo clippy --workspace
+          cargo clippy --locked --workspace
           --exclude extrittio-macos
           --exclude extrittio-backend-core
           --exclude extrittio-backend-postgres
@@ -123,7 +158,10 @@ jobs:
 
   backend-test:
     name: Backend Test
+    needs: changes
+    if: startsWith(github.ref, 'refs/tags/v') || needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:17@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d
@@ -131,8 +169,7 @@ jobs:
           POSTGRES_USER: extrittio
           POSTGRES_PASSWORD: extrittio
           POSTGRES_DB: extrittio
-        ports:
-          - 5432:5432
+        ports: ["5432:5432"]
         options: >-
           --health-cmd "pg_isready -U extrittio -d extrittio"
           --health-interval 10s
@@ -141,11 +178,11 @@ jobs:
     env:
       DATABASE_URL: postgres://extrittio:extrittio@127.0.0.1:5432/extrittio?connect_timeout=2
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
           toolchain: ${{ env.RUST_VERSION }}
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
         with:
           cache-on-failure: true
       - name: Install system dependencies
@@ -154,97 +191,29 @@ jobs:
           sudo apt-get install -y protobuf-compiler libpq-dev libssl-dev postgresql-client
       - name: Check PostgreSQL
         run: pg_isready -h 127.0.0.1 -p 5432 -U extrittio -d extrittio
-      - name: Test extracted backend packages
-        run: |
-          cargo test -p extrittio-backend-core
-          cargo test -p extrittio-backend-postgres
-          cargo test -p extrittio-backend-turso
-      - name: Test remaining workspace packages
+      - name: Test Rust workspace and both database adapters
         run: >-
-          cargo test --workspace
+          cargo test --locked --workspace
           --exclude extrittio-macos
-          --exclude extrittio-backend-core
-          --exclude extrittio-backend-postgres
-          --exclude extrittio-backend-turso
-          --features extrittio-backend/openapi
-      - name: Verify PostgreSQL adapter contract
-        run: |
-          cargo test -p extrittio-backend-adapter-tests --features postgres --test postgres_zones
-          cargo test -p extrittio-backend-adapter-tests --features postgres --test postgres_roles
-          cargo test -p extrittio-backend-adapter-tests --features postgres --test postgres_users
+          --features
+          extrittio-backend/openapi,extrittio-backend-adapter-tests/postgres,extrittio-backend-adapter-tests/turso
       - name: Verify generated OpenAPI contract
-        run: cargo run -p extrittio-backend --features openapi --bin openapi -- api/openapi.json
+        run: cargo run --locked -p extrittio-backend --features openapi --bin openapi -- api/openapi.json
       - name: Check generated OpenAPI contract is committed
         run: git diff --exit-code -- api/openapi.json
 
-  turso-edge:
-    name: Turso Edge (${{ matrix.arch }})
-    needs: frontend
-    runs-on: ${{ matrix.runner }}
-    env:
-      EDGE_CARGO_PROFILE: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'ci-release' }}
-    strategy:
-      matrix:
-        include:
-          - arch: amd64
-            runner: ubuntu-latest
-          - arch: arm64
-            runner: ubuntu-24.04-arm
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Download frontend assets
-        uses: actions/download-artifact@v4
-        with:
-          name: frontend-dist
-          path: apps/frontend/dist
-      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
-        with:
-          toolchain: ${{ env.RUST_VERSION }}
-          components: clippy
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-        with:
-          cache-on-failure: true
-      - name: Install build dependencies
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler libssl-dev
-      - name: Verify Turso adapter
-        run: |
-          cargo clippy -p extrittio --no-default-features --features turso --all-targets -- -D warnings
-          cargo test -p extrittio-backend --no-default-features --features turso --lib
-          cargo test -p extrittio-backend-adapter-tests --features turso --test turso_zones
-          cargo test -p extrittio-backend-adapter-tests --features turso --test turso_roles
-          cargo test -p extrittio-backend-adapter-tests --features turso --test turso_users
-      - name: Build standalone Extrittio Edge executable
-        run: |
-          cargo build --profile "$EDGE_CARGO_PROFILE" -p extrittio --no-default-features --features edge
-          install -D -m 0755 "target/$EDGE_CARGO_PROFILE/extrittio" target/edge-install/bin/extrittio
-      - name: Verify artifact and first-run migration
-        run: |
-          edge_binary="target/$EDGE_CARGO_PROFILE/extrittio"
-          if ldd "$edge_binary" | grep -E 'libpq|postgres'; then
-            echo "Extrittio Edge executable unexpectedly links PostgreSQL runtime libraries" >&2
-            exit 1
-          fi
-          smoke_dir="$(mktemp -d)"
-          "$edge_binary" -o json migrate --database-backend turso --deployment-profile edge --data-dir "$smoke_dir"
-          "$edge_binary" -o json database --database-backend turso --deployment-profile edge --data-dir "$smoke_dir" info
-          target/edge-install/bin/extrittio run --help
-          sha256sum "$edge_binary" > "target/$EDGE_CARGO_PROFILE/extrittio-${{ matrix.arch }}.sha256"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: extrittio-edge-linux-${{ matrix.arch }}
-          path: |
-            target/${{ env.EDGE_CARGO_PROFILE }}/extrittio
-            target/${{ env.EDGE_CARGO_PROFILE }}/extrittio-${{ matrix.arch }}.sha256
-
-  clients-and-protocol:
+  protocol:
     name: Clients & Protocol
+    needs: changes
+    if: startsWith(github.ref, 'refs/tags/v') || needs.changes.outputs.protocol == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
           toolchain: ${{ env.RUST_VERSION }}
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
         with:
           cache-on-failure: true
       - name: Install native toolchain
@@ -258,13 +227,16 @@ jobs:
 
   frontend:
     name: Frontend
+    needs: changes
+    if: startsWith(github.ref, 'refs/tags/v') || needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: apps/frontend
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
@@ -272,41 +244,159 @@ jobs:
           registry-url: https://npm.pkg.github.com
           scope: "@extrittio"
       - run: npm ci
-      - name: Check formatting
-        run: npm run format:check
-      - name: Lint
-        run: npm run lint
-      - name: Unit tests
-        run: npm test
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm test
       - name: Verify generated API contract
         run: npm run generate-api-types
       - name: Check generated files are committed
         working-directory: ${{ github.workspace }}
         run: git diff --exit-code -- apps/frontend/src/types/openapi.ts
-      - name: TypeScript check & build
+      - name: TypeScript check and build
         run: npm run build
-      - name: Upload frontend assets
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-dist
-          path: apps/frontend/dist
-          if-no-files-found: error
-          retention-days: 1
 
-  docker:
-    name: Docker Image
-    needs:
-      - dependency-audit
-      - dependency-policy
-      - backend-architecture
-      - backend-fmt
-      - backend-clippy
-      - backend-test
-      - clients-and-protocol
-      - frontend
+  apple:
+    name: Apple Clients
+    needs: changes
+    if: startsWith(github.ref, 'refs/tags/v') || needs.changes.outputs.apple == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          components: clippy
+      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+        with:
+          cache-on-failure: true
+      - name: Install iOS tooling
+        run: brew install xcodegen swiftlint swiftformat
+      - name: Verify macOS Rust client
+        run: |
+          cargo clippy --locked -p extrittio-macos --all-targets -- -D warnings
+          cargo test --locked -p extrittio-macos
+      - name: Verify iOS app
+        run: cargo xtask verify ios
+
+  edge-smoke:
+    name: Edge Smoke (amd64)
+    needs: changes
     if: >-
-      github.event_name == 'push' &&
-      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+      !startsWith(github.ref, 'refs/tags/v') &&
+      needs.changes.outputs.edge == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/frontend/package-lock.json
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+        with:
+          cache-on-failure: true
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler libssl-dev
+      - name: Build frontend assets
+        working-directory: apps/frontend
+        run: npm ci && npm run build
+      - name: Build standalone Edge executable
+        run: cargo build --locked --profile ci-release -p extrittio --no-default-features --features edge
+      - name: Verify artifact and first-run migration
+        run: |
+          edge_binary=target/ci-release/extrittio
+          if ldd "$edge_binary" | grep -E 'libpq|postgres'; then
+            echo "Extrittio Edge executable unexpectedly links PostgreSQL runtime libraries" >&2
+            exit 1
+          fi
+          smoke_dir="$(mktemp -d)"
+          "$edge_binary" -o json migrate --database-backend turso --deployment-profile edge --data-dir "$smoke_dir"
+          "$edge_binary" -o json database --database-backend turso --deployment-profile edge --data-dir "$smoke_dir" info
+          "$edge_binary" run --help
+
+  edge-release:
+    name: Edge Release (arm64)
+    needs: changes
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/frontend/package-lock.json
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+        with:
+          cache-on-failure: true
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler libssl-dev
+      - name: Build frontend assets
+        working-directory: apps/frontend
+        run: npm ci && npm run build
+      - name: Build and verify release executable
+        run: |
+          cargo build --locked --release -p extrittio --no-default-features --features edge
+          install -D -m 0755 target/release/extrittio target/release-assets/extrittio-edge-linux-arm64
+          if ldd target/release-assets/extrittio-edge-linux-arm64 | grep -E 'libpq|postgres'; then
+            echo "Extrittio Edge executable unexpectedly links PostgreSQL runtime libraries" >&2
+            exit 1
+          fi
+          smoke_dir="$(mktemp -d)"
+          target/release-assets/extrittio-edge-linux-arm64 -o json migrate --database-backend turso --deployment-profile edge --data-dir "$smoke_dir"
+          target/release-assets/extrittio-edge-linux-arm64 -o json database --database-backend turso --deployment-profile edge --data-dir "$smoke_dir" info
+          sha256sum target/release-assets/extrittio-edge-linux-arm64 > target/release-assets/extrittio-edge-linux-arm64.sha256
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: extrittio-edge-linux-arm64
+          path: target/release-assets/
+          if-no-files-found: error
+
+  container-smoke:
+    name: Container Smoke
+    needs: changes
+    if: >-
+      !startsWith(github.ref, 'refs/tags/v') &&
+      needs.changes.outputs.container == 'true'
+    uses: ./.github/workflows/docker.yml
+    permissions:
+      contents: read
+    with:
+      platforms: linux/amd64
+      cargo-profile: ci-release
+      publish: false
+
+  gate:
+    name: CI Gate
+    if: always()
+    needs: [changes, dependency-policy, backend-quality, backend-test, protocol, frontend, apple, edge-smoke, edge-release, container-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      RESULTS: ${{ join(needs.*.result, ' ') }}
+    steps:
+      - name: Require every selected check to pass
+        run: |
+          for result in $RESULTS; do
+            if [[ "$result" != success && "$result" != skipped ]]; then
+              echo "A selected CI job ended with: $result" >&2
+              exit 1
+            fi
+          done
+
+  docker-release:
+    name: Publish Docker Release
+    needs: gate
+    if: startsWith(github.ref, 'refs/tags/v')
     uses: ./.github/workflows/docker.yml
     permissions:
       contents: read
@@ -314,5 +404,27 @@ jobs:
       id-token: write
       attestations: write
     with:
-      platforms: ${{ startsWith(github.ref, 'refs/tags/v') && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
-      cargo-profile: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'ci-release' }}
+      platforms: linux/amd64,linux/arm64
+      cargo-profile: release
+      publish: true
+
+  release-assets:
+    name: Publish Edge Release Assets
+    needs: [edge-release, docker-release]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: extrittio-edge-linux-arm64
+          path: release-assets
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --generate-notes
+          gh release upload "$TAG" release-assets/* --clobber
