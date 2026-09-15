@@ -271,13 +271,17 @@ jobs:
         with:
           cache-on-failure: true
       - name: Install iOS tooling
-        run: brew install protobuf xcodegen swiftlint swiftformat
+        run: brew install protobuf xcodegen
       - name: Verify macOS Rust client
         run: |
           cargo clippy --locked -p extrittio-macos --all-targets -- -D warnings
           cargo test --locked -p extrittio-macos
-      - name: Verify iOS app
-        run: cargo xtask verify ios
+      - name: Verify iOS module boundaries
+        run: cargo xtask ios module-check
+      - name: Build and test iOS app
+        run: |
+          cargo xtask ios build
+          cargo xtask ios test
 
   edge-smoke:
     name: Edge Smoke (amd64)
