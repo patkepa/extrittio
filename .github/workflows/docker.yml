@@ -13,11 +13,6 @@ on:
         required: false
         default: ci-release
         type: string
-      publish:
-        description: Push, sign, and attest the image
-        required: false
-        default: false
-        type: boolean
   workflow_call:
     inputs:
       platforms:
@@ -52,11 +47,6 @@ jobs:
     name: Combined App Image
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
-      attestations: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Validate publishing ref
