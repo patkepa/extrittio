@@ -1,35 +1,128 @@
 .login-page {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
   min-height: 100vh;
-  background: hsl(var(--background));
+  background: var(--kui-surface-canvas);
+}
+
+.login-panel {
+  width: min(100%, 440px);
+  padding: 24px;
 }
 
 .login-card {
-  width: 380px;
   padding: 32px;
+  border: 1px solid var(--kui-line);
+  background: var(--kui-surface-panel);
 }
 
 .login-header {
-  text-align: center;
-  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 36px;
 }
 
 .login-logo {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
-  border-radius: 2px;
-  background: hsl(var(--accent));
-  color: #fff;
-  margin-bottom: 12px;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--kui-line-strong);
+  background: var(--kui-surface-raised);
+  color: hsl(var(--accent));
+}
+
+.login-product-name {
+  color: hsl(var(--foreground));
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.035em;
+}
+
+.login-intro {
+  margin-bottom: 28px;
+}
+
+.login-intro .bp6-heading {
+  margin: 0;
+  color: hsl(var(--foreground));
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.045em;
+  line-height: 1.08;
 }
 
 .login-subtitle {
-  margin: 4px 0 0;
+  margin: 9px 0 0;
+  color: var(--kui-text-muted);
   font-size: 13px;
-  opacity: 0.6;
+}
+
+.login-form .bp6-form-group {
+  margin-bottom: 20px;
+}
+
+.login-form .bp6-label {
+  margin-bottom: 8px;
+  color: #d8dde4;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.login-form .bp6-input-group {
+  width: 100%;
+}
+
+.login-form .bp6-input {
+  min-height: 40px;
+  border-color: var(--kui-line);
+  background: var(--kui-surface-canvas);
+  font-size: 13px;
+}
+
+.login-form .bp6-input:hover {
+  border-color: var(--kui-line-strong);
+}
+
+.login-form .bp6-input:focus {
+  border-color: hsl(var(--accent));
+  box-shadow: 0 0 0 1px hsl(var(--accent));
+}
+
+.login-form .bp6-input-group > .bp6-icon {
+  top: 0;
+  bottom: 0;
+  height: auto;
+  color: #74879a;
+  transform: none;
+}
+
+.login-form .bp6-button {
+  min-height: 40px;
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.login-error {
+  margin: 0 0 20px;
+  padding: 10px 12px;
+  border: 1px solid hsl(var(--danger) / 0.7);
+  border-left-width: 3px;
+  background: hsl(var(--danger) / 0.1) !important;
+  color: #ff9a9a;
+  font-size: 12px;
+}
+
+@media (max-width: 460px) {
+  .login-panel {
+    padding: 16px;
+  }
+
+  .login-card {
+    padding: 24px;
+  }
 }
