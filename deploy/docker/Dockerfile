@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 # Stage 1: Cross-compile on native x86_64 for ARM64
-FROM --platform=$BUILDPLATFORM docker.io/library/rust:1.90-bookworm@sha256:3914072ca0c3b8aad871db9169a651ccfce30cf58303e5d6f2db16d1d8a7e58f AS builder
+FROM --platform=$BUILDPLATFORM docker.io/library/rust:1.98-bookworm@sha256:9a73a5088750b4c95158ab26629c854c3d6fc4b173cb7bc8079ad252d8ed7bfa AS builder
 
 ARG TARGETARCH
 ARG CARGO_PROFILE=release
@@ -117,7 +117,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     fi
 
 # Stage 2: Build architecture-independent frontend assets on the native build platform.
-FROM --platform=$BUILDPLATFORM docker.io/library/node:22-bookworm-slim@sha256:f32b81066cde10a75dbac96646099533316d94bac4150c55da1636e1f0ffdc46 AS frontend-builder
+FROM --platform=$BUILDPLATFORM docker.io/library/node:26-bookworm-slim@sha256:cd9f682fa2885cd1056e830424764158570061c59736a1da836bc3d73df095ae AS frontend-builder
 
 WORKDIR /frontend
 
@@ -128,7 +128,7 @@ COPY apps/frontend/ ./
 RUN npm run build
 
 # Stage 3: Minimal runtime image (runs on target arch)
-FROM docker.io/library/debian:bookworm-slim@sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818
+FROM docker.io/library/debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171
 
 ARG EXTRITTIO_VERSION
 ARG EXTRITTIO_COMMIT_SHA
