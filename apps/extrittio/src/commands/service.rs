@@ -28,14 +28,14 @@ pub(crate) async fn serve(args: ServeArgs) -> Result<()> {
 }
 
 pub(crate) async fn run_edge(args: RunArgs) -> Result<()> {
-    #[cfg(not(feature = "edge"))]
+    #[cfg(not(feature = "edge-runtime"))]
     {
         let _ = args;
         anyhow::bail!(
-            "`extrittio run` requires the standalone Extrittio Edge build; install it with: cargo install --path apps/extrittio --locked --no-default-features --features edge"
+            "`extrittio run` requires an Extrittio Edge build; use `cargo xtask edge run dev` or install it with: cargo install --path apps/extrittio --locked --no-default-features --features edge"
         )
     }
-    #[cfg(feature = "edge")]
+    #[cfg(feature = "edge-runtime")]
     {
         load_dotenv();
         let data_dir = args.data_dir.clone().unwrap_or_else(|| {
@@ -82,7 +82,7 @@ pub(crate) async fn run_edge(args: RunArgs) -> Result<()> {
             alert_retention_days: None,
             telemetry_retention_days: None,
         })?;
-        config.serve_ui = true;
+        config.serve_ui = !args.no_ui;
         config.ui_dir = None;
 
         if extrittio_backend::service::provision_local_owner(
@@ -110,7 +110,11 @@ pub(crate) async fn run_edge(args: RunArgs) -> Result<()> {
             );
         }
 
-        eprintln!("Extrittio web UI: {public_url}");
+        if args.no_ui {
+            eprintln!("Extrittio API: {public_url}");
+        } else {
+            eprintln!("Extrittio web UI: {public_url}");
+        }
         eprintln!(
             "Data directory: {}\n",
             match &config.database {

@@ -3,10 +3,19 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
+use clap::ValueEnum;
 
 use crate::command::{capture, command_in};
 
-pub(crate) fn run(root: &Path) -> Result<()> {
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub(crate) enum Scope {
+    All,
+    Edge,
+    Cloud,
+    Ios,
+}
+
+pub(crate) fn run(root: &Path, scope: Scope) -> Result<()> {
     let expectations = Expectations::read(root)?;
     let pg_config = if Path::new("/opt/homebrew/opt/libpq/bin/pg_config").is_file() {
         "/opt/homebrew/opt/libpq/bin/pg_config"
@@ -15,7 +24,9 @@ pub(crate) fn run(root: &Path) -> Result<()> {
     } else {
         "pg_config"
     };
-    let mut checks = vec![
+    let mut checks = Vec::new();
+    if matches!(scope, Scope::All | Scope::Edge | Scope::Cloud) {
+        checks.extend([
         Check::required(
             "Rust toolchain",
             "rustc",
@@ -32,20 +43,6 @@ pub(crate) fn run(root: &Path) -> Result<()> {
             &["--version"],
             Expected::Any,
             "install Rust through rustup: https://rustup.rs".into(),
-        ),
-        Check::required(
-            "rustfmt",
-            "rustfmt",
-            &["--version"],
-            Expected::Any,
-            "run `rustup component add rustfmt`".into(),
-        ),
-        Check::required(
-            "Clippy",
-            "cargo",
-            &["clippy", "--version"],
-            Expected::Any,
-            "run `rustup component add clippy`".into(),
         ),
         Check::required(
             "Node.js",
@@ -68,18 +65,40 @@ pub(crate) fn run(root: &Path) -> Result<()> {
             ),
         ),
         Check::required(
-            "Docker CLI",
-            "docker",
-            &["--version"],
-            Expected::Any,
-            "install and start Docker Desktop, or install Docker Engine".into(),
-        ),
-        Check::required(
             "Protocol Buffers compiler",
             "protoc",
             &["--version"],
             Expected::Any,
             "install `protobuf` with Homebrew or `protobuf-compiler` with apt".into(),
+        ),
+        ]);
+    }
+    if matches!(scope, Scope::All) {
+        checks.extend([
+            Check::required(
+                "rustfmt",
+                "rustfmt",
+                &["--version"],
+                Expected::Any,
+                "run `rustup component add rustfmt`".into(),
+            ),
+            Check::required(
+                "Clippy",
+                "cargo",
+                &["clippy", "--version"],
+                Expected::Any,
+                "run `rustup component add clippy`".into(),
+            ),
+        ]);
+    }
+    if matches!(scope, Scope::All | Scope::Cloud) {
+        checks.extend([
+        Check::required(
+            "Docker CLI",
+            "docker",
+            &["--version"],
+            Expected::Any,
+            "install and start Docker Desktop, or install Docker Engine".into(),
         ),
         Check::required(
             "PostgreSQL client libraries",
@@ -88,6 +107,10 @@ pub(crate) fn run(root: &Path) -> Result<()> {
             Expected::Any,
             "install `libpq` with Homebrew or `libpq-dev` with apt and add its bin directory to PATH".into(),
         ),
+        ]);
+    }
+    if matches!(scope, Scope::All) {
+        checks.extend([
         Check::required(
             "CMake",
             "cmake",
@@ -112,15 +135,16 @@ pub(crate) fn run(root: &Path) -> Result<()> {
                 expectations.nanopb
             ),
         ),
-    ];
+        ]);
+    }
 
-    if cfg!(target_os = "macos") {
-        checks.extend(ios_checks(&expectations.ios));
+    if matches!(scope, Scope::Ios) || (matches!(scope, Scope::All) && cfg!(target_os = "macos")) {
+        checks.extend(ios_checks(&expectations.ios, matches!(scope, Scope::Ios)));
     }
 
     let mut failures = Vec::new();
     let mut warnings = Vec::new();
-    println!("Extrittio development environment");
+    println!("Extrittio {scope:?} development environment");
     for check in checks {
         match check.evaluate(root) {
             Ok(version) => println!("  ok    {:31} {}", check.label, first_line(&version)),
@@ -158,30 +182,37 @@ pub(crate) fn run(root: &Path) -> Result<()> {
     }
 }
 
-fn ios_checks(versions: &HashMap<String, String>) -> Vec<Check> {
+fn ios_checks(versions: &HashMap<String, String>, required: bool) -> Vec<Check> {
+    let make = |label, program, args, expected, remediation| {
+        if required {
+            Check::required(label, program, args, expected, remediation)
+        } else {
+            Check::optional(label, program, args, expected, remediation)
+        }
+    };
     vec![
-        Check::optional(
+        make(
             "Xcode",
             "xcodebuild",
             &["-version"],
             Expected::Any,
             "install the Xcode version required by apps/mobile-app-ios/README.md".into(),
         ),
-        Check::optional(
+        make(
             "XcodeGen",
             "xcodegen",
             &["--version"],
             expected_word(versions, "XCODEGEN_VERSION"),
             "install the XcodeGen version from apps/mobile-app-ios/Tools/versions.env".into(),
         ),
-        Check::optional(
+        make(
             "SwiftLint",
             "swiftlint",
             &["version"],
             expected_word(versions, "SWIFTLINT_VERSION"),
             "install the SwiftLint version from apps/mobile-app-ios/Tools/versions.env".into(),
         ),
-        Check::optional(
+        make(
             "SwiftFormat",
             "swiftformat",
             &["--version"],

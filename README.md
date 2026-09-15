@@ -26,12 +26,12 @@ multi-process database mode.
 
 ## Local development
 
-The repository pins Rust 1.90 and requires Node.js 22. Backend development also
-needs Docker, Protobuf, and PostgreSQL client libraries. Check the complete
-toolchain with:
+The repository pins Rust 1.90 and requires Node.js 22. Check the prerequisites
+for the runtime you want to develop:
 
 ```bash
-cargo xtask doctor
+cargo xtask doctor edge
+cargo xtask doctor cloud
 ```
 
 On macOS, the core native dependencies are:
@@ -40,30 +40,30 @@ On macOS, the core native dependencies are:
 brew install protobuf libpq cmake ninja
 ```
 
-Start PostgreSQL and the backend from the repository root:
+Start the PostgreSQL-backed Cloud development stack from the repository root:
 
 ```bash
-docker compose -f deploy/docker/docker-compose.yml up -d postgres
-cargo run -p extrittio -- migrate
-cargo run -p extrittio -- serve
+cargo xtask cloud run dev
 ```
 
-In another terminal, start the frontend:
+For the single-node Edge runtime with local Turso storage:
 
 ```bash
-cd apps/frontend
-npm ci
-npm run dev
+cargo xtask edge run dev
 ```
 
-The API listens on `http://localhost:8080`. Vite listens on
-`http://localhost:5173` and proxies `/api` to the backend. The development seed
-account is `admin` / `admin`; change it before using the installation with real
-devices or data.
+Both commands install frontend dependencies when needed, start the Rust backend
+and Vite in one terminal, and stop their child processes on Ctrl-C. The API
+listens on `http://localhost:8080`; the web console is at
+`http://localhost:5173`. Edge uses the development account `admin` / `admin`;
+Cloud uses `admin` / `Extrittio-dev1!` to satisfy the server password policy.
+Use `--backend-only`, `--frontend-only`, or the port flags shown by `--help` for
+more focused work.
 
 ## Single-node Edge
 
-Build the web assets, install the local Edge executable, and run it:
+Use `cargo xtask edge run dev` for source development. To build the deployable
+Edge executable with its web console embedded, build the assets and install it:
 
 ```bash
 cd apps/frontend
@@ -106,6 +106,8 @@ radio and IPv6 path.
 Run the checks for the part of the repository you changed:
 
 ```bash
+cargo xtask edge test
+cargo xtask cloud test
 cargo xtask verify backend
 cargo xtask verify frontend
 cargo xtask verify protocol
