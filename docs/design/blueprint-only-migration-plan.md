@@ -1,6 +1,8 @@
 # Blueprint-only device and telemetry migration
 
-Status: implementation in progress; database baselines and consumer migration remain outstanding.
+Status: implementation in progress. Fresh baselines are consolidated; remaining
+work is tracked in the [completion and resume plan](blueprint-only-completion-plan.md).
+The progress log below is historical and includes superseded intermediate states.
 Created: 2026-09-15. Branch: `plan/blueprint-only-migration`.
 
 Planning assumption confirmed by the user: there are no production databases.
