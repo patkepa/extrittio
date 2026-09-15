@@ -1,9 +1,11 @@
 mod architecture;
 mod command;
+mod dev;
 mod doctor;
 mod edge;
 mod ios;
 mod protocol;
+mod supervisor;
 mod verify;
 
 use std::path::{Path, PathBuf};
@@ -27,15 +29,21 @@ enum Task {
     /// Validate backend crate boundaries and deployment dependency closures.
     Architecture,
     /// Check whether repository development prerequisites are installed.
-    Doctor,
+    Doctor(DoctorArgs),
     /// Run repository verification checks.
     Verify(VerifyArgs),
     /// Build and install an Extrittio executable.
     Install(InstallArgs),
-    /// Build, set up, and deploy Extrittio Edge.
+    /// Develop, build, set up, and deploy Extrittio Edge.
     Edge {
         #[command(subcommand)]
         command: EdgeTask,
+    },
+    /// Develop the PostgreSQL-backed multi-service runtime.
+    #[command(visible_alias = "server")]
+    Cloud {
+        #[command(subcommand)]
+        command: CloudTask,
     },
     /// Manage the pinned OpenThread Border Router build.
     Otbr {
@@ -57,6 +65,13 @@ enum Task {
         #[command(subcommand)]
         command: ProtocolTask,
     },
+}
+
+#[derive(Debug, Args)]
+struct DoctorArgs {
+    /// Check only the prerequisites for one workflow.
+    #[arg(value_enum, default_value_t = doctor::Scope::All)]
+    scope: doctor::Scope,
 }
 
 #[derive(Debug, Args)]
@@ -106,12 +121,42 @@ enum InstallTarget {
 
 #[derive(Debug, Subcommand)]
 enum EdgeTask {
+    /// Run an Edge workflow.
+    Run {
+        #[command(subcommand)]
+        command: EdgeRunTask,
+    },
+    /// Test the Edge runtime and Turso adapter contracts.
+    Test,
     /// Build frontend assets embedded by Extrittio Edge.
     Assets,
     /// Bootstrap a Raspberry Pi over SSH for Edge deployments.
     SetupPi(SetupPiArgs),
     /// Atomically deploy an Edge archive to a configured Raspberry Pi.
     DeployPi(DeployPiArgs),
+}
+
+#[derive(Debug, Subcommand)]
+enum EdgeRunTask {
+    /// Start the Turso backend and Vite development server.
+    Dev(dev::EdgeArgs),
+}
+
+#[derive(Debug, Subcommand)]
+enum CloudTask {
+    /// Run a Cloud workflow.
+    Run {
+        #[command(subcommand)]
+        command: CloudRunTask,
+    },
+    /// Test the Cloud runtime and PostgreSQL adapter contracts.
+    Test(dev::CloudTestArgs),
+}
+
+#[derive(Debug, Subcommand)]
+enum CloudRunTask {
+    /// Start PostgreSQL, the backend, and Vite development server.
+    Dev(dev::CloudArgs),
 }
 
 #[derive(Debug, Args)]
@@ -264,7 +309,7 @@ fn main() -> Result<()> {
     let root = repository_root()?;
     match Cli::parse().command {
         Task::Architecture => architecture::run(&root),
-        Task::Doctor => doctor::run(&root),
+        Task::Doctor(args) => doctor::run(&root, args.scope),
         Task::Verify(args) => {
             if args.changed && args.scope.is_some() {
                 anyhow::bail!("--changed cannot be combined with an explicit verification scope");
@@ -294,12 +339,22 @@ fn main() -> Result<()> {
             )
         }
         Task::Edge { command } => match command {
+            EdgeTask::Run { command } => match command {
+                EdgeRunTask::Dev(args) => dev::run_edge(&root, args),
+            },
+            EdgeTask::Test => dev::test_edge(&root),
             EdgeTask::Assets => edge::build_frontend_assets(&root),
             EdgeTask::SetupPi(args) => {
                 let identity = args.identity.map_or_else(default_pi_identity, Ok)?;
                 edge::setup_pi(&root, &args.host, &args.user, &identity)
             }
             EdgeTask::DeployPi(args) => edge::deploy_pi(&root, &args.host, &args.package),
+        },
+        Task::Cloud { command } => match command {
+            CloudTask::Run { command } => match command {
+                CloudRunTask::Dev(args) => dev::run_cloud(&root, args),
+            },
+            CloudTask::Test(args) => dev::test_cloud(&root, args),
         },
         Task::Otbr { command } => match command {
             OtbrTask::Build(args) => edge::build_otbr(&root, &root.join(args.build_dir), args.jobs),
@@ -364,4 +419,72 @@ fn default_pi_identity() -> Result<PathBuf> {
         .map(PathBuf::from)
         .map(|home| home.join(".ssh/extrittio-pi"))
         .context("--identity is required when HOME is unset")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_edge_development_command() {
+        let cli = Cli::try_parse_from([
+            "cargo xtask",
+            "edge",
+            "run",
+            "dev",
+            "--backend-only",
+            "--thread",
+        ])
+        .unwrap();
+        assert!(matches!(
+            cli.command,
+            Task::Edge {
+                command: EdgeTask::Run {
+                    command: EdgeRunTask::Dev(_)
+                }
+            }
+        ));
+    }
+
+    #[test]
+    fn parses_cloud_and_server_aliases() {
+        for runtime in ["cloud", "server"] {
+            let cli = Cli::try_parse_from(["cargo xtask", runtime, "run", "dev"]).unwrap();
+            assert!(matches!(cli.command, Task::Cloud { .. }));
+        }
+    }
+
+    #[test]
+    fn parses_runtime_test_commands() {
+        let edge = Cli::try_parse_from(["cargo xtask", "edge", "test"]).unwrap();
+        assert!(matches!(
+            edge.command,
+            Task::Edge {
+                command: EdgeTask::Test
+            }
+        ));
+
+        let cloud =
+            Cli::try_parse_from(["cargo xtask", "cloud", "test", "--database-port", "55432"])
+                .unwrap();
+        assert!(matches!(
+            cloud.command,
+            Task::Cloud {
+                command: CloudTask::Test(_)
+            }
+        ));
+    }
+
+    #[test]
+    fn rejects_conflicting_process_filters() {
+        let result = Cli::try_parse_from([
+            "cargo xtask",
+            "cloud",
+            "run",
+            "dev",
+            "--backend-only",
+            "--frontend-only",
+        ]);
+        assert!(result.is_err());
+    }
 }

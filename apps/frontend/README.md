@@ -29,7 +29,9 @@ npm run dev
 ```
 
 Vite serves `http://localhost:5173` and proxies `/api` to
-`http://localhost:8080`.
+`http://localhost:8080`. `cargo xtask edge run dev` and
+`cargo xtask cloud run dev` start Vite together with the selected backend. The
+task runner sets `EXTRITTIO_DEV_API_URL` when a custom backend port is used.
 
 ## Commands
 

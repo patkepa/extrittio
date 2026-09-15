@@ -80,6 +80,10 @@ pub(crate) struct RunArgs {
     #[arg(long, env = "EXTRITTIO_DATA_DIR")]
     pub(crate) data_dir: Option<PathBuf>,
 
+    /// Disable the embedded or on-disk web UI.
+    #[arg(long)]
+    pub(crate) no_ui: bool,
+
     /// HTTP port for the web UI and REST API.
     #[arg(long, env = "PORT", default_value_t = 8080)]
     pub(crate) port: u16,

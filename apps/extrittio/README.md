@@ -8,6 +8,14 @@ runtime, and administrative HTTP client commands.
 From the repository root:
 
 ```bash
+cargo xtask cloud run dev
+cargo xtask edge run dev
+```
+
+These commands supervise the backend and Vite development server together.
+For direct CLI and service invocation:
+
+```bash
 cargo run -p extrittio -- --help
 cargo run -p extrittio -- serve
 cargo run -p extrittio -- migrate
@@ -25,8 +33,9 @@ certificates.
 
 ## Edge runtime
 
-The `edge` feature embeds the built web console and selects the local Turso
-profile for `extrittio run`:
+The `edge-runtime` feature provides the local Turso runtime used during source
+development. The `edge` feature adds the embedded web console for deployable
+artifacts:
 
 ```bash
 cd apps/frontend

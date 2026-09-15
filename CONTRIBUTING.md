@@ -6,22 +6,24 @@ and public API.
 ## Setup
 
 The supported Rust and Node.js versions are declared in
-`rust-toolchain.toml` and `apps/frontend/package.json`. Check the full local
-toolchain with:
+`rust-toolchain.toml` and `apps/frontend/package.json`. Check the tools for the
+runtime you are changing:
 
 ```bash
-cargo xtask doctor
+cargo xtask doctor edge
+cargo xtask doctor cloud
 ```
 
-For backend and frontend development:
+Start the complete backend and frontend development stack in one terminal:
 
 ```bash
-docker compose -f deploy/docker/docker-compose.yml up -d postgres
-cargo run -p extrittio -- migrate
-
-cd apps/frontend
-npm ci
+cargo xtask edge run dev
+cargo xtask cloud run dev
 ```
+
+Edge uses local Turso data under `target/xtask/edge-dev`. Cloud uses a dedicated
+Docker Compose project and preserves its PostgreSQL volume between runs. Both
+commands stop the processes and containers they started when interrupted.
 
 Never commit credentials, private keys, customer data, production database
 content, or real device identities.
@@ -31,6 +33,8 @@ content, or real device identities.
 Prefer the repository tasks because they match CI:
 
 ```bash
+cargo xtask edge test
+cargo xtask cloud test
 cargo xtask verify backend
 cargo xtask verify frontend
 cargo xtask verify protocol
