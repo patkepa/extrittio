@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 # Stage 1: Cross-compile on native x86_64 for ARM64
-FROM --platform=$BUILDPLATFORM docker.io/library/rust:1.90-bookworm@sha256:3914072ca0c3b8aad871db9169a651ccfce30cf58303e5d6f2db16d1d8a7e58f AS builder
+FROM --platform=$BUILDPLATFORM docker.io/library/rust:1.97-bookworm@sha256:0e2bcaef56d041a486784e54104a81aebe0da44bd03019bd70bc0401e42e4a97 AS builder
 
 ARG TARGETARCH
 ARG CARGO_PROFILE=release
@@ -117,7 +117,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     fi
 
 # Stage 2: Build architecture-independent frontend assets on the native build platform.
-FROM --platform=$BUILDPLATFORM docker.io/library/node:22-bookworm-slim@sha256:f32b81066cde10a75dbac96646099533316d94bac4150c55da1636e1f0ffdc46 AS frontend-builder
+FROM --platform=$BUILDPLATFORM docker.io/library/node:25-bookworm-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370 AS frontend-builder
 
 WORKDIR /frontend
 
