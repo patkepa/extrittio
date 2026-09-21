@@ -50,7 +50,7 @@ export const Help = () => {
           </p>
           <AnchorButton
             icon="git-repo"
-            href="https://github.com/extrittio/extrittio"
+            href="https://github.com/patkepa/extrittio"
             target="_blank"
             rel="noopener noreferrer"
             intent="primary"

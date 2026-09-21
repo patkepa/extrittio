@@ -128,5 +128,6 @@ Contributor workflow and security reporting live in
 
 ## License status
 
-This is a private, proprietary project. No license or permission to use, copy,
-modify, publish, or redistribute the source is granted.
+This repository is publicly visible as a source-available portfolio project.
+It is not open source: no license or permission to use, copy, modify, publish,
+or redistribute the source is granted. All rights are reserved.
