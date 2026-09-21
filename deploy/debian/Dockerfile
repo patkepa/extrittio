@@ -65,7 +65,7 @@ RUN set -eu; \
       'Architecture: arm64' \
       'Maintainer: Extrittio contributors <opensource@extrittio.dev>' \
       "Depends: $runtime_depends, ca-certificates" \
-      'Homepage: https://github.com/extrittio/extrittio' \
+      'Homepage: https://github.com/patkepa/extrittio' \
       'Description: Self-hosted IoT hub for single-node deployments' \
       ' Extrittio provides the embedded UI, API, messaging endpoint, and local' \
       ' Turso persistence in one executable. A locally installed OTBR agent is optional.' \
