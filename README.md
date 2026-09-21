@@ -1,133 +1,77 @@
 # Extrittio
 
-Extrittio is a self-hosted IoT hub for provisioning, operating, and observing
-connected devices. The repository contains a Rust control plane, a React
-operations console, a native iOS app, and clients for Linux, macOS, Raspberry
-Pi, ESP32, and Arduino-class projects.
+Extrittio is a self-hosted IoT platform for provisioning, managing, and
+monitoring connected devices. It is designed for single-binary edge
+deployments, with an embedded web console and client support for embedded
+devices, including Raspberry Pi, ESP32, and Arduino-class hardware.
 
-The platform currently supports tenant-scoped device blueprints and contracts,
-fleets, telemetry and analytics, desired/reported state, commands, firmware and
-OTA deployments, rules, alerts, audit events, and operational metrics. Devices
-communicate over Zenoh; the HTTP API is described by the committed
-[`api/openapi.json`](api/openapi.json) contract.
+Core capabilities include device blueprints, fleet management, telemetry,
+desired and reported state, remote commands, firmware deployments, rules,
+alerts, audit events, and operational metrics. Devices communicate over Zenoh,
+and the HTTP API is defined in [`api/openapi.json`](api/openapi.json).
 
-## Choose a runtime
+## Runtime options
 
-Extrittio has two supported runtime shapes:
-
-| Runtime | Database | Intended use |
+| Runtime | Storage | Use case |
 | --- | --- | --- |
-| `extrittio serve` | PostgreSQL | Development and multi-service production deployments |
-| `extrittio run` | Local Turso | A single-node Edge appliance with an embedded web UI |
+| `extrittio serve` | PostgreSQL | Development and multi-service deployments |
+| `extrittio run` | Local Turso | Single-node edge appliances with an embedded web UI |
 
-The Edge runtime can supervise a packaged OpenThread Border Router when a
-compatible radio co-processor is attached. It is not a high-availability or
-multi-process database mode.
+## Quick start
 
-## Local development
-
-The repository pins Rust 1.90 and requires Node.js 22. Check the prerequisites
-for the runtime you want to develop:
+Extrittio requires Rust 1.90 and Node.js 22. Verify your environment:
 
 ```bash
 cargo xtask doctor edge
 cargo xtask doctor cloud
 ```
 
-On macOS, the core native dependencies are:
-
-```bash
-brew install protobuf libpq cmake ninja
-```
-
-Start the PostgreSQL-backed Cloud development stack from the repository root:
+Start the PostgreSQL-backed development stack:
 
 ```bash
 cargo xtask cloud run dev
 ```
 
-For the single-node Edge runtime with local Turso storage:
+Or start the single-node Edge runtime:
 
 ```bash
 cargo xtask edge run dev
 ```
 
-Both commands install frontend dependencies when needed, start the Rust backend
-and Vite in one terminal, and stop their child processes on Ctrl-C. The API
-listens on `http://localhost:8080`; the web console is at
-`http://localhost:5173`. Edge uses the development account `admin` / `admin`;
-Cloud uses `admin` / `Extrittio-dev1!` to satisfy the server password policy.
-Use `--backend-only`, `--frontend-only`, or the port flags shown by `--help` for
-more focused work.
+The API runs at `http://localhost:8080` and the web console at
+`http://localhost:5173`. See the command help for backend-only, frontend-only,
+and custom-port options.
 
-## Single-node Edge
+## Project structure
 
-Use `cargo xtask edge run dev` for source development. To build the deployable
-Edge executable with its web console embedded, build the assets and install it:
-
-```bash
-cd apps/frontend
-npm ci
-npm run build
-cd ../..
-
-cargo install --path apps/extrittio --locked \
-  --no-default-features --features edge
-
-EXTRITTIO_BOOTSTRAP_ADMIN_PASSWORD='choose-a-strong-password' extrittio run
-```
-
-By default, Edge stores its database, certificates, firmware, and backups in
-the operating system's application-data directory. Use `--data-dir` or
-`EXTRITTIO_DATA_DIR` to choose an explicit location.
-
-See [Edge deployment](docs/deployment/edge.md) for packaged Debian and
-Raspberry Pi workflows and [OpenThread](docs/deployment/openthread.md) for the
-radio and IPv6 path.
-
-## Repository layout
-
-| Path | Purpose |
+| Path | Description |
 | --- | --- |
-| `apps/extrittio` | Server, Edge runtime, and administrative CLI |
-| `apps/frontend` | React/TypeScript operations console |
+| `apps/extrittio` | Server, Edge runtime, and administration CLI |
+| `apps/frontend` | React and TypeScript operations console |
 | `apps/mobile-app-ios` | Native SwiftUI companion app |
-| `crates/backend` | HTTP/Zenoh transport, runtime composition, workers, and outbound integrations |
-| `crates/backend-core` | Business applications, policy, and persistence ports |
-| `crates/backend-postgres`, `crates/backend-turso` | Database repositories, SQL, migrations, and lifecycle operations |
-| `crates/device-contract` | Blueprint validation and deterministic contract compilation |
-| `crates/common` | Shared Protobuf messages and Zenoh topic helpers |
+| `crates` | Core services, persistence, protocols, and shared libraries |
 | `clients` | Native, embedded, Arduino, and simulator clients |
 | `deploy` | Docker, Debian, and Raspberry Pi packaging |
-| `tools/xtask` | Repository build, verification, packaging, and iOS tasks |
+| `tools/xtask` | Development, verification, and packaging tasks |
 
-## Verification
+## Development
 
-Run the checks for the part of the repository you changed:
+Run checks for the area you changed:
 
 ```bash
-cargo xtask edge test
-cargo xtask cloud test
 cargo xtask verify backend
 cargo xtask verify frontend
 cargo xtask verify protocol
 cargo xtask verify ios
 ```
 
-`cargo xtask verify all` includes the native iOS build and therefore requires
-the Apple toolchain.
+For setup, architecture, and deployment guidance, see the
+[documentation index](docs/README.md). Contribution and security policies are
+available in [CONTRIBUTING.md](CONTRIBUTING.md) and
+[SECURITY.md](SECURITY.md).
 
-## Documentation
+## License
 
-Start with the [documentation index](docs/README.md). It links to the current
-architecture, device-blueprint and analytics behavior, production Docker
-deployment, Edge deployment, and OpenThread setup.
-
-Contributor workflow and security reporting live in
-[CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
-
-## License status
-
-This repository is publicly visible as a source-available portfolio project.
-It is not open source: no license or permission to use, copy, modify, publish,
-or redistribute the source is granted. All rights are reserved.
+This source-available portfolio project is not open source. No permission is
+granted to use, copy, modify, publish, or redistribute the source. All rights
+are reserved.
