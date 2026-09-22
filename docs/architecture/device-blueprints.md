@@ -28,10 +28,15 @@ mutable blueprint draft
 - A **contract assignment** records the desired contract, acknowledgement,
   status, and error state.
 
-The compiler and document types live in `crates/device-contract`. A maintained
-example is [`blueprints/smoke-sensor.yaml`](../../blueprints/smoke-sensor.yaml);
-the matching API creation body is
-[`blueprints/smoke-sensor.create-request.json`](../../blueprints/smoke-sensor.create-request.json).
+The compiler and document types live in `crates/device-contract`. Maintained,
+vendor-neutral API creation examples cover three common device categories:
+
+- [`environment-sensor.create-request.json`](../../blueprints/environment-sensor.create-request.json)
+- [`smart-plug.create-request.json`](../../blueprints/smart-plug.create-request.json)
+- [`asset-tracker.create-request.json`](../../blueprints/asset-tracker.create-request.json)
+
+The examples are validated by the same production validator used when a draft
+is published.
 
 ## Implemented lifecycle
 
