@@ -8,7 +8,7 @@ use anyhow::{Context, Result, bail, ensure};
 use clap::Args;
 
 use crate::command::{command_in, output, require_program, run, succeeds};
-use crate::edge::ensure_frontend_dependencies;
+use crate::edge::{build_frontend_assets, ensure_frontend_dependencies};
 use crate::supervisor::{self, ChildSpec};
 
 const DEFAULT_BACKEND_PORT: u16 = 8080;
@@ -86,6 +86,12 @@ pub(crate) struct CloudTestArgs {
 
 pub(crate) fn run_edge(root: &Path, args: EdgeArgs) -> Result<()> {
     preflight(root, &args.common, false)?;
+    if !args.common.frontend_only {
+        // Edge builds serve the production frontend from the backend as well as
+        // optionally running Vite for HMR. Keep that deployable UI available by
+        // default so http://localhost:<backend port> behaves like a real Edge.
+        build_frontend_assets(root)?;
+    }
     let data_dir = args
         .data_dir
         .unwrap_or_else(|| root.join("target/xtask/edge-dev/data"));
@@ -102,10 +108,9 @@ pub(crate) fn run_edge(root: &Path, args: EdgeArgs) -> Result<()> {
             "extrittio",
             "--no-default-features",
             "--features",
-            "edge-runtime",
+            "edge",
             "--",
             "run",
-            "--no-ui",
             "--port",
             &args.common.port.to_string(),
             "--zenoh-port",
