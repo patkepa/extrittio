@@ -34,7 +34,7 @@ test('derives numeric rule fields from a blueprint without fixed sensor names', 
 
   assert.deepEqual(blueprintRuleMetricFields(revision), [
     {
-      value: 'air.particles.pm25',
+      value: 'air./particles/pm25',
       label: 'PM2.5 · particulate_matter_2_5',
     },
   ]);
@@ -61,9 +61,30 @@ test('derives the same canonical rule field from a compiled device contract', ()
   } as DeviceContract;
 
   assert.deepEqual(contractRuleMetricFields(contract), [
-    { value: 'air.particles.pm25', label: 'PM2.5' },
+    { value: 'air./particles/pm25', label: 'PM2.5' },
   ]);
   assert.deepEqual(contractRuleCommands(contract), [
     { value: 'calibrate', label: 'Calibrate sensor' },
   ]);
+});
+
+test('keeps distinct nested, dotted, and escaped JSON pointer fields', () => {
+  const revision = {
+    document: {
+      spec: {
+        streams: [{
+          key: 'air',
+          fields: [
+            { path: '/a/b', type: 'int64' },
+            { path: '/a.b', type: 'int64' },
+            { path: '/a~1b', type: 'int64' },
+          ],
+        }],
+      },
+    },
+  } as DeviceBlueprintRevision;
+  assert.deepEqual(
+    blueprintRuleMetricFields(revision).map(({ value }) => value),
+    ['air./a/b', 'air./a.b', 'air./a~1b'],
+  );
 });

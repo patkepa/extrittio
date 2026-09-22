@@ -68,8 +68,7 @@ function isNumeric(valueType: string | undefined): boolean {
 }
 
 function canonicalMetric(streamKey: string, path: string): string {
-  const normalizedPath = path.split('/').filter(Boolean).join('.');
-  return normalizedPath ? `${streamKey}.${normalizedPath}` : streamKey;
+  return `${streamKey}.${path}`;
 }
 
 function option(
