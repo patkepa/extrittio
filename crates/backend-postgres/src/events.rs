@@ -144,7 +144,7 @@ JOIN device_contracts c ON c.tenant_id=e.tenant_id AND c.device_id=e.device_id A
 JOIN device_metric_samples lat ON lat.tenant_id=e.tenant_id AND lat.device_id=e.device_id AND lat.event_id=e.id AND lat.occurred_at=e.occurred_at
 JOIN device_metric_samples lon ON lon.tenant_id=e.tenant_id AND lon.device_id=e.device_id AND lon.event_id=e.id AND lon.occurred_at=e.occurred_at
 WHERE e.tenant_id=$1 AND e.device_id=ANY($2) AND e.occurred_at <= $3
-AND e.occurred_at >= $3 - ((c.document #>> '{location,maxAgeMs}')::double precision * INTERVAL '1 millisecond')
+AND e.occurred_at > $3 - ((c.document #>> '{location,maxAgeMs}')::double precision * INTERVAL '1 millisecond')
 AND c.document #>> '{deviceId}'=e.device_id
 AND c.document #>> '{location,coordinateSystem}'='wgs84' AND c.document #>> '{location,unit}'='degrees'
 AND lat.stream_key=c.document #>> '{location,stream}' AND lon.stream_key=lat.stream_key
@@ -191,7 +191,7 @@ JOIN device_metric_samples lon
 WHERE e.tenant_id = $1 AND e.device_id = $2 AND e.contract_id = $3
   AND lat.stream_key = $4 AND lon.stream_key = $4
   AND lat.field_path = $5 AND lon.field_path = $6
-  AND e.occurred_at >= $7 AND e.occurred_at <= $8) AS positions
+  AND e.occurred_at > $7 AND e.occurred_at <= $8) AS positions
 WHERE latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180
 ORDER BY occurred_at DESC, event_id COLLATE "C" DESC LIMIT 1"#)
                 .bind::<Text, _>(tenant_id)

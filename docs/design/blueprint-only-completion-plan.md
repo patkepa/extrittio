@@ -152,8 +152,13 @@ evidence all pass. Existing unit tests do not substitute for browser checks.
   passed. Both adapters now recheck assignment inside the event transaction.
 - The location API exposes each observation's contract-derived expiration;
   regenerated OpenAPI/types, frontend formatting, lint, tests and build pass.
-  The frontend map unit test covers the exact expiry boundary. Browser evidence
-  remains open.
+  The frontend map unit test covers the exact expiry boundary. Both backend
+  adapters now exclude observations at that boundary. PostgreSQL integration
+  coverage exercises a 204-ID batch with valid, missing, future, foreign-tenant
+  and reassigned devices. Browser evidence remains open.
+- A real PostgreSQL analytics query over typed blueprint samples passes for
+  the requested tenant and excludes a foreign tenant. Retention and rollup
+  behavior remain untested and unimplemented.
 - Both-adapter backend compilation; 49 core and 22 Turso unit tests passed.
 - PostgreSQL 17: actual Diesel baseline apply/reapply and schema constraints;
   real cooldown writer/reactivation/rollback tests passed on disposable storage.

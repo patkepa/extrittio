@@ -138,8 +138,8 @@ mod location_tests {
             stream_key: "position".into(),
             latitude_path: "/y".into(),
             longitude_path: "/x".into(),
-            since: time(1000),
-            now: time(2000),
+            since: time(999),
+            now: time(1999),
         };
         let location = repository
             .latest_location(&tenant, "device", query.clone())
@@ -152,7 +152,7 @@ mod location_tests {
         assert_eq!(location.occurred_at, time(1000));
         assert_eq!(location.expires_at, time(2000));
         let batch = repository
-            .latest_locations(&tenant, vec!["device".into(), "missing".into()], time(2000))
+            .latest_locations(&tenant, vec!["device".into(), "missing".into()], time(1999))
             .await
             .unwrap();
         assert_eq!(batch.len(), 1);
@@ -160,7 +160,7 @@ mod location_tests {
         assert_eq!(batch[0].location, location);
         assert!(
             repository
-                .latest_locations(&tenant, vec!["device".into()], time(2001))
+                .latest_locations(&tenant, vec!["device".into()], time(2000))
                 .await
                 .unwrap()
                 .is_empty()
@@ -178,7 +178,7 @@ mod location_tests {
         );
 
         let mut boundary = query.clone();
-        boundary.since = time(1000);
+        boundary.since = time(999);
         boundary.now = time(1000);
         assert!(
             repository
@@ -187,7 +187,7 @@ mod location_tests {
                 .unwrap()
                 .is_some()
         );
-        boundary.since = time(1001);
+        boundary.since = time(1000);
         boundary.now = time(2000);
         assert!(
             repository
@@ -335,7 +335,7 @@ JOIN device_metric_samples lon
 WHERE e.tenant_id = ?1 AND e.device_id = ?2 AND e.contract_id = ?3
   AND lat.stream_key = ?4 AND lon.stream_key = ?4
   AND lat.field_path = ?5 AND lon.field_path = ?6
-  AND e.occurred_at >= ?7 AND e.occurred_at <= ?8) AS positions
+  AND e.occurred_at > ?7 AND e.occurred_at <= ?8) AS positions
 WHERE latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180
 ORDER BY occurred_at DESC, event_id COLLATE BINARY DESC LIMIT 1"#;
 
@@ -374,7 +374,7 @@ JOIN device_contracts c ON c.tenant_id=e.tenant_id AND c.device_id=e.device_id A
 JOIN device_metric_samples lat ON lat.tenant_id=e.tenant_id AND lat.device_id=e.device_id AND lat.event_id=e.id AND lat.occurred_at=e.occurred_at
 JOIN device_metric_samples lon ON lon.tenant_id=e.tenant_id AND lon.device_id=e.device_id AND lon.event_id=e.id AND lon.occurred_at=e.occurred_at
 WHERE e.tenant_id=?1 AND e.device_id IN ({placeholders}) AND e.occurred_at <= ?2
-AND e.occurred_at >= ?2 - (json_extract(c.document,'$.location.maxAgeMs') * 1000)
+AND e.occurred_at > ?2 - (json_extract(c.document,'$.location.maxAgeMs') * 1000)
 AND json_extract(c.document,'$.deviceId')=e.device_id
 AND json_extract(c.document,'$.location.coordinateSystem')='wgs84' AND json_extract(c.document,'$.location.unit')='degrees'
 AND lat.stream_key=json_extract(c.document,'$.location.stream') AND lon.stream_key=lat.stream_key

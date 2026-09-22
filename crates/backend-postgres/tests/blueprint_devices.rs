@@ -403,6 +403,24 @@ async fn postgres_blueprint_device_and_ci_contracts_when_configured() {
         .unwrap();
     assert_eq!((location.latitude, location.longitude), (0.0, 0.0));
     assert_eq!(location.expires_at, observed_at + Duration::seconds(5));
+    assert!(
+        event_repository
+            .latest_location(
+                &a,
+                &device_a,
+                DeviceLocationQuery {
+                    contract_id: format!("{device_a}-contract"),
+                    stream_key: "position".into(),
+                    latitude_path: "/latitude".into(),
+                    longitude_path: "/longitude".into(),
+                    since: observed_at,
+                    now: observed_at + Duration::seconds(5),
+                }
+            )
+            .await
+            .unwrap()
+            .is_none()
+    );
     let batch = event_repository
         .latest_locations(
             &a,
@@ -415,6 +433,17 @@ async fn postgres_blueprint_device_and_ci_contracts_when_configured() {
     assert_eq!(
         batch[0].location.expires_at,
         observed_at + Duration::seconds(5)
+    );
+    assert!(
+        event_repository
+            .latest_locations(
+                &a,
+                vec![device_a.clone()],
+                observed_at + Duration::seconds(5)
+            )
+            .await
+            .unwrap()
+            .is_empty()
     );
     assert!(
         event_repository
@@ -609,4 +638,113 @@ async fn postgres_blueprint_device_and_ci_contracts_when_configured() {
         count(&mut pool.get().unwrap(), "firmware_updates", &tenant_a),
         1
     );
+}
+
+#[tokio::test]
+async fn postgres_location_batch_filters_missing_future_and_reassigned_devices() {
+    let Ok(url) = std::env::var("DATABASE_URL") else {
+        return;
+    };
+    let pool = Pool::builder()
+        .max_size(3)
+        .build(ConnectionManager::<PgConnection>::new(url))
+        .unwrap();
+    let suffix = Uuid::new_v4().simple().to_string();
+    let tenant_id = format!("location-test-{suffix}");
+    let revision_id = format!("revision-{suffix}");
+    {
+        let mut connection = pool.get().unwrap();
+        run_pending_migrations(&mut connection).unwrap();
+        seed_blueprint(&mut connection, &tenant_id, &revision_id);
+    }
+    let tenant = TenantId::new(tenant_id.clone()).unwrap();
+    let devices = PostgresDeviceRepository::from_pool(pool.clone());
+    let events = PostgresEventRepository::from_pool(pool.clone());
+    let live = format!("live-{suffix}");
+    let reassigned = format!("reassigned-{suffix}");
+    let future = format!("future-{suffix}");
+    let empty = format!("empty-{suffix}");
+    for id in [&live, &reassigned, &future, &empty] {
+        devices
+            .create(&tenant, new_device(id, &revision_id), None)
+            .await
+            .unwrap();
+    }
+    for id in [&live, &reassigned] {
+        events
+            .record(
+                &tenant,
+                event(
+                    &tenant,
+                    id,
+                    &format!("{id}-contract"),
+                    &format!("event-{id}"),
+                ),
+            )
+            .await
+            .unwrap();
+    }
+    let mut future_event = event(
+        &tenant,
+        &future,
+        &format!("{future}-contract"),
+        &format!("event-{future}"),
+    );
+    future_event.occurred_at += Duration::minutes(1);
+    events.record(&tenant, future_event).await.unwrap();
+    let now = Utc::now() + Duration::seconds(1);
+    let mut requested = vec![
+        live.clone(),
+        reassigned.clone(),
+        future.clone(),
+        empty.clone(),
+    ];
+    requested.extend((0..200).map(|index| format!("missing-{index}-{suffix}")));
+    let found = events
+        .latest_locations(&tenant, requested.clone(), now)
+        .await
+        .unwrap();
+    assert_eq!(
+        found
+            .iter()
+            .map(|item| item.device_id.as_str())
+            .collect::<Vec<_>>(),
+        vec![live.as_str(), reassigned.as_str()]
+    );
+    assert!(
+        events
+            .latest_locations(&TenantId::new("default").unwrap(), requested.clone(), now)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    {
+        let mut connection = pool.get().unwrap();
+        diesel::sql_query(
+            "INSERT INTO device_contracts
+             (id, tenant_id, device_id, blueprint_revision_id, document, contract_hash)
+             VALUES ($1, $2, $3, $4, '{}', repeat('c', 64))",
+        )
+        .bind::<Text, _>(format!("replacement-{suffix}"))
+        .bind::<Text, _>(&tenant_id)
+        .bind::<Text, _>(&reassigned)
+        .bind::<Text, _>(&revision_id)
+        .execute(&mut connection)
+        .unwrap();
+        diesel::sql_query(
+            "UPDATE device_contract_assignments SET desired_contract_id = $1
+             WHERE tenant_id = $2 AND device_id = $3",
+        )
+        .bind::<Text, _>(format!("replacement-{suffix}"))
+        .bind::<Text, _>(&tenant_id)
+        .bind::<Text, _>(&reassigned)
+        .execute(&mut connection)
+        .unwrap();
+    }
+    let found = events
+        .latest_locations(&tenant, requested, now)
+        .await
+        .unwrap();
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].device_id, live);
 }
