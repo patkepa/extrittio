@@ -29,9 +29,9 @@ client payloads are not supported by the blueprint-only backend.
 
 1. Read this file, the original target-design decisions, repository instructions
    and relevant skills. Inspect branch status and PR changes before editing.
-2. Continue workstream 1 with PostgreSQL analytics, firmware/OTA and larger
-   firmware/OTA coverage. The device CRUD/deletion and location-batch regressions
-   now run against real PostgreSQL.
+2. Continue workstream 1 with PostgreSQL firmware CRUD/OTA, tenant isolation
+   and concurrency coverage. The device CRUD/deletion, analytics and
+   location-batch regressions now run against real PostgreSQL.
 3. Finish backend contracts in workstreams 2–4 before updating their consumers.
 4. Finish web consumers after backend contracts settle, then run the backend/web
    integration matrix. Keep the PR draft until the gates pass.
@@ -43,7 +43,7 @@ client payloads are not supported by the blueprint-only backend.
 Primary areas: `crates/backend-postgres/src/{devices,events,analytics,firmware,
 ci_ingest}.rs`, corresponding Turso adapters, and shared adapter tests.
 
-- [ ] Test fresh-baseline device creation with a published revision, assigned
+- [x] Test fresh-baseline device creation with a published revision, assigned
   contract, configuration and certificate; cover get/list/search/update and
   single/bulk deletion. Resolve foreign-key ordering atomically if needed.
 - [ ] Test PostgreSQL typed event/sample ingestion, latest/history queries,
@@ -63,13 +63,13 @@ baseline lifecycle and cooldown tests.
 ## 2. Generic metric lifecycle: retention and rollups
 
 Primary areas: core events/analytics ports, both adapters and backend workers.
-The fixed telemetry maintenance worker is gone; generic metric retention and
-durable rollups are not yet implemented.
+Generic hourly rollups and coordinated retention now exist. The remaining gate
+is deeper behavior and scale verification, especially revision compatibility.
 
 - [ ] Define and implement aggregates keyed by tenant/device, revision semantics,
   stream, exact field path and time bucket. Support declared aggregates and
   preserve count/sum/min/max and timestamped latest as applicable.
-- [ ] Implement coordinated raw-event, typed-sample and aggregate retention in
+- [x] Implement coordinated raw-event, typed-sample and aggregate retention in
   both engines, with appropriate indexes, configuration and worker scheduling.
 - [ ] Preserve incomplete-hour protection, weighted averages, empty buckets,
   late events, duplicate ingestion and retry/crash boundaries.
@@ -100,7 +100,7 @@ work without reserved sensor names or fabricated zero values.
 
 ## 4. Web completion and visual verification
 
-- [ ] Expire map locations client-side at the declared freshness deadline,
+- [x] Expire map locations client-side at the declared freshness deadline,
   including between polling intervals; preserve event/contract provenance.
 - [ ] Finish revision-aware telemetry/history and structured rule controls after
   their backend contracts are settled.
@@ -157,8 +157,8 @@ evidence all pass. Existing unit tests do not substitute for browser checks.
   coverage exercises a 204-ID batch with valid, missing, future, foreign-tenant
   and reassigned devices. Browser evidence remains open.
 - A real PostgreSQL analytics query over typed blueprint samples passes for
-  the requested tenant and excludes a foreign tenant. Retention and rollup
-  reads remain unimplemented.
+  the requested tenant and excludes a foreign tenant. Later rollup and
+  retention regressions below extend this coverage.
 - Both fresh database baselines now contain generic numeric hourly rollups keyed
   by tenant/device/originating revision/stream/exact path/hour. Ingestion updates
   samples and rollups in one transaction. Both adapters pass late-event,
@@ -183,10 +183,12 @@ evidence all pass. Existing unit tests do not substitute for browser checks.
   transaction rollback. Explicit raw-history queries now report expiration
   from a consistent snapshot in both adapters. The fresh PostgreSQL baseline
   constraint regression also passes with the retention tables. Turso reopen and
-  a fresh PostgreSQL connection pool preserve the watermark. Concurrent
-  ingestion/pruning and large-data verification remain open.
+  a fresh PostgreSQL connection pool preserve the watermark. Twenty concurrent
+  ingestions raced a prune pass on each adapter without losing or duplicating
+  rollup counts. Large-data verification remains open.
   Do not treat workstream 2 or 3 as complete.
-- Both-adapter backend compilation; 49 core and 22 Turso unit tests passed.
+- Both-adapter backend compilation; the latest local core and Turso suites
+  passed with 53 and 24 tests respectively.
 - PostgreSQL 17: actual Diesel baseline apply/reapply and schema constraints;
   real cooldown writer/reactivation/rollback tests passed on disposable storage.
 - Frontend typecheck and 35 tests passed; builds and CLI regressions passed in

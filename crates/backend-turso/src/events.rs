@@ -249,6 +249,40 @@ mod rollup_tests {
                 .unwrap()
                 .recorded
         );
+        let mut concurrent = tokio::task::JoinSet::new();
+        for index in 0..20 {
+            let repository = repository.clone();
+            let tenant = tenant.clone();
+            let item = make_event(
+                &format!("concurrent-{index}"),
+                hour + 40_000_000,
+                MetricValue::Int64(1),
+            );
+            concurrent
+                .spawn(async move { repository.record(&tenant, item).await.unwrap().recorded });
+        }
+        let prune_repository = repository.clone();
+        concurrent.spawn(async move {
+            prune_repository
+                .prune_metrics(MetricRetentionCutoffs {
+                    raw_retained_since: chrono::DateTime::from_timestamp_micros(hour * 2).unwrap(),
+                    rollup_retained_since: chrono::DateTime::from_timestamp_micros(0).unwrap(),
+                })
+                .await
+                .is_ok()
+        });
+        while let Some(outcome) = concurrent.join_next().await {
+            assert!(outcome.unwrap());
+        }
+        repository
+            .prune_metrics(MetricRetentionCutoffs {
+                raw_retained_since: chrono::DateTime::from_timestamp_micros(hour * 2).unwrap(),
+                rollup_retained_since: chrono::DateTime::from_timestamp_micros(0).unwrap(),
+            })
+            .await
+            .unwrap();
+        let after_concurrency = analytics.query(&tenant, query.clone()).await.unwrap();
+        assert_eq!(after_concurrency.buckets[0].sample_count, 23);
         connection.execute_batch(r#"
             INSERT INTO device_blueprint_revisions VALUES ('revision-new','default','blueprint',2,'{}',
                 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc','{}',0);
@@ -259,7 +293,7 @@ mod rollup_tests {
         "#).await.unwrap();
         let historical = analytics.query(&tenant, query.clone()).await.unwrap();
         assert_eq!(historical.compatible_devices, 1);
-        assert_eq!(historical.buckets, before.buckets);
+        assert_eq!(historical.buckets, after_concurrency.buckets);
         let fine = AnalyticsQuery {
             bucket_seconds: 60,
             start: chrono::DateTime::from_timestamp_micros(hour)
@@ -282,7 +316,7 @@ mod rollup_tests {
             .await
             .unwrap();
         assert_eq!(pruned.rollups_deleted, 1);
-        assert_eq!(pruned.receipts_deleted, 4);
+        assert_eq!(pruned.receipts_deleted, 24);
         assert_eq!(
             repository
                 .prune_metrics(MetricRetentionCutoffs {

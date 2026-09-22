@@ -717,7 +717,7 @@ async fn postgres_rollups_order_late_events_and_ties() {
         .unwrap();
     let events = PostgresEventRepository::from_pool(pool.clone());
     let hour = Utc::now().timestamp().div_euclid(3600) * 3600 - 3600;
-    let timestamp = |offset| chrono::DateTime::from_timestamp(hour + offset, 0).unwrap();
+    let timestamp = move |offset| chrono::DateTime::from_timestamp(hour + offset, 0).unwrap();
     for (id, offset, value) in [
         ("a", 30, MetricValue::Float64(2.0)),
         ("late", 10, MetricValue::Int64(4)),
@@ -855,6 +855,47 @@ async fn postgres_rollups_order_late_events_and_ties() {
     assert!(events.record(&tenant, failed.clone()).await.is_err());
     failed.metrics.pop();
     assert!(events.record(&tenant, failed).await.unwrap().recorded);
+    let mut concurrent = tokio::task::JoinSet::new();
+    for index in 0..20 {
+        let repository = events.clone();
+        let tenant = tenant.clone();
+        let device_id = device_id.clone();
+        let mut item = event(
+            &tenant,
+            &device_id,
+            &format!("{device_id}-contract"),
+            &format!("concurrent-{index}-{suffix}"),
+        );
+        item.occurred_at = timestamp(40);
+        item.metrics = vec![DeviceMetricSample {
+            stream_key: "readings".into(),
+            field_path: "/value".into(),
+            value: MetricValue::Int64(1),
+        }];
+        concurrent.spawn(async move { repository.record(&tenant, item).await.unwrap().recorded });
+    }
+    let prune_repository = events.clone();
+    concurrent.spawn(async move {
+        prune_repository
+            .prune_metrics(MetricRetentionCutoffs {
+                raw_retained_since: timestamp(3_600),
+                rollup_retained_since: timestamp(-3_600),
+            })
+            .await
+            .is_ok()
+    });
+    while let Some(outcome) = concurrent.join_next().await {
+        assert!(outcome.unwrap());
+    }
+    events
+        .prune_metrics(MetricRetentionCutoffs {
+            raw_retained_since: timestamp(3_600),
+            rollup_retained_since: timestamp(-3_600),
+        })
+        .await
+        .unwrap();
+    let after_concurrency = analytics.query(&tenant, query.clone()).await.unwrap();
+    assert_eq!(after_concurrency.buckets[0].sample_count, 23);
     {
         let mut connection = pool.get().unwrap();
         diesel::sql_query(
@@ -890,7 +931,7 @@ async fn postgres_rollups_order_late_events_and_ties() {
     }
     let historical = analytics.query(&tenant, query.clone()).await.unwrap();
     assert_eq!(historical.compatible_devices, 1);
-    assert_eq!(historical.buckets, before.buckets);
+    assert_eq!(historical.buckets, after_concurrency.buckets);
     let fine = AnalyticsQuery {
         bucket_seconds: 60,
         start: timestamp(0).naive_utc(),
@@ -909,7 +950,7 @@ async fn postgres_rollups_order_late_events_and_ties() {
         .await
         .unwrap();
     assert_eq!(pruned.rollups_deleted, 1);
-    assert_eq!(pruned.receipts_deleted, 4);
+    assert_eq!(pruned.receipts_deleted, 24);
     let repeated = events
         .prune_metrics(MetricRetentionCutoffs {
             raw_retained_since: timestamp(0),
