@@ -96,9 +96,7 @@ export const FirmwareSettings = () => {
                       </div>
                     )}
                   </td>
-                  <td className="mono-data">
-                    {fw.blueprint_revision_id}
-                  </td>
+                  <td className="mono-data">{fw.blueprint_revision_id}</td>
                   <td>
                     <Tag minimal intent={fw.source === 'ci' ? 'primary' : 'none'}>
                       {fw.source === 'ci' ? 'CI' : 'Manual'}

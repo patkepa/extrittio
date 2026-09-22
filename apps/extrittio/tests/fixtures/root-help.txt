@@ -3,23 +3,22 @@ Command line tooling for Extrittio IoT Hub
 Usage: extrittio [OPTIONS] [COMMAND]
 
 Commands:
-  run        Run the complete single-node Extrittio Edge stack with embedded Turso
-  serve      Run the Extrittio backend service
-  migrate    Run pending database migrations and exit
-  init       Initialize database seed data and service certificates, then exit
-  database   Inspect and maintain an embedded Turso database
-  auth       Authenticate and manage the local CLI session
-  config     Show or update local CLI configuration
-  health     Check backend liveness
-  ready      Check backend readiness, including database reachability
-  devices    Manage devices
-  fleets     Manage fleets
-  firmware   Publish and list firmware artifacts
-  ota        Deploy and inspect firmware over-the-air updates
-  api-keys   Manage API keys for CI and automation
-  certs      Download or regenerate device certificates
-  provision  Create a device and emit client provisioning material
-  help       Print this message or the help of the given subcommand(s)
+  run       Run the complete single-node Extrittio Edge stack with embedded Turso
+  serve     Run the Extrittio backend service
+  migrate   Run pending database migrations and exit
+  init      Initialize database seed data and service certificates, then exit
+  database  Inspect and maintain an embedded Turso database
+  auth      Authenticate and manage the local CLI session
+  config    Show or update local CLI configuration
+  health    Check backend liveness
+  ready     Check backend readiness, including database reachability
+  devices   Manage devices
+  fleets    Manage fleets
+  firmware  Publish and list firmware artifacts
+  ota       Deploy and inspect firmware over-the-air updates
+  api-keys  Manage API keys for CI and automation
+  certs     Download or regenerate device certificates
+  help      Print this message or the help of the given subcommand(s)
 
 Options:
       --url <URL>        Extrittio backend URL for client and admin commands [env: EXTRITTIO_URL=]

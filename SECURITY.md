@@ -8,7 +8,7 @@ pre-1.0 phase, only the latest published release is supported.
 ## Reporting a Vulnerability
 
 Do not open a public issue for a suspected vulnerability. Use GitHub's private
-vulnerability reporting for the `extrittio/extrittio` repository, or privately
+vulnerability reporting for the `patkepa/extrittio` repository, or privately
 contact a repository owner if that feature is unavailable.
 
 Include the affected version or commit, impact, reproduction steps, and any known

@@ -1,6 +1,4 @@
-use super::{
-    CertificateApplication, DeviceBlueprintApplication, require_permission,
-};
+use super::{CertificateApplication, DeviceBlueprintApplication, require_permission};
 use crate::devices::*;
 use crate::{ApplicationError, Clock, Permission, PersistenceError, TenantContext};
 use std::sync::Arc;

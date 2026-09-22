@@ -64,19 +64,11 @@ pub(crate) fn install(
 }
 
 pub(crate) fn build_frontend_assets(root: &Path) -> Result<()> {
+    ensure_frontend_dependencies(root)?;
     let frontend = root.join("apps/frontend");
-    let dependency_stamp = frontend.join("node_modules/.package-lock.json");
     let package_json = frontend.join("package.json");
     let package_lock = frontend.join("package-lock.json");
-
-    if !is_fresh(&dependency_stamp, [&package_json, &package_lock])? {
-        run(command_in("npm", root).args(["--prefix", "apps/frontend", "ci"]))?;
-        ensure!(
-            dependency_stamp.is_file(),
-            "npm ci did not create {}",
-            dependency_stamp.display()
-        );
-    }
+    let dependency_stamp = frontend.join("node_modules/.package-lock.json");
 
     let build_stamp = frontend.join("dist/.extrittio-build-stamp");
     let mut inputs = vec![
@@ -92,11 +84,34 @@ pub(crate) fn build_frontend_assets(root: &Path) -> Result<()> {
     collect_files(&frontend.join("public"), &mut inputs)?;
 
     if !is_fresh(&build_stamp, inputs.iter())? {
-        run(command_in("npm", root).args(["--prefix", "apps/frontend", "run", "build"]))?;
+        let mut build = command_in("npm", root);
+        build
+            .args(["--prefix", "apps/frontend", "run", "build"])
+            .env("EXTRITTIO_DEPLOYMENT_PROFILE", "edge");
+        run(&mut build)?;
         fs::write(&build_stamp, b"built by cargo xtask edge assets\n")
             .with_context(|| format!("failed to write {}", build_stamp.display()))?;
     } else {
         eprintln!("frontend assets are up to date");
+    }
+    Ok(())
+}
+
+pub(crate) fn ensure_frontend_dependencies(root: &Path) -> Result<()> {
+    let frontend = root.join("apps/frontend");
+    let dependency_stamp = frontend.join("node_modules/.package-lock.json");
+    let package_json = frontend.join("package.json");
+    let package_lock = frontend.join("package-lock.json");
+
+    if !is_fresh(&dependency_stamp, [&package_json, &package_lock])? {
+        run(command_in("npm", root).args(["--prefix", "apps/frontend", "ci"]))?;
+        ensure!(
+            dependency_stamp.is_file(),
+            "npm ci did not create {}",
+            dependency_stamp.display()
+        );
+    } else {
+        eprintln!("frontend dependencies are up to date");
     }
     Ok(())
 }

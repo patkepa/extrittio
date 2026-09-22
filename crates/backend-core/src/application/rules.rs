@@ -261,6 +261,10 @@ impl RuleApplication {
     }
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "validation mirrors the persisted rule fields"
+)]
 fn validate_rule(
     webhook_urls: &dyn WebhookUrlPolicy,
     name: &str,

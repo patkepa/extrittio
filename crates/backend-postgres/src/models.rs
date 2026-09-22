@@ -5,10 +5,10 @@ use serde_json::Value as JsonValue;
 
 use super::schema::{
     alerts, api_keys, app_metrics, audit_events, ca_certificates, command_history,
-    device_certificates, device_configs, device_logs, device_shadows, devices,
-    firmware_blobs, firmware_updates, fleets, ota_deployments, role_permissions, roles,
-    rule_action_outbox, rule_actions, rule_conditions, rule_cooldowns, rules, server_config,
-    server_metrics, user_roles, users, zones,
+    device_certificates, device_configs, device_logs, device_shadows, devices, firmware_blobs,
+    firmware_updates, fleets, ota_deployments, role_permissions, roles, rule_action_outbox,
+    rule_actions, rule_conditions, rule_cooldowns, rules, server_config, server_metrics,
+    user_roles, users, zones,
 };
 
 // ---------------------------------------------------------------------------

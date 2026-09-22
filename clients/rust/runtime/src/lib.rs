@@ -143,7 +143,10 @@ pub async fn run_native_client<T: EventSource>(
     {
         let endpoint = config.connect.as_deref().unwrap_or(contract_endpoint);
         zenoh_config
-            .insert_json5("connect/endpoints", &serde_json::json!([endpoint]).to_string())
+            .insert_json5(
+                "connect/endpoints",
+                &serde_json::json!([endpoint]).to_string(),
+            )
             .expect("Failed to set Zenoh connect endpoint");
 
         // Disable multicast scouting when connecting to a specific endpoint

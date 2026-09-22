@@ -2,12 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
 
-use crate::{
-    defaults::{
-        DEFAULT_ESP32_BAUD, DEFAULT_ESP32_CHIP, DEFAULT_ESP32_NVS_OFFSET, DEFAULT_ESP32_NVS_SIZE,
-    },
-    output::OutputFormat,
-};
+use crate::output::OutputFormat;
 
 #[derive(Debug, Parser)]
 #[command(name = "extrittio")]
@@ -67,8 +62,6 @@ pub(crate) enum Command {
     ApiKeys(ApiKeysCommand),
     /// Download or regenerate device certificates.
     Certs(CertsCommand),
-    /// Create a device and emit client provisioning material.
-    Provision(ProvisionArgs),
 }
 
 #[derive(Debug, Args)]
@@ -76,6 +69,10 @@ pub(crate) struct RunArgs {
     /// Directory containing the database, certificates, firmware, and backups.
     #[arg(long, env = "EXTRITTIO_DATA_DIR")]
     pub(crate) data_dir: Option<PathBuf>,
+
+    /// Disable the embedded or on-disk web UI.
+    #[arg(long)]
+    pub(crate) no_ui: bool,
 
     /// HTTP port for the web UI and REST API.
     #[arg(long, env = "PORT", default_value_t = 8080)]
@@ -546,80 +543,6 @@ pub(crate) struct PageArgs {
     pub(crate) limit: i64,
     #[arg(long, default_value_t = 0)]
     pub(crate) offset: i64,
-}
-
-#[derive(Debug, Args)]
-pub(crate) struct ProvisionArgs {
-    #[command(flatten)]
-    pub(crate) device: CreateDeviceArgs,
-
-    /// Destination for the verified provisioned contract response; must not exist.
-    #[arg(long)]
-    pub(crate) contract_out: PathBuf,
-
-    /// Download and write the device certificate bundle into this directory.
-    #[arg(long)]
-    pub(crate) cert_dir: Option<PathBuf>,
-
-    /// Regenerate the device certificate before downloading it.
-    #[arg(long)]
-    pub(crate) regenerate_cert: bool,
-
-    /// Generate and flash an ESP-IDF NVS image with this device's runtime config.
-    #[arg(long)]
-    pub(crate) flash_esp32_nvs: bool,
-
-    /// ESP serial port. Auto-detected when omitted and exactly one USB serial device exists.
-    #[arg(long)]
-    pub(crate) port: Option<PathBuf>,
-
-    /// ESP chip passed to esptool.py.
-    #[arg(long, default_value = DEFAULT_ESP32_CHIP)]
-    pub(crate) chip: String,
-
-    /// ESP serial baud rate passed to esptool.py.
-    #[arg(long, default_value_t = DEFAULT_ESP32_BAUD)]
-    pub(crate) baud: u32,
-
-    /// NVS partition offset for the target firmware partition table.
-    #[arg(long, default_value = DEFAULT_ESP32_NVS_OFFSET)]
-    pub(crate) nvs_offset: String,
-
-    /// NVS partition size for the generated image.
-    #[arg(long, default_value = DEFAULT_ESP32_NVS_SIZE)]
-    pub(crate) nvs_size: String,
-
-    /// Wi-Fi SSID to write into ESP NVS. Defaults to EXTRITTIO_WIFI_SSID.
-    #[arg(long, env = "EXTRITTIO_WIFI_SSID")]
-    pub(crate) wifi_ssid: Option<String>,
-
-    /// Wi-Fi password to write into ESP NVS. Defaults to EXTRITTIO_WIFI_PASSWORD.
-    #[arg(long, env = "EXTRITTIO_WIFI_PASSWORD")]
-    pub(crate) wifi_password: Option<String>,
-
-    /// Firmware version to write into ESP NVS. Defaults to the created device firmware.
-    #[arg(long)]
-    pub(crate) esp32_firmware_version: Option<String>,
-
-    /// ESP-IDF path used to locate nvs_partition_gen.py and esptool.py.
-    #[arg(long, env = "IDF_PATH")]
-    pub(crate) idf_path: Option<PathBuf>,
-
-    /// Python interpreter for ESP-IDF Python tools.
-    #[arg(long, env = "EXTRITTIO_IDF_PYTHON")]
-    pub(crate) idf_python: Option<PathBuf>,
-
-    /// Override path to nvs_partition_gen.py.
-    #[arg(long, env = "EXTRITTIO_NVS_PARTITION_GEN")]
-    pub(crate) nvs_partition_gen: Option<PathBuf>,
-
-    /// Override path to esptool.py.
-    #[arg(long, env = "EXTRITTIO_ESPTOOL")]
-    pub(crate) esptool: Option<PathBuf>,
-
-    /// Keep generated NVS CSV and binary files for inspection.
-    #[arg(long)]
-    pub(crate) keep_nvs_artifacts: bool,
 }
 
 fn parse_non_empty_string(value: &str) -> Result<String, String> {

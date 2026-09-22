@@ -151,8 +151,8 @@ export const OtaTab = ({ device }: OtaTabProps) => {
 
           {firmwareUpdates.length === 0 ? (
             <Callout icon="info-sign" intent="primary">
-              No firmware releases registered for this blueprint revision. Register
-              one in Settings &rarr; Firmware.
+              No firmware releases registered for this blueprint revision. Register one in Settings
+              &rarr; Firmware.
             </Callout>
           ) : (
             <>

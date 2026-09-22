@@ -181,7 +181,7 @@ impl KeyProtector for CertificateCrypto {
             ApplicationError::Internal("Failed to generate private-key nonce".into())
         })?;
 
-        protect_private_key_with_secret_and_nonce(private_key_pem, &secret, nonce_bytes)
+        protect_private_key_with_secret_and_nonce(private_key_pem, secret, nonce_bytes)
     }
 
     fn unprotect(&self, stored_value: &str) -> Result<String, ApplicationError> {
@@ -195,7 +195,7 @@ impl KeyProtector for CertificateCrypto {
             )));
         };
 
-        unprotect_private_key_with_secret(stored_value, &secret)
+        unprotect_private_key_with_secret(stored_value, secret)
     }
 }
 #[async_trait]

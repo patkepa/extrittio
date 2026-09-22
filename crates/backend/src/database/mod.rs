@@ -35,9 +35,7 @@ pub use turso::{LogicalArchiveInfo, TursoBackupInfo, TursoDatabase, TursoDatabas
 
 #[cfg(feature = "postgres")]
 pub(crate) fn postgres_zones(pool: &PostgresPool) -> Arc<dyn ZoneRepository> {
-    let adapter =
-        Arc::new(extrittio_backend_postgres::PostgresZoneRepository::from_pool(pool.clone()));
-    adapter
+    Arc::new(extrittio_backend_postgres::PostgresZoneRepository::from_pool(pool.clone()))
 }
 
 #[cfg(feature = "postgres")]

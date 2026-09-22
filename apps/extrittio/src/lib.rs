@@ -6,7 +6,6 @@ mod args;
 mod commands;
 mod config;
 mod defaults;
-mod esp32;
 mod models;
 mod output;
 

@@ -26,8 +26,8 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.90"
 authors = ["Extrittio contributors"]
-repository = "https://github.com/extrittio/extrittio"
-homepage = "https://github.com/extrittio/extrittio"
+repository = "https://github.com/patkepa/extrittio"
+homepage = "https://github.com/patkepa/extrittio"
 publish = false
 
 [profile.dev]

@@ -7,6 +7,8 @@ const BASELINE: &str = include_str!("../migrations/0001_baseline.sql");
 pub const LATEST_SCHEMA_VERSION: i64 = 1;
 const MIGRATIONS: &[(i64, &str)] = &[(1, BASELINE)];
 
+// This sizable migration-contract suite stays next to its embedded SQL inputs.
+#[allow(clippy::items_after_test_module)]
 #[cfg(test)]
 mod tests {
     #[tokio::test]

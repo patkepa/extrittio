@@ -36,6 +36,10 @@ pub fn merge_config(current: Value, patch: &Map<String, Value>) -> Value {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::items_after_test_module,
+    reason = "tests stay next to the configuration merge helper they cover"
+)]
 mod tests {
     use serde_json::json;
 

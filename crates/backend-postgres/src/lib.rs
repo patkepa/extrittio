@@ -72,7 +72,6 @@ pub use events::PostgresEventRepository;
 mod device_ingress;
 pub use device_ingress::PostgresDeviceIngressRepository;
 
-
 mod activity;
 pub use activity::PostgresActivityRepository;
 

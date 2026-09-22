@@ -378,11 +378,12 @@ impl DeviceBlueprintRepository for TursoDeviceBlueprintRepository {
             .map(|value| revision(&value))
             .transpose()?;
         drop(latest_rows);
-        if let Some(ref latest) = latest {
-            if latest.document_hash == record.document_hash && latest.document == record.document {
-                transaction.rollback().await.map_err(row::legacy_error)?;
-                return Ok(PublishBlueprintOutcome::Published(latest.clone()));
-            }
+        if let Some(ref latest) = latest
+            && latest.document_hash == record.document_hash
+            && latest.document == record.document
+        {
+            transaction.rollback().await.map_err(row::legacy_error)?;
+            return Ok(PublishBlueprintOutcome::Published(latest.clone()));
         }
         if latest.as_ref().map(|value| &value.id) != record.expected_previous_revision_id.as_ref() {
             transaction.rollback().await.map_err(row::legacy_error)?;

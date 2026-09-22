@@ -8,6 +8,14 @@ runtime, and administrative HTTP client commands.
 From the repository root:
 
 ```bash
+cargo xtask cloud run dev
+cargo xtask edge run dev
+```
+
+These commands supervise the backend and Vite development server together.
+For direct CLI and service invocation:
+
+```bash
 cargo run -p extrittio -- --help
 cargo run -p extrittio -- serve
 cargo run -p extrittio -- migrate
@@ -25,8 +33,9 @@ certificates.
 
 ## Edge runtime
 
-The `edge` feature embeds the built web console and selects the local Turso
-profile for `extrittio run`:
+The `edge-runtime` feature provides the local Turso runtime used during source
+development. The `edge` feature adds the embedded web console for deployable
+artifacts:
 
 ```bash
 cd apps/frontend
@@ -64,22 +73,9 @@ Create devices from an immutable published blueprint revision:
 extrittio devices create --name workshop-sensor --blueprint-revision-id REVISION_ID
 ```
 
-Device creation and `provision` no longer accept device-type selectors, and the
-`device-types` command has been removed. Blueprint publishing remains available
-through the web console and HTTP API. To create a device and save its verified
-contract response for a native client:
-
-```bash
-extrittio provision --name workshop-sensor --blueprint-revision-id REVISION_ID \
-  --contract-out ./device-contract.json
-```
-
-The destination must not exist and its parent directory must be writable.
-Provisioning verifies contract hash, device identity and revision before saving
-the file with private permissions on Unix. The endpoint is taken from the
-contract, not a CLI default. If contract retrieval or later certificate/NVS work
-fails after creation, retain the created device ID instead of blindly creating
-another device. The ESP NVS format itself still needs contract-native migration.
+Device creation no longer accepts device-type selectors, and the `device-types`
+command has been removed. Blueprint publishing remains available through the
+web console and HTTP API.
 
 Firmware upload and filtering also use published revisions:
 
@@ -104,7 +100,6 @@ directory; override it with `--config` or `EXTRITTIO_CLI_CONFIG`.
 - `api.rs` owns authenticated HTTP transport.
 - `models.rs` and `output.rs` own response models and table/JSON rendering.
 - `commands/service.rs` composes the server and Edge runtimes.
-- `esp32.rs` contains legacy ESP-IDF NVS provisioning support.
 
 The backend domains and persistence adapters live in `crates/backend`; see the
 [system architecture](../../docs/architecture/overview.md).

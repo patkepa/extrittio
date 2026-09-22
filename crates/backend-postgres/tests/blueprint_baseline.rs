@@ -36,8 +36,10 @@ fn baseline_excludes_retired_device_schema() {
 #[test]
 #[ignore = "requires EXTRITTIO_TEST_EMPTY_POSTGRES_URL pointing to a disposable empty database"]
 fn empty_database_runs_baseline_and_enforces_constraints() {
-    let url = std::env::var("EXTRITTIO_TEST_EMPTY_POSTGRES_URL").unwrap();
-    let mut connection = PgConnection::establish(&url).unwrap();
+    let Some(url) = option_env!("EXTRITTIO_TEST_EMPTY_POSTGRES_URL") else {
+        panic!("set EXTRITTIO_TEST_EMPTY_POSTGRES_URL when compiling this ignored test");
+    };
+    let mut connection = PgConnection::establish(url).unwrap();
     connection.test_transaction::<_, diesel::result::Error, _>(|connection| {
         let versions = extrittio_backend_postgres::run_pending_migrations(connection).unwrap();
         assert_eq!(versions, ["00000000000001"]);

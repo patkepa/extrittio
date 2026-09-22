@@ -71,7 +71,11 @@ mod tests {
     fn local_checkpoint_scheduling_is_independent_of_device_measurements() {
         let descriptor = BackendDescriptor::turso(PathBuf::from("database.db"));
         assert!(descriptor.capabilities.periodic_checkpoint);
-        assert!(!BackendDescriptor::postgres().capabilities.periodic_checkpoint);
+        assert!(
+            !BackendDescriptor::postgres()
+                .capabilities
+                .periodic_checkpoint
+        );
     }
 
     #[test]

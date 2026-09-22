@@ -352,6 +352,7 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         .collect::<Vec<_>>();
     let monitor = tokio::spawn(async move {
         let outcome = tokio::select! {
+            biased;
             () = monitor_cancellation.cancelled() => Ok(()),
             exit = workers.join_next() => {
                 match exit {

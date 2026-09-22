@@ -23,17 +23,6 @@ pub fn compile_target_type(value: &str) -> Option<RuleTargetType> {
     }
 }
 
-#[cfg(test)]
-mod target_tests {
-    use super::*;
-
-    #[test]
-    fn accepts_blueprint_targets_and_rejects_retired_device_types() {
-        assert_eq!(compile_target_type("blueprint"), Some(RuleTargetType::Blueprint));
-        assert_eq!(compile_target_type("device_type"), None);
-    }
-}
-
 pub fn compile_operator(value: &str) -> Option<ConditionOperator> {
     match value {
         "gt" => Some(ConditionOperator::Gt),
@@ -80,4 +69,18 @@ pub fn compile_action(action: &CachedAction) -> Option<CompiledAction> {
         kind: compile_action_kind(&action.action_type)?,
         config: action.config.clone(),
     })
+}
+
+#[cfg(test)]
+mod target_tests {
+    use super::*;
+
+    #[test]
+    fn accepts_blueprint_targets_and_rejects_retired_device_types() {
+        assert_eq!(
+            compile_target_type("blueprint"),
+            Some(RuleTargetType::Blueprint)
+        );
+        assert_eq!(compile_target_type("device_type"), None);
+    }
 }

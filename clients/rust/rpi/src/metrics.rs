@@ -10,10 +10,9 @@ pub fn cpu_temperature() -> Option<f32> {
     ] {
         if let Ok(contents) = std::fs::read_to_string(path)
             && let Ok(millidegrees) = contents.trim().parse::<f32>()
+            && millidegrees.is_finite()
         {
-            if millidegrees.is_finite() {
-                return Some(millidegrees / 1000.0);
-            }
+            return Some(millidegrees / 1000.0);
         }
     }
     None

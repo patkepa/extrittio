@@ -19,7 +19,8 @@ otlp = ["extrittio-backend/otlp"]
 openapi = ["extrittio-backend/openapi"]
 swagger-ui = ["extrittio-backend/swagger-ui"]
 mdns = ["extrittio-backend/mdns"]
-edge = ["turso", "extrittio-backend/embedded-ui", "swagger-ui", "mdns"]
+edge-runtime = ["turso", "swagger-ui", "mdns"]
+edge = ["edge-runtime", "extrittio-backend/embedded-ui"]
 all-databases = ["postgres", "turso"]
 
 [[bin]]
@@ -31,8 +32,6 @@ anyhow = "1"
 clap = { version = "4", features = ["derive", "env"] }
 dotenvy = "0.15"
 extrittio-backend = { version = "0.1.0", path = "../../crates/backend", default-features = false }
-extrittio-client-contract = { version = "0.1.0", path = "../../clients/rust/contract" }
-tempfile = "3"
 reqwest = { version = "0.13", default-features = false, features = ["charset", "http2", "json", "multipart", "rustls-no-provider", "system-proxy"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -41,7 +40,7 @@ tracing = "0.1"
 dirs = "6"
 
 [dev-dependencies]
-extrittio-device-contract = { version = "0.1.0", path = "../../crates/device-contract" }
+tempfile = "3"
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
 tikv-jemallocator = { version = "0.6", optional = true }

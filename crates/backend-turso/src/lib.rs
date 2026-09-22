@@ -65,7 +65,6 @@ pub use events::TursoEventRepository;
 mod device_ingress;
 pub use device_ingress::TursoDeviceIngressRepository;
 
-
 mod activity;
 pub use activity::TursoActivityRepository;
 

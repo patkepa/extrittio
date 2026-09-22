@@ -34,8 +34,10 @@ mod fresh_database_tests {
     #[test]
     #[ignore = "requires EXTRITTIO_TEST_EMPTY_POSTGRES_URL for a disposable empty database"]
     fn cooldowns_and_reactivation_use_the_fresh_schema() {
-        let url = std::env::var("EXTRITTIO_TEST_EMPTY_POSTGRES_URL").unwrap();
-        let mut connection = PgConnection::establish(&url).unwrap();
+        let Some(url) = option_env!("EXTRITTIO_TEST_EMPTY_POSTGRES_URL") else {
+            panic!("set EXTRITTIO_TEST_EMPTY_POSTGRES_URL when compiling this ignored test");
+        };
+        let mut connection = PgConnection::establish(url).unwrap();
         connection.test_transaction::<_, diesel::result::Error, _>(|connection| {
             assert_eq!(crate::run_pending_migrations(connection).unwrap().len(), 1);
             connection.batch_execute(
@@ -123,22 +125,20 @@ fn transition_alert(
     if !valid {
         return Ok(AlertTransitionOutcome::InvalidStatus(alert.status));
     }
-    if transition.requires_active_slot() {
-        if let Some(rule_id) = &alert.rule_id {
-            if let Some(existing_id) = alerts::table
-                .filter(alerts::tenant_id.eq(tenant_id))
-                .filter(alerts::rule_id.eq(rule_id))
-                .filter(alerts::device_id.eq(&alert.device_id))
-                .filter(alerts::id.ne(id))
-                .filter(alerts::status.eq_any(["active", "acknowledged"]))
-                .order((alerts::created_at.desc(), alerts::id.desc()))
-                .select(alerts::id)
-                .first::<String>(connection)
-                .optional()?
-            {
-                return Ok(AlertTransitionOutcome::ActiveConflict(existing_id));
-            }
-        }
+    if transition.requires_active_slot()
+        && let Some(rule_id) = &alert.rule_id
+        && let Some(existing_id) = alerts::table
+            .filter(alerts::tenant_id.eq(tenant_id))
+            .filter(alerts::rule_id.eq(rule_id))
+            .filter(alerts::device_id.eq(&alert.device_id))
+            .filter(alerts::id.ne(id))
+            .filter(alerts::status.eq_any(["active", "acknowledged"]))
+            .order((alerts::created_at.desc(), alerts::id.desc()))
+            .select(alerts::id)
+            .first::<String>(connection)
+            .optional()?
+    {
+        return Ok(AlertTransitionOutcome::ActiveConflict(existing_id));
     }
     let now = Utc::now().naive_utc();
     let changeset = match transition {

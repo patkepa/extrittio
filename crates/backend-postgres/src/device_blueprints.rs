@@ -393,10 +393,11 @@ impl DeviceBlueprintRepository for PostgresDeviceBlueprintRepository {
                         .bind::<Text, _>(&blueprint_id)
                         .get_result::<RevisionRow>(connection)
                         .optional()?;
-                        if let Some(ref latest) = latest {
-                            if latest.document_hash == record.document_hash && latest.document == record.document {
-                                return Ok(PublishBlueprintOutcome::Published(revision(latest.clone())));
-                            }
+                        if let Some(ref latest) = latest
+                            && latest.document_hash == record.document_hash
+                            && latest.document == record.document
+                        {
+                            return Ok(PublishBlueprintOutcome::Published(revision(latest.clone())));
                         }
                         if latest.as_ref().map(|value| &value.id) != record.expected_previous_revision_id.as_ref() {
                             return Ok(PublishBlueprintOutcome::PublicationChanged);

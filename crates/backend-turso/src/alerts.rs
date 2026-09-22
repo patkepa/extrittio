@@ -88,14 +88,14 @@ async fn transition_from(
     if !valid {
         return Ok(AlertTransitionOutcome::InvalidStatus(current.status));
     }
-    if tr.requires_active_slot() {
-        if let Some(rule_id) = &current.rule_id {
-            let mut rows=c.query("SELECT id FROM alerts WHERE tenant_id=?1 AND rule_id=?2 AND device_id=?3 AND id<>?4 AND status IN ('active','acknowledged') ORDER BY created_at DESC,id DESC LIMIT 1",params![t.as_str(),rule_id.as_str(),current.device_id.as_str(),id]).await.map_err(row::legacy_error)?;
-            if let Some(row) = rows.next().await.map_err(row::legacy_error)? {
-                return Ok(AlertTransitionOutcome::ActiveConflict(
-                    row.get(0).map_err(row::legacy_error)?,
-                ));
-            }
+    if tr.requires_active_slot()
+        && let Some(rule_id) = &current.rule_id
+    {
+        let mut rows=c.query("SELECT id FROM alerts WHERE tenant_id=?1 AND rule_id=?2 AND device_id=?3 AND id<>?4 AND status IN ('active','acknowledged') ORDER BY created_at DESC,id DESC LIMIT 1",params![t.as_str(),rule_id.as_str(),current.device_id.as_str(),id]).await.map_err(row::legacy_error)?;
+        if let Some(row) = rows.next().await.map_err(row::legacy_error)? {
+            return Ok(AlertTransitionOutcome::ActiveConflict(
+                row.get(0).map_err(row::legacy_error)?,
+            ));
         }
     }
     let now = Utc::now().timestamp_micros();

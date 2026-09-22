@@ -385,19 +385,15 @@ impl FirmwareRepository for PostgresFirmwareRepository {
                             update.completed_at,
                         )?;
                         if extrittio_backend_core::firmware::ota_status_is_terminal(&update.status)
-                        {
-                            if let Some(updated) =
+                            && let Some(updated) =
                                 extrittio_backend_core::shadows::clear_ota_for_deployment(
                                     shadow,
                                     i64::from(update.deployment_id),
                                     chrono::Utc::now(),
                                 )
                                 .map_err(|error| PersistenceError::CorruptData(error.to_string()))?
-                            {
-                                crate::shadows::store_in_transaction(
-                                    connection, &tenant_id, &updated,
-                                )?;
-                            }
+                        {
+                            crate::shadows::store_in_transaction(connection, &tenant_id, &updated)?;
                         }
                         Ok(true)
                     })

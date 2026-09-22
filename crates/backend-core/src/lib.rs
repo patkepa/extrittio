@@ -12,9 +12,7 @@ pub use application::{CertificateApplication, CertificateSystemApplication};
 pub mod ci_ingest;
 pub mod context;
 pub use application::CiIngestApplication;
-pub use ci_ingest::{
-    CiIngestOutcome, CiIngestParams, CiIngestRepository, authorize_ci_blueprint,
-};
+pub use ci_ingest::{CiIngestOutcome, CiIngestParams, CiIngestRepository, authorize_ci_blueprint};
 pub mod error;
 pub mod pagination;
 pub mod ports;
@@ -75,7 +73,6 @@ pub use application::{
     AlertApplication, AlertMaintenanceApplication, AlertWorkerApplication, RuleAlertIntent,
 };
 
-
 pub use application::{DeviceShadowApplication, ShadowApplication};
 
 pub mod configuration;
@@ -100,8 +97,6 @@ pub use device_identity::{DeviceIdentity, DeviceIdentityError};
 pub mod device_ingress;
 
 pub use application::DeviceIngressApplication;
-
-
 
 pub mod activity;
 

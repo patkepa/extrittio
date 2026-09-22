@@ -112,7 +112,6 @@ fn device_create_requires_a_non_blank_blueprint_revision() {
             "--blueprint-revision-id",
             "   ",
         ],
-        vec!["provision", "--name", "sensor"],
     ] {
         let output = extrittio(&args);
         assert_eq!(output.status.code(), Some(2));
@@ -196,15 +195,6 @@ fn retired_device_type_commands_and_creation_selectors_are_rejected() {
             "--device-type-id",
             "1",
         ],
-        vec![
-            "provision",
-            "--name",
-            "sensor",
-            "--blueprint-revision-id",
-            "revision",
-            "--device-type-id",
-            "1",
-        ],
     ] {
         let output = extrittio(&args);
         assert_eq!(output.status.code(), Some(2));
@@ -262,115 +252,6 @@ fn device_tables_display_blueprint_identity() {
                 .starts_with("GET /api/v1/devices")
         );
     }
-}
-
-fn provision_contract_response() -> serde_json::Value {
-    let document: extrittio_device_contract::CompiledContractDocument = serde_json::from_value(serde_json::json!({
-        "contractApi": 1, "contractId": "contract-1", "tenantId": "tenant-1", "deviceId": "device-1",
-        "blueprintRevisionId": "revision-123", "blueprintRevision": 1, "blueprintKey": "sensor", "blueprintName": "Sensor",
-        "runtime": {"heartbeatIntervalMs": 30000, "offlineAfterMs": 95000, "maxMessageBytes": 8192, "maxMessagesPerMinute": 120, "maxMetricCardinality": 128},
-        "transports": {"primary": {"protocol": "zenoh", "endpoint": "tcp/contract-router.test:7447", "delivery": "at_least_once", "ordering": "per_device_stream"}},
-        "routes": {}, "schemas": {}, "streams": {}, "commands": {}, "relationships": []
-    })).unwrap();
-    serde_json::json!({
-        "id": "contract-1", "device_id": "device-1", "blueprint_revision_id": "revision-123",
-        "contract_hash": document.contract_hash().unwrap().to_string(), "document": document,
-    })
-}
-
-#[test]
-fn provision_delivers_verified_contract_without_overwriting_files() {
-    const DEVICE: &str = r#"{"id":"device-1","name":"sensor","blueprint_id":"blueprint-1","blueprint_revision_id":"revision-123","blueprint_key":"sensor","blueprint_name":"Sensor","blueprint_icon":null,"blueprint_color":null,"fleet_id":null,"fleet_name":null,"status":"offline","last_seen":"never","last_seen_at":null,"firmware":"unknown","uptime":"0s","uptime_seconds":0,"declared_connections":[]}"#;
-    let directory = tempfile::tempdir().unwrap();
-    let output_path = directory.path().join("contract.json");
-    let config = directory.path().join("config.json");
-    let expected = provision_contract_response();
-    let (url, requests) = serve_responses(vec![DEVICE.into(), expected.to_string()]);
-    let args = [
-        "--url",
-        &url,
-        "--token",
-        "test-token",
-        "--config",
-        config.to_str().unwrap(),
-        "--output",
-        "json",
-        "provision",
-        "--name",
-        "sensor",
-        "--blueprint-revision-id",
-        "revision-123",
-        "--contract-out",
-        output_path.to_str().unwrap(),
-    ];
-    let result = extrittio(&args);
-    assert!(
-        result.status.success(),
-        "{}",
-        String::from_utf8_lossy(&result.stderr)
-    );
-    assert!(
-        requests
-            .recv_timeout(Duration::from_secs(5))
-            .unwrap()
-            .starts_with("POST /api/v1/devices HTTP/1.1")
-    );
-    assert!(
-        requests
-            .recv_timeout(Duration::from_secs(5))
-            .unwrap()
-            .starts_with("GET /api/v1/devices/device-1/contract HTTP/1.1")
-    );
-    let saved: serde_json::Value =
-        serde_json::from_slice(&fs::read(&output_path).unwrap()).unwrap();
-    assert_eq!(saved, expected);
-    let output: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
-    assert_eq!(output["zenoh_connect"], "tcp/contract-router.test:7447");
-    assert_eq!(output["contract_id"], "contract-1");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        assert_eq!(
-            fs::metadata(&output_path).unwrap().permissions().mode() & 0o777,
-            0o600
-        );
-    }
-    let again = extrittio(&args);
-    assert!(!again.status.success());
-    assert!(String::from_utf8_lossy(&again.stderr).contains("already exists"));
-    assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&fs::read(&output_path).unwrap()).unwrap(),
-        expected
-    );
-}
-
-#[test]
-fn provision_rejects_tampered_contract_without_writing_destination() {
-    const DEVICE: &str = r#"{"id":"device-1","name":"sensor","blueprint_id":"blueprint-1","blueprint_revision_id":"revision-123","blueprint_key":"sensor","blueprint_name":"Sensor","blueprint_icon":null,"blueprint_color":null,"fleet_id":null,"fleet_name":null,"status":"offline","last_seen":"never","last_seen_at":null,"firmware":"unknown","uptime":"0s","uptime_seconds":0,"declared_connections":[]}"#;
-    let directory = tempfile::tempdir().unwrap();
-    let output_path = directory.path().join("contract.json");
-    let config = directory.path().join("config.json");
-    let mut contract = provision_contract_response();
-    contract["document"]["deviceId"] = "different-device".into();
-    let (url, _requests) = serve_responses(vec![DEVICE.into(), contract.to_string()]);
-    let result = extrittio(&[
-        "--url",
-        &url,
-        "--token",
-        "test-token",
-        "--config",
-        config.to_str().unwrap(),
-        "provision",
-        "--name",
-        "sensor",
-        "--blueprint-revision-id",
-        "revision-123",
-        "--contract-out",
-        output_path.to_str().unwrap(),
-    ]);
-    assert!(!result.status.success());
-    assert!(String::from_utf8_lossy(&result.stderr).contains("Invalid contract"));
-    assert!(!output_path.exists());
 }
 
 #[test]

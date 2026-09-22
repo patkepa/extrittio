@@ -126,10 +126,7 @@ export const FleetGraph = () => {
     inputDevices: typeof visibleDevices;
     inputFleets: typeof fleets;
   }>(() => {
-    const data =
-      visibleDevices.length === 0
-        ? null
-        : buildForceGraphData(visibleDevices, fleets);
+    const data = visibleDevices.length === 0 ? null : buildForceGraphData(visibleDevices, fleets);
     return {
       data,
       prevNodes: data?.nodes,
@@ -138,10 +135,7 @@ export const FleetGraph = () => {
     };
   });
 
-  if (
-    visibleDevices !== graphState.inputDevices ||
-    fleets !== graphState.inputFleets
-  ) {
+  if (visibleDevices !== graphState.inputDevices || fleets !== graphState.inputFleets) {
     const newData =
       visibleDevices.length === 0
         ? null

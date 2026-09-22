@@ -26,6 +26,8 @@ const SCOPE_FILTER: &str = r#"
     AND (?3 = '[]' OR d.id IN (SELECT value FROM json_each(?3)))
 "#;
 
+// Keep the adapter-level contract test beside the scope query it exercises.
+#[allow(clippy::items_after_test_module)]
 #[cfg(test)]
 mod blueprint_scope_tests {
     use super::*;

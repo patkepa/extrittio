@@ -6,6 +6,10 @@ use crate::error::AppError;
 use crate::state::ZenohMetrics;
 use extrittio_backend_core::application::FirmwareApplication;
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "service boundary coordinates explicit OTA and transport dependencies"
+)]
 pub async fn trigger_ota(
     ctx: &RequestContext,
     application: &FirmwareApplication,
