@@ -135,7 +135,7 @@ export const FleetGraphCanvas = memo(
           }
         })
         .catch((error: unknown) => {
-          console.error('[FleetGraph] Failed to load device type icons', error);
+          console.error('[FleetGraph] Failed to load node icons', error);
         });
 
       return () => {
