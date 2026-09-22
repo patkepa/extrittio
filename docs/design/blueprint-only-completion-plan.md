@@ -94,6 +94,11 @@ HTTP DTOs, generated OpenAPI and frontend rule/history models.
   or value types just because field paths match.
 - [ ] Verify multi-stream evaluation, geofence freshness/dwell, revision changes
   and durable external actions with generic payloads on both adapters.
+  The web geofence form currently sends `zone_id`, `zone_state` and
+  `dwell_seconds`, but the HTTP condition DTO drops `zone_id`, creation rejects
+  the geofence trigger, and runtime evaluation only handles entry. Align the
+  public contract, validation, storage, evaluation and form before counting
+  geofence coverage.
 
 Gate: at least two materially different blueprints and incompatible revisions
 work without reserved sensor names or fabricated zero values.
