@@ -36,7 +36,6 @@ export interface AppRoute {
   href?: string;
   icon: IconName;
   element?: ReactNode;
-  navGroup?: 'General' | 'Automation' | 'Mesh Network' | 'Management';
   children?: AppRoute[];
   showInCommandPalette?: boolean;
   requiredPermissions?: PermissionKey[];
@@ -110,7 +109,6 @@ export const appRoutes: AppRoute[] = [
     icon: 'dashboard',
     path: '/',
     element: <Dashboard />,
-    navGroup: 'General',
     showInCommandPalette: true,
     requiredPermissions: ['devices.read'],
   },
@@ -120,7 +118,6 @@ export const appRoutes: AppRoute[] = [
     icon: 'mobile-video',
     path: '/devices',
     element: <Devices />,
-    navGroup: 'General',
     showInCommandPalette: true,
     requiredPermissions: ['devices.read'],
   },
@@ -130,7 +127,6 @@ export const appRoutes: AppRoute[] = [
     icon: 'timeline-line-chart',
     path: '/analytics',
     element: <Analytics />,
-    navGroup: 'General',
     showInCommandPalette: true,
     requiredPermissions: ['telemetry.read', 'devices.read', 'fleets.read'],
   },
@@ -148,7 +144,6 @@ export const appRoutes: AppRoute[] = [
     icon: 'graph',
     path: '/fleet-graph',
     element: <FleetGraph />,
-    navGroup: 'General',
     showInCommandPalette: true,
     requiredPermissions: ['devices.read', 'fleets.read'],
   },
@@ -158,7 +153,6 @@ export const appRoutes: AppRoute[] = [
     icon: 'map',
     path: '/map',
     element: <MapPage />,
-    navGroup: 'General',
     showInCommandPalette: true,
     requiredPermissions: ['devices.read', 'telemetry.read', 'zones.read'],
   },
@@ -176,7 +170,6 @@ export const appRoutes: AppRoute[] = [
     label: 'Network Scanner',
     icon: 'signal-search',
     path: '/openthread/scanner',
-    navGroup: 'Mesh Network',
     showInCommandPalette: true,
     requiredPermissions: ['roles.manage'],
   },
@@ -185,7 +178,6 @@ export const appRoutes: AppRoute[] = [
     label: 'OpenThread Mesh',
     icon: 'graph',
     path: '/openthread/mesh',
-    navGroup: 'Mesh Network',
     showInCommandPalette: true,
     requiredPermissions: ['roles.manage'],
   },
@@ -194,7 +186,6 @@ export const appRoutes: AppRoute[] = [
     label: 'OpenThread Settings',
     icon: 'cog',
     path: '/openthread/settings',
-    navGroup: 'Mesh Network',
     showInCommandPalette: true,
     requiredPermissions: ['roles.manage'],
   },
@@ -204,7 +195,6 @@ export const appRoutes: AppRoute[] = [
     icon: 'updated',
     path: '/updates',
     element: <Updates />,
-    navGroup: 'General',
     showInCommandPalette: true,
     requiredPermissions: ['firmware.read'],
   },
@@ -214,7 +204,6 @@ export const appRoutes: AppRoute[] = [
     icon: 'filter',
     path: '/rules',
     element: <Rules />,
-    navGroup: 'Automation',
     showInCommandPalette: true,
     requiredPermissions: ['rules.read'],
   },
@@ -224,7 +213,6 @@ export const appRoutes: AppRoute[] = [
     icon: 'warning-sign',
     path: '/alerts',
     element: <Alerts />,
-    navGroup: 'Automation',
     showInCommandPalette: true,
     requiredPermissions: ['alerts.read'],
   },
@@ -233,7 +221,6 @@ export const appRoutes: AppRoute[] = [
     label: 'Firmware',
     icon: 'upload',
     path: '/settings/firmware',
-    navGroup: 'Management',
     showInCommandPalette: true,
     requiredPermissions: ['firmware.read'],
   },
@@ -242,7 +229,6 @@ export const appRoutes: AppRoute[] = [
     label: 'Fleets',
     icon: 'layers',
     path: '/settings/fleets',
-    navGroup: 'Management',
     showInCommandPalette: true,
     requiredPermissions: ['fleets.read'],
   },
@@ -252,7 +238,6 @@ export const appRoutes: AppRoute[] = [
     icon: 'document-open',
     path: '/logs',
     element: <ActivityLogs />,
-    navGroup: 'Management',
     showInCommandPalette: true,
     requiredPermissions: ['logs.read'],
   },
@@ -262,7 +247,6 @@ export const appRoutes: AppRoute[] = [
     icon: 'help',
     path: '/help',
     element: <Help />,
-    navGroup: 'Management',
     showInCommandPalette: true,
   },
   {
@@ -272,7 +256,6 @@ export const appRoutes: AppRoute[] = [
     path: '/settings/*',
     href: '/settings',
     element: <Settings />,
-    navGroup: 'Management',
     showInCommandPalette: true,
     children: settingsRoutes.map((route) => ({
       id: `settings-${route.id}`,
@@ -337,27 +320,54 @@ function toNavItem(route: AppRoute): NavItem {
 }
 
 export function getNavGroups(permissions: readonly string[] | undefined): NavGroup[] {
-  return (['General', 'Automation', 'Mesh Network', 'Management'] as const)
-    .map((group) => ({
-      label: group,
-      items: getAccessibleAppRoutes(permissions)
-        .filter((route) => route.navGroup === group && route.id !== 'help')
-        .filter(
-          (route) =>
-            route.id !== 'settings' ||
-            route.children?.some((child) => child.id !== 'settings-profile'),
-        )
-        .map((route) =>
-          route.id === 'settings'
-            ? {
-                ...route,
-                children: route.children?.filter((child) => child.id !== 'settings-profile'),
-              }
-            : route,
-        )
-        .map(toNavItem),
-    }))
-    .filter((group) => group.items.length > 0);
+  const routes = getAccessibleAppRoutes(permissions);
+  const findRoute = (id: string) => routes.find((route) => route.id === id);
+  const deviceViews = ['devices', 'map', 'fleet-graph']
+    .map(findRoute)
+    .filter((route): route is AppRoute => Boolean(route))
+    .map((route) => ({
+      ...toNavItem(route),
+      label: route.id === 'devices' ? 'List' : route.id === 'fleet-graph' ? 'Graph' : 'Map',
+    }));
+
+  const monitor = ['dashboard', 'devices', 'alerts', 'analytics']
+    .map(findRoute)
+    .filter((route): route is AppRoute => Boolean(route))
+    .map((route) =>
+      route.id === 'devices' && deviceViews.length > 1
+        ? { ...toNavItem(route), children: deviceViews }
+        : toNavItem(route),
+    );
+
+  const section = (label: string, icon: IconName, ids: string[]): NavItem | null => {
+    const items = ids
+      .map(findRoute)
+      .filter((route): route is AppRoute => Boolean(route))
+      .map(toNavItem);
+    const first = items[0];
+    if (!first) return null;
+    if (items.length === 1) return first;
+    return { label, icon, href: first.href, children: items };
+  };
+
+  const settings = findRoute('settings');
+  const settingsChildren = settings?.children?.filter((child) => child.id !== 'settings-profile');
+  const more = [
+    section('Operate', 'filter', ['rules', 'updates', 'logs']),
+    section('Network', 'satellite', [
+      'openthread-scanner',
+      'openthread-mesh',
+      'openthread-settings',
+    ]),
+    settings && settingsChildren?.length
+      ? toNavItem({ ...settings, children: settingsChildren })
+      : null,
+  ].filter((item): item is NavItem => Boolean(item));
+
+  return [
+    ...(monitor.length ? [{ label: 'Monitor', items: monitor }] : []),
+    ...(more.length ? [{ label: 'More', items: more }] : []),
+  ];
 }
 
 export function getCommandPaletteRoutes(permissions: readonly string[] | undefined) {
@@ -381,6 +391,9 @@ export function getDefaultRoutePath(permissions: readonly string[] | undefined):
 }
 
 export function getRouteLabel(pathname: string, permissions?: readonly string[]): string {
+  if (pathname === '/map') return 'Devices / Map';
+  if (pathname === '/fleet-graph') return 'Devices / Graph';
+
   const commandPaletteRoutes = getCommandPaletteRoutes(permissions);
   const exact = commandPaletteRoutes.find((route) => route.path === pathname);
   if (exact) return exact.label;
