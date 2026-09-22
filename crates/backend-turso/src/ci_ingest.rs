@@ -51,7 +51,7 @@ mod blueprint_tests {
              INSERT INTO device_blueprints VALUES ('tenant','blueprint','Sensor');
              INSERT INTO device_blueprints VALUES ('other','foreign','Foreign');"
         ).await.unwrap();
-        let document = include_str!("../../../blueprints/smoke-sensor.create-request.json");
+        let document = include_str!("../../../blueprints/environment-sensor.create-request.json");
         for (tenant, revision, blueprint) in [
             ("tenant", "revision-1", "blueprint"),
             ("tenant", "revision-2", "blueprint"),
@@ -171,11 +171,8 @@ mod blueprint_tests {
         assert_eq!(row.get::<String>(0).unwrap(), "revision-1");
         let compatibility: serde_json::Value =
             serde_json::from_str(&row.get::<String>(1).unwrap()).unwrap();
-        assert_eq!(
-            compatibility["hardwareFamily"],
-            "double-socket-nrf5340-radio-matter"
-        );
-        assert_eq!(row.get::<String>(2).unwrap(), "partition_swap");
+        assert_eq!(compatibility, serde_json::json!({ "contractApi": 1 }));
+        assert_eq!(row.get::<String>(2).unwrap(), "binary_replacement");
         drop(rows);
         keys.create(&tenant, key_record(None, "tenant-wide"))
             .await
