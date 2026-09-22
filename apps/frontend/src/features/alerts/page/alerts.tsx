@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import {
   Card,
   Checkbox,
@@ -25,10 +25,13 @@ import {
 import { EmptyState, FilterPill } from '@patkepa/kantzen-ui';
 import { showSuccessToast, showErrorToast } from '../../../utils/toaster';
 import type { Alert } from '../../../types/alerts';
+import { hasPermission } from '../../../auth/permissions';
+import { useAuthStore } from '../../../stores/auth-store';
 import './alerts.css';
 
 export const Alerts = () => {
-  const navigate = useNavigate();
+  const permissions = useAuthStore((s) => s.user?.permissions);
+  const canManageAlerts = hasPermission(permissions, 'alerts.manage');
   const [filterStatus, setFilterStatus] = useState<string>('active');
   const [filterSeverity, setFilterSeverity] = useState<string>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -53,9 +56,23 @@ export const Alerts = () => {
   const isLoading = alertsQuery.isLoading;
   const error = alertsQuery.error;
 
+  const selectedOnPage = useMemo(() => {
+    const visibleIds = new Set(alerts.map((alert) => alert.id));
+    return new Set([...selectedIds].filter((id) => visibleIds.has(id)));
+  }, [alerts, selectedIds]);
+  const selectedAlerts = alerts.filter((alert) => selectedOnPage.has(alert.id));
+  const canAcknowledgeSelection = selectedAlerts.every((alert) => alert.status === 'active');
+  const canResolveSelection = selectedAlerts.every(
+    (alert) => alert.status === 'active' || alert.status === 'acknowledged',
+  );
+  const canReactivateSelection = selectedAlerts.every(
+    (alert) => alert.status === 'acknowledged' || alert.status === 'resolved',
+  );
+
   const toggleSelected = (id: string) => {
     setSelectedIds((prev) => {
-      const next = new Set(prev);
+      const visibleIds = new Set(alerts.map((alert) => alert.id));
+      const next = new Set([...prev].filter((selectedId) => visibleIds.has(selectedId)));
       if (next.has(id)) {
         next.delete(id);
       } else {
@@ -66,14 +83,18 @@ export const Alerts = () => {
   };
 
   const toggleAll = () => {
-    if (alerts.every((a) => selectedIds.has(a.id))) {
+    if (alerts.every((a) => selectedOnPage.has(a.id))) {
       setSelectedIds(new Set());
     } else {
       setSelectedIds(new Set(alerts.map((a) => a.id)));
     }
   };
 
-  const hasSelection = selectedIds.size > 0;
+  const hasSelection = canManageAlerts && selectedOnPage.size > 0;
+  const changePage = (nextPage: number) => {
+    setSelectedIds(new Set());
+    setPage(nextPage);
+  };
 
   const handleAcknowledge = (alert: Alert, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -100,7 +121,7 @@ export const Alerts = () => {
   };
 
   const handleBulkReactivate = () => {
-    const ids = Array.from(selectedIds);
+    const ids = Array.from(selectedOnPage);
     bulkReactivateMutation.mutate(ids, {
       onSuccess: () => {
         void showSuccessToast(`${ids.length} alert(s) reactivated`);
@@ -111,7 +132,7 @@ export const Alerts = () => {
   };
 
   const handleBulkAcknowledge = () => {
-    const ids = Array.from(selectedIds);
+    const ids = Array.from(selectedOnPage);
     bulkAckMutation.mutate(ids, {
       onSuccess: () => {
         void showSuccessToast(`${ids.length} alert(s) acknowledged`);
@@ -122,7 +143,7 @@ export const Alerts = () => {
   };
 
   const handleBulkResolve = () => {
-    const ids = Array.from(selectedIds);
+    const ids = Array.from(selectedOnPage);
     bulkResolveMutation.mutate(ids, {
       onSuccess: () => {
         void showSuccessToast(`${ids.length} alert(s) resolved`);
@@ -235,13 +256,13 @@ export const Alerts = () => {
       {hasSelection && (
         <div className="alerts-bulk-bar">
           <div className="alerts-bulk-bar-left">
-            <span>{selectedIds.size} alert(s) selected</span>
+            <span>{selectedOnPage.size} alert(s) selected on this page</span>
             <Button minimal small onClick={() => setSelectedIds(new Set())}>
               Clear
             </Button>
           </div>
           <div className="alerts-bulk-bar-right">
-            {filterStatus !== 'acknowledged' && filterStatus !== 'resolved' && (
+            {canAcknowledgeSelection && (
               <Button
                 icon="tick"
                 small
@@ -252,7 +273,7 @@ export const Alerts = () => {
                 Acknowledge
               </Button>
             )}
-            {filterStatus !== 'resolved' && (
+            {canResolveSelection && (
               <Button
                 icon="tick-circle"
                 small
@@ -263,7 +284,7 @@ export const Alerts = () => {
                 Resolve
               </Button>
             )}
-            {filterStatus !== 'active' && (
+            {canReactivateSelection && (
               <Button
                 icon="undo"
                 small
@@ -290,38 +311,44 @@ export const Alerts = () => {
           <HTMLTable interactive className="alerts-table">
             <thead>
               <tr>
-                <th style={{ width: 40 }}>
-                  <Checkbox
-                    checked={alerts.length > 0 && alerts.every((a) => selectedIds.has(a.id))}
-                    indeterminate={
-                      alerts.some((a) => selectedIds.has(a.id)) &&
-                      !alerts.every((a) => selectedIds.has(a.id))
-                    }
-                    onChange={toggleAll}
-                    style={{ marginBottom: 0 }}
-                  />
-                </th>
+                {canManageAlerts && (
+                  <th style={{ width: 40 }}>
+                    <Checkbox
+                      aria-label="Select all alerts on this page"
+                      checked={alerts.length > 0 && alerts.every((a) => selectedOnPage.has(a.id))}
+                      indeterminate={
+                        alerts.some((a) => selectedOnPage.has(a.id)) &&
+                        !alerts.every((a) => selectedOnPage.has(a.id))
+                      }
+                      onChange={toggleAll}
+                      style={{ marginBottom: 0 }}
+                    />
+                  </th>
+                )}
                 <th style={{ width: 40 }}>Severity</th>
                 <th>Message</th>
                 <th>Device</th>
                 <th>Status</th>
                 <th>Created</th>
-                <th style={{ width: 100 }}>Actions</th>
+                {canManageAlerts && <th style={{ width: 100 }}>Actions</th>}
               </tr>
             </thead>
             <tbody>
               {alerts.map((alert) => (
                 <tr
                   key={alert.id}
-                  className={`alert-row alert-row--${alert.severity} ${selectedIds.has(alert.id) ? 'alert-row--selected' : ''}`}
+                  className={`alert-row alert-row--${alert.severity} ${selectedOnPage.has(alert.id) ? 'alert-row--selected' : ''}`}
                 >
-                  <td onClick={(e) => e.stopPropagation()}>
-                    <Checkbox
-                      checked={selectedIds.has(alert.id)}
-                      onChange={() => toggleSelected(alert.id)}
-                      style={{ marginBottom: 0 }}
-                    />
-                  </td>
+                  {canManageAlerts && (
+                    <td onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        aria-label={`Select alert: ${alert.message}`}
+                        checked={selectedOnPage.has(alert.id)}
+                        onChange={() => toggleSelected(alert.id)}
+                        style={{ marginBottom: 0 }}
+                      />
+                    </td>
+                  )}
                   <td>
                     <Icon
                       icon={severityIcon(alert.severity)}
@@ -333,18 +360,15 @@ export const Alerts = () => {
                     <span className="alert-message-cell">{alert.message}</span>
                   </td>
                   <td>
-                    <span
+                    <Link
                       className="alert-device-link mono-data"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate(`/devices/${alert.device_id}`);
-                      }}
+                      to={`/devices/${encodeURIComponent(alert.device_id)}`}
                       title={alert.device_id}
                     >
                       {alert.device_id.length > 12
                         ? `${alert.device_id.slice(0, 12)}...`
                         : alert.device_id}
-                    </span>
+                    </Link>
                   </td>
                   <td>
                     <Tag intent={statusIntent(alert.status)} minimal>
@@ -356,42 +380,47 @@ export const Alerts = () => {
                       {formatTime(alert.created_at)}
                     </span>
                   </td>
-                  <td>
-                    <div className="alert-row-actions">
-                      {alert.status === 'active' && (
-                        <Tooltip content="Acknowledge" minimal hoverOpenDelay={150}>
-                          <Button
-                            icon="tick"
-                            minimal
-                            small
-                            onClick={(e) => handleAcknowledge(alert, e)}
-                          />
-                        </Tooltip>
-                      )}
-                      {(alert.status === 'active' || alert.status === 'acknowledged') && (
-                        <Tooltip content="Resolve" minimal hoverOpenDelay={150}>
-                          <Button
-                            icon="tick-circle"
-                            minimal
-                            small
-                            intent="success"
-                            onClick={(e) => handleResolve(alert, e)}
-                          />
-                        </Tooltip>
-                      )}
-                      {(alert.status === 'acknowledged' || alert.status === 'resolved') && (
-                        <Tooltip content="Reactivate" minimal hoverOpenDelay={150}>
-                          <Button
-                            icon="undo"
-                            minimal
-                            small
-                            intent="primary"
-                            onClick={(e) => handleReactivate(alert, e)}
-                          />
-                        </Tooltip>
-                      )}
-                    </div>
-                  </td>
+                  {canManageAlerts && (
+                    <td>
+                      <div className="alert-row-actions">
+                        {alert.status === 'active' && (
+                          <Tooltip content="Acknowledge" minimal hoverOpenDelay={150}>
+                            <Button
+                              icon="tick"
+                              aria-label="Acknowledge alert"
+                              minimal
+                              small
+                              onClick={(e) => handleAcknowledge(alert, e)}
+                            />
+                          </Tooltip>
+                        )}
+                        {(alert.status === 'active' || alert.status === 'acknowledged') && (
+                          <Tooltip content="Resolve" minimal hoverOpenDelay={150}>
+                            <Button
+                              icon="tick-circle"
+                              aria-label="Resolve alert"
+                              minimal
+                              small
+                              intent="success"
+                              onClick={(e) => handleResolve(alert, e)}
+                            />
+                          </Tooltip>
+                        )}
+                        {(alert.status === 'acknowledged' || alert.status === 'resolved') && (
+                          <Tooltip content="Reactivate" minimal hoverOpenDelay={150}>
+                            <Button
+                              icon="undo"
+                              aria-label="Reactivate alert"
+                              minimal
+                              small
+                              intent="primary"
+                              onClick={(e) => handleReactivate(alert, e)}
+                            />
+                          </Tooltip>
+                        )}
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -406,7 +435,7 @@ export const Alerts = () => {
             icon="chevron-left"
             minimal
             disabled={page === 0}
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            onClick={() => changePage(Math.max(0, page - 1))}
           />
           <span className="pagination-info mono-data">
             Page {page + 1} of {totalPages}
@@ -415,7 +444,7 @@ export const Alerts = () => {
             icon="chevron-right"
             minimal
             disabled={page >= totalPages - 1}
-            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+            onClick={() => changePage(Math.min(totalPages - 1, page + 1))}
           />
         </div>
       )}

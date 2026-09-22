@@ -8,7 +8,6 @@ import {
   H3,
   HTMLTable,
   Icon,
-  ProgressBar,
   Spinner,
   Tag,
 } from '@blueprintjs/core';
@@ -32,27 +31,6 @@ function statusIntent(status: string) {
       return 'warning' as const;
     default:
       return 'primary' as const;
-  }
-}
-
-function progressForStatus(status: string): number {
-  switch (status) {
-    case 'pending':
-      return 0.18;
-    case 'downloading':
-      return 0.4;
-    case 'verifying':
-      return 0.65;
-    case 'installing':
-      return 0.82;
-    case 'rebooting':
-      return 0.92;
-    case 'success':
-      return 1;
-    case 'failed':
-      return 1;
-    default:
-      return 0.28;
   }
 }
 
@@ -202,7 +180,6 @@ export const Updates = () => {
                 <th>Device</th>
                 <th>Target</th>
                 <th>Status</th>
-                <th>Progress</th>
                 <th>Started</th>
                 <th>Duration</th>
                 <th>Fleet</th>
@@ -249,8 +226,6 @@ interface UpdateRowProps {
 
 function UpdateRow({ deployment, onDeviceClick }: UpdateRowProps) {
   const intent = statusIntent(deployment.status);
-  const progress = progressForStatus(deployment.status);
-  const isTerminal = deployment.status === 'success' || deployment.status === 'failed';
 
   return (
     <tr className={`updates-row updates-row--${deployment.status}`}>
@@ -273,10 +248,6 @@ function UpdateRow({ deployment, onDeviceClick }: UpdateRowProps) {
         {deployment.error_message && (
           <div className="updates-error-text">{deployment.error_message}</div>
         )}
-      </td>
-      <td className="updates-progress-cell">
-        <ProgressBar value={progress} intent={intent} animate={!isTerminal} />
-        <span className="updates-progress-label">{Math.round(progress * 100)}%</span>
       </td>
       <td className="updates-muted-cell">{formatTime(deployment.initiated_at)}</td>
       <td className="updates-muted-cell">

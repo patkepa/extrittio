@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { FormGroup, InputGroup, Button, Callout, H3, Icon } from '@blueprintjs/core';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import { login } from '../api/auth';
 import { getDefaultRoutePath } from '../app/routes';
 import { useAuthStore } from '../stores/auth-store';
@@ -28,8 +29,14 @@ export const Login = () => {
       });
       setSession(response.user);
       navigate(getDefaultRoutePath(response.user.permissions), { replace: true });
-    } catch {
-      setError('Invalid username or password');
+    } catch (failure) {
+      if (axios.isAxiosError(failure) && failure.response?.status === 401) {
+        setError('Invalid username or password');
+      } else if (axios.isAxiosError(failure) && !failure.response) {
+        setError('Could not connect to the server. Check your connection and try again.');
+      } else {
+        setError('Sign in is unavailable right now. Please try again.');
+      }
     } finally {
       setIsLoading(false);
     }

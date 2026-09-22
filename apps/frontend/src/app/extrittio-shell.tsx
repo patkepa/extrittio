@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { CommandPalette } from '../components/command-palette/command-palette';
 import { UserSettingsMenu } from '../components/layout/user-settings-menu';
 import { hasPermission } from '../auth/permissions';
@@ -49,9 +49,9 @@ export const ExtrittioShell = ({ children }: ExtrittioShellProps) => {
 
   const breadcrumb = deviceDetailMatch ? (
     <>
-      <span className="breadcrumb-link" onClick={() => navigate('/devices')}>
+      <Link className="breadcrumb-link" to="/devices">
         Devices
-      </span>
+      </Link>
       <span className="breadcrumb-sep"> / </span>
       <span>{deviceData?.name ?? deviceId}</span>
     </>
