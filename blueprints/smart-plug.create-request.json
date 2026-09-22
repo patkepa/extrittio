@@ -1,0 +1,106 @@
+{
+  "apiVersion": "extrittio.io/v1alpha1",
+  "kind": "DeviceBlueprint",
+  "metadata": {
+    "key": "smart-plug",
+    "name": "Smart plug",
+    "description": "A generic controllable outlet with electrical telemetry and energy metering.",
+    "icon": "power",
+    "color": "#8E6CEF",
+    "labels": { "category": "energy" }
+  },
+  "spec": {
+    "runtime": {
+      "minimumContractApi": 1,
+      "heartbeat": { "interval": "30s", "offlineAfter": "95s" },
+      "limits": { "maxMessageBytes": 4096, "maxMessagesPerMinute": 180, "maxMetricCardinality": 16 }
+    },
+    "transports": [
+      {
+        "key": "primary", "binding": "primary_zenoh", "protocol": "zenoh",
+        "qos": { "delivery": "at_least_once", "ordering": "per_device_stream" }
+      }
+    ],
+    "routes": [
+      {
+        "key": "readings", "transport": "primary", "direction": "device_to_cloud",
+        "address": "extrittio/devices/{device.id}/events/readings", "messageSchema": "power-reading@1", "encoding": "json"
+      },
+      {
+        "key": "command-requests", "transport": "primary", "direction": "cloud_to_device",
+        "address": "extrittio/devices/{device.id}/commands/request", "messageSchema": "extrittio.command-request@1", "encoding": "protobuf"
+      },
+      {
+        "key": "command-results", "transport": "primary", "direction": "device_to_cloud",
+        "address": "extrittio/devices/{device.id}/commands/result", "messageSchema": "extrittio.command-result@1", "encoding": "protobuf"
+      }
+    ],
+    "schemas": [
+      {
+        "key": "power-reading@1",
+        "format": "json_schema",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["powerWatts", "voltageVolts", "currentAmps", "energyWattHours", "relayOn"],
+          "properties": {
+            "powerWatts": { "type": "number", "minimum": 0 },
+            "voltageVolts": { "type": "number", "minimum": 0 },
+            "currentAmps": { "type": "number", "minimum": 0 },
+            "energyWattHours": { "type": "number", "minimum": 0 },
+            "relayOn": { "type": "boolean" }
+          }
+        }
+      }
+    ],
+    "streams": [
+      {
+        "key": "power",
+        "route": "readings",
+        "timestamp": "envelope.occurred_at",
+        "fields": [
+          {
+            "path": "/powerWatts", "type": "float64", "label": "Power", "unit": "W", "semantic": "power",
+            "index": true, "aggregates": ["min", "max", "avg"],
+            "presentation": { "color": "#8E6CEF", "chart": "line", "precision": 1 }
+          },
+          { "path": "/voltageVolts", "type": "float64", "label": "Voltage", "unit": "V", "semantic": "voltage", "index": true, "aggregates": ["min", "max", "avg"] },
+          { "path": "/currentAmps", "type": "float64", "label": "Current", "unit": "A", "semantic": "current", "index": true, "aggregates": ["min", "max", "avg"] },
+          { "path": "/energyWattHours", "type": "float64", "label": "Energy", "unit": "Wh", "semantic": "energy", "index": true, "aggregates": ["min", "max", "last"] },
+          {
+            "path": "/relayOn", "type": "boolean", "label": "Relay", "semantic": "switch_state",
+            "index": true, "aggregates": ["last"], "presentation": { "chart": "step" }
+          }
+        ]
+      }
+    ],
+    "commands": [
+      {
+        "key": "set-relay", "requestRoute": "command-requests", "responseRoute": "command-results",
+        "label": "Set relay", "description": "Turn the outlet on or off.", "danger": "confirm", "timeout": "10s",
+        "inputSchema": {
+          "type": "object", "additionalProperties": false, "required": ["on"], "properties": { "on": { "type": "boolean" } }
+        },
+        "resultSchema": {
+          "type": "object", "additionalProperties": false, "required": ["on"], "properties": { "on": { "type": "boolean" } }
+        },
+        "idempotency": "idempotent"
+      }
+    ],
+    "health": {
+      "signals": [
+        { "key": "power-high", "source": "metric", "path": "power./powerWatts", "operator": "gt", "value": 3000, "severity": "critical" }
+      ]
+    },
+    "firmware": { "strategy": "binary_replacement", "compatibility": { "contractApi": 1 } },
+    "relationships": [],
+    "presentation": {
+      "summary": [
+        { "metric": "power./powerWatts" },
+        { "metric": "power./energyWattHours" },
+        { "metric": "power./relayOn" }
+      ],
+      "tabs": ["overview", "telemetry", "commands", "firmware"]
+    }
+  }
+}

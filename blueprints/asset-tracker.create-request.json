@@ -1,0 +1,91 @@
+{
+  "apiVersion": "extrittio.io/v1alpha1",
+  "kind": "DeviceBlueprint",
+  "metadata": {
+    "key": "asset-tracker",
+    "name": "Asset tracker",
+    "description": "A generic mobile tracker that reports position, speed, and battery level.",
+    "icon": "map-marker",
+    "color": "#32A467",
+    "labels": { "category": "tracking" }
+  },
+  "spec": {
+    "runtime": {
+      "minimumContractApi": 1,
+      "heartbeat": { "interval": "60s", "offlineAfter": "185s" },
+      "limits": { "maxMessageBytes": 4096, "maxMessagesPerMinute": 120, "maxMetricCardinality": 16 }
+    },
+    "transports": [
+      {
+        "key": "primary", "binding": "primary_zenoh", "protocol": "zenoh",
+        "qos": { "delivery": "at_least_once", "ordering": "per_device_stream" }
+      }
+    ],
+    "routes": [
+      {
+        "key": "positions", "transport": "primary", "direction": "device_to_cloud",
+        "address": "extrittio/devices/{device.id}/events/positions", "messageSchema": "position-reading@1", "encoding": "json"
+      }
+    ],
+    "schemas": [
+      {
+        "key": "position-reading@1",
+        "format": "json_schema",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["latitude", "longitude", "speedMetersPerSecond", "batteryPercent"],
+          "properties": {
+            "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
+            "longitude": { "type": "number", "minimum": -180, "maximum": 180 },
+            "speedMetersPerSecond": { "type": "number", "minimum": 0 },
+            "batteryPercent": { "type": "number", "minimum": 0, "maximum": 100 }
+          }
+        }
+      }
+    ],
+    "streams": [
+      {
+        "key": "position",
+        "route": "positions",
+        "timestamp": "envelope.occurred_at",
+        "fields": [
+          { "path": "/latitude", "type": "float64", "label": "Latitude", "unit": "deg", "semantic": "latitude", "index": true, "aggregates": ["last"], "presentation": { "precision": 6 } },
+          { "path": "/longitude", "type": "float64", "label": "Longitude", "unit": "deg", "semantic": "longitude", "index": true, "aggregates": ["last"], "presentation": { "precision": 6 } },
+          {
+            "path": "/speedMetersPerSecond", "type": "float64", "label": "Speed", "unit": "m/s", "semantic": "speed",
+            "index": true, "aggregates": ["min", "max", "avg"],
+            "presentation": { "color": "#32A467", "chart": "line", "precision": 1 }
+          },
+          {
+            "path": "/batteryPercent", "type": "float64", "label": "Battery", "unit": "%", "semantic": "battery_level",
+            "index": true, "aggregates": ["min", "avg", "last"], "presentation": { "chart": "line", "precision": 0 }
+          }
+        ]
+      }
+    ],
+    "commands": [],
+    "configuration": {
+      "schema": {
+        "type": "object", "additionalProperties": false, "required": ["reportIntervalSeconds"],
+        "properties": { "reportIntervalSeconds": { "type": "integer", "minimum": 10, "maximum": 3600, "default": 60 } }
+      },
+      "defaults": { "reportIntervalSeconds": 60 },
+      "apply": { "mode": "desired_reported", "acknowledgementTimeout": "90s", "atomic": true }
+    },
+    "health": {
+      "signals": [
+        { "key": "battery-low", "source": "metric", "path": "position./batteryPercent", "operator": "lt", "value": 15, "severity": "warning" }
+      ]
+    },
+    "firmware": { "strategy": "binary_replacement", "compatibility": { "contractApi": 1 } },
+    "relationships": [],
+    "presentation": {
+      "summary": [
+        { "metric": "position./speedMetersPerSecond" },
+        { "metric": "position./batteryPercent" }
+      ],
+      "tabs": ["overview", "telemetry", "configuration", "firmware"]
+    }
+  }
+}
