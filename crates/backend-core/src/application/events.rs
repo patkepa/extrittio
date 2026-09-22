@@ -133,7 +133,13 @@ impl EventApplication {
         query.limit = query.limit.clamp(1, 10_000);
         self.repository
             .list_metrics(ctx.tenant_id(), device_id, query)
-            .await?
+            .await
+            .map_err(|error| match error {
+                crate::PersistenceError::HistoryExpired => ApplicationError::InvalidOperation(
+                    "Metric history is outside the retained raw-event range".into(),
+                ),
+                other => other.into(),
+            })?
             .ok_or_else(|| ApplicationError::NotFound(format!("Device '{device_id}' not found")))
     }
 }

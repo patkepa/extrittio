@@ -472,6 +472,11 @@ ORDER BY occurred_at DESC, event_id COLLATE "C" DESC LIMIT 1"#)
         let device_id = device_id.to_owned();
         self.executor
             .run(move |connection| {
+                connection
+                    .build_transaction()
+                    .read_only()
+                    .repeatable_read()
+                    .run::<_, EventTransactionError, _>(|connection| {
                 let device_exists = diesel::sql_query(
                     "SELECT EXISTS(
                         SELECT 1 FROM devices WHERE tenant_id = $1 AND id = $2
@@ -484,6 +489,18 @@ ORDER BY occurred_at DESC, event_id COLLATE "C" DESC LIMIT 1"#)
                 .exists;
                 if !device_exists {
                     return Ok(None);
+                }
+
+                let retention = diesel::sql_query(
+                    "SELECT raw_retained_since, rollup_retained_since
+                     FROM device_metric_retention_state WHERE id = 1",
+                )
+                .get_result::<RetentionStateRow>(connection)?;
+                let raw_since = retention.raw_retained_since.naive_utc();
+                if query.since.is_some_and(|since| since < raw_since)
+                    || query.before.is_some_and(|before| before <= raw_since)
+                {
+                    return Err(PersistenceError::HistoryExpired.into());
                 }
 
                 let rows = diesel::sql_query(
@@ -509,10 +526,14 @@ ORDER BY occurred_at DESC, event_id COLLATE "C" DESC LIMIT 1"#)
                 .bind::<BigInt, _>(query.limit)
                 .load::<MetricRow>(connection)
                 .map_err(|error| PersistenceError::Internal(error.to_string()))?;
-                rows.into_iter()
+                Ok(Some(rows.into_iter()
                     .map(decode_metric)
-                    .collect::<Result<Vec<_>, _>>()
-                    .map(Some)
+                    .collect::<Result<Vec<_>, _>>()?))
+                    })
+                    .map_err(|error| match error {
+                        EventTransactionError::Diesel(error) => crate::error::map_diesel_error(error),
+                        EventTransactionError::Persistence(error) => error,
+                    })
             })
             .await
     }

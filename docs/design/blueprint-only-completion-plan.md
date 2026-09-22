@@ -180,9 +180,11 @@ evidence all pass. Existing unit tests do not substitute for browser checks.
   ranges return explicit errors. Disposable PostgreSQL and Turso tests cover
   duplicate replay after raw deletion, partial-hour protection, rollup
   preservation, subsequent expiry, stale-arrival rejection and retry after a
-  transaction rollback. The fresh PostgreSQL baseline constraint regression
-  also passes with the retention tables. Restart,
-  concurrency, large-data and raw history endpoint coverage remain open.
+  transaction rollback. Explicit raw-history queries now report expiration
+  from a consistent snapshot in both adapters. The fresh PostgreSQL baseline
+  constraint regression also passes with the retention tables. Turso reopen and
+  a fresh PostgreSQL connection pool preserve the watermark. Concurrent
+  ingestion/pruning and large-data verification remain open.
   Do not treat workstream 2 or 3 as complete.
 - Both-adapter backend compilation; 49 core and 22 Turso unit tests passed.
 - PostgreSQL 17: actual Diesel baseline apply/reapply and schema constraints;

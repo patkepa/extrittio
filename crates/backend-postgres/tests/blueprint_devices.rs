@@ -802,6 +802,22 @@ async fn postgres_rollups_order_late_events_and_ties() {
     assert_eq!(pruned.events_deleted, 4);
     assert_eq!(pruned.rollups_deleted, 0);
     assert_eq!(pruned.receipts_deleted, 0);
+    assert!(matches!(
+        events
+            .list_metrics(
+                &tenant,
+                &device_id,
+                DeviceMetricQuery {
+                    stream_key: Some("readings".into()),
+                    field_path: Some("/value".into()),
+                    since: Some(timestamp(0).naive_utc()),
+                    before: None,
+                    limit: 10,
+                }
+            )
+            .await,
+        Err(extrittio_backend_core::PersistenceError::HistoryExpired)
+    ));
     let mut duplicate = event(
         &tenant,
         &device_id,
@@ -913,6 +929,24 @@ async fn postgres_rollups_order_late_events_and_ties() {
     too_old.occurred_at = timestamp(30);
     assert!(matches!(
         events.record(&tenant, too_old).await,
+        Err(extrittio_backend_core::PersistenceError::HistoryExpired)
+    ));
+    let reopened_pool = Pool::builder()
+        .max_size(1)
+        .build(ConnectionManager::<PgConnection>::new(
+            std::env::var("DATABASE_URL").unwrap(),
+        ))
+        .unwrap();
+    let reopened_events = PostgresEventRepository::from_pool(reopened_pool);
+    let mut after_restart = event(
+        &tenant,
+        &device_id,
+        &format!("{device_id}-contract"),
+        &format!("after-restart-{suffix}"),
+    );
+    after_restart.occurred_at = timestamp(30);
+    assert!(matches!(
+        reopened_events.record(&tenant, after_restart).await,
         Err(extrittio_backend_core::PersistenceError::HistoryExpired)
     ));
 }

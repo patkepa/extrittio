@@ -204,6 +204,26 @@ mod rollup_tests {
         assert_eq!(pruned.events_deleted, 4);
         assert_eq!(pruned.rollups_deleted, 0);
         assert_eq!(pruned.receipts_deleted, 0);
+        assert!(matches!(
+            repository
+                .list_metrics(
+                    &tenant,
+                    "device",
+                    DeviceMetricQuery {
+                        stream_key: Some("readings".into()),
+                        field_path: Some("/value".into()),
+                        since: Some(
+                            chrono::DateTime::from_timestamp_micros(hour)
+                                .unwrap()
+                                .naive_utc()
+                        ),
+                        before: None,
+                        limit: 10,
+                    }
+                )
+                .await,
+            Err(PersistenceError::HistoryExpired)
+        ));
         assert!(
             !repository
                 .record(
@@ -282,6 +302,28 @@ mod rollup_tests {
                 .record(
                     &tenant,
                     make_event("too-old", hour + 30_000_000, MetricValue::Int64(7))
+                )
+                .await,
+            Err(PersistenceError::HistoryExpired)
+        ));
+        drop(repository);
+        drop(analytics);
+        drop(connection);
+        drop(database);
+        let reopened = crate::TursoDatabase::open(
+            directory.path(),
+            &directory.path().join("rollups.db"),
+            std::time::Duration::from_secs(1),
+        )
+        .await
+        .unwrap();
+        reopened.migrate().await.unwrap();
+        let reopened_repository = TursoEventRepository::from_handles(reopened.shared_handles());
+        assert!(matches!(
+            reopened_repository
+                .record(
+                    &tenant,
+                    make_event("after-restart", hour + 30_000_000, MetricValue::Int64(7))
                 )
                 .await,
             Err(PersistenceError::HistoryExpired)
@@ -1010,7 +1052,11 @@ SELECT device_id,contract_id,event_id,occurred_at,expires_at,latitude,longitude 
         device_id: &str,
         query: DeviceMetricQuery,
     ) -> Result<Option<Vec<DeviceMetricRecord>>, PersistenceError> {
-        let connection = self.connect()?;
+        let mut raw_connection = self.connect()?;
+        let connection = raw_connection
+            .transaction()
+            .await
+            .map_err(row::legacy_error)?;
         let mut existence = connection
             .query(
                 "SELECT EXISTS(SELECT 1 FROM devices WHERE tenant_id = ?1 AND id = ?2)",
@@ -1028,7 +1074,36 @@ SELECT device_id,contract_id,event_id,occurred_at,expires_at,latitude,longitude 
             != 0;
         drop(existence);
         if !exists {
+            connection.commit().await.map_err(row::legacy_error)?;
             return Ok(None);
+        }
+
+        let mut retention_rows = connection
+            .query(
+                "SELECT raw_retained_since FROM device_metric_retention_state WHERE id = 1",
+                (),
+            )
+            .await
+            .map_err(row::legacy_error)?;
+        let raw_since = retention_rows
+            .next()
+            .await
+            .map_err(row::legacy_error)?
+            .ok_or_else(|| {
+                PersistenceError::CorruptData("metric retention state is missing".into())
+            })?
+            .get::<i64>(0)
+            .map_err(row::legacy_error)?;
+        drop(retention_rows);
+        if query
+            .since
+            .is_some_and(|since| since.and_utc().timestamp_micros() < raw_since)
+            || query
+                .before
+                .is_some_and(|before| before.and_utc().timestamp_micros() <= raw_since)
+        {
+            connection.rollback().await.map_err(row::legacy_error)?;
+            return Err(PersistenceError::HistoryExpired);
         }
 
         let mut rows = connection
@@ -1104,6 +1179,8 @@ SELECT device_id,contract_id,event_id,occurred_at,expires_at,latitude,longitude 
                 occurred_at: row::datetime(record.get(10).map_err(row::legacy_error)?)?,
             });
         }
+        drop(rows);
+        connection.commit().await.map_err(row::legacy_error)?;
         Ok(Some(metrics))
     }
 }
