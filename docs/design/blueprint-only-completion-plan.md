@@ -29,10 +29,9 @@ client payloads are not supported by the blueprint-only backend.
 
 1. Read this file, the original target-design decisions, repository instructions
    and relevant skills. Inspect branch status and PR changes before editing.
-2. Start with PostgreSQL device CRUD/deletion under workstream 1. Its current
-   single/bulk deletion directly deletes device rows; verify dependent contract,
-   assignment and event foreign keys before deciding whether an ordering fix is
-   necessary. No deletion fix was started before this checkpoint.
+2. Continue workstream 1 with PostgreSQL analytics, firmware/OTA and larger
+   location batches. The device CRUD/deletion regression now proves the fresh
+   baseline's dependent-row cascades on real PostgreSQL.
 3. Finish backend contracts in workstreams 2–4 before updating their consumers.
 4. Finish web consumers after backend contracts settle, then run the backend/web
    integration matrix. Keep the PR draft until the gates pass.
@@ -161,7 +160,8 @@ evidence all pass. Existing unit tests do not substitute for browser checks.
 - Frontend typecheck and 35 tests passed; builds and CLI regressions passed in
   earlier implementation steps. Re-run them for the eventual final tree.
 - Firmware/OTA required-revision schema regression passed; OpenAPI/types updated.
-- Temporary database containers were removed. No migration test is left running.
+- A disposable PostgreSQL 17 container is available for the current execution
+  pass; no existing development database was deleted.
 
 ## Deferred scope
 

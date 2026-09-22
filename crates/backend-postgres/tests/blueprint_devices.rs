@@ -3,6 +3,9 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
 use diesel::sql_types::{BigInt, Jsonb, Text};
 use extrittio_backend_core::TenantId;
+use extrittio_backend_core::analytics::{
+    AnalyticsMetric, AnalyticsMetricSelector, AnalyticsQuery, AnalyticsRepository, AnalyticsScope,
+};
 use extrittio_backend_core::certificates::NewDeviceCertificateRecord;
 use extrittio_backend_core::devices::{
     CreateDeviceRecord, DeviceFilter, DeviceListQuery, DeviceRepository, NewDeviceContractRecord,
@@ -18,8 +21,8 @@ use extrittio_backend_core::rule_snapshots::{
 };
 use extrittio_backend_core::{CiIngestOutcome, CiIngestParams, CiIngestRepository};
 use extrittio_backend_postgres::{
-    PostgresCiIngestRepository, PostgresDeviceRepository, PostgresEventRepository,
-    run_pending_migrations,
+    PostgresAnalyticsRepository, PostgresCiIngestRepository, PostgresDeviceRepository,
+    PostgresEventRepository, run_pending_migrations,
 };
 use serde_json::json;
 use std::sync::Arc;
@@ -309,6 +312,57 @@ async fn postgres_blueprint_device_and_ci_contracts_when_configured() {
         .unwrap()
         .unwrap();
     assert_eq!(metrics.len(), 2);
+    let bucket_start =
+        chrono::DateTime::from_timestamp(observed_at.timestamp().div_euclid(60) * 60, 0)
+            .unwrap()
+            .naive_utc();
+    let analytics = PostgresAnalyticsRepository::from_pool(pool.clone());
+    let analytics_query = AnalyticsQuery {
+        scope: AnalyticsScope {
+            device_ids: vec![device_a.clone()],
+            ..Default::default()
+        },
+        metric: AnalyticsMetric {
+            selector: AnalyticsMetricSelector {
+                blueprint_id: format!("{tenant_a}-blueprint"),
+                stream_key: "position".into(),
+                field_path: "/latitude".into(),
+            },
+            blueprint_key: "test-blueprint".into(),
+            blueprint_name: "Test Blueprint".into(),
+            label: "Latitude".into(),
+            unit: None,
+            value_type: "float64".into(),
+            aggregates: vec!["average".into()],
+            precision: None,
+        },
+        start: bucket_start,
+        end: bucket_start + Duration::minutes(1),
+        bucket_seconds: 60,
+        max_devices: 10,
+        max_rows: 10,
+    };
+    let analytics_data = analytics.query(&a, analytics_query.clone()).await.unwrap();
+    assert_eq!(
+        (
+            analytics_data.selected_devices,
+            analytics_data.compatible_devices
+        ),
+        (1, 1)
+    );
+    assert_eq!(analytics_data.buckets.len(), 1);
+    assert_eq!(analytics_data.buckets[0].sample_count, 1);
+    assert_eq!(analytics_data.buckets[0].average, 0.0);
+    assert_eq!(analytics_data.buckets[0].bucket_start, bucket_start);
+    let foreign_data = analytics.query(&b, analytics_query).await.unwrap();
+    assert_eq!(
+        (
+            foreign_data.selected_devices,
+            foreign_data.compatible_devices
+        ),
+        (0, 0)
+    );
+    assert!(foreign_data.buckets.is_empty());
     assert!(
         metrics
             .iter()
