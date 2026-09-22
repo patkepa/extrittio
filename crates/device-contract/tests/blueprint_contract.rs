@@ -17,6 +17,10 @@ fn starter_fixture() -> DeviceBlueprint {
     .unwrap()
 }
 
+fn example_fixture(source: &str) -> DeviceBlueprint {
+    serde_json::from_str(source).unwrap()
+}
+
 #[test]
 fn blueprint_fixture_validates_and_compiles() {
     let blueprint = validate_blueprint(fixture()).unwrap();
@@ -95,4 +99,17 @@ fn frontend_starter_blueprint_validates_and_compiles() {
         contract.document.presentation.unwrap().summary[0].metric,
         "environment./temperature"
     );
+}
+
+#[test]
+fn bundled_blueprint_examples_are_valid() {
+    let examples = [
+        include_str!("../../../blueprints/environment-sensor.create-request.json"),
+        include_str!("../../../blueprints/smart-plug.create-request.json"),
+        include_str!("../../../blueprints/asset-tracker.create-request.json"),
+    ];
+
+    for source in examples {
+        validate_blueprint(example_fixture(source)).unwrap();
+    }
 }
