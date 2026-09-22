@@ -67,14 +67,12 @@ pub fn install(device_id: Option<&str>, connect: Option<&str>, contract_path: &s
         .unwrap_or_else(|e| panic!("Failed to create {}: {e}", config_dir.display()));
 
     if !config_path.exists() {
-        let mut cfg = Config::default();
-        cfg.contract_path = contract_path.to_string_lossy().into_owned();
-        if let Some(id) = device_id {
-            cfg.device_id = Some(id.to_string());
-        }
-        if let Some(ep) = connect {
-            cfg.connect = Some(ep.to_string());
-        }
+        let cfg = Config {
+            contract_path: contract_path.to_string_lossy().into_owned(),
+            device_id: device_id.map(str::to_string),
+            connect: connect.map(str::to_string),
+            ..Config::default()
+        };
         cfg.save(&config_path)
             .unwrap_or_else(|e| panic!("Failed to write config: {e}"));
         println!("Config written to {}", config_path.display());
