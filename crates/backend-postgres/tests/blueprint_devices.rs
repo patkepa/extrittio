@@ -2,6 +2,7 @@ use chrono::{Duration, Utc};
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
 use diesel::sql_types::{BigInt, Float8, Jsonb, Text};
+use extrittio_backend_core::DeviceIdentity;
 use extrittio_backend_core::TenantId;
 use extrittio_backend_core::analytics::{
     AnalyticsMetric, AnalyticsMetricSelector, AnalyticsQuery, AnalyticsRepository, AnalyticsScope,
@@ -15,6 +16,10 @@ use extrittio_backend_core::events::{
     DeviceEventRepository, DeviceLocationQuery, DeviceMetricQuery, DeviceMetricSample,
     MetricRetentionCutoffs, MetricValue, RecordDeviceEvent,
 };
+use extrittio_backend_core::firmware::{
+    FirmwareRepository, NewFirmwareBlobRecord, NewFirmwareRecord, OtaStatusUpdate,
+    TriggerOtaOutcome,
+};
 use extrittio_backend_core::rule_engine::{cache::RuleCache, types::TelemetryData};
 use extrittio_backend_core::rule_snapshots::{
     DeviceRuleEvaluation, RuleEvaluationInput, RuleEvaluationSnapshot,
@@ -22,7 +27,7 @@ use extrittio_backend_core::rule_snapshots::{
 use extrittio_backend_core::{CiIngestOutcome, CiIngestParams, CiIngestRepository};
 use extrittio_backend_postgres::{
     PostgresAnalyticsRepository, PostgresCiIngestRepository, PostgresDeviceRepository,
-    PostgresEventRepository, run_pending_migrations,
+    PostgresEventRepository, PostgresFirmwareRepository, run_pending_migrations,
 };
 use serde_json::json;
 use std::sync::{Arc, OnceLock};
@@ -689,6 +694,280 @@ async fn postgres_blueprint_device_and_ci_contracts_when_configured() {
     assert_eq!(
         count(&mut pool.get().unwrap(), "firmware_updates", &tenant_a),
         1
+    );
+}
+
+#[tokio::test]
+async fn postgres_firmware_and_ota_follow_blueprint_revisions() {
+    let Ok(url) = std::env::var("DATABASE_URL") else {
+        return;
+    };
+    let pool = Pool::builder()
+        .max_size(3)
+        .build(ConnectionManager::<PgConnection>::new(url))
+        .unwrap();
+    migrate_once(&pool);
+    let suffix = Uuid::new_v4().simple().to_string();
+    let tenant_a = format!("firmware-a-{suffix}");
+    let tenant_b = format!("firmware-b-{suffix}");
+    let revision_a = format!("firmware-revision-a-{suffix}");
+    let revision_b = format!("firmware-revision-b-{suffix}");
+    let device_id = format!("firmware-device-{suffix}");
+    {
+        let mut connection = pool.get().unwrap();
+        seed_blueprint(&mut connection, &tenant_a, &revision_a);
+        seed_blueprint(&mut connection, &tenant_b, &revision_b);
+    }
+    let a = TenantId::new(tenant_a.clone()).unwrap();
+    let b = TenantId::new(tenant_b.clone()).unwrap();
+    let devices = PostgresDeviceRepository::from_pool(pool.clone());
+    devices
+        .create(&a, new_device(&device_id, &revision_a), None)
+        .await
+        .unwrap();
+    let firmware = PostgresFirmwareRepository::from_pool(pool.clone());
+    let new_firmware = |revision: &str, version: &str| NewFirmwareRecord {
+        version: version.into(),
+        url: "https://example.test/firmware.bin".into(),
+        sha256: Some("c".repeat(64)),
+        description: Some("revision-bound release".into()),
+        commit_sha: None,
+        branch: None,
+        ci_run_url: None,
+        build_timestamp: None,
+        changelog: None,
+        source: Some("manual".into()),
+        blueprint_revision_id: revision.into(),
+        compatibility: json!({}),
+        update_strategy: Some("ota".into()),
+    };
+    assert!(
+        firmware
+            .create(&a, new_firmware(&revision_b, "1.0.0"), None)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        firmware
+            .next_blueprint_version(&a, &revision_a)
+            .await
+            .unwrap(),
+        "1.0.0"
+    );
+    let blob = firmware
+        .create(
+            &a,
+            new_firmware(&revision_a, "1.0.0"),
+            Some(NewFirmwareBlobRecord {
+                size: 3,
+                filename: "firmware.bin".into(),
+                storage_key: format!("firmware/{suffix}"),
+                storage_backend: "local".into(),
+            }),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(blob.blueprint_revision_id, revision_a);
+    assert_eq!(blob.file_size, Some(3));
+    assert_eq!(blob.filename.as_deref(), Some("firmware.bin"));
+    assert!(firmware.get_blob(&b, blob.id).await.unwrap().is_none());
+    assert_eq!(
+        firmware.get_blob(&a, blob.id).await.unwrap().unwrap().size,
+        3
+    );
+    assert_eq!(firmware.list(&b, None, 10, 0).await.unwrap().total, 0);
+    assert_eq!(
+        firmware
+            .list(&a, Some(revision_a.clone()), 10, 0)
+            .await
+            .unwrap()
+            .total,
+        1
+    );
+    assert_eq!(
+        firmware
+            .next_blueprint_version(&a, &revision_a)
+            .await
+            .unwrap(),
+        "1.0.1"
+    );
+    assert!(firmware.delete(&b, blob.id).await.unwrap().is_none());
+    assert_eq!(
+        firmware
+            .delete(&a, blob.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap()
+            .size,
+        3
+    );
+    assert!(firmware.delete(&a, blob.id).await.unwrap().is_none());
+
+    let valid = firmware
+        .create(&a, new_firmware(&revision_a, "1.0.1"), None)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        firmware
+            .trigger_ota(&b, &device_id, valid.id, "https://example.test/fw")
+            .await
+            .unwrap(),
+        TriggerOtaOutcome::DeviceNotFound
+    ));
+    assert!(matches!(
+        firmware
+            .trigger_ota(&a, &device_id, i32::MAX, "https://example.test/fw")
+            .await
+            .unwrap(),
+        TriggerOtaOutcome::FirmwareNotFound
+    ));
+    let invalid = firmware
+        .create(
+            &a,
+            NewFirmwareRecord {
+                sha256: None,
+                ..new_firmware(&revision_a, "1.0.2")
+            },
+            None,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        firmware
+            .trigger_ota(&a, &device_id, invalid.id, "https://example.test/fw")
+            .await
+            .unwrap(),
+        TriggerOtaOutcome::InvalidArtifact
+    ));
+    let alternate_revision = format!("firmware-revision-alt-{suffix}");
+    {
+        let mut connection = pool.get().unwrap();
+        diesel::sql_query(
+            "INSERT INTO device_blueprint_revisions
+             (id, tenant_id, blueprint_id, revision, document, document_hash, compatibility)
+             VALUES ($1, $2, $3, 2, $4, repeat('d', 64), '{}')",
+        )
+        .bind::<Text, _>(&alternate_revision)
+        .bind::<Text, _>(&tenant_a)
+        .bind::<Text, _>(format!("{tenant_a}-blueprint"))
+        .bind::<Jsonb, _>(
+            serde_json::from_str::<serde_json::Value>(include_str!(
+                "../../../blueprints/environment-sensor.create-request.json"
+            ))
+            .unwrap(),
+        )
+        .execute(&mut connection)
+        .unwrap();
+    }
+    let incompatible = firmware
+        .create(&a, new_firmware(&alternate_revision, "2.0.0"), None)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        firmware
+            .trigger_ota(&a, &device_id, incompatible.id, "https://example.test/fw")
+            .await
+            .unwrap(),
+        TriggerOtaOutcome::Incompatible
+    ));
+    assert_eq!(
+        firmware
+            .list_all_deployments(&a, None, 10, 0)
+            .await
+            .unwrap()
+            .total,
+        0
+    );
+    let ready = firmware
+        .trigger_ota(&a, &device_id, valid.id, "https://example.test/fw")
+        .await
+        .unwrap();
+    assert!(matches!(ready, TriggerOtaOutcome::Ready { .. }));
+    let deployments = firmware
+        .list_device_deployments(&a, &device_id, 10, 0)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(deployments.total, 1);
+    let deployment_id = deployments.records[0].id;
+    assert_eq!(deployments.records[0].firmware_update_id, valid.id);
+    assert_eq!(
+        firmware
+            .list_all_deployments(&a, None, 10, 0)
+            .await
+            .unwrap()
+            .records[0]
+            .blueprint_revision_id,
+        revision_a
+    );
+    assert!(
+        firmware
+            .list_device_deployments(&b, &device_id, 10, 0)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let identity = DeviceIdentity::new(&tenant_a, &device_id).unwrap();
+    assert!(
+        !firmware
+            .apply_ota_status(
+                &identity,
+                OtaStatusUpdate {
+                    deployment_id,
+                    firmware_update_id: Some(invalid.id),
+                    status: "success".into(),
+                    error_message: None,
+                    completed_at: Some(Utc::now().naive_utc()),
+                }
+            )
+            .await
+            .unwrap()
+    );
+    assert!(
+        firmware
+            .apply_ota_status(
+                &identity,
+                OtaStatusUpdate {
+                    deployment_id,
+                    firmware_update_id: Some(valid.id),
+                    status: "success".into(),
+                    error_message: None,
+                    completed_at: Some(Utc::now().naive_utc()),
+                }
+            )
+            .await
+            .unwrap()
+    );
+    assert!(
+        !firmware
+            .apply_ota_status(
+                &identity,
+                OtaStatusUpdate {
+                    deployment_id,
+                    firmware_update_id: Some(valid.id),
+                    status: "failed".into(),
+                    error_message: None,
+                    completed_at: Some(Utc::now().naive_utc()),
+                }
+            )
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        firmware
+            .list_device_deployments(&a, &device_id, 10, 0)
+            .await
+            .unwrap()
+            .unwrap()
+            .records[0]
+            .status,
+        "success"
     );
 }
 

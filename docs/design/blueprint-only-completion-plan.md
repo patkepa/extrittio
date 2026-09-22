@@ -46,7 +46,7 @@ ci_ingest}.rs`, corresponding Turso adapters, and shared adapter tests.
 - [x] Test fresh-baseline device creation with a published revision, assigned
   contract, configuration and certificate; cover get/list/search/update and
   single/bulk deletion. Resolve foreign-key ordering atomically if needed.
-- [ ] Test PostgreSQL typed event/sample ingestion, latest/history queries,
+- [x] Test PostgreSQL typed event/sample ingestion, latest/history queries,
   single and batch locations, analytics and firmware CRUD/OTA against real SQL.
 - [ ] Test transaction rollback, duplicate delivery, missing/foreign identities,
   and tenant isolation on both adapters.
@@ -198,6 +198,9 @@ evidence all pass. Existing unit tests do not substitute for browser checks.
   passed with 53 and 24 tests respectively.
 - PostgreSQL 17: actual Diesel baseline apply/reapply and schema constraints;
   real cooldown writer/reactivation/rollback tests passed on disposable storage.
+  A fresh-baseline firmware/OTA test covers CRUD, blob metadata, tenant isolation,
+  invalid artifacts, incompatible revisions, deployment creation and terminal
+  status transitions.
 - Frontend typecheck and 36 tests passed after the rule picker was corrected to
   preserve exact JSON pointers. Builds and CLI regressions passed in earlier
   implementation steps. Re-run them for the eventual final tree.
