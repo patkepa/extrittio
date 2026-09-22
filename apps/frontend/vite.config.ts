@@ -41,32 +41,6 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       target: 'esnext',
-      rolldownOptions: {
-        input: {
-          main: resolvePath('./index.html'),
-        },
-        output: {
-          codeSplitting: {
-            groups: [
-              {
-                name: 'charts',
-                test: /node_modules[\\/]uplot(?:[\\/]|$)/,
-                includeDependenciesRecursively: false,
-              },
-              {
-                name: 'query',
-                test: /node_modules[\\/](?:@tanstack[\\/]react-query|axios)(?:[\\/]|$)/,
-                includeDependenciesRecursively: false,
-              },
-              {
-                name: 'maps',
-                test: /node_modules[\\/](?:@react-leaflet[\\/]core|leaflet|react-leaflet)(?:[\\/]|$)/,
-                includeDependenciesRecursively: false,
-              },
-            ],
-          },
-        },
-      },
     },
     server: {
       proxy: {
