@@ -9,7 +9,7 @@ import { ZoneDrawControls } from '../components/map/zone-draw-controls';
 import { DeviceCanvasLayer } from '../components/map/device-canvas-layer';
 import { useAllDevices } from '../hooks/use-devices';
 import { useDeviceLocations } from '../hooks/use-device-locations';
-import { locatedMapDevices } from '../components/map/map-device-model';
+import { locatedMapDevices, nextLocationExpiry } from '../components/map/map-device-model';
 import { useZones } from '../hooks/use-zones';
 import type { Device } from '../types/api';
 import type { Zone, CircleGeometry, PolygonGeometry } from '../types/zones';
@@ -39,6 +39,8 @@ export default function MapPage() {
   const devicesQuery = useAllDevices(undefined, { refetchInterval: 30_000 });
   const devices = devicesQuery.data?.data ?? EMPTY_DEVICES;
   const locationsQuery = useDeviceLocations(devices);
+  const [locationClock, setLocationClock] = useState(Date.now);
+  const locationNow = Math.max(locationClock, locationsQuery.dataUpdatedAt);
   const { data: zones = [] } = useZones();
 
   const [drawMode, setDrawMode] = useState(false);
@@ -47,6 +49,16 @@ export default function MapPage() {
   const [hiddenZoneIds, setHiddenZoneIds] = useState<Set<string>>(new Set());
   const mapRef = useRef<L.Map | null>(null);
   const acceptDrawnLayerRef = useRef<((layer: L.Layer, type: string) => void) | null>(null);
+
+  useEffect(() => {
+    const next = nextLocationExpiry(locationsQuery.data ?? [], locationNow);
+    if (next === null) return;
+    const timer = window.setTimeout(
+      () => setLocationClock(Date.now()),
+      Math.min(Math.max(next - Date.now(), 0), 2_147_483_647),
+    );
+    return () => window.clearTimeout(timer);
+  }, [locationsQuery.data, locationNow]);
 
   const handleToggleDrawMode = useCallback(() => {
     setDrawMode((prev) => !prev);
@@ -89,8 +101,9 @@ export default function MapPage() {
 
   const locationsFailed = devicesQuery.isError || locationsQuery.isError;
   const devicesWithLocation = useMemo(
-    () => (locationsFailed ? [] : locatedMapDevices(devices, locationsQuery.data ?? [])),
-    [devices, locationsQuery.data, locationsFailed],
+    () =>
+      locationsFailed ? [] : locatedMapDevices(devices, locationsQuery.data ?? [], locationNow),
+    [devices, locationsQuery.data, locationsFailed, locationNow],
   );
 
   const visibleZones = useMemo(

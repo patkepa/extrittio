@@ -253,6 +253,7 @@ pub struct LocationResponse {
     pub latitude: f64,
     pub longitude: f64,
     pub timestamp: String,
+    pub expires_at: String,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -927,6 +928,7 @@ pub(crate) async fn get_device_locations(
                     latitude: r.location.latitude,
                     longitude: r.location.longitude,
                     timestamp: r.location.occurred_at.to_rfc3339(),
+                    expires_at: r.location.expires_at.to_rfc3339(),
                 },
             })
             .collect(),
@@ -960,6 +962,7 @@ pub(crate) async fn get_device_latest_location(
             latitude: r.latitude,
             longitude: r.longitude,
             timestamp: r.occurred_at.to_rfc3339(),
+            expires_at: r.expires_at.to_rfc3339(),
         });
     Ok(Json(result))
 }

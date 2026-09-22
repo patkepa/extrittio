@@ -5,6 +5,12 @@ work is tracked in the [completion and resume plan](blueprint-only-completion-pl
 The progress log below is historical and includes superseded intermediate states.
 Created: 2026-09-15. Branch: `plan/blueprint-only-migration`.
 
+Scope update (2026-09-22): this PR's completion gate covers the backend and web
+console. iOS, C SDK, Arduino, shared Protobuf and embedded producer migrations
+are deferred by explicit user direction. The broader client and protocol gates
+below describe the original target, not requirements for this PR. The backend
+does not provide compatibility for those clients' retired payloads.
+
 Planning assumption confirmed by the user: there are no production databases.
 Implement a clean break. Existing database contents, old clients, wire formats
 and public APIs do not require backward compatibility or data migration.

@@ -2035,6 +2035,7 @@ export interface components {
         LocationResponse: {
             contract_id: string;
             event_id: string;
+            expires_at: string;
             /** Format: double */
             latitude: number;
             /** Format: double */

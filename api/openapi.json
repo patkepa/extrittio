@@ -7218,13 +7218,17 @@
           "event_id",
           "latitude",
           "longitude",
-          "timestamp"
+          "timestamp",
+          "expires_at"
         ],
         "properties": {
           "contract_id": {
             "type": "string"
           },
           "event_id": {
+            "type": "string"
+          },
+          "expires_at": {
             "type": "string"
           },
           "latitude": {

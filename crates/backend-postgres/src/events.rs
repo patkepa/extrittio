@@ -40,6 +40,12 @@ struct ExistsRow {
 }
 
 #[derive(diesel::QueryableByName)]
+struct AssignedContractRow {
+    #[diesel(sql_type = Text)]
+    desired_contract_id: String,
+}
+
+#[derive(diesel::QueryableByName)]
 struct MetricRow {
     #[diesel(sql_type = Text)]
     contract_id: String,
@@ -105,6 +111,8 @@ struct LocationRow {
     longitude: f64,
     #[diesel(sql_type = Timestamptz)]
     occurred_at: chrono::DateTime<chrono::Utc>,
+    #[diesel(sql_type = Timestamptz)]
+    expires_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(diesel::QueryableByName)]
@@ -127,6 +135,7 @@ impl DeviceEventRepository for PostgresEventRepository {
         self.executor.run(move |connection| {
             diesel::sql_query(r#"WITH positions AS (
 SELECT e.device_id,e.contract_id,e.id AS event_id,e.occurred_at,
+e.occurred_at + ((c.document #>> '{location,maxAgeMs}')::double precision * INTERVAL '1 millisecond') AS expires_at,
 CASE lat.value_type WHEN 'float64' THEN lat.value_double WHEN 'int64' THEN CAST(lat.value_int AS double precision) END AS latitude,
 CASE lon.value_type WHEN 'float64' THEN lon.value_double WHEN 'int64' THEN CAST(lon.value_int AS double precision) END AS longitude
 FROM device_events e
@@ -144,7 +153,7 @@ AND lat.field_path=c.document #>> '{location,latitudePath}' AND lon.field_path=c
 SELECT *,row_number() OVER (PARTITION BY device_id ORDER BY occurred_at DESC,event_id COLLATE "C" DESC) AS position_rank
 FROM positions WHERE latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180
 )
-SELECT device_id,contract_id,event_id,occurred_at,latitude,longitude FROM ranked WHERE position_rank=1 ORDER BY device_id"#)
+SELECT device_id,contract_id,event_id,occurred_at,expires_at,latitude,longitude FROM ranked WHERE position_rank=1 ORDER BY device_id"#)
                 .bind::<Text,_>(tenant_id)
                 .bind::<diesel::sql_types::Array<Text>,_>(device_ids)
                 .bind::<Timestamptz,_>(now)
@@ -153,6 +162,7 @@ SELECT device_id,contract_id,event_id,occurred_at,latitude,longitude FROM ranked
                     device_id:r.device_id,location:DeviceLocationRecord {
                         contract_id:r.location.contract_id,event_id:r.location.event_id,
                         latitude:r.location.latitude,longitude:r.location.longitude,occurred_at:r.location.occurred_at,
+                        expires_at:r.location.expires_at,
                     }
                 }).collect()).map_err(crate::error::map_diesel_error)
         }).await
@@ -168,6 +178,7 @@ SELECT device_id,contract_id,event_id,occurred_at,latitude,longitude FROM ranked
         let device_id = device_id.to_owned();
         self.executor.run(move |connection| {
             diesel::sql_query(r#"SELECT * FROM (SELECT e.contract_id, e.id AS event_id, e.occurred_at,
+    e.occurred_at + ($8 - $7) AS expires_at,
     CASE lat.value_type WHEN 'float64' THEN lat.value_double WHEN 'int64' THEN CAST(lat.value_int AS double precision) END AS latitude,
     CASE lon.value_type WHEN 'float64' THEN lon.value_double WHEN 'int64' THEN CAST(lon.value_int AS double precision) END AS longitude
 FROM device_events e
@@ -195,6 +206,7 @@ ORDER BY occurred_at DESC, event_id COLLATE "C" DESC LIMIT 1"#)
                 .map(|result| result.map(|r| DeviceLocationRecord {
                     contract_id: r.contract_id, event_id: r.event_id,
                     latitude: r.latitude, longitude: r.longitude, occurred_at: r.occurred_at,
+                    expires_at: r.expires_at,
                 }))
                 .map_err(crate::error::map_diesel_error)
         }).await
@@ -217,6 +229,21 @@ ORDER BY occurred_at DESC, event_id COLLATE "C" DESC LIMIT 1"#)
                             .for_update()
                             .select(devices::id)
                             .first::<String>(connection)?;
+                        let desired_contract = diesel::sql_query(
+                            "SELECT desired_contract_id FROM device_contract_assignments
+                             WHERE tenant_id = $1 AND device_id = $2 FOR UPDATE",
+                        )
+                        .bind::<Text, _>(&tenant_id)
+                        .bind::<Text, _>(&event.device_id)
+                        .get_result::<AssignedContractRow>(connection)
+                        .optional()?;
+                        if desired_contract
+                            .as_ref()
+                            .map(|row| row.desired_contract_id.as_str())
+                            != Some(event.contract_id.as_str())
+                        {
+                            return Err(PersistenceError::NotFound.into());
+                        }
 
                         let inserted = diesel::sql_query(
                             "INSERT INTO device_events

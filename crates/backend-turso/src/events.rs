@@ -138,7 +138,7 @@ mod location_tests {
             stream_key: "position".into(),
             latitude_path: "/y".into(),
             longitude_path: "/x".into(),
-            since: time(500),
+            since: time(1000),
             now: time(2000),
         };
         let location = repository
@@ -150,6 +150,7 @@ mod location_tests {
         assert_eq!(location.contract_id, "contract");
         assert_eq!((location.latitude, location.longitude), (0.0, 0.0));
         assert_eq!(location.occurred_at, time(1000));
+        assert_eq!(location.expires_at, time(2000));
         let batch = repository
             .latest_locations(&tenant, vec!["device".into(), "missing".into()], time(2000))
             .await
@@ -231,6 +232,78 @@ mod location_tests {
                 .is_none()
         );
     }
+
+    #[tokio::test]
+    async fn stale_contract_event_is_rejected_before_persistence() {
+        use crate::events::TursoEventRepository;
+        use extrittio_backend_core::rule_engine::{cache::RuleCache, types::TelemetryData};
+        use extrittio_backend_core::rule_snapshots::{
+            DeviceRuleEvaluation, RuleEvaluationInput, RuleEvaluationSnapshot,
+        };
+        use std::sync::Arc;
+
+        let directory = tempfile::tempdir().unwrap();
+        let database = crate::TursoDatabase::open(
+            directory.path(),
+            &directory.path().join("stale-contract.db"),
+            Duration::from_secs(1),
+        )
+        .await
+        .unwrap();
+        let handles = database.shared_handles();
+        handles
+            .connect()
+            .unwrap()
+            .execute_batch(
+                "CREATE TABLE device_contract_assignments (
+                    tenant_id TEXT, device_id TEXT, desired_contract_id TEXT);
+                 CREATE TABLE device_events (id TEXT);
+                 INSERT INTO device_contract_assignments
+                 VALUES ('tenant', 'device', 'replacement');",
+            )
+            .await
+            .unwrap();
+        let tenant = TenantId::new("tenant").unwrap();
+        let now = Utc::now();
+        let event = RecordDeviceEvent {
+            event_id: "stale-event".into(),
+            device_id: "device".into(),
+            contract_id: "previous".into(),
+            route_key: "sample".into(),
+            occurred_at: now,
+            received_at: now,
+            payload: serde_json::json!({}),
+            metrics: Vec::new(),
+            rule_evaluation: DeviceRuleEvaluation {
+                snapshot: RuleEvaluationSnapshot::new(Arc::new(RuleCache::default())),
+                tenant: tenant.clone(),
+                device_id: "device".into(),
+                fleet_id: None,
+                blueprint_id: None,
+                input: RuleEvaluationInput::Telemetry {
+                    data: TelemetryData {
+                        latitude: None,
+                        longitude: None,
+                        metrics: Default::default(),
+                    },
+                    geofence: false,
+                },
+                observed_at: now.naive_utc(),
+            },
+        };
+        let repository = TursoEventRepository::from_handles(handles.clone());
+        assert!(matches!(
+            repository.record(&tenant, event).await,
+            Err(PersistenceError::NotFound)
+        ));
+        let mut rows = handles
+            .connect()
+            .unwrap()
+            .query("SELECT id FROM device_events", ())
+            .await
+            .unwrap();
+        assert!(rows.next().await.unwrap().is_none());
+    }
 }
 
 #[derive(Clone)]
@@ -249,6 +322,7 @@ impl TursoEventRepository {
 }
 
 const LOCATION_SQL: &str = r#"SELECT * FROM (SELECT e.contract_id, e.id AS event_id, e.occurred_at,
+    e.occurred_at + (?8 - ?7) AS expires_at,
     CASE lat.value_type WHEN 'float64' THEN lat.value_double WHEN 'int64' THEN CAST(lat.value_int AS REAL) END AS latitude,
     CASE lon.value_type WHEN 'float64' THEN lon.value_double WHEN 'int64' THEN CAST(lon.value_int AS REAL) END AS longitude
 FROM device_events e
@@ -291,6 +365,7 @@ impl DeviceEventRepository for TursoEventRepository {
         let sql = format!(
             r#"WITH positions AS (
 SELECT e.device_id,e.contract_id,e.id AS event_id,e.occurred_at,
+e.occurred_at + (json_extract(c.document,'$.location.maxAgeMs') * 1000) AS expires_at,
 CASE lat.value_type WHEN 'float64' THEN lat.value_double WHEN 'int64' THEN CAST(lat.value_int AS REAL) END AS latitude,
 CASE lon.value_type WHEN 'float64' THEN lon.value_double WHEN 'int64' THEN CAST(lon.value_int AS REAL) END AS longitude
 FROM device_events e
@@ -308,7 +383,7 @@ AND lat.field_path=json_extract(c.document,'$.location.latitudePath') AND lon.fi
 SELECT *,row_number() OVER (PARTITION BY device_id ORDER BY occurred_at DESC,event_id COLLATE BINARY DESC) AS position_rank
 FROM positions WHERE latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180
 )
-SELECT device_id,contract_id,event_id,occurred_at,latitude,longitude FROM ranked WHERE position_rank=1 ORDER BY device_id"#
+SELECT device_id,contract_id,event_id,occurred_at,expires_at,latitude,longitude FROM ranked WHERE position_rank=1 ORDER BY device_id"#
         );
         let mut rows = connection
             .query(&sql, bindings)
@@ -323,8 +398,9 @@ SELECT device_id,contract_id,event_id,occurred_at,latitude,longitude FROM ranked
                     contract_id: r.get(1).map_err(row::legacy_error)?,
                     event_id: r.get(2).map_err(row::legacy_error)?,
                     occurred_at: row::datetime(r.get(3).map_err(row::legacy_error)?)?,
-                    latitude: r.get(4).map_err(row::legacy_error)?,
-                    longitude: r.get(5).map_err(row::legacy_error)?,
+                    expires_at: row::datetime(r.get(4).map_err(row::legacy_error)?)?,
+                    latitude: r.get(5).map_err(row::legacy_error)?,
+                    longitude: r.get(6).map_err(row::legacy_error)?,
                 },
             });
         }
@@ -361,8 +437,9 @@ SELECT device_id,contract_id,event_id,occurred_at,latitude,longitude FROM ranked
             contract_id: r.get(0).map_err(row::legacy_error)?,
             event_id: r.get(1).map_err(row::legacy_error)?,
             occurred_at: row::datetime(r.get(2).map_err(row::legacy_error)?)?,
-            latitude: r.get(3).map_err(row::legacy_error)?,
-            longitude: r.get(4).map_err(row::legacy_error)?,
+            expires_at: row::datetime(r.get(3).map_err(row::legacy_error)?)?,
+            latitude: r.get(4).map_err(row::legacy_error)?,
+            longitude: r.get(5).map_err(row::legacy_error)?,
         }))
     }
 
@@ -373,6 +450,25 @@ SELECT device_id,contract_id,event_id,occurred_at,latitude,longitude FROM ranked
     ) -> Result<RecordDeviceEventOutcome, PersistenceError> {
         let mut writer = self.handles.lock_writer().await;
         let transaction = writer.transaction().await.map_err(row::legacy_error)?;
+        let mut assignments = transaction
+            .query(
+                "SELECT desired_contract_id FROM device_contract_assignments
+                 WHERE tenant_id = ?1 AND device_id = ?2",
+                params![tenant.as_str(), event.device_id.clone()],
+            )
+            .await
+            .map_err(row::legacy_error)?;
+        let desired_contract = assignments
+            .next()
+            .await
+            .map_err(row::legacy_error)?
+            .map(|record| record.get::<String>(0).map_err(row::legacy_error))
+            .transpose()?;
+        drop(assignments);
+        if desired_contract.as_deref() != Some(event.contract_id.as_str()) {
+            transaction.rollback().await.map_err(row::legacy_error)?;
+            return Err(PersistenceError::NotFound);
+        }
         let payload = serde_json::to_string(&event.payload)
             .map_err(|error| PersistenceError::Internal(error.to_string()))?;
         let inserted = transaction

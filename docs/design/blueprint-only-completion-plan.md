@@ -1,12 +1,15 @@
 # Blueprint-only migration: completion and resume plan
 
-Status: unfinished draft; implementation checkpoint `cfe46e9`.
+Status: in progress; backend and web completion scope agreed on 2026-09-22.
 Branch: `plan/blueprint-only-migration`. PR: https://github.com/patkepa/extrittio/pull/109.
 
-This is the actionable remaining-work list as of the checkpoint. The original
-[migration plan](blueprint-only-migration-plan.md) defines the full scope; its
-chronological progress notes include superseded statements. Use current source
-and test evidence, not old progress bullets, to decide what is finished.
+This is the actionable remaining-work list for this PR. The original
+[migration plan](blueprint-only-migration-plan.md) describes a broader target;
+its chronological progress notes include superseded statements. Use current
+source and test evidence, not old progress bullets, to decide what is finished.
+This PR completes the backend and web migration. iOS, C SDK, Arduino, shared
+Protobuf, and embedded producer migrations are explicitly deferred. Their old
+client payloads are not supported by the blueprint-only backend.
 
 ## Constraints and definition of done
 
@@ -14,13 +17,13 @@ and test evidence, not old progress bullets, to decide what is finished.
   restore migration chains, backfills, dual reads/writes or legacy decoders.
 - Do not delete existing developer databases without explicit permission.
   Use isolated disposable databases for tests.
-- Preserve every maintained client family in the original plan. Retiring a
-  client requires an explicit scope decision, not silently dropping its tests.
+- Do not claim the deferred clients or shared wire format have migrated. Preserve
+  their existing code and tests unless a backend/web change requires an edit.
 - Temperature, humidity, battery and GPS may appear in blueprint payloads and
   sensor implementations, but must not be mandatory platform telemetry fields.
-- Complete means all remaining implementation and verification gates below
-  pass, including supported clients and both deployment modes. A successful
-  build or a search with no matches is not sufficient.
+- Complete means all backend and web implementation and verification gates below
+  pass on both deployment modes. A successful build or a search with no matches
+  is not sufficient.
 
 ## Resume here
 
@@ -31,8 +34,8 @@ and test evidence, not old progress bullets, to decide what is finished.
    assignment and event foreign keys before deciding whether an ordering fix is
    necessary. No deletion fix was started before this checkpoint.
 3. Finish backend contracts in workstreams 2–4 before updating their consumers.
-4. Finish all producer/mobile consumers and shared protocol together, then run
-   the complete integration matrix. Keep the PR draft until the gates pass.
+4. Finish web consumers after backend contracts settle, then run the backend/web
+   integration matrix. Keep the PR draft until the gates pass.
 5. Record evidence and remaining blockers here as work completes. Do not keep
    appending contradictory completion claims to the historical log.
 
@@ -112,61 +115,46 @@ work without reserved sensor names or fabricated zero values.
 Gate: regenerated types, typecheck, unit tests, production build and browser
 evidence all pass. Existing unit tests do not substitute for browser checks.
 
-## 5. iOS migration
+## 5. Backend/web cleanup and verification matrix
 
-Primary area: `apps/mobile-app-ios`.
-
-- [ ] Replace fixed device-type/telemetry entities, request models, repositories
-  and dependency injection with blueprint, revision, contract and generic data.
-- [ ] Migrate creation/editing, settings, telemetry/history, firmware and API-key
-  views and all corresponding fixtures/tests.
-- [ ] Delete obsolete persisted cache models/decoders; use new cache contracts,
-  without converting old development caches.
-- [ ] Build/test and verify device detail, provisioning and caching in Simulator.
-
-Gate: iOS consumes only supported APIs and handles both reference blueprints.
-The current iOS source still contains retired device fields and fixed charts.
-
-## 6. Producers, provisioning and shared wire protocol
-
-Primary areas: `clients/c`, `clients/arduino`, `clients/rust`, CLI provisioning,
-`crates/common`, and `tools/xtask/src/protocol.rs`.
-
-- [ ] Implement bounded contract-event APIs in C SDK, C ESP32 examples and Arduino;
-  replace fixed telemetry encoders and examples with blueprint-native payloads.
-- [ ] Remove shared `DeviceTelemetry`, generated nanopb artifacts, fixed topic
-  helpers and legacy wire fixtures. Split retained heartbeat/command/shadow/log
-  messages out of `telemetry.proto`; regenerate all maintained consumers.
-- [ ] Update build scripts, protocol tooling and CI checks for the new artifacts.
-- [ ] Complete CLI ESP NVS provisioning, contract recovery/delivery and runtime
-  acknowledgement/reassignment behavior for supported constrained clients.
-- [ ] Verify all Rust platforms, simulator and provisioning scripts end to end;
-  resolve the ESP-IDF toolchain/build issue and validate device memory bounds.
-- [ ] Record real hardware evidence for reconnect, TLS, event publication and
-  contract changes on supported embedded targets; validate Pi/systemd setup.
-
-Gate: every maintained producer provisions and emits validated contract events,
-reconnects and handles contract changes; universal control-plane messages still
-interoperate. No producer publishes the removed fixed telemetry format.
-
-## 7. Final repository cleanup and release matrix
-
-- [ ] Audit tracked source, hidden CI, deployment/package scripts, docs, fixtures,
-  generated code and dependencies for retired APIs/model assumptions. Classify
-  sensor-name matches by meaning, not a blanket text replacement.
-- [ ] Update maintained setup/deployment documentation for fresh databases and
-  blueprint-based provisioning. Remove stale upgrade and compatibility guidance.
+- [ ] Audit backend and web source, CI, deployment scripts, docs, fixtures,
+  generated API code and dependencies for retired APIs/model assumptions.
+  Classify sensor-name matches by meaning, not a blanket text replacement.
+- [ ] Update backend/web setup and deployment documentation for fresh databases
+  and blueprint-based provisioning. State the deferred client limitation.
 - [ ] Run core, contract, rule-engine, shared adapter, HTTP and CLI suites.
 - [ ] Run fresh initialization/restart, retention/concurrency/tenant-isolation
-  tests on PostgreSQL and Turso; verify generated API/protocol drift checks.
-- [ ] Complete browser, iOS and every supported producer build/runtime gate.
+  tests on PostgreSQL and Turso; verify generated OpenAPI/frontend type drift.
+- [ ] Complete browser checks and an API-driven contract-event integration flow.
 - [ ] Demonstrate publish → provision → acknowledge → ingest → latest/history/
-  rollup → rule/location → firmware/OTA on both deployment modes.
-- [ ] Review every checkbox in the original completion checklist with evidence;
-  attach test commands/results and runtime artifacts to the PR before readying it.
+  rollup → rule/location → firmware/OTA on both deployment modes using the
+  supported backend APIs and web console, without relying on deferred clients.
+- [ ] Review every in-scope checkbox here with evidence; attach test commands,
+  results and runtime artifacts to the PR before readying it.
 
 ## Evidence already obtained (not proof of whole-system completion)
 
+- 2026-09-22: `DATABASE_URL` against an isolated PostgreSQL 17 container,
+  `cargo test --locked -p extrittio-backend-postgres --test blueprint_devices`
+  passed. It covers blueprint-backed create/get/list/search/update, tenant
+  isolation, failed-creation rollback, single/bulk deletion and dependent row
+  cascades, duplicate event delivery, typed metric history, fresh/stale location
+  reads and rejection of ingestion after a contract reassignment. This is only
+  part of workstream 1.
+- PostgreSQL CI firmware publishing now authorizes the key and revision under
+  row locks in the insert transaction. The same disposable-database test covers
+  unknown keys, foreign revisions, scoped-key rejection, successful publishing
+  and duplicate-version rollback. Turso already performed these reads inside
+  its writer transaction.
+- The complete PostgreSQL adapter suite, including the ignored fresh-baseline
+  and cooldown/rollback regressions on a separate empty database, passed.
+  The complete Turso adapter suite passed (23 tests).
+- Turso regressions for stale-contract ingestion and fresh/expired locations
+  passed. Both adapters now recheck assignment inside the event transaction.
+- The location API exposes each observation's contract-derived expiration;
+  regenerated OpenAPI/types, frontend formatting, lint, tests and build pass.
+  The frontend map unit test covers the exact expiry boundary. Browser evidence
+  remains open.
 - Both-adapter backend compilation; 49 core and 22 Turso unit tests passed.
 - PostgreSQL 17: actual Diesel baseline apply/reapply and schema constraints;
   real cooldown writer/reactivation/rollback tests passed on disposable storage.
@@ -175,12 +163,10 @@ interoperate. No producer publishes the removed fixed telemetry format.
 - Firmware/OTA required-revision schema regression passed; OpenAPI/types updated.
 - Temporary database containers were removed. No migration test is left running.
 
-## Priority versus permission to pause
+## Deferred scope
 
-It is safe to pause development at this draft checkpoint. It is not a complete
-replacement release: maintained clients still depend on removed interfaces.
-Functional integration, tenant/transaction correctness and supported-client
-updates are release-critical; retention is critical for sustained operation.
-Visual naming cleanup and some documentation can be sequenced last, but remain
-required for the original no-legacy-leftovers completion goal. Removing client
-families or dropping planned capabilities requires an explicit scope change.
+The iOS app, C SDK, Arduino, shared Protobuf, and embedded producers remain on
+their own migration track. This PR does not claim an end-to-end hardware release
+or old-client compatibility. Backend/web integration and tenant/transaction
+correctness remain merge-critical. Generic retention is required for sustained
+operation; rollups are required for the backend analytics target.

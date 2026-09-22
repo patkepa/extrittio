@@ -71,6 +71,8 @@ pub struct DeviceLocationRecord {
     pub latitude: f64,
     pub longitude: f64,
     pub occurred_at: DateTime<Utc>,
+    /// Deadline from the originating contract's location binding.
+    pub expires_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
