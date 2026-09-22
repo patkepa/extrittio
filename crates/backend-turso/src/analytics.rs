@@ -4,11 +4,11 @@ use turso::params;
 use extrittio_backend_core::PersistenceError;
 use extrittio_backend_core::TenantId;
 use extrittio_backend_core::analytics::AnalyticsRepository;
-use extrittio_backend_core::analytics::full_hour_rollup_window;
 use extrittio_backend_core::analytics::{
     AnalyticsBlueprintRevision, AnalyticsBucket, AnalyticsDataSource, AnalyticsDevice,
     AnalyticsQuery, AnalyticsQueryData,
 };
+use extrittio_backend_core::analytics::{full_hour_rollup_window, metric_range_retained};
 
 use crate::{TursoConnectionHandles, row};
 #[derive(Clone)]
@@ -187,6 +187,40 @@ impl AnalyticsRepository for TursoAnalyticsRepository {
             .transaction()
             .await
             .map_err(row::legacy_error)?;
+        let rollup_window = (query.bucket_seconds >= 3_600)
+            .then(|| {
+                full_hour_rollup_window(query.start, query.end, chrono::Utc::now().naive_utc())
+            })
+            .flatten();
+        let mut retention_rows = connection
+            .query(
+                "SELECT raw_retained_since, rollup_retained_since
+                 FROM device_metric_retention_state WHERE id = 1",
+                (),
+            )
+            .await
+            .map_err(row::legacy_error)?;
+        let retention = retention_rows
+            .next()
+            .await
+            .map_err(row::legacy_error)?
+            .ok_or_else(|| {
+                PersistenceError::CorruptData("metric retention state is missing".into())
+            })?;
+        let raw_retained_since =
+            row::datetime(retention.get::<i64>(0).map_err(row::legacy_error)?)?.naive_utc();
+        let rollup_retained_since =
+            row::datetime(retention.get::<i64>(1).map_err(row::legacy_error)?)?.naive_utc();
+        drop(retention_rows);
+        if !metric_range_retained(
+            query.start,
+            query.end,
+            rollup_window,
+            raw_retained_since,
+            rollup_retained_since,
+        ) {
+            return Err(PersistenceError::HistoryExpired);
+        }
         let fleet_ids = serde_json::to_string(&query.scope.fleet_ids)
             .map_err(|error| PersistenceError::Internal(error.to_string()))?;
         let requested_device_ids = serde_json::to_string(&query.scope.device_ids)
@@ -339,11 +373,6 @@ impl AnalyticsRepository for TursoAnalyticsRepository {
         .map_err(|error| PersistenceError::Internal(error.to_string()))?;
         let bucket_micros = query.bucket_seconds.saturating_mul(1_000_000);
         let row_limit = i64::try_from(query.max_rows.saturating_add(1)).unwrap_or(i64::MAX);
-        let rollup_window = (query.bucket_seconds >= 3_600)
-            .then(|| {
-                full_hour_rollup_window(query.start, query.end, chrono::Utc::now().naive_utc())
-            })
-            .flatten();
         let mut rows = if let Some((rollup_start, rollup_end)) = rollup_window {
             connection
                 .query(

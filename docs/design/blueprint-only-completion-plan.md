@@ -171,8 +171,19 @@ evidence all pass. Existing unit tests do not substitute for browser checks.
   revisions only when exact stream/path, value type, unit and aggregate
   declarations match. The catalog still presents only the latest revision.
   Both adapters keep historical rollup reads available after reassignment.
-  Coordinated retention, full incompatible-revision API integration and larger
-  dataset verification remain open. Do not treat workstream 2 or 3 as complete.
+  Full incompatible-revision API integration and larger dataset verification
+  remain open.
+- Both baselines now retain delivery receipts separately from raw events, and
+  ingestion stores the receipt, event, typed samples and rollup in one
+  transaction. An hourly worker advances durable raw/rollup watermarks and
+  prunes all three data classes atomically; expired arrivals and analytics
+  ranges return explicit errors. Disposable PostgreSQL and Turso tests cover
+  duplicate replay after raw deletion, partial-hour protection, rollup
+  preservation, subsequent expiry, stale-arrival rejection and retry after a
+  transaction rollback. The fresh PostgreSQL baseline constraint regression
+  also passes with the retention tables. Restart,
+  concurrency, large-data and raw history endpoint coverage remain open.
+  Do not treat workstream 2 or 3 as complete.
 - Both-adapter backend compilation; 49 core and 22 Turso unit tests passed.
 - PostgreSQL 17: actual Diesel baseline apply/reapply and schema constraints;
   real cooldown writer/reactivation/rollback tests passed on disposable storage.

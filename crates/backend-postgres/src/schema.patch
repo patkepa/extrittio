@@ -4,7 +4,7 @@
 +        blueprint_id -> Nullable<Text>,
 @@ -28 +28,0 @@
 -        blueprint_id -> Nullable<Text>,
-@@ -367,7 +366,0 @@
+@@ -385,7 +384,0 @@
 -        tenant_id -> Text,
 -    }
 -}
@@ -12,57 +12,57 @@
 -diesel::table! {
 -    rule_alert_deliveries (delivery_id) {
 -        delivery_id -> Text,
-@@ -375 +367,0 @@
+@@ -393 +385,0 @@
 -        alert_id -> Text,
-@@ -397,6 +388,0 @@
+@@ -415,6 +406,0 @@
 -        tenant_id -> Text,
 -    }
 -}
 -
 -diesel::table! {
 -    rule_zone_entries (tenant_id, rule_id, device_id) {
-@@ -404,3 +389,0 @@
+@@ -422,3 +407,0 @@
 -        rule_id -> Text,
 -        device_id -> Text,
 -        entered_at -> Timestamptz,
-@@ -487,0 +471 @@
+@@ -505,0 +489 @@
 +diesel::joinable!(alerts -> devices (device_id));
-@@ -488,0 +473,2 @@
+@@ -506,0 +491,2 @@
 +diesel::joinable!(alerts -> rules (rule_id));
 +diesel::joinable!(api_keys -> device_blueprints (blueprint_id));
-@@ -490,0 +477 @@
+@@ -508,0 +495 @@
 +diesel::joinable!(command_history -> devices (device_id));
-@@ -492,0 +480 @@
+@@ -510,0 +498 @@
 +diesel::joinable!(device_certificates -> devices (device_id));
-@@ -493,0 +482 @@
+@@ -511,0 +500 @@
 +diesel::joinable!(device_configs -> devices (device_id));
-@@ -497,0 +487 @@
+@@ -515,0 +505 @@
 +diesel::joinable!(device_logs -> devices (device_id));
-@@ -498,0 +489 @@
+@@ -516,0 +507 @@
 +diesel::joinable!(device_metric_samples -> device_events (event_id));
-@@ -499,0 +491 @@
+@@ -517,0 +509 @@
 +diesel::joinable!(device_shadows -> devices (device_id));
-@@ -500,0 +493 @@
+@@ -518,0 +511 @@
 +diesel::joinable!(devices -> fleets (fleet_id));
-@@ -501,0 +495 @@
+@@ -519,0 +513 @@
 +diesel::joinable!(firmware_blobs -> firmware_updates (firmware_update_id));
-@@ -504,0 +499,2 @@
+@@ -522,0 +517,2 @@
 +diesel::joinable!(ota_deployments -> devices (device_id));
 +diesel::joinable!(ota_deployments -> firmware_updates (firmware_update_id));
-@@ -510 +506 @@
+@@ -528 +524 @@
 -diesel::joinable!(rule_alert_deliveries -> rule_action_outbox (delivery_id));
 +diesel::joinable!(rule_actions -> rules (rule_id));
-@@ -511,0 +508,3 @@
+@@ -529,0 +526,3 @@
 +diesel::joinable!(rule_conditions -> rules (rule_id));
 +diesel::joinable!(rule_conditions -> zones (zone_id));
 +diesel::joinable!(rule_cooldowns -> devices (device_id));
-@@ -513 +512 @@
+@@ -531 +530 @@
 -diesel::joinable!(rule_zone_entries -> organizations (tenant_id));
 +diesel::joinable!(rule_cooldowns -> rules (rule_id));
-@@ -515,0 +515,2 @@
+@@ -533,0 +533,2 @@
 +diesel::joinable!(user_roles -> roles (role_id));
 +diesel::joinable!(user_roles -> users (user_id));
-@@ -518,0 +520,20 @@
+@@ -536,0 +538,20 @@
 +diesel::table! {
 +    rule_alert_deliveries (delivery_id) {
 +        delivery_id -> Text,
@@ -83,7 +83,7 @@
 +}
 +diesel::joinable!(rule_zone_entries -> organizations (tenant_id));
 +
-@@ -547 +567,0 @@
+@@ -567 +587,0 @@
 -    rule_actions,
-@@ -548,0 +569 @@
+@@ -568,0 +589 @@
 +    rule_actions,

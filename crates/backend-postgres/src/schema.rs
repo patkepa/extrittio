@@ -168,6 +168,16 @@ diesel::table! {
 }
 
 diesel::table! {
+    device_event_receipts (id) {
+        id -> Text,
+        tenant_id -> Text,
+        device_id -> Text,
+        occurred_at -> Timestamptz,
+        received_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     device_events (id) {
         id -> Text,
         tenant_id -> Text,
@@ -188,6 +198,14 @@ diesel::table! {
         message -> Text,
         created_at -> Timestamptz,
         tenant_id -> Text,
+    }
+}
+
+diesel::table! {
+    device_metric_retention_state (id) {
+        id -> Int4,
+        raw_retained_since -> Timestamptz,
+        rollup_retained_since -> Timestamptz,
     }
 }
 
@@ -551,8 +569,10 @@ diesel::allow_tables_to_appear_in_same_query!(
     device_configs,
     device_contract_assignments,
     device_contracts,
+    device_event_receipts,
     device_events,
     device_logs,
+    device_metric_retention_state,
     device_metric_rollups_hourly,
     device_metric_samples,
     device_shadows,

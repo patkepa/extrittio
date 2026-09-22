@@ -234,6 +234,12 @@ CREATE TABLE device_events (
   FOREIGN KEY (tenant_id, device_id) REFERENCES devices(tenant_id, id) ON DELETE CASCADE,
   FOREIGN KEY (tenant_id, device_id, contract_id) REFERENCES device_contracts(tenant_id, device_id, id)
 );
+CREATE TABLE device_event_receipts (
+  id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  device_id TEXT NOT NULL, occurred_at INTEGER NOT NULL, received_at INTEGER NOT NULL,
+  FOREIGN KEY (tenant_id, device_id) REFERENCES devices(tenant_id, id) ON DELETE CASCADE
+);
+CREATE INDEX idx_device_event_receipts_time ON device_event_receipts(occurred_at);
 CREATE TABLE device_metric_samples (
   event_id TEXT NOT NULL,
   tenant_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -247,6 +253,7 @@ CREATE TABLE device_metric_samples (
 );
 CREATE INDEX idx_device_events_device_time
   ON device_events(tenant_id, device_id, occurred_at DESC);
+CREATE INDEX idx_device_events_retention ON device_events(occurred_at);
 CREATE INDEX idx_device_metric_samples_query
   ON device_metric_samples(tenant_id, device_id, stream_key, field_path, occurred_at DESC);
 
@@ -270,6 +277,14 @@ CREATE TABLE device_metric_rollups_hourly (
 );
 CREATE INDEX idx_device_metric_rollups_query
   ON device_metric_rollups_hourly(tenant_id, device_id, stream_key, field_path, bucket_start DESC);
+CREATE INDEX idx_device_metric_rollups_retention
+  ON device_metric_rollups_hourly(bucket_start);
+CREATE TABLE device_metric_retention_state (
+  id INTEGER PRIMARY KEY CHECK(id = 1),
+  raw_retained_since INTEGER NOT NULL,
+  rollup_retained_since INTEGER NOT NULL
+);
+INSERT INTO device_metric_retention_state VALUES (1, -62135596800000000, -62135596800000000);
 
 -- Turso stores rule target kinds as unconstrained text. Index the new
 -- application-level `blueprint` target without changing the table shape.

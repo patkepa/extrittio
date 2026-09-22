@@ -101,8 +101,29 @@ pub struct RecordDeviceEventOutcome {
     pub actions_enqueued: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MetricRetentionCutoffs {
+    /// Keep the whole hour containing the policy cutoff for partial reads.
+    pub raw_retained_since: DateTime<Utc>,
+    pub rollup_retained_since: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MetricPruneOutcome {
+    pub events_deleted: u64,
+    pub rollups_deleted: u64,
+    pub receipts_deleted: u64,
+}
+
 #[async_trait]
 pub trait DeviceEventRepository: Send + Sync {
+    /// Advance monotonic retention watermarks and prune raw events, rollups and
+    /// durable delivery receipts in one transaction.
+    async fn prune_metrics(
+        &self,
+        cutoffs: MetricRetentionCutoffs,
+    ) -> Result<MetricPruneOutcome, PersistenceError>;
+
     /// One bounded read of current contract-declared locations. Missing bindings
     /// and devices without fresh valid observations are omitted, never zeroed.
     async fn latest_locations(

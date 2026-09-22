@@ -5,11 +5,11 @@ use diesel::sql_types::{Array, BigInt, Float8, Integer, Jsonb, Text, Timestamptz
 use extrittio_backend_core::PersistenceError;
 use extrittio_backend_core::TenantId;
 use extrittio_backend_core::analytics::AnalyticsRepository;
-use extrittio_backend_core::analytics::full_hour_rollup_window;
 use extrittio_backend_core::analytics::{
     AnalyticsBlueprintRevision, AnalyticsBucket, AnalyticsDataSource, AnalyticsDevice,
     AnalyticsQuery, AnalyticsQueryData,
 };
+use extrittio_backend_core::analytics::{full_hour_rollup_window, metric_range_retained};
 
 use crate::{PostgresExecutor, PostgresPool};
 #[derive(Clone)]
@@ -75,6 +75,14 @@ struct BucketRow {
     latest: f64,
 }
 
+#[derive(QueryableByName)]
+struct RetentionStateRow {
+    #[diesel(sql_type = Timestamptz)]
+    raw_retained_since: chrono::NaiveDateTime,
+    #[diesel(sql_type = Timestamptz)]
+    rollup_retained_since: chrono::NaiveDateTime,
+}
+
 #[async_trait]
 impl AnalyticsRepository for PostgresAnalyticsRepository {
     async fn blueprint_catalog(
@@ -133,6 +141,30 @@ impl AnalyticsRepository for PostgresAnalyticsRepository {
                     .read_only()
                     .repeatable_read()
                     .run::<_, AnalyticsReadError, _>(|connection| {
+                        let rollup_window = (query.bucket_seconds >= 3_600)
+                            .then(|| {
+                                full_hour_rollup_window(
+                                    query.start,
+                                    query.end,
+                                    chrono::Utc::now().naive_utc(),
+                                )
+                            })
+                            .flatten();
+                        let retention = diesel::sql_query(
+                            "SELECT raw_retained_since, rollup_retained_since
+                             FROM device_metric_retention_state WHERE id = 1",
+                        )
+                        .get_result::<RetentionStateRow>(connection)
+                        .map_err(map_diesel_error)?;
+                        if !metric_range_retained(
+                            query.start,
+                            query.end,
+                            rollup_window,
+                            retention.raw_retained_since,
+                            retention.rollup_retained_since,
+                        ) {
+                            return Err(PersistenceError::HistoryExpired.into());
+                        }
                         let scope_count = diesel::sql_query(
                             r#"
                     SELECT count(*)::bigint AS count
@@ -243,15 +275,6 @@ impl AnalyticsRepository for PostgresAnalyticsRepository {
                             devices.iter().map(|device| device.id.clone()).collect();
                         let row_limit =
                             i64::try_from(query.max_rows.saturating_add(1)).unwrap_or(i64::MAX);
-                        let rollup_window = (query.bucket_seconds >= 3_600)
-                            .then(|| {
-                                full_hour_rollup_window(
-                                    query.start,
-                                    query.end,
-                                    chrono::Utc::now().naive_utc(),
-                                )
-                            })
-                            .flatten();
                         let rows = if let Some((rollup_start, rollup_end)) = rollup_window {
                             diesel::sql_query(metric_rollups_query())
                                 .bind::<Text, _>(&tenant_id)

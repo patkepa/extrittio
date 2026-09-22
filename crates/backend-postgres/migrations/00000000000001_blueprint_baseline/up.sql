@@ -199,6 +199,19 @@ CREATE TABLE public.device_events (
     payload jsonb NOT NULL
 );
 
+CREATE INDEX idx_device_events_retention ON public.device_events (occurred_at);
+
+CREATE TABLE public.device_event_receipts (
+    id text PRIMARY KEY,
+    tenant_id text NOT NULL,
+    device_id text NOT NULL,
+    occurred_at timestamp with time zone NOT NULL,
+    received_at timestamp with time zone NOT NULL
+);
+
+CREATE INDEX idx_device_event_receipts_time ON public.device_event_receipts
+    (occurred_at);
+
 CREATE TABLE public.device_logs (
     id bigint NOT NULL,
     device_id text NOT NULL,
@@ -252,6 +265,19 @@ CREATE TABLE public.device_metric_rollups_hourly (
 
 CREATE INDEX idx_device_metric_rollups_query ON public.device_metric_rollups_hourly
     (tenant_id, device_id, stream_key, field_path, bucket_start DESC);
+
+CREATE INDEX idx_device_metric_rollups_retention ON public.device_metric_rollups_hourly
+    (bucket_start);
+
+CREATE TABLE public.device_metric_retention_state (
+    id integer PRIMARY KEY CHECK (id = 1),
+    raw_retained_since timestamp with time zone NOT NULL,
+    rollup_retained_since timestamp with time zone NOT NULL
+);
+
+INSERT INTO public.device_metric_retention_state
+    (id, raw_retained_since, rollup_retained_since)
+VALUES (1, '0001-01-01 00:00:00+00', '0001-01-01 00:00:00+00');
 
 CREATE TABLE public.device_shadows (
     device_id text NOT NULL,
@@ -1004,6 +1030,10 @@ ALTER TABLE ONLY public.device_metric_rollups_hourly
 ALTER TABLE ONLY public.device_metric_rollups_hourly
     ADD CONSTRAINT device_metric_rollups_revision_fk FOREIGN KEY (tenant_id, blueprint_revision_id)
     REFERENCES public.device_blueprint_revisions(tenant_id, id);
+
+ALTER TABLE ONLY public.device_event_receipts
+    ADD CONSTRAINT device_event_receipts_device_fk FOREIGN KEY (tenant_id, device_id)
+    REFERENCES public.devices(tenant_id, id) ON DELETE CASCADE;
 
 ALTER TABLE ONLY public.device_shadows
     ADD CONSTRAINT device_shadows_device_id_fkey FOREIGN KEY (device_id) REFERENCES public.devices(id) ON DELETE CASCADE;

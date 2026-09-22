@@ -284,9 +284,13 @@ pub(crate) struct ServiceConfigArgs {
     #[arg(long, env = "ALERT_RETENTION_DAYS")]
     pub(crate) alert_retention_days: Option<u64>,
 
-    /// Days to keep raw telemetry.
+    /// Days to keep raw contract events and typed metric samples.
     #[arg(long, env = "TELEMETRY_RETENTION_DAYS")]
     pub(crate) telemetry_retention_days: Option<u64>,
+
+    /// Days to keep hourly metric rollups and delivery receipts.
+    #[arg(long, env = "METRIC_ROLLUP_RETENTION_DAYS")]
+    pub(crate) metric_rollup_retention_days: Option<u64>,
 }
 
 #[derive(Debug, Args)]

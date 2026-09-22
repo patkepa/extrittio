@@ -17,9 +17,11 @@ pub use firmware::{FirmwareApplication, FirmwareReportApplication};
 mod device_ingress;
 pub use device_ingress::DeviceIngressApplication;
 mod events;
+mod metric_maintenance;
 pub use events::{
     ContractIngressApplication, ContractIngressRoute, EventApplication, EventIngressApplication,
 };
+pub use metric_maintenance::MetricMaintenanceApplication;
 mod logs;
 pub use logs::{LogApplication, LogIngressApplication};
 mod commands;

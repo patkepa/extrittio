@@ -290,6 +290,25 @@ pub fn spawn_background_tasks(config: &AppConfig, state: Arc<AppState>) -> Worke
         },
     );
 
+    let metric_retention_application = state.workers().metric_retention_application.clone();
+    let metric_raw_days = config.telemetry_retention_days;
+    let metric_rollup_days = config.metric_rollup_retention_days;
+    spawn_worker(
+        &mut workers,
+        &cancellation,
+        state.runtime().readiness(),
+        "metric-retention",
+        async move {
+            background::run_metric_retention(
+                metric_retention_application,
+                metric_raw_days,
+                metric_rollup_days,
+            )
+            .await;
+            Ok(())
+        },
+    );
+
     let command_application = state.workers().command_application.clone();
     let command_timeout = config.command_timeout_secs;
     spawn_worker(
@@ -724,6 +743,7 @@ pub(crate) struct WorkerApplications {
     checker_application: extrittio_backend_core::DeviceIngressApplication,
     retention_application: extrittio_backend_core::AlertMaintenanceApplication,
     log_retention_application: extrittio_backend_core::LogIngressApplication,
+    metric_retention_application: extrittio_backend_core::application::MetricMaintenanceApplication,
     command_application: extrittio_backend_core::CommandWorkerApplication,
 }
 impl WorkerApplications {
@@ -800,6 +820,10 @@ impl WorkerApplications {
             persistence.logs.clone(),
             Arc::new(crate::auth::SystemClock),
         );
+        let metric_retention_application =
+            extrittio_backend_core::application::MetricMaintenanceApplication::new(
+                persistence.events.clone(),
+            );
         let command_application = extrittio_backend_core::CommandWorkerApplication::new(
             persistence.commands.clone(),
             Arc::new(crate::auth::SystemClock),
@@ -812,6 +836,7 @@ impl WorkerApplications {
             checker_application,
             retention_application,
             log_retention_application,
+            metric_retention_application,
             command_application,
         }
     }

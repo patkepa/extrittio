@@ -119,6 +119,23 @@ pub fn full_hour_rollup_window(
     ))
 }
 
+/// Refuse ranges whose required raw or hourly source has already been pruned.
+#[must_use]
+pub fn metric_range_retained(
+    start: NaiveDateTime,
+    end: NaiveDateTime,
+    rollup_window: Option<(NaiveDateTime, NaiveDateTime)>,
+    raw_retained_since: NaiveDateTime,
+    rollup_retained_since: NaiveDateTime,
+) -> bool {
+    let Some((full_start, full_end)) = rollup_window else {
+        return start >= raw_retained_since;
+    };
+    start >= rollup_retained_since
+        && (start == full_start || start >= raw_retained_since)
+        && (full_end == end || full_end >= raw_retained_since)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnalyticsDevice {
     pub id: String,
@@ -251,5 +268,46 @@ mod tests {
             full_hour_rollup_window(at(-3_600), at(3_600), at(7_200)),
             Some((at(-3_600), at(3_600)))
         );
+    }
+
+    #[test]
+    fn retained_range_requires_raw_data_for_partial_hours() {
+        let at = |seconds| DateTime::from_timestamp(seconds, 0).unwrap().naive_utc();
+        let full = Some((at(3_600), at(7_200)));
+        assert!(metric_range_retained(
+            at(3_600),
+            at(7_200),
+            full,
+            at(7_200),
+            at(0)
+        ));
+        assert!(!metric_range_retained(
+            at(3_601),
+            at(7_200),
+            full,
+            at(7_200),
+            at(0)
+        ));
+        assert!(!metric_range_retained(
+            at(3_600),
+            at(7_201),
+            full,
+            at(7_201),
+            at(0)
+        ));
+        assert!(!metric_range_retained(
+            at(3_600),
+            at(7_200),
+            full,
+            at(7_200),
+            at(3_601)
+        ));
+        assert!(!metric_range_retained(
+            at(3_600),
+            at(7_200),
+            None,
+            at(7_200),
+            at(0)
+        ));
     }
 }

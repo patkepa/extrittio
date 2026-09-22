@@ -316,8 +316,7 @@ impl EventIngressApplication {
             },
             observed_at: received_at.naive_utc(),
         };
-        Ok(self
-            .repository
+        self.repository
             .record(
                 tenant,
                 RecordDeviceEvent {
@@ -332,7 +331,13 @@ impl EventIngressApplication {
                     rule_evaluation,
                 },
             )
-            .await?)
+            .await
+            .map_err(|error| match error {
+                crate::PersistenceError::HistoryExpired => ApplicationError::InvalidOperation(
+                    "Event occurred before retained metric history".into(),
+                ),
+                other => other.into(),
+            })
     }
 }
 fn metric_value(value_type: FieldValueType, value: &Value) -> Option<MetricValue> {

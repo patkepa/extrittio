@@ -81,6 +81,7 @@ pub(crate) async fn run_edge(args: RunArgs) -> Result<()> {
             max_firmware_size_mb: None,
             alert_retention_days: None,
             telemetry_retention_days: None,
+            metric_rollup_retention_days: None,
         })?;
         config.serve_ui = !args.no_ui;
         config.ui_dir = None;
@@ -158,6 +159,7 @@ pub(crate) async fn migrate(args: DatabaseArgs, output_format: OutputFormat) -> 
         max_firmware_size_mb: None,
         alert_retention_days: None,
         telemetry_retention_days: None,
+        metric_rollup_retention_days: None,
     })?;
 
     extrittio_backend::service::migrate(&config.database).await?;
@@ -212,6 +214,7 @@ pub(crate) async fn database(args: DatabaseCommand, output_format: OutputFormat)
         max_firmware_size_mb: None,
         alert_retention_days: None,
         telemetry_retention_days: None,
+        metric_rollup_retention_days: None,
     })?;
     if !matches!(config.database, DatabaseConfig::Turso { .. }) {
         anyhow::bail!("database maintenance commands require --database-backend turso")
@@ -317,6 +320,9 @@ fn app_config(args: ServiceConfigArgs) -> Result<AppConfig> {
     }
     if let Some(telemetry_retention_days) = args.telemetry_retention_days {
         config.telemetry_retention_days = telemetry_retention_days;
+    }
+    if let Some(metric_rollup_retention_days) = args.metric_rollup_retention_days {
+        config.metric_rollup_retention_days = metric_rollup_retention_days;
     }
 
     config.validate()?;

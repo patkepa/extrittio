@@ -8,6 +8,37 @@ use extrittio_backend_core::{
     LogIngressApplication,
 };
 
+pub async fn run_metric_retention(
+    application: extrittio_backend_core::application::MetricMaintenanceApplication,
+    raw_days: u64,
+    rollup_days: u64,
+) {
+    let mut interval = tokio::time::interval(Duration::from_secs(3_600));
+    info!(raw_days, rollup_days, "Metric retention started");
+    loop {
+        interval.tick().await;
+        match application
+            .prune(raw_days, rollup_days, chrono::Utc::now())
+            .await
+        {
+            Ok(outcome) => {
+                if outcome.events_deleted > 0
+                    || outcome.rollups_deleted > 0
+                    || outcome.receipts_deleted > 0
+                {
+                    info!(
+                        events_deleted = outcome.events_deleted,
+                        rollups_deleted = outcome.rollups_deleted,
+                        receipts_deleted = outcome.receipts_deleted,
+                        "Metric retention pruned expired data"
+                    );
+                }
+            }
+            Err(error) => warn!("Metric retention error: {error}"),
+        }
+    }
+}
+
 /// Compute a backoff sleep duration based on consecutive failures.
 /// Doubles each failure from `base` up to `max`.
 fn backoff_duration(base: Duration, consecutive_failures: u32, max: Duration) -> Duration {

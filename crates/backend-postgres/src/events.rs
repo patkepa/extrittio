@@ -4,8 +4,9 @@ use diesel::sql_types::{BigInt, Bool, Float8, Jsonb, Nullable, Text, Timestamptz
 
 use extrittio_backend_core::events::DeviceEventRepository;
 use extrittio_backend_core::events::{
-    DeviceLocationQuery, DeviceLocationRecord, DeviceMetricQuery, DeviceMetricRecord, MetricValue,
-    RecordDeviceEvent, RecordDeviceEventOutcome,
+    DeviceLocationQuery, DeviceLocationRecord, DeviceMetricQuery, DeviceMetricRecord,
+    MetricPruneOutcome, MetricRetentionCutoffs, MetricValue, RecordDeviceEvent,
+    RecordDeviceEventOutcome,
 };
 
 use extrittio_backend_core::PersistenceError;
@@ -43,6 +44,20 @@ struct ExistsRow {
 struct AssignedContractRow {
     #[diesel(sql_type = Text)]
     desired_contract_id: String,
+}
+
+#[derive(diesel::QueryableByName)]
+struct RetentionStateRow {
+    #[diesel(sql_type = Timestamptz)]
+    raw_retained_since: chrono::DateTime<chrono::Utc>,
+    #[diesel(sql_type = Timestamptz)]
+    rollup_retained_since: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(diesel::QueryableByName)]
+struct RollupCutoffRow {
+    #[diesel(sql_type = Timestamptz)]
+    rollup_retained_since: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(diesel::QueryableByName)]
@@ -125,6 +140,49 @@ struct LocatedRow {
 
 #[async_trait]
 impl DeviceEventRepository for PostgresEventRepository {
+    async fn prune_metrics(
+        &self,
+        cutoffs: MetricRetentionCutoffs,
+    ) -> Result<MetricPruneOutcome, PersistenceError> {
+        self.executor
+            .run(move |connection| {
+                connection
+                    .transaction::<_, diesel::result::Error, _>(|connection| {
+                        let state = diesel::sql_query(
+                            "UPDATE device_metric_retention_state
+                             SET raw_retained_since = greatest(raw_retained_since, $1),
+                                 rollup_retained_since = greatest(rollup_retained_since, $2)
+                             WHERE id = 1
+                             RETURNING raw_retained_since, rollup_retained_since",
+                        )
+                        .bind::<Timestamptz, _>(cutoffs.raw_retained_since)
+                        .bind::<Timestamptz, _>(cutoffs.rollup_retained_since)
+                        .get_result::<RetentionStateRow>(connection)?;
+                        let events_deleted =
+                            diesel::sql_query("DELETE FROM device_events WHERE occurred_at < $1")
+                                .bind::<Timestamptz, _>(state.raw_retained_since)
+                                .execute(connection)?;
+                        let rollups_deleted = diesel::sql_query(
+                            "DELETE FROM device_metric_rollups_hourly WHERE bucket_start < $1",
+                        )
+                        .bind::<Timestamptz, _>(state.rollup_retained_since)
+                        .execute(connection)?;
+                        let receipts_deleted = diesel::sql_query(
+                            "DELETE FROM device_event_receipts WHERE occurred_at < $1",
+                        )
+                        .bind::<Timestamptz, _>(state.rollup_retained_since)
+                        .execute(connection)?;
+                        Ok(MetricPruneOutcome {
+                            events_deleted: events_deleted as u64,
+                            rollups_deleted: rollups_deleted as u64,
+                            receipts_deleted: receipts_deleted as u64,
+                        })
+                    })
+                    .map_err(crate::error::map_diesel_error)
+            })
+            .await
+    }
+
     async fn latest_locations(
         &self,
         tenant: &TenantId,
@@ -222,6 +280,14 @@ ORDER BY occurred_at DESC, event_id COLLATE "C" DESC LIMIT 1"#)
             .run(move |connection| {
                 connection
                     .transaction::<_, EventTransactionError, _>(|connection| {
+                        let retention = diesel::sql_query(
+                            "SELECT rollup_retained_since FROM device_metric_retention_state
+                             WHERE id = 1 FOR SHARE",
+                        )
+                        .get_result::<RollupCutoffRow>(connection)?;
+                        if event.occurred_at < retention.rollup_retained_since {
+                            return Err(PersistenceError::HistoryExpired.into());
+                        }
                         use crate::schema::devices;
                         devices::table
                             .filter(devices::tenant_id.eq(&tenant_id))
@@ -246,11 +312,30 @@ ORDER BY occurred_at DESC, event_id COLLATE "C" DESC LIMIT 1"#)
                         }
 
                         let inserted = diesel::sql_query(
+                            "INSERT INTO device_event_receipts
+                                (id, tenant_id, device_id, occurred_at, received_at)
+                             VALUES ($1, $2, $3, $4, $5)
+                             ON CONFLICT (id) DO NOTHING",
+                        )
+                        .bind::<Text, _>(&event.event_id)
+                        .bind::<Text, _>(&tenant_id)
+                        .bind::<Text, _>(&event.device_id)
+                        .bind::<Timestamptz, _>(event.occurred_at)
+                        .bind::<Timestamptz, _>(event.received_at)
+                        .execute(connection)?;
+                        if inserted == 0 {
+                            return Ok(RecordDeviceEventOutcome {
+                                recorded: false,
+                                metrics_recorded: 0,
+                                actions_enqueued: 0,
+                            });
+                        }
+
+                        diesel::sql_query(
                             "INSERT INTO device_events
                                 (id, tenant_id, device_id, contract_id, route_key,
                                  occurred_at, received_at, payload)
-                             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                             ON CONFLICT (id) DO NOTHING",
+                             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
                         )
                         .bind::<Text, _>(&event.event_id)
                         .bind::<Text, _>(&tenant_id)
@@ -261,13 +346,6 @@ ORDER BY occurred_at DESC, event_id COLLATE "C" DESC LIMIT 1"#)
                         .bind::<Timestamptz, _>(event.received_at)
                         .bind::<Jsonb, _>(&event.payload)
                         .execute(connection)?;
-                        if inserted == 0 {
-                            return Ok(RecordDeviceEventOutcome {
-                                recorded: false,
-                                metrics_recorded: 0,
-                                actions_enqueued: 0,
-                            });
-                        }
 
                         diesel::sql_query(
                             "UPDATE device_contract_assignments
@@ -376,7 +454,10 @@ ORDER BY occurred_at DESC, event_id COLLATE "C" DESC LIMIT 1"#)
                             actions_enqueued,
                         })
                     })
-                    .map_err(|error| PersistenceError::Internal(error.to_string()))
+                    .map_err(|error| match error {
+                        EventTransactionError::Diesel(error) => crate::error::map_diesel_error(error),
+                        EventTransactionError::Persistence(error) => error,
+                    })
             })
             .await
     }

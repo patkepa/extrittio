@@ -5,8 +5,9 @@ use extrittio_backend_core::PersistenceError;
 use extrittio_backend_core::TenantId;
 use extrittio_backend_core::events::DeviceEventRepository;
 use extrittio_backend_core::events::{
-    DeviceLocationQuery, DeviceLocationRecord, DeviceMetricQuery, DeviceMetricRecord, MetricValue,
-    RecordDeviceEvent, RecordDeviceEventOutcome,
+    DeviceLocationQuery, DeviceLocationRecord, DeviceMetricQuery, DeviceMetricRecord,
+    MetricPruneOutcome, MetricRetentionCutoffs, MetricValue, RecordDeviceEvent,
+    RecordDeviceEventOutcome,
 };
 
 use crate::{TursoConnectionHandles, row};
@@ -193,15 +194,41 @@ mod rollup_tests {
         assert_eq!(before.buckets[0].latest, 3.0);
         assert_eq!(before.buckets[1].sample_count, 1);
         assert_eq!(before.buckets[1].average, 6.0);
-        connection
-            .execute(
-                "DELETE FROM device_events WHERE tenant_id = 'default' AND occurred_at < ?1",
-                params![hour * 2],
-            )
+        let pruned = repository
+            .prune_metrics(MetricRetentionCutoffs {
+                raw_retained_since: chrono::DateTime::from_timestamp_micros(hour * 2).unwrap(),
+                rollup_retained_since: chrono::DateTime::from_timestamp_micros(0).unwrap(),
+            })
             .await
             .unwrap();
+        assert_eq!(pruned.events_deleted, 4);
+        assert_eq!(pruned.rollups_deleted, 0);
+        assert_eq!(pruned.receipts_deleted, 0);
+        assert!(
+            !repository
+                .record(
+                    &tenant,
+                    make_event("a", hour + 30_000_000, MetricValue::Float64(2.0))
+                )
+                .await
+                .unwrap()
+                .recorded
+        );
         let after = analytics.query(&tenant, query.clone()).await.unwrap();
         assert_eq!(after.buckets, before.buckets);
+        let mut failed = make_event("retry", hour * 2 + 30_000_000, MetricValue::Int64(8));
+        failed.metrics.push(failed.metrics[0].clone());
+        assert!(repository.record(&tenant, failed).await.is_err());
+        assert!(
+            repository
+                .record(
+                    &tenant,
+                    make_event("retry", hour * 2 + 30_000_000, MetricValue::Int64(8))
+                )
+                .await
+                .unwrap()
+                .recorded
+        );
         connection.execute_batch(r#"
             INSERT INTO device_blueprint_revisions VALUES ('revision-new','default','blueprint',2,'{}',
                 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc','{}',0);
@@ -210,9 +237,55 @@ mod rollup_tests {
             UPDATE device_contract_assignments SET desired_contract_id = 'contract-new'
                 WHERE tenant_id = 'default' AND device_id = 'device';
         "#).await.unwrap();
-        let historical = analytics.query(&tenant, query).await.unwrap();
+        let historical = analytics.query(&tenant, query.clone()).await.unwrap();
         assert_eq!(historical.compatible_devices, 1);
         assert_eq!(historical.buckets, before.buckets);
+        let fine = AnalyticsQuery {
+            bucket_seconds: 60,
+            start: chrono::DateTime::from_timestamp_micros(hour)
+                .unwrap()
+                .naive_utc(),
+            end: chrono::DateTime::from_timestamp_micros(hour * 2)
+                .unwrap()
+                .naive_utc(),
+            ..query
+        };
+        assert!(matches!(
+            analytics.query(&tenant, fine).await,
+            Err(PersistenceError::HistoryExpired)
+        ));
+        let pruned = repository
+            .prune_metrics(MetricRetentionCutoffs {
+                raw_retained_since: chrono::DateTime::from_timestamp_micros(hour * 2).unwrap(),
+                rollup_retained_since: chrono::DateTime::from_timestamp_micros(hour * 2).unwrap(),
+            })
+            .await
+            .unwrap();
+        assert_eq!(pruned.rollups_deleted, 1);
+        assert_eq!(pruned.receipts_deleted, 4);
+        assert_eq!(
+            repository
+                .prune_metrics(MetricRetentionCutoffs {
+                    raw_retained_since: chrono::DateTime::from_timestamp_micros(hour).unwrap(),
+                    rollup_retained_since: chrono::DateTime::from_timestamp_micros(hour).unwrap(),
+                })
+                .await
+                .unwrap(),
+            MetricPruneOutcome {
+                events_deleted: 0,
+                rollups_deleted: 0,
+                receipts_deleted: 0,
+            }
+        );
+        assert!(matches!(
+            repository
+                .record(
+                    &tenant,
+                    make_event("too-old", hour + 30_000_000, MetricValue::Int64(7))
+                )
+                .await,
+            Err(PersistenceError::HistoryExpired)
+        ));
     }
 }
 
@@ -463,6 +536,9 @@ mod location_tests {
                 "CREATE TABLE device_contract_assignments (
                     tenant_id TEXT, device_id TEXT, desired_contract_id TEXT);
                  CREATE TABLE device_events (id TEXT);
+                 CREATE TABLE device_metric_retention_state
+                    (id INTEGER, rollup_retained_since INTEGER);
+                 INSERT INTO device_metric_retention_state VALUES (1, -62135596800000000);
                  INSERT INTO device_contract_assignments
                  VALUES ('tenant', 'device', 'replacement');",
             )
@@ -546,6 +622,73 @@ ORDER BY occurred_at DESC, event_id COLLATE BINARY DESC LIMIT 1"#;
 
 #[async_trait]
 impl DeviceEventRepository for TursoEventRepository {
+    async fn prune_metrics(
+        &self,
+        cutoffs: MetricRetentionCutoffs,
+    ) -> Result<MetricPruneOutcome, PersistenceError> {
+        let mut writer = self.handles.lock_writer().await;
+        let transaction = writer.transaction().await.map_err(row::legacy_error)?;
+        let mut rows = transaction
+            .query(
+                "SELECT raw_retained_since, rollup_retained_since
+                 FROM device_metric_retention_state WHERE id = 1",
+                (),
+            )
+            .await
+            .map_err(row::legacy_error)?;
+        let state = rows
+            .next()
+            .await
+            .map_err(row::legacy_error)?
+            .ok_or_else(|| {
+                PersistenceError::CorruptData("metric retention state is missing".into())
+            })?;
+        let raw_retained_since = state
+            .get::<i64>(0)
+            .map_err(row::legacy_error)?
+            .max(cutoffs.raw_retained_since.timestamp_micros());
+        let rollup_retained_since = state
+            .get::<i64>(1)
+            .map_err(row::legacy_error)?
+            .max(cutoffs.rollup_retained_since.timestamp_micros());
+        drop(rows);
+        transaction
+            .execute(
+                "UPDATE device_metric_retention_state
+                 SET raw_retained_since = ?1, rollup_retained_since = ?2 WHERE id = 1",
+                params![raw_retained_since, rollup_retained_since],
+            )
+            .await
+            .map_err(row::legacy_error)?;
+        let events_deleted = transaction
+            .execute(
+                "DELETE FROM device_events WHERE occurred_at < ?1",
+                params![raw_retained_since],
+            )
+            .await
+            .map_err(row::legacy_error)?;
+        let rollups_deleted = transaction
+            .execute(
+                "DELETE FROM device_metric_rollups_hourly WHERE bucket_start < ?1",
+                params![rollup_retained_since],
+            )
+            .await
+            .map_err(row::legacy_error)?;
+        let receipts_deleted = transaction
+            .execute(
+                "DELETE FROM device_event_receipts WHERE occurred_at < ?1",
+                params![rollup_retained_since],
+            )
+            .await
+            .map_err(row::legacy_error)?;
+        transaction.commit().await.map_err(row::legacy_error)?;
+        Ok(MetricPruneOutcome {
+            events_deleted,
+            rollups_deleted,
+            receipts_deleted,
+        })
+    }
+
     async fn latest_locations(
         &self,
         tenant: &TenantId,
@@ -655,6 +798,27 @@ SELECT device_id,contract_id,event_id,occurred_at,expires_at,latitude,longitude 
     ) -> Result<RecordDeviceEventOutcome, PersistenceError> {
         let mut writer = self.handles.lock_writer().await;
         let transaction = writer.transaction().await.map_err(row::legacy_error)?;
+        let mut retention = transaction
+            .query(
+                "SELECT rollup_retained_since FROM device_metric_retention_state WHERE id = 1",
+                (),
+            )
+            .await
+            .map_err(row::legacy_error)?;
+        let rollup_retained_since = retention
+            .next()
+            .await
+            .map_err(row::legacy_error)?
+            .ok_or_else(|| {
+                PersistenceError::CorruptData("metric retention state is missing".into())
+            })?
+            .get::<i64>(0)
+            .map_err(row::legacy_error)?;
+        drop(retention);
+        if event.occurred_at.timestamp_micros() < rollup_retained_since {
+            transaction.rollback().await.map_err(row::legacy_error)?;
+            return Err(PersistenceError::HistoryExpired);
+        }
         let mut assignments = transaction
             .query(
                 "SELECT desired_contract_id FROM device_contract_assignments
@@ -674,11 +838,35 @@ SELECT device_id,contract_id,event_id,occurred_at,expires_at,latitude,longitude 
             transaction.rollback().await.map_err(row::legacy_error)?;
             return Err(PersistenceError::NotFound);
         }
-        let payload = serde_json::to_string(&event.payload)
-            .map_err(|error| PersistenceError::Internal(error.to_string()))?;
         let inserted = transaction
             .execute(
-                "INSERT OR IGNORE INTO device_events
+                "INSERT INTO device_event_receipts
+                    (id, tenant_id, device_id, occurred_at, received_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(id) DO NOTHING",
+                params![
+                    event.event_id.clone(),
+                    tenant.as_str(),
+                    event.device_id.clone(),
+                    event.occurred_at.timestamp_micros(),
+                    event.received_at.timestamp_micros()
+                ],
+            )
+            .await
+            .map_err(row::legacy_error)?;
+        if inserted == 0 {
+            transaction.rollback().await.map_err(row::legacy_error)?;
+            return Ok(RecordDeviceEventOutcome {
+                recorded: false,
+                metrics_recorded: 0,
+                actions_enqueued: 0,
+            });
+        }
+        let payload = serde_json::to_string(&event.payload)
+            .map_err(|error| PersistenceError::Internal(error.to_string()))?;
+        transaction
+            .execute(
+                "INSERT INTO device_events
                     (id, tenant_id, device_id, contract_id, route_key,
                      occurred_at, received_at, payload)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -695,14 +883,6 @@ SELECT device_id,contract_id,event_id,occurred_at,expires_at,latitude,longitude 
             )
             .await
             .map_err(row::legacy_error)?;
-        if inserted == 0 {
-            transaction.rollback().await.map_err(row::legacy_error)?;
-            return Ok(RecordDeviceEventOutcome {
-                recorded: false,
-                metrics_recorded: 0,
-                actions_enqueued: 0,
-            });
-        }
 
         transaction
             .execute(

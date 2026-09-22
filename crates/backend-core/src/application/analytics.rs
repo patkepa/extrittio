@@ -5,7 +5,7 @@ use extrittio_device_contract::{AggregateKind, DeviceBlueprint, FieldValueType};
 
 use super::require_permission;
 use crate::Permission;
-use crate::{ApplicationError, TenantContext};
+use crate::{ApplicationError, PersistenceError, TenantContext};
 
 use crate::analytics::AnalyticsRepository;
 use crate::analytics::{
@@ -88,7 +88,14 @@ impl AnalyticsApplication {
                     max_rows: MAX_TOTAL_POINTS,
                 },
             )
-            .await?;
+            .await
+            .map_err(|error| match error {
+                PersistenceError::HistoryExpired => ApplicationError::InvalidOperation(
+                    "Analytics range is outside retained metric history; use a newer range or coarser complete-hour buckets"
+                        .into(),
+                ),
+                other => other.into(),
+            })?;
 
         if data.compatible_devices > MAX_DEVICES {
             return Err(ApplicationError::InvalidOperation(format!(

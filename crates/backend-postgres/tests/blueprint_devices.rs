@@ -12,8 +12,8 @@ use extrittio_backend_core::devices::{
     UpdateDeviceRecord,
 };
 use extrittio_backend_core::events::{
-    DeviceEventRepository, DeviceLocationQuery, DeviceMetricQuery, DeviceMetricSample, MetricValue,
-    RecordDeviceEvent,
+    DeviceEventRepository, DeviceLocationQuery, DeviceMetricQuery, DeviceMetricSample,
+    MetricRetentionCutoffs, MetricValue, RecordDeviceEvent,
 };
 use extrittio_backend_core::rule_engine::{cache::RuleCache, types::TelemetryData};
 use extrittio_backend_core::rule_snapshots::{
@@ -585,6 +585,7 @@ async fn postgres_blueprint_device_and_ci_contracts_when_configured() {
             "device_contracts",
             "device_contract_assignments",
             "device_events",
+            "device_event_receipts",
             "device_metric_samples",
             "device_metric_rollups_hourly",
             "device_configs",
@@ -791,13 +792,53 @@ async fn postgres_rollups_order_late_events_and_ties() {
     assert_eq!(before.buckets[0].sample_count, 3);
     assert_eq!(before.buckets[0].average, 3.0);
     assert_eq!(before.buckets[0].latest, 3.0);
-    diesel::sql_query("DELETE FROM device_events WHERE tenant_id = $1 AND device_id = $2")
-        .bind::<Text, _>(&tenant_id)
-        .bind::<Text, _>(&device_id)
-        .execute(&mut pool.get().unwrap())
+    let pruned = events
+        .prune_metrics(MetricRetentionCutoffs {
+            raw_retained_since: timestamp(3_600),
+            rollup_retained_since: timestamp(-3_600),
+        })
+        .await
         .unwrap();
+    assert_eq!(pruned.events_deleted, 4);
+    assert_eq!(pruned.rollups_deleted, 0);
+    assert_eq!(pruned.receipts_deleted, 0);
+    let mut duplicate = event(
+        &tenant,
+        &device_id,
+        &format!("{device_id}-contract"),
+        &format!("a-{suffix}"),
+    );
+    duplicate.occurred_at = timestamp(30);
+    duplicate.metrics = vec![DeviceMetricSample {
+        stream_key: "readings".into(),
+        field_path: "/value".into(),
+        value: MetricValue::Float64(2.0),
+    }];
+    assert!(!events.record(&tenant, duplicate).await.unwrap().recorded);
     let after = analytics.query(&tenant, query.clone()).await.unwrap();
     assert_eq!(after.buckets, before.buckets);
+    let mut failed = event(
+        &tenant,
+        &device_id,
+        &format!("{device_id}-contract"),
+        &format!("retry-{suffix}"),
+    );
+    failed.occurred_at = timestamp(3_630);
+    failed.metrics = vec![
+        DeviceMetricSample {
+            stream_key: "readings".into(),
+            field_path: "/value".into(),
+            value: MetricValue::Int64(8),
+        },
+        DeviceMetricSample {
+            stream_key: "readings".into(),
+            field_path: "/value".into(),
+            value: MetricValue::Int64(8),
+        },
+    ];
+    assert!(events.record(&tenant, failed.clone()).await.is_err());
+    failed.metrics.pop();
+    assert!(events.record(&tenant, failed).await.unwrap().recorded);
     {
         let mut connection = pool.get().unwrap();
         diesel::sql_query(
@@ -831,9 +872,49 @@ async fn postgres_rollups_order_late_events_and_ties() {
         .execute(&mut connection)
         .unwrap();
     }
-    let historical = analytics.query(&tenant, query).await.unwrap();
+    let historical = analytics.query(&tenant, query.clone()).await.unwrap();
     assert_eq!(historical.compatible_devices, 1);
     assert_eq!(historical.buckets, before.buckets);
+    let fine = AnalyticsQuery {
+        bucket_seconds: 60,
+        start: timestamp(0).naive_utc(),
+        end: timestamp(3_600).naive_utc(),
+        ..query
+    };
+    assert!(matches!(
+        analytics.query(&tenant, fine).await,
+        Err(extrittio_backend_core::PersistenceError::HistoryExpired)
+    ));
+    let pruned = events
+        .prune_metrics(MetricRetentionCutoffs {
+            raw_retained_since: timestamp(3_600),
+            rollup_retained_since: timestamp(3_600),
+        })
+        .await
+        .unwrap();
+    assert_eq!(pruned.rollups_deleted, 1);
+    assert_eq!(pruned.receipts_deleted, 4);
+    let repeated = events
+        .prune_metrics(MetricRetentionCutoffs {
+            raw_retained_since: timestamp(0),
+            rollup_retained_since: timestamp(0),
+        })
+        .await
+        .unwrap();
+    assert_eq!(repeated.events_deleted, 0);
+    assert_eq!(repeated.rollups_deleted, 0);
+    assert_eq!(repeated.receipts_deleted, 0);
+    let mut too_old = event(
+        &tenant,
+        &device_id,
+        &format!("{device_id}-contract"),
+        &format!("too-old-{suffix}"),
+    );
+    too_old.occurred_at = timestamp(30);
+    assert!(matches!(
+        events.record(&tenant, too_old).await,
+        Err(extrittio_backend_core::PersistenceError::HistoryExpired)
+    ));
 }
 
 #[tokio::test]
