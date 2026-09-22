@@ -150,11 +150,12 @@ evidence all pass. Existing unit tests do not substitute for browser checks.
 - PostgreSQL CI firmware publishing now authorizes the key and revision under
   row locks in the insert transaction. The same disposable-database test covers
   unknown keys, foreign revisions, scoped-key rejection, successful publishing
-  and duplicate-version rollback. Turso already performed these reads inside
-  its writer transaction.
+  and duplicate-version rollback. Twelve concurrent attempts to publish one
+  version produce exactly one firmware row. Turso already performed these
+  reads inside its writer transaction.
 - The complete PostgreSQL adapter suite, including the ignored fresh-baseline
   and cooldown/rollback regressions on a separate empty database, passed.
-  The complete Turso adapter suite passed (23 tests).
+  The complete Turso adapter suite passed; the latest count is 24 tests.
 - Turso regressions for stale-contract ingestion and fresh/expired locations
   passed. Both adapters now recheck assignment inside the event transaction.
 - The location API exposes each observation's contract-derived expiration;

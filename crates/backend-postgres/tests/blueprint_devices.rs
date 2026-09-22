@@ -691,9 +691,27 @@ async fn postgres_blueprint_device_and_ci_contracts_when_configured() {
             .await
             .is_err()
     );
+    let mut simultaneous = tokio::task::JoinSet::new();
+    for _ in 0..12 {
+        let ci = ci.clone();
+        let key_hash = key_hash.clone();
+        let params = request(&revision_a, "2");
+        simultaneous.spawn(async move { ci.ingest_ci(&key_hash, params).await });
+    }
+    let mut created = 0;
+    let mut duplicates = 0;
+    while let Some(result) = simultaneous.join_next().await {
+        match result.unwrap() {
+            Ok(CiIngestOutcome::Created { .. }) => created += 1,
+            Err(_) => duplicates += 1,
+            other => panic!("unexpected concurrent CI result: {other:?}"),
+        }
+    }
+    assert_eq!(created, 1);
+    assert_eq!(duplicates, 11);
     assert_eq!(
         count(&mut pool.get().unwrap(), "firmware_updates", &tenant_a),
-        1
+        2
     );
 }
 
