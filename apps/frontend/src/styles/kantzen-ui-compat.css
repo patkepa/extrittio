@@ -760,6 +760,13 @@ p {
   overflow-y: visible;
 }
 
+/* Blueprint's menu has a 180px minimum width, which places centered icons
+ * outside the 60px sidebar when it is collapsed. */
+.app-sidebar.collapsed .sidebar-menu {
+  width: 100%;
+  min-width: 0;
+}
+
 /* Kantzen renders navigation icons as direct `.kui-icon.bp6-icon` children.
  * In the compact sidebar, reserve the icon's flex space explicitly: Blueprint
  * menu rules otherwise allow the wrapper to shrink and its SVG is clipped. */
