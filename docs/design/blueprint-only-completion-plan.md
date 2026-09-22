@@ -103,7 +103,9 @@ work without reserved sensor names or fabricated zero values.
 - [x] Expire map locations client-side at the declared freshness deadline,
   including between polling intervals; preserve event/contract provenance.
 - [ ] Finish revision-aware telemetry/history and structured rule controls after
-  their backend contracts are settled.
+  their backend contracts are settled. The rule metric picker now emits exact
+  stream/JSON-pointer keys; the public condition DTO and contract-aware rule
+  validation still need structured selector work.
 - [ ] Review graph `deviceType*` presentation names and declared-connection type
   descriptors. Remove retired model assumptions; distinguish legitimate external
   connection metadata from managed-device identity before changing it.
@@ -191,8 +193,9 @@ evidence all pass. Existing unit tests do not substitute for browser checks.
   passed with 53 and 24 tests respectively.
 - PostgreSQL 17: actual Diesel baseline apply/reapply and schema constraints;
   real cooldown writer/reactivation/rollback tests passed on disposable storage.
-- Frontend typecheck and 35 tests passed; builds and CLI regressions passed in
-  earlier implementation steps. Re-run them for the eventual final tree.
+- Frontend typecheck and 36 tests passed after the rule picker was corrected to
+  preserve exact JSON pointers. Builds and CLI regressions passed in earlier
+  implementation steps. Re-run them for the eventual final tree.
 - Firmware/OTA required-revision schema regression passed; OpenAPI/types updated.
 - A disposable PostgreSQL 17 container is available for the current execution
   pass; no existing development database was deleted.
