@@ -30,8 +30,8 @@ client payloads are not supported by the blueprint-only backend.
 1. Read this file, the original target-design decisions, repository instructions
    and relevant skills. Inspect branch status and PR changes before editing.
 2. Continue workstream 1 with PostgreSQL analytics, firmware/OTA and larger
-   location batches. The device CRUD/deletion regression now proves the fresh
-   baseline's dependent-row cascades on real PostgreSQL.
+   firmware/OTA coverage. The device CRUD/deletion and location-batch regressions
+   now run against real PostgreSQL.
 3. Finish backend contracts in workstreams 2–4 before updating their consumers.
 4. Finish web consumers after backend contracts settle, then run the backend/web
    integration matrix. Keep the PR draft until the gates pass.
@@ -158,7 +158,13 @@ evidence all pass. Existing unit tests do not substitute for browser checks.
   and reassigned devices. Browser evidence remains open.
 - A real PostgreSQL analytics query over typed blueprint samples passes for
   the requested tenant and excludes a foreign tenant. Retention and rollup
-  behavior remain untested and unimplemented.
+  reads remain unimplemented.
+- Both fresh database baselines now contain generic numeric hourly rollups keyed
+  by tenant/device/originating revision/stream/exact path/hour. Ingestion updates
+  samples and rollups in one transaction. Both adapters pass late-event,
+  timestamp-tie, duplicate and nonnumeric regressions; PostgreSQL also proves
+  deletion cascade. The rollups are not yet read by analytics or retained by a
+  worker. Do not treat this as workstream 2 completion.
 - Both-adapter backend compilation; 49 core and 22 Turso unit tests passed.
 - PostgreSQL 17: actual Diesel baseline apply/reapply and schema constraints;
   real cooldown writer/reactivation/rollback tests passed on disposable storage.

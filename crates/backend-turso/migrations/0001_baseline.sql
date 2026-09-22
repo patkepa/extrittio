@@ -250,6 +250,27 @@ CREATE INDEX idx_device_events_device_time
 CREATE INDEX idx_device_metric_samples_query
   ON device_metric_samples(tenant_id, device_id, stream_key, field_path, occurred_at DESC);
 
+CREATE TABLE device_metric_rollups_hourly (
+  tenant_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  device_id TEXT NOT NULL,
+  blueprint_revision_id TEXT NOT NULL,
+  stream_key TEXT NOT NULL,
+  field_path TEXT NOT NULL,
+  bucket_start INTEGER NOT NULL,
+  sample_count INTEGER NOT NULL CHECK(sample_count > 0),
+  value_sum REAL NOT NULL,
+  value_min REAL NOT NULL,
+  value_max REAL NOT NULL,
+  latest_value REAL NOT NULL,
+  latest_at INTEGER NOT NULL,
+  latest_event_id TEXT NOT NULL,
+  PRIMARY KEY(tenant_id, device_id, blueprint_revision_id, stream_key, field_path, bucket_start),
+  FOREIGN KEY(tenant_id, device_id) REFERENCES devices(tenant_id, id) ON DELETE CASCADE,
+  FOREIGN KEY(tenant_id, blueprint_revision_id) REFERENCES device_blueprint_revisions(tenant_id, id)
+);
+CREATE INDEX idx_device_metric_rollups_query
+  ON device_metric_rollups_hourly(tenant_id, device_id, stream_key, field_path, bucket_start DESC);
+
 -- Turso stores rule target kinds as unconstrained text. Index the new
 -- application-level `blueprint` target without changing the table shape.
 CREATE INDEX IF NOT EXISTS idx_rules_blueprint_targets

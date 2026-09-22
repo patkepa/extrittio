@@ -44,6 +44,7 @@ const LOGICAL_TABLES: &[&str] = &[
     "device_contract_assignments",
     "device_events",
     "device_metric_samples",
+    "device_metric_rollups_hourly",
     "fleets",
     "devices",
     "users",

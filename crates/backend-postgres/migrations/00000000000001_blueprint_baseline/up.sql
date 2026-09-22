@@ -233,6 +233,26 @@ CREATE TABLE public.device_metric_samples (
     CONSTRAINT device_metric_samples_value_type_check CHECK ((value_type = ANY (ARRAY['float64'::text, 'int64'::text, 'string'::text, 'boolean'::text, 'json'::text])))
 );
 
+CREATE TABLE public.device_metric_rollups_hourly (
+    tenant_id text NOT NULL,
+    device_id text NOT NULL,
+    blueprint_revision_id text NOT NULL,
+    stream_key text NOT NULL,
+    field_path text NOT NULL,
+    bucket_start timestamp with time zone NOT NULL,
+    sample_count bigint NOT NULL CHECK (sample_count > 0),
+    value_sum double precision NOT NULL,
+    value_min double precision NOT NULL,
+    value_max double precision NOT NULL,
+    latest_value double precision NOT NULL,
+    latest_at timestamp with time zone NOT NULL,
+    latest_event_id text NOT NULL,
+    PRIMARY KEY (tenant_id, device_id, blueprint_revision_id, stream_key, field_path, bucket_start)
+);
+
+CREATE INDEX idx_device_metric_rollups_query ON public.device_metric_rollups_hourly
+    (tenant_id, device_id, stream_key, field_path, bucket_start DESC);
+
 CREATE TABLE public.device_shadows (
     device_id text NOT NULL,
     desired jsonb DEFAULT '{}'::jsonb NOT NULL,
@@ -976,6 +996,14 @@ ALTER TABLE ONLY public.device_metric_samples
 
 ALTER TABLE ONLY public.device_metric_samples
     ADD CONSTRAINT device_metric_samples_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.organizations(id) ON DELETE CASCADE;
+
+ALTER TABLE ONLY public.device_metric_rollups_hourly
+    ADD CONSTRAINT device_metric_rollups_device_fk FOREIGN KEY (tenant_id, device_id)
+    REFERENCES public.devices(tenant_id, id) ON DELETE CASCADE;
+
+ALTER TABLE ONLY public.device_metric_rollups_hourly
+    ADD CONSTRAINT device_metric_rollups_revision_fk FOREIGN KEY (tenant_id, blueprint_revision_id)
+    REFERENCES public.device_blueprint_revisions(tenant_id, id);
 
 ALTER TABLE ONLY public.device_shadows
     ADD CONSTRAINT device_shadows_device_id_fkey FOREIGN KEY (device_id) REFERENCES public.devices(id) ON DELETE CASCADE;

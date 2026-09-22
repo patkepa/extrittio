@@ -157,6 +157,7 @@ mod tests {
             "device_contract_assignments",
             "device_events",
             "device_metric_samples",
+            "device_metric_rollups_hourly",
             "rule_alert_deliveries",
             "rule_zone_entries",
             "api_keys",

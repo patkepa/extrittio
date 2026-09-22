@@ -192,6 +192,24 @@ diesel::table! {
 }
 
 diesel::table! {
+    device_metric_rollups_hourly (tenant_id, device_id, blueprint_revision_id, stream_key, field_path, bucket_start) {
+        tenant_id -> Text,
+        device_id -> Text,
+        blueprint_revision_id -> Text,
+        stream_key -> Text,
+        field_path -> Text,
+        bucket_start -> Timestamptz,
+        sample_count -> Int8,
+        value_sum -> Float8,
+        value_min -> Float8,
+        value_max -> Float8,
+        latest_value -> Float8,
+        latest_at -> Timestamptz,
+        latest_event_id -> Text,
+    }
+}
+
+diesel::table! {
     device_metric_samples (event_id, stream_key, field_path) {
         event_id -> Text,
         tenant_id -> Text,
@@ -535,6 +553,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     device_contracts,
     device_events,
     device_logs,
+    device_metric_rollups_hourly,
     device_metric_samples,
     device_shadows,
     devices,

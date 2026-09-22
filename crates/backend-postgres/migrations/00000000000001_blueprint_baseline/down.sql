@@ -16,6 +16,7 @@ DROP TABLE
     public.device_events,
     public.device_logs,
     public.device_metric_samples,
+    public.device_metric_rollups_hourly,
     public.device_shadows,
     public.devices,
     public.firmware_blobs,

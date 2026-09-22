@@ -1,7 +1,7 @@
 use chrono::{Duration, Utc};
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
-use diesel::sql_types::{BigInt, Jsonb, Text};
+use diesel::sql_types::{BigInt, Float8, Jsonb, Text};
 use extrittio_backend_core::TenantId;
 use extrittio_backend_core::analytics::{
     AnalyticsMetric, AnalyticsMetricSelector, AnalyticsQuery, AnalyticsRepository, AnalyticsScope,
@@ -25,13 +25,39 @@ use extrittio_backend_postgres::{
     PostgresEventRepository, run_pending_migrations,
 };
 use serde_json::json;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use uuid::Uuid;
 
 #[derive(QueryableByName)]
 struct Count {
     #[diesel(sql_type = BigInt)]
     count: i64,
+}
+
+#[derive(QueryableByName)]
+struct Rollup {
+    #[diesel(sql_type = BigInt)]
+    sample_count: i64,
+    #[diesel(sql_type = Float8)]
+    value_sum: f64,
+    #[diesel(sql_type = Float8)]
+    value_min: f64,
+    #[diesel(sql_type = Float8)]
+    value_max: f64,
+    #[diesel(sql_type = Float8)]
+    latest_value: f64,
+    #[diesel(sql_type = diesel::sql_types::Timestamptz)]
+    latest_at: chrono::DateTime<Utc>,
+    #[diesel(sql_type = Text)]
+    latest_event_id: String,
+}
+
+static BASELINE_READY: OnceLock<()> = OnceLock::new();
+
+fn migrate_once(pool: &Pool<ConnectionManager<PgConnection>>) {
+    BASELINE_READY.get_or_init(|| {
+        run_pending_migrations(&mut pool.get().unwrap()).unwrap();
+    });
 }
 
 fn count(connection: &mut PgConnection, table: &str, tenant: &str) -> i64 {
@@ -166,7 +192,7 @@ async fn postgres_blueprint_device_and_ci_contracts_when_configured() {
     let device_b = format!("device-b-{suffix}");
     {
         let mut connection = pool.get().unwrap();
-        run_pending_migrations(&mut connection).unwrap();
+        migrate_once(&pool);
         seed_blueprint(&mut connection, &tenant_a, &revision_a);
         seed_blueprint(&mut connection, &tenant_b, &revision_b);
     }
@@ -295,6 +321,29 @@ async fn postgres_blueprint_device_and_ci_contracts_when_configured() {
             .await
             .unwrap()
             .recorded
+    );
+    let rollup = diesel::sql_query(
+        "SELECT sample_count, value_sum, value_min, value_max, latest_value, latest_at, latest_event_id
+         FROM device_metric_rollups_hourly
+         WHERE tenant_id = $1 AND device_id = $2 AND blueprint_revision_id = $3
+           AND stream_key = 'position' AND field_path = '/latitude'",
+    )
+    .bind::<Text, _>(&tenant_a)
+    .bind::<Text, _>(&device_a)
+    .bind::<Text, _>(&revision_a)
+    .get_result::<Rollup>(&mut pool.get().unwrap())
+    .unwrap();
+    assert_eq!(rollup.sample_count, 1);
+    assert_eq!(rollup.latest_at, observed_at);
+    assert_eq!(rollup.latest_event_id, format!("accepted-{suffix}"));
+    assert_eq!(
+        (
+            rollup.value_sum,
+            rollup.value_min,
+            rollup.value_max,
+            rollup.latest_value
+        ),
+        (0.0, 0.0, 0.0, 0.0)
     );
     let metrics = event_repository
         .list_metrics(
@@ -536,6 +585,7 @@ async fn postgres_blueprint_device_and_ci_contracts_when_configured() {
             "device_contract_assignments",
             "device_events",
             "device_metric_samples",
+            "device_metric_rollups_hourly",
             "device_configs",
             "device_certificates",
             "device_shadows",
@@ -641,6 +691,72 @@ async fn postgres_blueprint_device_and_ci_contracts_when_configured() {
 }
 
 #[tokio::test]
+async fn postgres_rollups_order_late_events_and_ties() {
+    let Ok(url) = std::env::var("DATABASE_URL") else {
+        return;
+    };
+    let pool = Pool::builder()
+        .max_size(3)
+        .build(ConnectionManager::<PgConnection>::new(url))
+        .unwrap();
+    migrate_once(&pool);
+    let suffix = Uuid::new_v4().simple().to_string();
+    let tenant_id = format!("rollup-test-{suffix}");
+    let revision_id = format!("revision-{suffix}");
+    let device_id = format!("device-{suffix}");
+    {
+        let mut connection = pool.get().unwrap();
+        seed_blueprint(&mut connection, &tenant_id, &revision_id);
+    }
+    let tenant = TenantId::new(tenant_id.clone()).unwrap();
+    PostgresDeviceRepository::from_pool(pool.clone())
+        .create(&tenant, new_device(&device_id, &revision_id), None)
+        .await
+        .unwrap();
+    let events = PostgresEventRepository::from_pool(pool.clone());
+    let hour = Utc::now().timestamp().div_euclid(3600) * 3600 - 3600;
+    let timestamp = |offset| chrono::DateTime::from_timestamp(hour + offset, 0).unwrap();
+    for (id, offset, value) in [
+        ("a", 30, MetricValue::Float64(2.0)),
+        ("late", 10, MetricValue::Int64(4)),
+        ("z", 30, MetricValue::Float64(3.0)),
+        ("text", 40, MetricValue::String("ok".into())),
+    ] {
+        let mut item = event(
+            &tenant,
+            &device_id,
+            &format!("{device_id}-contract"),
+            &format!("{id}-{suffix}"),
+        );
+        item.occurred_at = timestamp(offset);
+        item.metrics = vec![DeviceMetricSample {
+            stream_key: "readings".into(),
+            field_path: "/value".into(),
+            value,
+        }];
+        assert!(events.record(&tenant, item.clone()).await.unwrap().recorded);
+        assert!(!events.record(&tenant, item).await.unwrap().recorded);
+    }
+    let rollup = diesel::sql_query(
+        "SELECT sample_count, value_sum, value_min, value_max, latest_value, latest_at, latest_event_id
+         FROM device_metric_rollups_hourly
+         WHERE tenant_id = $1 AND device_id = $2 AND blueprint_revision_id = $3
+           AND stream_key = 'readings' AND field_path = '/value'",
+    )
+    .bind::<Text, _>(&tenant_id)
+    .bind::<Text, _>(&device_id)
+    .bind::<Text, _>(&revision_id)
+    .get_result::<Rollup>(&mut pool.get().unwrap())
+    .unwrap();
+    assert_eq!(rollup.sample_count, 3);
+    assert_eq!(rollup.value_sum, 9.0);
+    assert_eq!((rollup.value_min, rollup.value_max), (2.0, 4.0));
+    assert_eq!(rollup.latest_value, 3.0);
+    assert_eq!(rollup.latest_at, timestamp(30));
+    assert_eq!(rollup.latest_event_id, format!("z-{suffix}"));
+}
+
+#[tokio::test]
 async fn postgres_location_batch_filters_missing_future_and_reassigned_devices() {
     let Ok(url) = std::env::var("DATABASE_URL") else {
         return;
@@ -654,7 +770,7 @@ async fn postgres_location_batch_filters_missing_future_and_reassigned_devices()
     let revision_id = format!("revision-{suffix}");
     {
         let mut connection = pool.get().unwrap();
-        run_pending_migrations(&mut connection).unwrap();
+        migrate_once(&pool);
         seed_blueprint(&mut connection, &tenant_id, &revision_id);
     }
     let tenant = TenantId::new(tenant_id.clone()).unwrap();

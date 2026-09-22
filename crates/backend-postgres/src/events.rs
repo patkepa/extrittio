@@ -314,8 +314,8 @@ ORDER BY occurred_at DESC, event_id COLLATE "C" DESC LIMIT 1"#)
                             .bind::<Text, _>(&event.event_id)
                             .bind::<Text, _>(&tenant_id)
                             .bind::<Text, _>(&event.device_id)
-                            .bind::<Text, _>(metric.stream_key)
-                            .bind::<Text, _>(metric.field_path)
+                            .bind::<Text, _>(&metric.stream_key)
+                            .bind::<Text, _>(&metric.field_path)
                             .bind::<Text, _>(value_type)
                             .bind::<Nullable<Float8>, _>(value_double)
                             .bind::<Nullable<BigInt>, _>(value_int)
@@ -324,6 +324,44 @@ ORDER BY occurred_at DESC, event_id COLLATE "C" DESC LIMIT 1"#)
                             .bind::<Nullable<Jsonb>, _>(value_json)
                             .bind::<Timestamptz, _>(event.occurred_at)
                             .execute(connection)?;
+                            if let Some(value) = value_double.or_else(|| value_int.map(|v| v as f64)) {
+                                diesel::sql_query(
+                                    "INSERT INTO device_metric_rollups_hourly
+                                        (tenant_id, device_id, blueprint_revision_id, stream_key,
+                                         field_path, bucket_start, sample_count, value_sum,
+                                         value_min, value_max, latest_value, latest_at, latest_event_id)
+                                     SELECT $1, $2, c.blueprint_revision_id, $4, $5,
+                                            to_timestamp(floor(extract(epoch FROM $7::timestamptz) / 3600) * 3600),
+                                            1, $6, $6, $6, $6, $7, $8
+                                     FROM device_contracts c
+                                     WHERE c.tenant_id = $1 AND c.device_id = $2 AND c.id = $3
+                                     ON CONFLICT (tenant_id, device_id, blueprint_revision_id,
+                                                  stream_key, field_path, bucket_start)
+                                     DO UPDATE SET
+                                         sample_count = device_metric_rollups_hourly.sample_count + 1,
+                                         value_sum = device_metric_rollups_hourly.value_sum + EXCLUDED.value_sum,
+                                         value_min = least(device_metric_rollups_hourly.value_min, EXCLUDED.value_min),
+                                         value_max = greatest(device_metric_rollups_hourly.value_max, EXCLUDED.value_max),
+                                         latest_value = CASE WHEN EXCLUDED.latest_at > device_metric_rollups_hourly.latest_at
+                                             OR (EXCLUDED.latest_at = device_metric_rollups_hourly.latest_at
+                                                 AND EXCLUDED.latest_event_id COLLATE \"C\" > device_metric_rollups_hourly.latest_event_id COLLATE \"C\")
+                                             THEN EXCLUDED.latest_value ELSE device_metric_rollups_hourly.latest_value END,
+                                         latest_at = greatest(device_metric_rollups_hourly.latest_at, EXCLUDED.latest_at),
+                                         latest_event_id = CASE WHEN EXCLUDED.latest_at > device_metric_rollups_hourly.latest_at
+                                             OR (EXCLUDED.latest_at = device_metric_rollups_hourly.latest_at
+                                                 AND EXCLUDED.latest_event_id COLLATE \"C\" > device_metric_rollups_hourly.latest_event_id COLLATE \"C\")
+                                             THEN EXCLUDED.latest_event_id ELSE device_metric_rollups_hourly.latest_event_id END",
+                                )
+                                .bind::<Text, _>(&tenant_id)
+                                .bind::<Text, _>(&event.device_id)
+                                .bind::<Text, _>(&event.contract_id)
+                                .bind::<Text, _>(&metric.stream_key)
+                                .bind::<Text, _>(&metric.field_path)
+                                .bind::<Float8, _>(value)
+                                .bind::<Timestamptz, _>(event.occurred_at)
+                                .bind::<Text, _>(&event.event_id)
+                                .execute(connection)?;
+                            }
                         }
                         let actions = crate::rule_runtime::evaluate_rules_in_transaction(
                             connection,

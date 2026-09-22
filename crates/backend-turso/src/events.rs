@@ -12,6 +12,136 @@ use extrittio_backend_core::events::{
 use crate::{TursoConnectionHandles, row};
 
 #[cfg(test)]
+mod rollup_tests {
+    use super::*;
+    use extrittio_backend_core::events::DeviceMetricSample;
+    use extrittio_backend_core::rule_engine::{cache::RuleCache, types::TelemetryData};
+    use extrittio_backend_core::rule_snapshots::{
+        DeviceRuleEvaluation, RuleEvaluationInput, RuleEvaluationSnapshot,
+    };
+    use std::sync::Arc;
+
+    #[tokio::test]
+    async fn numeric_rollups_handle_late_ties_duplicates_and_non_numeric_samples() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = crate::TursoDatabase::open(
+            directory.path(),
+            &directory.path().join("rollups.db"),
+            std::time::Duration::from_secs(1),
+        )
+        .await
+        .unwrap();
+        database.migrate().await.unwrap();
+        let connection = database.shared_handles().connect().unwrap();
+        connection
+            .execute_batch(
+                r#"
+            INSERT INTO device_blueprints VALUES ('blueprint','default','sensor','Sensor',NULL,0,0);
+            INSERT INTO device_blueprint_revisions VALUES ('revision','default','blueprint',1,'{}',
+                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','{}',0);
+            INSERT INTO devices (id,tenant_id,name,status,firmware,created_at,updated_at)
+                VALUES ('device','default','Device','online','1',0,0);
+            INSERT INTO device_contracts VALUES ('contract','default','device','revision','{}',
+                'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',0);
+            INSERT INTO device_contract_assignments
+                (tenant_id,device_id,desired_contract_id,created_at,updated_at)
+                VALUES ('default','device','contract',0,0);
+        "#,
+            )
+            .await
+            .unwrap();
+        let tenant = TenantId::new("default").unwrap();
+        let repository = TursoEventRepository::from_handles(database.shared_handles());
+        let make_event = |id: &str, at: i64, value: MetricValue| {
+            let occurred_at = chrono::DateTime::from_timestamp_micros(at).unwrap();
+            RecordDeviceEvent {
+                event_id: id.into(),
+                device_id: "device".into(),
+                contract_id: "contract".into(),
+                route_key: "sample".into(),
+                occurred_at,
+                received_at: occurred_at,
+                payload: serde_json::json!({}),
+                metrics: vec![DeviceMetricSample {
+                    stream_key: "readings".into(),
+                    field_path: "/value".into(),
+                    value,
+                }],
+                rule_evaluation: DeviceRuleEvaluation {
+                    snapshot: RuleEvaluationSnapshot::new(Arc::new(RuleCache::default())),
+                    tenant: tenant.clone(),
+                    device_id: "device".into(),
+                    fleet_id: None,
+                    blueprint_id: None,
+                    input: RuleEvaluationInput::Telemetry {
+                        data: TelemetryData {
+                            latitude: None,
+                            longitude: None,
+                            metrics: Default::default(),
+                        },
+                        geofence: false,
+                    },
+                    observed_at: occurred_at.naive_utc(),
+                },
+            }
+        };
+        let hour = 3_600_000_000_i64;
+        let first = make_event("a", hour + 30_000_000, MetricValue::Float64(2.0));
+        assert!(
+            repository
+                .record(&tenant, first.clone())
+                .await
+                .unwrap()
+                .recorded
+        );
+        assert!(!repository.record(&tenant, first).await.unwrap().recorded);
+        repository
+            .record(
+                &tenant,
+                make_event("late", hour + 10_000_000, MetricValue::Int64(4)),
+            )
+            .await
+            .unwrap();
+        repository
+            .record(
+                &tenant,
+                make_event("z", hour + 30_000_000, MetricValue::Float64(3.0)),
+            )
+            .await
+            .unwrap();
+        repository
+            .record(
+                &tenant,
+                make_event("text", hour + 40_000_000, MetricValue::String("ok".into())),
+            )
+            .await
+            .unwrap();
+        let mut rows = connection
+            .query(
+                "SELECT blueprint_revision_id, bucket_start, sample_count, value_sum,
+                    value_min, value_max, latest_value, latest_at, latest_event_id
+             FROM device_metric_rollups_hourly
+             WHERE tenant_id = 'default' AND device_id = 'device'
+               AND stream_key = 'readings' AND field_path = '/value'",
+                (),
+            )
+            .await
+            .unwrap();
+        let row = rows.next().await.unwrap().unwrap();
+        assert_eq!(row.get::<String>(0).unwrap(), "revision");
+        assert_eq!(row.get::<i64>(1).unwrap(), hour);
+        assert_eq!(row.get::<i64>(2).unwrap(), 3);
+        assert_eq!(row.get::<f64>(3).unwrap(), 9.0);
+        assert_eq!(row.get::<f64>(4).unwrap(), 2.0);
+        assert_eq!(row.get::<f64>(5).unwrap(), 4.0);
+        assert_eq!(row.get::<f64>(6).unwrap(), 3.0);
+        assert_eq!(row.get::<i64>(7).unwrap(), hour + 30_000_000);
+        assert_eq!(row.get::<String>(8).unwrap(), "z");
+        assert!(rows.next().await.unwrap().is_none());
+    }
+}
+
+#[cfg(test)]
 mod location_tests {
     use super::*;
     use chrono::{DateTime, Utc};
@@ -544,8 +674,8 @@ SELECT device_id,contract_id,event_id,occurred_at,expires_at,latitude,longitude 
                         event.event_id.clone(),
                         tenant.as_str(),
                         event.device_id.clone(),
-                        metric.stream_key,
-                        metric.field_path,
+                        metric.stream_key.clone(),
+                        metric.field_path.clone(),
                         value_type,
                         value_double,
                         value_int,
@@ -557,6 +687,50 @@ SELECT device_id,contract_id,event_id,occurred_at,expires_at,latitude,longitude 
                 )
                 .await
                 .map_err(row::legacy_error)?;
+            if let Some(value) = value_double.or_else(|| value_int.map(|v| v as f64)) {
+                let occurred_at = event.occurred_at.timestamp_micros();
+                let bucket_start = occurred_at.div_euclid(3_600_000_000) * 3_600_000_000;
+                transaction
+                    .execute(
+                        "INSERT INTO device_metric_rollups_hourly
+                            (tenant_id, device_id, blueprint_revision_id, stream_key,
+                             field_path, bucket_start, sample_count, value_sum,
+                             value_min, value_max, latest_value, latest_at, latest_event_id)
+                         SELECT ?1, ?2, c.blueprint_revision_id, ?4, ?5, ?6,
+                                1, ?7, ?7, ?7, ?7, ?8, ?9
+                         FROM device_contracts c
+                         WHERE c.tenant_id = ?1 AND c.device_id = ?2 AND c.id = ?3
+                         ON CONFLICT (tenant_id, device_id, blueprint_revision_id,
+                                      stream_key, field_path, bucket_start)
+                         DO UPDATE SET
+                             sample_count = device_metric_rollups_hourly.sample_count + 1,
+                             value_sum = device_metric_rollups_hourly.value_sum + excluded.value_sum,
+                             value_min = min(device_metric_rollups_hourly.value_min, excluded.value_min),
+                             value_max = max(device_metric_rollups_hourly.value_max, excluded.value_max),
+                             latest_value = CASE WHEN excluded.latest_at > device_metric_rollups_hourly.latest_at
+                                 OR (excluded.latest_at = device_metric_rollups_hourly.latest_at
+                                     AND excluded.latest_event_id COLLATE BINARY > device_metric_rollups_hourly.latest_event_id COLLATE BINARY)
+                                 THEN excluded.latest_value ELSE device_metric_rollups_hourly.latest_value END,
+                             latest_at = max(device_metric_rollups_hourly.latest_at, excluded.latest_at),
+                             latest_event_id = CASE WHEN excluded.latest_at > device_metric_rollups_hourly.latest_at
+                                 OR (excluded.latest_at = device_metric_rollups_hourly.latest_at
+                                     AND excluded.latest_event_id COLLATE BINARY > device_metric_rollups_hourly.latest_event_id COLLATE BINARY)
+                                 THEN excluded.latest_event_id ELSE device_metric_rollups_hourly.latest_event_id END",
+                        params![
+                            tenant.as_str(),
+                            event.device_id.clone(),
+                            event.contract_id.clone(),
+                            metric.stream_key,
+                            metric.field_path,
+                            bucket_start,
+                            value,
+                            occurred_at,
+                            event.event_id.clone()
+                        ],
+                    )
+                    .await
+                    .map_err(row::legacy_error)?;
+            }
         }
         let actions = crate::rule_runtime::evaluate_rules_in_transaction(
             &transaction,
