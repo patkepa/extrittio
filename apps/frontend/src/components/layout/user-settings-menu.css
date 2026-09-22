@@ -1,0 +1,163 @@
+.app-sidebar {
+  position: relative;
+}
+
+.app-sidebar .sidebar-nav {
+  padding-bottom: 76px;
+  transition: padding-bottom 220ms ease;
+}
+
+.app-sidebar:not(.collapsed):has(.user-settings-trigger[aria-expanded='true']) .sidebar-nav {
+  padding-bottom: 260px;
+}
+
+.app-sidebar .workspace-sidebar-nav-slot {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2;
+}
+
+.user-settings-menu {
+  position: relative;
+  padding: 12px;
+  border-top: 1px solid var(--border-color);
+  background: var(--sidebar-bg);
+}
+
+.user-settings-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 2px;
+  background: var(--sidebar-accent);
+  color: var(--sidebar-foreground);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.user-settings-trigger:hover,
+.user-settings-trigger[aria-expanded='true'] {
+  background: var(--sidebar-accent-hover);
+}
+
+.user-settings-trigger[aria-expanded='true'] {
+  border-bottom-color: transparent;
+}
+
+.user-settings-trigger .user-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.user-settings-trigger > .bp6-icon {
+  color: var(--sidebar-muted-foreground);
+}
+
+.user-settings-panel {
+  max-height: 0;
+  overflow: hidden;
+  padding: 0 8px;
+  border: solid var(--border-color);
+  border-width: 0 1px;
+  border-radius: 0 0 2px 2px;
+  background: var(--sidebar-accent);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    max-height 220ms ease,
+    padding 220ms ease,
+    border-width 220ms ease,
+    opacity 160ms ease,
+    visibility 0s linear 220ms;
+}
+
+.user-settings-panel--open {
+  max-height: 220px;
+  padding: 8px;
+  border-width: 0 1px 1px;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition:
+    max-height 220ms ease,
+    padding 220ms ease,
+    border-width 220ms ease,
+    opacity 160ms ease,
+    visibility 0s;
+}
+
+.user-settings-panel-heading {
+  padding: 4px 8px 8px;
+  color: var(--sidebar-muted-foreground);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.user-settings-action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--sidebar-foreground);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+
+.user-settings-action:hover {
+  background: var(--sidebar-accent-hover);
+}
+
+.user-settings-divider {
+  height: 1px;
+  margin: 6px 0;
+  background: var(--border-color);
+}
+
+.user-settings-menu--collapsed {
+  padding: 12px 8px;
+}
+
+.user-settings-menu--collapsed .user-settings-trigger {
+  justify-content: center;
+  padding: 8px 0;
+  border: 0;
+  background: transparent;
+}
+
+.user-settings-menu--collapsed .user-settings-panel {
+  position: fixed;
+  right: auto;
+  bottom: 12px;
+  left: 68px;
+  width: 190px;
+  border-radius: 2px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
+}
+
+.user-settings-menu--collapsed .user-settings-panel--open {
+  border-width: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-sidebar .sidebar-nav,
+  .user-settings-panel,
+  .user-settings-panel--open {
+    transition: none;
+  }
+}

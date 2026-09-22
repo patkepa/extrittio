@@ -306,7 +306,10 @@ export function getAccessibleSettingsRoutes(permissions: readonly string[] | und
 }
 
 export function getDefaultSettingsPath(permissions: readonly string[] | undefined) {
-  return getAccessibleSettingsRoutes(permissions)[0]?.path ?? 'profile';
+  return (
+    getAccessibleSettingsRoutes(permissions).find((route) => route.id !== 'profile')?.path ??
+    'profile'
+  );
 }
 
 function withAccessibleChildren(route: AppRoute, permissions: readonly string[] | undefined) {
@@ -338,7 +341,20 @@ export function getNavGroups(permissions: readonly string[] | undefined): NavGro
     .map((group) => ({
       label: group,
       items: getAccessibleAppRoutes(permissions)
-        .filter((route) => route.navGroup === group)
+        .filter((route) => route.navGroup === group && route.id !== 'help')
+        .filter(
+          (route) =>
+            route.id !== 'settings' ||
+            route.children?.some((child) => child.id !== 'settings-profile'),
+        )
+        .map((route) =>
+          route.id === 'settings'
+            ? {
+                ...route,
+                children: route.children?.filter((child) => child.id !== 'settings-profile'),
+              }
+            : route,
+        )
         .map(toNavItem),
     }))
     .filter((group) => group.items.length > 0);

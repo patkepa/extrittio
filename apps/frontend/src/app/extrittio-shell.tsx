@@ -1,12 +1,12 @@
 import { useEffect, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { CommandPalette } from '../components/command-palette/command-palette';
-import { projects } from '../data/sidebar-data';
+import { UserSettingsMenu } from '../components/layout/user-settings-menu';
 import { hasPermission } from '../auth/permissions';
 import { useAlertSummary } from '../features/alerts/queries/use-alerts';
 import { useDashboardStats } from '../hooks/use-dashboard';
 import { useDevice } from '../hooks/use-devices';
-import { WorkspaceShell } from '@patkepa/kantzen-ui/app-shell';
+import { WorkspacePortal, WorkspaceShell } from '@patkepa/kantzen-ui/app-shell';
 import type { NavBadge } from '@patkepa/kantzen-ui/navigation';
 import { useAuthStore } from '../stores/auth-store';
 import { useUIStore } from '../stores/ui-store';
@@ -77,17 +77,21 @@ export const ExtrittioShell = ({ children }: ExtrittioShellProps) => {
       currentPath={location.pathname}
       navGroups={navGroups}
       navBadges={navBadges}
-      projects={projects}
-      user={currentUser}
-      version="v0.1.0"
       sidebarCollapsed={sidebarCollapsed}
       onToggleSidebar={toggleSidebar}
       onNavigate={navigate}
       onOpenCommandPalette={openCommandPalette}
-      onLogout={logout}
       breadcrumb={breadcrumb}
       commandPalette={<CommandPalette />}
     >
+      <WorkspacePortal slot="sidebar-nav-end">
+        <UserSettingsMenu
+          user={currentUser}
+          collapsed={sidebarCollapsed}
+          onNavigate={navigate}
+          onLogout={logout}
+        />
+      </WorkspacePortal>
       {children}
     </WorkspaceShell>
   );
