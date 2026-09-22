@@ -163,8 +163,16 @@ evidence all pass. Existing unit tests do not substitute for browser checks.
   by tenant/device/originating revision/stream/exact path/hour. Ingestion updates
   samples and rollups in one transaction. Both adapters pass late-event,
   timestamp-tie, duplicate and nonnumeric regressions; PostgreSQL also proves
-  deletion cascade. The rollups are not yet read by analytics or retained by a
-  worker. Do not treat this as workstream 2 completion.
+  deletion cascade. Analytics now reads completed full hours from rollups and
+  partial/current hours from raw samples, preserving count-weighted averages and
+  latest ordering. Both adapters retain the same full-hour result after raw
+  events are deleted in tests; Turso tests a mixed rollup/raw range.
+- Analytics resolves the latest published field declaration and admits historical
+  revisions only when exact stream/path, value type, unit and aggregate
+  declarations match. The catalog still presents only the latest revision.
+  Both adapters keep historical rollup reads available after reassignment.
+  Coordinated retention, full incompatible-revision API integration and larger
+  dataset verification remain open. Do not treat workstream 2 or 3 as complete.
 - Both-adapter backend compilation; 49 core and 22 Turso unit tests passed.
 - PostgreSQL 17: actual Diesel baseline apply/reapply and schema constraints;
   real cooldown writer/reactivation/rollback tests passed on disposable storage.

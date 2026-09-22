@@ -4,9 +4,10 @@ use turso::params;
 use extrittio_backend_core::PersistenceError;
 use extrittio_backend_core::TenantId;
 use extrittio_backend_core::analytics::AnalyticsRepository;
+use extrittio_backend_core::analytics::full_hour_rollup_window;
 use extrittio_backend_core::analytics::{
-    AnalyticsBlueprintRevision, AnalyticsBucket, AnalyticsDevice, AnalyticsQuery,
-    AnalyticsQueryData,
+    AnalyticsBlueprintRevision, AnalyticsBucket, AnalyticsDataSource, AnalyticsDevice,
+    AnalyticsQuery, AnalyticsQueryData,
 };
 
 use crate::{TursoConnectionHandles, row};
@@ -83,6 +84,7 @@ mod blueprint_scope_tests {
                 aggregates: vec!["average".into()],
                 precision: None,
             },
+            compatible_revision_ids: vec!["revision".into()],
             start: chrono::DateTime::from_timestamp(0, 0).unwrap().naive_utc(),
             end: chrono::DateTime::from_timestamp(60, 0).unwrap().naive_utc(),
             bucket_seconds: 60,
@@ -108,7 +110,7 @@ mod blueprint_scope_tests {
             0
         );
         query.scope.fleet_ids.clear();
-        query.metric.selector.blueprint_id = "another-blueprint".into();
+        query.compatible_revision_ids = vec!["another-revision".into()];
         assert_eq!(
             repository
                 .query(&tenant, query.clone())
@@ -147,13 +149,7 @@ impl AnalyticsRepository for TursoAnalyticsRepository {
                   ON r.tenant_id = b.tenant_id
                  AND r.blueprint_id = b.id
                 WHERE b.tenant_id = ?1
-                  AND r.revision = (
-                      SELECT max(latest.revision)
-                      FROM device_blueprint_revisions latest
-                      WHERE latest.tenant_id = b.tenant_id
-                        AND latest.blueprint_id = b.id
-                  )
-                ORDER BY b.name COLLATE BINARY, b.id COLLATE BINARY
+                ORDER BY b.name COLLATE BINARY, b.id COLLATE BINARY, r.revision DESC
                 "#,
                 params![tenant.as_str()],
             )
@@ -195,6 +191,8 @@ impl AnalyticsRepository for TursoAnalyticsRepository {
             .map_err(|error| PersistenceError::Internal(error.to_string()))?;
         let requested_device_ids = serde_json::to_string(&query.scope.device_ids)
             .map_err(|error| PersistenceError::Internal(error.to_string()))?;
+        let compatible_revision_ids = serde_json::to_string(&query.compatible_revision_ids)
+            .map_err(|error| PersistenceError::Internal(error.to_string()))?;
 
         let count_sql = format!("SELECT count(*) FROM devices d WHERE {SCOPE_FILTER}");
         let mut count_rows = connection
@@ -226,18 +224,21 @@ impl AnalyticsRepository for TursoAnalyticsRepository {
             r#"
             SELECT count(*)
             FROM devices d
-            JOIN device_contract_assignments a
-              ON a.tenant_id = d.tenant_id
-             AND a.device_id = d.id
-            JOIN device_contracts c
-              ON c.tenant_id = a.tenant_id
-             AND c.device_id = a.device_id
-             AND c.id = a.desired_contract_id
-            JOIN device_blueprint_revisions r
-              ON r.tenant_id = c.tenant_id
-             AND r.id = c.blueprint_revision_id
             WHERE {SCOPE_FILTER}
-              AND r.blueprint_id = ?4
+              AND (
+                EXISTS (
+                  SELECT 1 FROM device_contract_assignments a
+                  JOIN device_contracts c ON c.tenant_id = a.tenant_id
+                    AND c.device_id = a.device_id AND c.id = a.desired_contract_id
+                  WHERE a.tenant_id = d.tenant_id AND a.device_id = d.id
+                    AND c.blueprint_revision_id IN (SELECT value FROM json_each(?4))
+                ) OR EXISTS (
+                  SELECT 1 FROM device_metric_rollups_hourly h
+                  WHERE h.tenant_id = d.tenant_id AND h.device_id = d.id
+                    AND h.blueprint_revision_id IN (SELECT value FROM json_each(?4))
+                    AND h.stream_key = ?5 AND h.field_path = ?6
+                )
+              )
             "#
         );
         let mut compatible_rows = connection
@@ -247,7 +248,9 @@ impl AnalyticsRepository for TursoAnalyticsRepository {
                     tenant.as_str(),
                     fleet_ids.clone(),
                     requested_device_ids.clone(),
-                    query.metric.selector.blueprint_id.clone()
+                    compatible_revision_ids.clone(),
+                    query.metric.selector.stream_key.clone(),
+                    query.metric.selector.field_path.clone()
                 ],
             )
             .await
@@ -272,20 +275,23 @@ impl AnalyticsRepository for TursoAnalyticsRepository {
             r#"
             SELECT d.id, d.name
             FROM devices d
-            JOIN device_contract_assignments a
-              ON a.tenant_id = d.tenant_id
-             AND a.device_id = d.id
-            JOIN device_contracts c
-              ON c.tenant_id = a.tenant_id
-             AND c.device_id = a.device_id
-             AND c.id = a.desired_contract_id
-            JOIN device_blueprint_revisions r
-              ON r.tenant_id = c.tenant_id
-             AND r.id = c.blueprint_revision_id
             WHERE {SCOPE_FILTER}
-              AND r.blueprint_id = ?4
+              AND (
+                EXISTS (
+                  SELECT 1 FROM device_contract_assignments a
+                  JOIN device_contracts c ON c.tenant_id = a.tenant_id
+                    AND c.device_id = a.device_id AND c.id = a.desired_contract_id
+                  WHERE a.tenant_id = d.tenant_id AND a.device_id = d.id
+                    AND c.blueprint_revision_id IN (SELECT value FROM json_each(?4))
+                ) OR EXISTS (
+                  SELECT 1 FROM device_metric_rollups_hourly h
+                  WHERE h.tenant_id = d.tenant_id AND h.device_id = d.id
+                    AND h.blueprint_revision_id IN (SELECT value FROM json_each(?4))
+                    AND h.stream_key = ?5 AND h.field_path = ?6
+                )
+              )
             ORDER BY d.name COLLATE BINARY, d.id COLLATE BINARY
-            LIMIT ?5
+            LIMIT ?7
             "#
         );
         let device_limit = i64::try_from(query.max_devices.saturating_add(1)).unwrap_or(i64::MAX);
@@ -296,7 +302,9 @@ impl AnalyticsRepository for TursoAnalyticsRepository {
                     tenant.as_str(),
                     fleet_ids,
                     requested_device_ids,
-                    query.metric.selector.blueprint_id.clone(),
+                    compatible_revision_ids.clone(),
+                    query.metric.selector.stream_key.clone(),
+                    query.metric.selector.field_path.clone(),
                     device_limit
                 ],
             )
@@ -314,6 +322,7 @@ impl AnalyticsRepository for TursoAnalyticsRepository {
         if compatible_devices > query.max_devices || devices.is_empty() {
             connection.commit().await.map_err(row::legacy_error)?;
             return Ok(AnalyticsQueryData {
+                source: AnalyticsDataSource::BlueprintMetricSamples,
                 selected_devices,
                 compatible_devices,
                 devices,
@@ -330,23 +339,50 @@ impl AnalyticsRepository for TursoAnalyticsRepository {
         .map_err(|error| PersistenceError::Internal(error.to_string()))?;
         let bucket_micros = query.bucket_seconds.saturating_mul(1_000_000);
         let row_limit = i64::try_from(query.max_rows.saturating_add(1)).unwrap_or(i64::MAX);
-        let mut rows = connection
-            .query(
-                metric_samples_query(),
-                params![
-                    tenant.as_str(),
-                    device_ids,
-                    query.start.and_utc().timestamp_micros(),
-                    query.end.and_utc().timestamp_micros(),
-                    bucket_micros,
-                    query.metric.selector.stream_key,
-                    query.metric.selector.field_path,
-                    query.metric.selector.blueprint_id,
-                    row_limit
-                ],
-            )
-            .await
-            .map_err(row::legacy_error)?;
+        let rollup_window = (query.bucket_seconds >= 3_600)
+            .then(|| {
+                full_hour_rollup_window(query.start, query.end, chrono::Utc::now().naive_utc())
+            })
+            .flatten();
+        let mut rows = if let Some((rollup_start, rollup_end)) = rollup_window {
+            connection
+                .query(
+                    metric_rollups_query(),
+                    params![
+                        tenant.as_str(),
+                        device_ids,
+                        query.start.and_utc().timestamp_micros(),
+                        query.end.and_utc().timestamp_micros(),
+                        bucket_micros,
+                        query.metric.selector.stream_key,
+                        query.metric.selector.field_path,
+                        compatible_revision_ids,
+                        row_limit,
+                        rollup_start.and_utc().timestamp_micros(),
+                        rollup_end.and_utc().timestamp_micros()
+                    ],
+                )
+                .await
+                .map_err(row::legacy_error)?
+        } else {
+            connection
+                .query(
+                    metric_samples_query(),
+                    params![
+                        tenant.as_str(),
+                        device_ids,
+                        query.start.and_utc().timestamp_micros(),
+                        query.end.and_utc().timestamp_micros(),
+                        bucket_micros,
+                        query.metric.selector.stream_key,
+                        query.metric.selector.field_path,
+                        compatible_revision_ids,
+                        row_limit
+                    ],
+                )
+                .await
+                .map_err(row::legacy_error)?
+        };
         let mut buckets = Vec::new();
         while let Some(record) = rows.next().await.map_err(row::legacy_error)? {
             let bucket_micros: i64 = record.get(2).map_err(row::legacy_error)?;
@@ -365,6 +401,11 @@ impl AnalyticsRepository for TursoAnalyticsRepository {
         drop(rows);
         connection.commit().await.map_err(row::legacy_error)?;
         Ok(AnalyticsQueryData {
+            source: if rollup_window.is_some() {
+                AnalyticsDataSource::BlueprintMetricSamplesAndRollups
+            } else {
+                AnalyticsDataSource::BlueprintMetricSamples
+            },
             selected_devices,
             compatible_devices,
             devices,
@@ -405,7 +446,7 @@ fn metric_samples_query() -> &'static str {
               AND s.stream_key = ?6
               AND s.field_path = ?7
               AND s.value_type IN ('float64', 'int64')
-              AND r.blueprint_id = ?8
+              AND r.id IN (SELECT value FROM json_each(?8))
         ), ranked AS (
             SELECT *, row_number() OVER (
                 PARTITION BY device_id, bucket_start
@@ -427,4 +468,56 @@ fn metric_samples_query() -> &'static str {
         ORDER BY bucket_start, device_name COLLATE BINARY, device_id COLLATE BINARY
         LIMIT ?9
         "#
+}
+
+fn metric_rollups_query() -> &'static str {
+    r#"
+        WITH observations AS (
+            SELECT d.id AS device_id, d.name AS device_name,
+                   s.occurred_at - CASE WHEN s.occurred_at % ?5 < 0 THEN s.occurred_at % ?5 + ?5 ELSE s.occurred_at % ?5 END AS bucket_start,
+                   1 AS sample_count,
+                   coalesce(s.value_double, CAST(s.value_int AS REAL)) AS value_sum,
+                   coalesce(s.value_double, CAST(s.value_int AS REAL)) AS value_min,
+                   coalesce(s.value_double, CAST(s.value_int AS REAL)) AS value_max,
+                   coalesce(s.value_double, CAST(s.value_int AS REAL)) AS latest_value,
+                   s.occurred_at AS latest_at, s.event_id AS latest_event_id
+            FROM device_metric_samples s
+            JOIN devices d ON d.tenant_id = s.tenant_id AND d.id = s.device_id
+            JOIN device_events e ON e.tenant_id = s.tenant_id AND e.device_id = s.device_id AND e.id = s.event_id
+            JOIN device_contracts c ON c.tenant_id = e.tenant_id AND c.device_id = e.device_id AND c.id = e.contract_id
+            WHERE s.tenant_id = ?1 AND s.device_id IN (SELECT value FROM json_each(?2))
+              AND s.occurred_at >= ?3 AND s.occurred_at < ?4
+              AND NOT (s.occurred_at >= ?10 AND s.occurred_at < ?11)
+              AND s.stream_key = ?6 AND s.field_path = ?7
+              AND s.value_type IN ('float64', 'int64')
+              AND c.blueprint_revision_id IN (SELECT value FROM json_each(?8))
+            UNION ALL
+            SELECT d.id, d.name,
+                   r.bucket_start - CASE WHEN r.bucket_start % ?5 < 0 THEN r.bucket_start % ?5 + ?5 ELSE r.bucket_start % ?5 END,
+                   r.sample_count, r.value_sum, r.value_min, r.value_max,
+                   r.latest_value, r.latest_at, r.latest_event_id
+            FROM device_metric_rollups_hourly r
+            JOIN devices d ON d.tenant_id = r.tenant_id AND d.id = r.device_id
+            WHERE r.tenant_id = ?1 AND r.device_id IN (SELECT value FROM json_each(?2))
+              AND r.bucket_start >= ?10 AND r.bucket_start < ?11
+              AND r.stream_key = ?6 AND r.field_path = ?7
+              AND r.blueprint_revision_id IN (SELECT value FROM json_each(?8))
+        ), ranked AS (
+            SELECT *, row_number() OVER (
+                PARTITION BY device_id, bucket_start
+                ORDER BY latest_at DESC, latest_event_id COLLATE BINARY DESC
+            ) AS latest_rank
+            FROM observations
+        )
+        SELECT device_id, device_name, bucket_start,
+               sum(sample_count) AS sample_count,
+               sum(value_sum) / sum(sample_count) AS average,
+               min(value_min) AS minimum,
+               max(value_max) AS maximum,
+               max(CASE WHEN latest_rank = 1 THEN latest_value END) AS latest
+        FROM ranked
+        GROUP BY device_id, device_name, bucket_start
+        ORDER BY bucket_start, device_name COLLATE BINARY, device_id COLLATE BINARY
+        LIMIT ?9
+    "#
 }

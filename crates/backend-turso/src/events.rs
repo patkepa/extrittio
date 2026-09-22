@@ -14,6 +14,10 @@ use crate::{TursoConnectionHandles, row};
 #[cfg(test)]
 mod rollup_tests {
     use super::*;
+    use extrittio_backend_core::analytics::{
+        AnalyticsMetric, AnalyticsMetricSelector, AnalyticsQuery, AnalyticsRepository,
+        AnalyticsScope,
+    };
     use extrittio_backend_core::events::DeviceMetricSample;
     use extrittio_backend_core::rule_engine::{cache::RuleCache, types::TelemetryData};
     use extrittio_backend_core::rule_snapshots::{
@@ -116,14 +120,22 @@ mod rollup_tests {
             )
             .await
             .unwrap();
+        repository
+            .record(
+                &tenant,
+                make_event("partial", hour * 2 + 10_000_000, MetricValue::Int64(6)),
+            )
+            .await
+            .unwrap();
         let mut rows = connection
             .query(
                 "SELECT blueprint_revision_id, bucket_start, sample_count, value_sum,
                     value_min, value_max, latest_value, latest_at, latest_event_id
              FROM device_metric_rollups_hourly
              WHERE tenant_id = 'default' AND device_id = 'device'
-               AND stream_key = 'readings' AND field_path = '/value'",
-                (),
+               AND stream_key = 'readings' AND field_path = '/value'
+               AND bucket_start = ?1",
+                params![hour],
             )
             .await
             .unwrap();
@@ -138,6 +150,69 @@ mod rollup_tests {
         assert_eq!(row.get::<i64>(7).unwrap(), hour + 30_000_000);
         assert_eq!(row.get::<String>(8).unwrap(), "z");
         assert!(rows.next().await.unwrap().is_none());
+        drop(rows);
+        let analytics = crate::TursoAnalyticsRepository::from_handles(database.shared_handles());
+        let query = AnalyticsQuery {
+            scope: AnalyticsScope {
+                device_ids: vec!["device".into()],
+                ..Default::default()
+            },
+            metric: AnalyticsMetric {
+                selector: AnalyticsMetricSelector {
+                    blueprint_id: "blueprint".into(),
+                    stream_key: "readings".into(),
+                    field_path: "/value".into(),
+                },
+                blueprint_key: "sensor".into(),
+                blueprint_name: "Sensor".into(),
+                label: "Value".into(),
+                unit: None,
+                value_type: "float64".into(),
+                aggregates: vec!["average".into()],
+                precision: None,
+            },
+            compatible_revision_ids: vec!["revision".into()],
+            start: chrono::DateTime::from_timestamp_micros(hour)
+                .unwrap()
+                .naive_utc(),
+            end: chrono::DateTime::from_timestamp_micros(hour * 2 + 20_000_000)
+                .unwrap()
+                .naive_utc(),
+            bucket_seconds: 3_600,
+            max_devices: 10,
+            max_rows: 10,
+        };
+        let before = analytics.query(&tenant, query.clone()).await.unwrap();
+        assert_eq!(
+            before.source,
+            extrittio_backend_core::analytics::AnalyticsDataSource::BlueprintMetricSamplesAndRollups
+        );
+        assert_eq!(before.buckets.len(), 2);
+        assert_eq!(before.buckets[0].sample_count, 3);
+        assert_eq!(before.buckets[0].average, 3.0);
+        assert_eq!(before.buckets[0].latest, 3.0);
+        assert_eq!(before.buckets[1].sample_count, 1);
+        assert_eq!(before.buckets[1].average, 6.0);
+        connection
+            .execute(
+                "DELETE FROM device_events WHERE tenant_id = 'default' AND occurred_at < ?1",
+                params![hour * 2],
+            )
+            .await
+            .unwrap();
+        let after = analytics.query(&tenant, query.clone()).await.unwrap();
+        assert_eq!(after.buckets, before.buckets);
+        connection.execute_batch(r#"
+            INSERT INTO device_blueprint_revisions VALUES ('revision-new','default','blueprint',2,'{}',
+                'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc','{}',0);
+            INSERT INTO device_contracts VALUES ('contract-new','default','device','revision-new','{}',
+                'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',0);
+            UPDATE device_contract_assignments SET desired_contract_id = 'contract-new'
+                WHERE tenant_id = 'default' AND device_id = 'device';
+        "#).await.unwrap();
+        let historical = analytics.query(&tenant, query).await.unwrap();
+        assert_eq!(historical.compatible_devices, 1);
+        assert_eq!(historical.buckets, before.buckets);
     }
 }
 

@@ -48,7 +48,7 @@ impl AnalyticsApplication {
         require_permission(ctx, Permission::ReadTelemetry)?;
         validate_scope(&request)?;
 
-        let metric = resolve_metric(
+        let (metric, compatible_revision_ids) = resolve_metric(
             request.metric.clone(),
             self.repository.blueprint_catalog(ctx.tenant_id()).await?,
         )?;
@@ -73,8 +73,6 @@ impl AnalyticsApplication {
             Some(bucket) => validate_explicit_bucket(bucket, range_seconds, max_points)?,
             None => automatic_bucket(range_seconds, max_points),
         };
-        let source = AnalyticsDataSource::BlueprintMetricSamples;
-
         let data = self
             .repository
             .query(
@@ -82,6 +80,7 @@ impl AnalyticsApplication {
                 AnalyticsQuery {
                     scope: request.scope.clone(),
                     metric: metric.clone(),
+                    compatible_revision_ids,
                     start: storage_bound(request.start)?,
                     end: storage_bound(request.end)?,
                     bucket_seconds,
@@ -104,7 +103,13 @@ impl AnalyticsApplication {
             ));
         }
 
-        Ok(build_result(request, metric, bucket_seconds, source, data))
+        Ok(build_result(
+            request,
+            metric,
+            bucket_seconds,
+            data.source,
+            data,
+        ))
     }
 }
 
@@ -125,8 +130,8 @@ fn storage_bound(value: NaiveDateTime) -> Result<NaiveDateTime, ApplicationError
 fn resolve_metric(
     selector: AnalyticsMetricSelector,
     revisions: Vec<AnalyticsBlueprintRevision>,
-) -> Result<AnalyticsMetric, ApplicationError> {
-    metrics_from_blueprints(revisions)?
+) -> Result<(AnalyticsMetric, Vec<String>), ApplicationError> {
+    let metric = metrics_from_blueprints(revisions.clone())?
         .into_iter()
         .find(|metric| metric.selector == selector)
         .ok_or_else(|| {
@@ -134,48 +139,48 @@ fn resolve_metric(
                 "Analytics metric is not a numeric field in the selected published blueprint"
                     .to_string(),
             )
-        })
+        })?;
+    let mut compatible_revision_ids = Vec::new();
+    for revision in revisions {
+        let revision_id = revision.revision_id.clone();
+        if metrics_from_revision(revision)?
+            .into_iter()
+            .any(|candidate| {
+                candidate.selector == selector
+                    && candidate.value_type == metric.value_type
+                    && candidate.unit == metric.unit
+                    && {
+                        let mut declared = candidate.aggregates;
+                        let mut selected = metric.aggregates.clone();
+                        declared.sort();
+                        selected.sort();
+                        declared == selected
+                    }
+            })
+        {
+            compatible_revision_ids.push(revision_id);
+        }
+    }
+    compatible_revision_ids.sort();
+    Ok((metric, compatible_revision_ids))
 }
 
 fn metrics_from_blueprints(
     revisions: Vec<AnalyticsBlueprintRevision>,
 ) -> Result<Vec<AnalyticsMetric>, ApplicationError> {
-    let mut metrics = Vec::new();
+    let mut latest = HashMap::<String, AnalyticsBlueprintRevision>::new();
     for revision in revisions {
-        let blueprint: DeviceBlueprint =
-            serde_json::from_value(revision.document).map_err(|error| {
-                ApplicationError::Internal(format!(
-                    "stored blueprint revision '{}' is invalid: {error}",
-                    revision.revision_id
-                ))
-            })?;
-        for stream in blueprint.spec.streams {
-            for field in stream.fields {
-                if !field.value_type.is_numeric() {
-                    continue;
-                }
-                metrics.push(AnalyticsMetric {
-                    selector: AnalyticsMetricSelector {
-                        blueprint_id: revision.blueprint_id.clone(),
-                        stream_key: stream.key.clone(),
-                        field_path: field.path,
-                    },
-                    blueprint_key: revision.blueprint_key.clone(),
-                    blueprint_name: revision.blueprint_name.clone(),
-                    label: field.label,
-                    unit: field.unit,
-                    value_type: metric_value_type(field.value_type).to_string(),
-                    aggregates: field
-                        .aggregates
-                        .into_iter()
-                        .map(|aggregate| aggregate_name(aggregate).to_string())
-                        .collect(),
-                    precision: field
-                        .presentation
-                        .and_then(|presentation| presentation.precision),
-                });
-            }
+        let key = revision.blueprint_id.clone();
+        if latest
+            .get(&key)
+            .is_none_or(|current| revision.revision > current.revision)
+        {
+            latest.insert(key, revision);
         }
+    }
+    let mut metrics = Vec::new();
+    for revision in latest.into_values() {
+        metrics.extend(metrics_from_revision(revision)?);
     }
     metrics.sort_by(|left, right| {
         left.blueprint_name
@@ -183,6 +188,47 @@ fn metrics_from_blueprints(
             .then_with(|| left.label.cmp(&right.label))
             .then_with(|| left.key().cmp(&right.key()))
     });
+    Ok(metrics)
+}
+
+fn metrics_from_revision(
+    revision: AnalyticsBlueprintRevision,
+) -> Result<Vec<AnalyticsMetric>, ApplicationError> {
+    let blueprint: DeviceBlueprint =
+        serde_json::from_value(revision.document).map_err(|error| {
+            ApplicationError::Internal(format!(
+                "stored blueprint revision '{}' is invalid: {error}",
+                revision.revision_id
+            ))
+        })?;
+    let mut metrics = Vec::new();
+    for stream in blueprint.spec.streams {
+        for field in stream.fields {
+            if !field.value_type.is_numeric() {
+                continue;
+            }
+            metrics.push(AnalyticsMetric {
+                selector: AnalyticsMetricSelector {
+                    blueprint_id: revision.blueprint_id.clone(),
+                    stream_key: stream.key.clone(),
+                    field_path: field.path,
+                },
+                blueprint_key: revision.blueprint_key.clone(),
+                blueprint_name: revision.blueprint_name.clone(),
+                label: field.label,
+                unit: field.unit,
+                value_type: metric_value_type(field.value_type).to_string(),
+                aggregates: field
+                    .aggregates
+                    .into_iter()
+                    .map(|aggregate| aggregate_name(aggregate).to_string())
+                    .collect(),
+                precision: field
+                    .presentation
+                    .and_then(|presentation| presentation.precision),
+            });
+        }
+    }
     Ok(metrics)
 }
 
@@ -608,6 +654,52 @@ mod tests {
         assert_eq!(metrics[0].key(), "electrical./phase_a/voltage");
         assert_eq!(metrics[0].unit.as_deref(), Some("V"));
         assert_eq!(metrics[0].precision, Some(2));
+    }
+
+    #[test]
+    fn historical_revision_selection_excludes_changed_units_and_value_types() {
+        let revision = |number, value_type: &str, unit: &str| AnalyticsBlueprintRevision {
+            blueprint_id: "meter".into(),
+            blueprint_key: "meter".into(),
+            blueprint_name: "Meter".into(),
+            revision_id: format!("revision-{number}"),
+            revision: number,
+            document: serde_json::json!({
+                "apiVersion": "extrittio.io/v1alpha1",
+                "kind": "DeviceBlueprint",
+                "metadata": {"key": "meter", "name": "Meter"},
+                "spec": {
+                    "runtime": {
+                        "minimumContractApi": 1,
+                        "heartbeat": {"interval": "30s", "offlineAfter": "95s"},
+                        "limits": {"maxMessageBytes": 8192, "maxMessagesPerMinute": 120}
+                    },
+                    "streams": [{"key": "readings", "route": "measurements", "fields": [{
+                        "path": "/value", "type": value_type, "label": "Value",
+                        "unit": unit, "aggregates": ["min", "max", "avg"]
+                    }]}]
+                }
+            }),
+        };
+        let revisions = vec![
+            revision(1, "float64", "V"),
+            revision(2, "float64", "A"),
+            revision(3, "int64", "V"),
+            revision(4, "float64", "V"),
+        ];
+        assert_eq!(metrics_from_blueprints(revisions.clone()).unwrap().len(), 1);
+        let (metric, compatible) = resolve_metric(
+            AnalyticsMetricSelector {
+                blueprint_id: "meter".into(),
+                stream_key: "readings".into(),
+                field_path: "/value".into(),
+            },
+            revisions,
+        )
+        .unwrap();
+        assert_eq!(metric.unit.as_deref(), Some("V"));
+        assert_eq!(metric.value_type, "float64");
+        assert_eq!(compatible, ["revision-1", "revision-4"]);
     }
 
     #[test]

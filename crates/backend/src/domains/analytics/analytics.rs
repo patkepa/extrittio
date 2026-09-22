@@ -315,6 +315,9 @@ impl From<AnalyticsResult> for AnalyticsQueryResponse {
                 bucket_seconds: result.bucket_seconds,
                 source: match result.source {
                     AnalyticsDataSource::BlueprintMetricSamples => "blueprint_metric_samples",
+                    AnalyticsDataSource::BlueprintMetricSamplesAndRollups => {
+                        "blueprint_metric_samples_and_rollups"
+                    }
                 }
                 .to_string(),
                 weighting: match result.weighting {

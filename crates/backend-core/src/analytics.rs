@@ -1,6 +1,6 @@
 use crate::{PersistenceError, TenantId};
 use async_trait::async_trait;
-use chrono::NaiveDateTime;
+use chrono::{DateTime, NaiveDateTime};
 use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,6 +62,7 @@ pub enum AnalyticsWeighting {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AnalyticsDataSource {
     BlueprintMetricSamples,
+    BlueprintMetricSamplesAndRollups,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -80,11 +81,42 @@ pub struct AnalyticsRequest {
 pub struct AnalyticsQuery {
     pub scope: AnalyticsScope,
     pub metric: AnalyticsMetric,
+    /// Published revisions whose exact field declaration matches the selected
+    /// metric's type, unit and aggregate semantics.
+    pub compatible_revision_ids: Vec<String>,
     pub start: NaiveDateTime,
     pub end: NaiveDateTime,
     pub bucket_seconds: i64,
     pub max_devices: usize,
     pub max_rows: usize,
+}
+
+/// Full UTC hours entirely inside [start, end) and before the current hour.
+/// Partial and current hours must be read from raw samples.
+#[must_use]
+pub fn full_hour_rollup_window(
+    start: NaiveDateTime,
+    end: NaiveDateTime,
+    now: NaiveDateTime,
+) -> Option<(NaiveDateTime, NaiveDateTime)> {
+    const HOUR_MICROS: i64 = 3_600_000_000;
+    let start_us = start.and_utc().timestamp_micros();
+    let end_us = end
+        .and_utc()
+        .timestamp_micros()
+        .min(now.and_utc().timestamp_micros());
+    let first = start_us
+        .div_euclid(HOUR_MICROS)
+        .checked_add(i64::from(start_us.rem_euclid(HOUR_MICROS) != 0))?
+        .checked_mul(HOUR_MICROS)?;
+    let last = end_us.div_euclid(HOUR_MICROS).checked_mul(HOUR_MICROS)?;
+    if first >= last {
+        return None;
+    }
+    Some((
+        DateTime::from_timestamp_micros(first)?.naive_utc(),
+        DateTime::from_timestamp_micros(last)?.naive_utc(),
+    ))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -107,6 +139,7 @@ pub struct AnalyticsBucket {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AnalyticsQueryData {
+    pub source: AnalyticsDataSource,
     pub selected_devices: usize,
     pub compatible_devices: usize,
     pub devices: Vec<AnalyticsDevice>,
@@ -180,6 +213,8 @@ pub struct AnalyticsResult {
 
 #[async_trait]
 pub trait AnalyticsRepository: Send + Sync {
+    /// Returns every published revision, including historical revisions needed
+    /// to validate the semantics of stored samples and rollups.
     async fn blueprint_catalog(
         &self,
         tenant: &TenantId,
@@ -195,4 +230,26 @@ pub trait AnalyticsRepository: Send + Sync {
         tenant: &TenantId,
         query: AnalyticsQuery,
     ) -> Result<AnalyticsQueryData, PersistenceError>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rollup_window_excludes_partial_and_current_hours() {
+        let at = |seconds| DateTime::from_timestamp(seconds, 0).unwrap().naive_utc();
+        assert_eq!(
+            full_hour_rollup_window(at(1), at(4 * 3_600 + 1), at(4 * 3_600 + 30)),
+            Some((at(3_600), at(4 * 3_600)))
+        );
+        assert_eq!(
+            full_hour_rollup_window(at(3_600), at(7_200), at(5_000)),
+            None
+        );
+        assert_eq!(
+            full_hour_rollup_window(at(-3_600), at(3_600), at(7_200)),
+            Some((at(-3_600), at(3_600)))
+        );
+    }
 }

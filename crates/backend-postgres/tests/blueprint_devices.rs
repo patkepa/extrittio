@@ -385,6 +385,7 @@ async fn postgres_blueprint_device_and_ci_contracts_when_configured() {
             aggregates: vec!["average".into()],
             precision: None,
         },
+        compatible_revision_ids: vec![revision_a.clone()],
         start: bucket_start,
         end: bucket_start + Duration::minutes(1),
         bucket_seconds: 60,
@@ -754,6 +755,85 @@ async fn postgres_rollups_order_late_events_and_ties() {
     assert_eq!(rollup.latest_value, 3.0);
     assert_eq!(rollup.latest_at, timestamp(30));
     assert_eq!(rollup.latest_event_id, format!("z-{suffix}"));
+    let analytics = PostgresAnalyticsRepository::from_pool(pool.clone());
+    let query = AnalyticsQuery {
+        scope: AnalyticsScope {
+            device_ids: vec![device_id.clone()],
+            ..Default::default()
+        },
+        metric: AnalyticsMetric {
+            selector: AnalyticsMetricSelector {
+                blueprint_id: format!("{tenant_id}-blueprint"),
+                stream_key: "readings".into(),
+                field_path: "/value".into(),
+            },
+            blueprint_key: "test-blueprint".into(),
+            blueprint_name: "Test Blueprint".into(),
+            label: "Value".into(),
+            unit: None,
+            value_type: "float64".into(),
+            aggregates: vec!["average".into()],
+            precision: None,
+        },
+        compatible_revision_ids: vec![revision_id],
+        start: timestamp(0).naive_utc(),
+        end: timestamp(3_600).naive_utc(),
+        bucket_seconds: 3_600,
+        max_devices: 10,
+        max_rows: 10,
+    };
+    let before = analytics.query(&tenant, query.clone()).await.unwrap();
+    assert_eq!(
+        before.source,
+        extrittio_backend_core::analytics::AnalyticsDataSource::BlueprintMetricSamplesAndRollups
+    );
+    assert_eq!(before.buckets.len(), 1);
+    assert_eq!(before.buckets[0].sample_count, 3);
+    assert_eq!(before.buckets[0].average, 3.0);
+    assert_eq!(before.buckets[0].latest, 3.0);
+    diesel::sql_query("DELETE FROM device_events WHERE tenant_id = $1 AND device_id = $2")
+        .bind::<Text, _>(&tenant_id)
+        .bind::<Text, _>(&device_id)
+        .execute(&mut pool.get().unwrap())
+        .unwrap();
+    let after = analytics.query(&tenant, query.clone()).await.unwrap();
+    assert_eq!(after.buckets, before.buckets);
+    {
+        let mut connection = pool.get().unwrap();
+        diesel::sql_query(
+            "INSERT INTO device_blueprint_revisions
+             (id, tenant_id, blueprint_id, revision, document, document_hash, compatibility)
+             VALUES ($1, $2, $3, 2, '{}', repeat('d', 64), '{}')",
+        )
+        .bind::<Text, _>(format!("new-revision-{suffix}"))
+        .bind::<Text, _>(&tenant_id)
+        .bind::<Text, _>(format!("{tenant_id}-blueprint"))
+        .execute(&mut connection)
+        .unwrap();
+        diesel::sql_query(
+            "INSERT INTO device_contracts
+             (id, tenant_id, device_id, blueprint_revision_id, document, contract_hash)
+             VALUES ($1, $2, $3, $4, '{}', repeat('e', 64))",
+        )
+        .bind::<Text, _>(format!("new-contract-{suffix}"))
+        .bind::<Text, _>(&tenant_id)
+        .bind::<Text, _>(&device_id)
+        .bind::<Text, _>(format!("new-revision-{suffix}"))
+        .execute(&mut connection)
+        .unwrap();
+        diesel::sql_query(
+            "UPDATE device_contract_assignments SET desired_contract_id = $1
+             WHERE tenant_id = $2 AND device_id = $3",
+        )
+        .bind::<Text, _>(format!("new-contract-{suffix}"))
+        .bind::<Text, _>(&tenant_id)
+        .bind::<Text, _>(&device_id)
+        .execute(&mut connection)
+        .unwrap();
+    }
+    let historical = analytics.query(&tenant, query).await.unwrap();
+    assert_eq!(historical.compatible_devices, 1);
+    assert_eq!(historical.buckets, before.buckets);
 }
 
 #[tokio::test]
