@@ -25,7 +25,7 @@ export function formatExternalTooltip(node: GraphNode): string {
   if (!connection) return '';
 
   const rows = [
-    ['Type', connection.device_type ?? node.deviceTypeName],
+    ['Type', connection.device_type ?? node.visualName],
     ['Connection', connection.connection_type],
     ['Status', connection.status],
     ['Address', connection.address],

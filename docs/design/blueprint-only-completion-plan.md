@@ -106,7 +106,7 @@ work without reserved sensor names or fabricated zero values.
   their backend contracts are settled. The rule metric picker now emits exact
   stream/JSON-pointer keys; the public condition DTO and contract-aware rule
   validation still need structured selector work.
-- [ ] Review graph `deviceType*` presentation names and declared-connection type
+- [x] Review graph `deviceType*` presentation names and declared-connection type
   descriptors. Remove retired model assumptions; distinguish legitimate external
   connection metadata from managed-device identity before changing it.
 - [ ] Run browser checks for provisioning, detail/history, analytics, rules,

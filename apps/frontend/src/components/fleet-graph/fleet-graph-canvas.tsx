@@ -125,7 +125,7 @@ export const FleetGraphCanvas = memo(
       let cancelled = false;
       const icons = new Set<string>([DEFAULT_DEVICE_TYPE_ICON]);
       for (const node of graphData.nodes) {
-        icons.add(normalizeIconName(node.deviceTypeIcon));
+        icons.add(normalizeIconName(node.visualIcon));
       }
 
       void Promise.all(Array.from(icons, (icon) => loadIconPaths(icon)))

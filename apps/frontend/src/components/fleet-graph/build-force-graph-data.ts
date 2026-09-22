@@ -15,9 +15,9 @@ export interface GraphNode {
   /** Generic metadata rows used by other topology views reusing this canvas. */
   details?: Array<{ label: string; value: string }>;
   status?: string;
-  deviceTypeName?: string;
-  deviceTypeIcon?: string;
-  deviceTypeColor?: string;
+  visualName?: string;
+  visualIcon?: string;
+  visualColor?: string;
   /** Centers the initial viewport on this node instead of fitting every node. */
   initialViewportAnchor?: boolean;
   // Health data (computed from last_seen_at / uptime_seconds)
@@ -93,7 +93,7 @@ const CONNECTION_TYPE_VISUALS: Array<[string[], { icon: string; color: string }]
   [['host', 'ip'], { icon: 'ip-address', color: EXTERNAL_COLOR }],
 ];
 
-function normalizeDeviceTypeKey(value?: string | null): string {
+function normalizeConnectionSearchKey(value?: string | null): string {
   return value?.trim().toLowerCase().replaceAll('-', '_') ?? '';
 }
 
@@ -107,7 +107,7 @@ function getConnectionSearchText(
     connection.source,
     connection.external_id,
   ]
-    .map(normalizeDeviceTypeKey)
+    .map(normalizeConnectionSearchKey)
     .filter(Boolean)
     .join(' ');
 }
@@ -326,9 +326,9 @@ export function buildForceGraphData(
       color: STATUS_COLORS[device.status] ?? DEFAULT_COLOR,
       device,
       status: device.status,
-      deviceTypeName: device.blueprint_name,
-      deviceTypeIcon: device.blueprint_icon ?? undefined,
-      deviceTypeColor: device.blueprint_color ?? undefined,
+      visualName: device.blueprint_name,
+      visualIcon: device.blueprint_icon ?? undefined,
+      visualColor: device.blueprint_color ?? undefined,
       lastSeenTimestamp,
       uptimeSeconds,
       uptimeArcAngle: getUptimeArcAngle(uptimeSeconds),
@@ -375,7 +375,7 @@ export function buildForceGraphData(
         if (!nodeMap.has(targetNodeId)) {
           const prev = prevNodeMap.get(targetNodeId);
           const sourceLayout = deviceLayoutById.get(device.id);
-          const deviceTypeName = connection.device_type ?? connection.connection_type;
+          const visualName = connection.device_type ?? connection.connection_type;
           const visual = getConnectionVisual(connection);
           const node: GraphNode = {
             ...prev,
@@ -386,9 +386,9 @@ export function buildForceGraphData(
             color: STATUS_COLORS[connection.status ?? ''] ?? EXTERNAL_COLOR,
             connection,
             status: connection.status ?? 'external',
-            deviceTypeName,
-            deviceTypeIcon: visual.icon,
-            deviceTypeColor: visual.color,
+            visualName,
+            visualIcon: visual.icon,
+            visualColor: visual.color,
             neighbors: [],
             links: [],
             layoutX: sourceLayout ? sourceLayout.x + 72 : undefined,
