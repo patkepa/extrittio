@@ -10,6 +10,9 @@ desired and reported state, remote commands, firmware deployments, rules,
 alerts, audit events, and operational metrics. Devices communicate over Zenoh,
 and the HTTP API is defined in [`api/openapi.json`](api/openapi.json).
 
+
+
+**CAUTION:** It's still work in progress!
 ## Runtime options
 
 | Runtime | Storage | Use case |
