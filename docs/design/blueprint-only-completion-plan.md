@@ -252,8 +252,18 @@ evidence all pass. Existing unit tests do not substitute for browser checks.
   first event and alerted after the next event; a two-minute-old outside event
   did not resolve either active alert. The asset tracker example now declares
   its coordinate stream as a location source, and its contract suite passes
-  (9 unit and 7 integration tests). PostgreSQL host and durable external action
-  verification remain open.
+  (9 unit and 7 integration tests). Durable external action verification remains
+  open.
+- The first fresh PostgreSQL host run exposed a baseline `rules_trigger_type_check`
+  that rejected geofence rules although the API and Turso accepted them. The
+  clean baseline now includes `geofence`; a real PostgreSQL rule round-trip
+  regression passes on a new database. A second fresh PostgreSQL host published
+  the asset tracker blueprint, provisioned a device, created the same geofence
+  rule and ingested contract events through Zenoh. A stale event produced typed
+  samples but no location or alert; a fresh event yielded a location with
+  contract provenance and one zone entry alert. Eight typed samples were
+  returned across the two events. PostgreSQL API analytics, firmware/OTA and
+  wider revision/rule flows remain open.
 
 ## Deferred scope
 

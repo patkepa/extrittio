@@ -490,7 +490,7 @@ CREATE TABLE public.rules (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     tenant_id text DEFAULT 'default'::text NOT NULL,
     CONSTRAINT rules_target_type_check CHECK ((target_type = ANY (ARRAY['global'::text, 'blueprint'::text, 'fleet'::text, 'device'::text]))),
-    CONSTRAINT rules_trigger_type_check CHECK ((trigger_type = ANY (ARRAY['telemetry'::text, 'device_status'::text])))
+    CONSTRAINT rules_trigger_type_check CHECK ((trigger_type = ANY (ARRAY['telemetry'::text, 'device_status'::text, 'geofence'::text])))
 );
 
 CREATE TABLE public.server_config (

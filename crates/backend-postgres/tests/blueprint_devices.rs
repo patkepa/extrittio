@@ -143,6 +143,84 @@ async fn postgres_rule_selector_round_trips_on_fresh_baseline() {
     );
 }
 
+#[tokio::test]
+async fn postgres_geofence_rule_round_trips_on_fresh_baseline() {
+    let Ok(url) = std::env::var("DATABASE_URL") else {
+        eprintln!("skipping PostgreSQL geofence rule: DATABASE_URL is not set");
+        return;
+    };
+    let pool = Pool::builder()
+        .max_size(3)
+        .build(ConnectionManager::<PgConnection>::new(url))
+        .expect("connect to disposable PostgreSQL database");
+    migrate_once(&pool);
+    let suffix = Uuid::new_v4().simple().to_string();
+    let tenant_id = format!("geofence-{suffix}");
+    let zone_id = format!("zone-{suffix}");
+    {
+        let mut connection = pool.get().unwrap();
+        diesel::sql_query("INSERT INTO organizations(id,name) VALUES($1,$1)")
+            .bind::<Text, _>(&tenant_id)
+            .execute(&mut connection)
+            .unwrap();
+        diesel::sql_query(
+            "INSERT INTO zones(id,tenant_id,name,geometry_type,geometry_json) \
+             VALUES($1,$2,'Test zone','circle',$3)",
+        )
+        .bind::<Text, _>(&zone_id)
+        .bind::<Text, _>(&tenant_id)
+        .bind::<Jsonb, _>(json!({"center":[50,20],"radius_meters":1000}))
+        .execute(&mut connection)
+        .unwrap();
+    }
+    let repository = PostgresRuleRepository::from_pool(pool);
+    let tenant = TenantId::new(tenant_id).unwrap();
+    let id = format!("geofence-rule-{suffix}");
+    let created = repository
+        .create(
+            &tenant,
+            NewRuleRecord {
+                id: id.clone(),
+                name: "Inside zone".into(),
+                description: None,
+                trigger_type: "geofence".into(),
+                target_type: "global".into(),
+                target_id: None,
+                cooldown_seconds: 0,
+                conditions: vec![RuleConditionRecord {
+                    id: format!("geofence-condition-{suffix}"),
+                    field: "zone_state".into(),
+                    blueprint_id: None,
+                    blueprint_revision_id: None,
+                    operator: "eq".into(),
+                    value: "inside".into(),
+                    condition_group: 0,
+                    zone_id: Some(zone_id.clone()),
+                }],
+                actions: vec![RuleActionRecord {
+                    id: format!("geofence-action-{suffix}"),
+                    action_type: "alert".into(),
+                    config: json!({}),
+                }],
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(created.rule.trigger_type, "geofence");
+    assert_eq!(
+        created.conditions[0].zone_id.as_deref(),
+        Some(zone_id.as_str())
+    );
+    let snapshot = repository.load_snapshot().await.unwrap();
+    let cached = snapshot.rules.iter().find(|rule| rule.id == id).unwrap();
+    assert_eq!(cached.trigger_type, "geofence");
+    assert_eq!(
+        cached.conditions[0].zone_id.as_deref(),
+        Some(zone_id.as_str())
+    );
+    assert!(snapshot.zones.contains_key(&zone_id));
+}
+
 fn migrate_once(pool: &Pool<ConnectionManager<PgConnection>>) {
     BASELINE_READY.get_or_init(|| {
         run_pending_migrations(&mut pool.get().unwrap()).unwrap();
