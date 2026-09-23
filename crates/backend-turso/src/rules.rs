@@ -338,9 +338,10 @@ mod selector_tests {
     async fn fresh_database_preserves_metric_selector_identity_and_tenant_scope() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("rules.db");
-        let database = crate::TursoDatabase::open_and_migrate(
-            directory.path(), &path, Duration::from_secs(1),
-        ).await.unwrap();
+        let database =
+            crate::TursoDatabase::open_and_migrate(directory.path(), &path, Duration::from_secs(1))
+                .await
+                .unwrap();
         let handles = database.shared_handles();
         handles.lock_writer().await.execute(
             "INSERT INTO organizations(id,name,created_at,updated_at) VALUES('tenant-a','Tenant A',0,0),('tenant-b','Tenant B',0,0)",
@@ -348,27 +349,58 @@ mod selector_tests {
         ).await.unwrap();
         let repository = TursoRuleRepository::from_handles(handles);
         let tenant = TenantId::new("tenant-a").unwrap();
-        let created = repository.create(&tenant, NewRuleRecord {
-            id: "rule-a".into(), name: "Counter".into(), description: None,
-            trigger_type: "telemetry".into(), target_type: "global".into(), target_id: None,
-            cooldown_seconds: 0,
-            conditions: vec![RuleConditionRecord {
-                id: "condition-a".into(), field: "machine.v2./a~1b/count".into(),
-                blueprint_id: Some("blueprint-a".into()),
-                blueprint_revision_id: Some("revision-a".into()),
-                operator: "gte".into(), value: "9007199254740993".into(),
-                condition_group: 0, zone_id: None,
-            }],
-            actions: vec![RuleActionRecord {
-                id: "action-a".into(), action_type: "alert".into(),
-                config: serde_json::json!({}),
-            }],
-        }).await.unwrap();
-        assert_eq!(created.conditions[0].blueprint_revision_id.as_deref(), Some("revision-a"));
+        let created = repository
+            .create(
+                &tenant,
+                NewRuleRecord {
+                    id: "rule-a".into(),
+                    name: "Counter".into(),
+                    description: None,
+                    trigger_type: "telemetry".into(),
+                    target_type: "global".into(),
+                    target_id: None,
+                    cooldown_seconds: 0,
+                    conditions: vec![RuleConditionRecord {
+                        id: "condition-a".into(),
+                        field: "machine.v2./a~1b/count".into(),
+                        blueprint_id: Some("blueprint-a".into()),
+                        blueprint_revision_id: Some("revision-a".into()),
+                        operator: "gte".into(),
+                        value: "9007199254740993".into(),
+                        condition_group: 0,
+                        zone_id: None,
+                    }],
+                    actions: vec![RuleActionRecord {
+                        id: "action-a".into(),
+                        action_type: "alert".into(),
+                        config: serde_json::json!({}),
+                    }],
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            created.conditions[0].blueprint_revision_id.as_deref(),
+            Some("revision-a")
+        );
         assert_eq!(created.conditions[0].field, "machine.v2./a~1b/count");
-        assert!(repository.get(&TenantId::new("tenant-b").unwrap(), "rule-a").await.unwrap().is_none());
+        assert!(
+            repository
+                .get(&TenantId::new("tenant-b").unwrap(), "rule-a")
+                .await
+                .unwrap()
+                .is_none()
+        );
         let snapshot = repository.load_snapshot().await.unwrap();
-        assert_eq!(snapshot.rules[0].conditions[0].blueprint_id.as_deref(), Some("blueprint-a"));
-        assert_eq!(snapshot.rules[0].conditions[0].blueprint_revision_id.as_deref(), Some("revision-a"));
+        assert_eq!(
+            snapshot.rules[0].conditions[0].blueprint_id.as_deref(),
+            Some("blueprint-a")
+        );
+        assert_eq!(
+            snapshot.rules[0].conditions[0]
+                .blueprint_revision_id
+                .as_deref(),
+            Some("revision-a")
+        );
     }
 }

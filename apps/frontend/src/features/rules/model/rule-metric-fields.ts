@@ -3,6 +3,7 @@ import type { DeviceBlueprintRevision, DeviceContract } from '../../../types/api
 export interface RuleMetricFieldOption {
   value: string;
   label: string;
+  route?: string;
   blueprint_id?: string;
   blueprint_revision_id?: string;
 }
@@ -16,6 +17,7 @@ interface BlueprintField {
 
 interface BlueprintStream {
   key?: string;
+  route?: string;
   fields?: BlueprintField[];
 }
 
@@ -33,6 +35,7 @@ interface ContractField {
 }
 
 interface ContractStream {
+  route?: string;
   fields?: Record<string, ContractField>;
 }
 
@@ -78,6 +81,7 @@ function option(
   path: string,
   label: string | undefined,
   semantic: string | undefined,
+  route?: string,
   blueprintId?: string,
   revisionId?: string,
 ): RuleMetricFieldOption {
@@ -86,6 +90,7 @@ function option(
   return {
     value,
     label: semantic ? `${displayLabel} · ${semantic}` : displayLabel,
+    ...(route && { route }),
     blueprint_id: blueprintId,
     blueprint_revision_id: revisionId,
   };
@@ -105,6 +110,7 @@ export function blueprintRuleMetricFields(
           field.path!,
           field.label,
           field.semantic,
+          stream.route,
           revision?.blueprint_id,
           revision?.id,
         ),
@@ -126,6 +132,7 @@ export function contractRuleMetricFields(
           path,
           field.label,
           field.semantic,
+          stream.route,
           blueprintId,
           contract?.blueprint_revision_id,
         ),

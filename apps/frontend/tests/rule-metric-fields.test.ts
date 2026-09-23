@@ -18,6 +18,7 @@ test('derives numeric rule fields from a blueprint without fixed sensor names', 
         streams: [
           {
             key: 'air',
+            route: 'air-events',
             fields: [
               {
                 path: '/particles/pm25',
@@ -38,6 +39,7 @@ test('derives numeric rule fields from a blueprint without fixed sensor names', 
     {
       value: 'air./particles/pm25',
       label: 'PM2.5 · particulate_matter_2_5',
+      route: 'air-events',
       blueprint_id: 'blueprint-a',
       blueprint_revision_id: 'revision-a',
     },
@@ -53,6 +55,7 @@ test('derives the same canonical rule field from a compiled device contract', ()
     document: {
       streams: {
         air: {
+          route: 'air-events',
           fields: {
             '/particles/pm25': {
               valueType: 'float64',
@@ -69,6 +72,7 @@ test('derives the same canonical rule field from a compiled device contract', ()
     {
       value: 'air./particles/pm25',
       label: 'PM2.5',
+      route: 'air-events',
       blueprint_id: 'blueprint-b',
       blueprint_revision_id: 'revision-b',
     },

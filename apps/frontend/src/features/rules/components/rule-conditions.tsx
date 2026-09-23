@@ -1,5 +1,6 @@
 import { Button, HTMLSelect, InputGroup } from '@blueprintjs/core';
 import type { ConditionRow } from '../model/rule-form';
+import type { RuleMetricFieldOption } from '../model/rule-metric-fields';
 
 const STATUS_FIELDS = [{ value: 'status', label: 'Status' }];
 
@@ -31,7 +32,7 @@ const STATUS_VALUES = ['online', 'offline', 'warning'];
 interface Props {
   conditions: ConditionRow[];
   triggerType: string;
-  telemetryFields: { value: string; label: string }[];
+  telemetryFields: RuleMetricFieldOption[];
   zones: { id: string; name: string }[];
   updateCondition: (index: number, field: keyof ConditionRow, value: string) => void;
   addCondition: () => void;
@@ -46,6 +47,12 @@ export function RuleConditions({
   addCondition,
   removeCondition,
 }: Props) {
+  const selectedRoute = conditions
+    .map((condition) => telemetryFields.find((field) => field.value === condition.field)?.route)
+    .find((route) => route !== undefined);
+  const availableMetrics = selectedRoute
+    ? telemetryFields.filter((field) => field.route === selectedRoute)
+    : telemetryFields;
   return (
     <div style={{ marginBottom: 16 }}>
       <div
@@ -160,7 +167,7 @@ export function RuleConditions({
         }
 
         // Telemetry / device_status conditions (original layout)
-        const fields = triggerType === 'device_status' ? STATUS_FIELDS : telemetryFields;
+        const fields = triggerType === 'device_status' ? STATUS_FIELDS : availableMetrics;
         const operators = triggerType === 'device_status' ? STATUS_OPERATORS : NUMERIC_OPERATORS;
         const isStatusField = cond.field === 'status';
 

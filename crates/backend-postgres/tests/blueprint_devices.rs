@@ -24,11 +24,14 @@ use extrittio_backend_core::rule_engine::{cache::RuleCache, types::TelemetryData
 use extrittio_backend_core::rule_snapshots::{
     DeviceRuleEvaluation, RuleEvaluationInput, RuleEvaluationSnapshot,
 };
-use extrittio_backend_core::rules::{NewRuleRecord, RuleActionRecord, RuleConditionRecord, RuleRepository};
+use extrittio_backend_core::rules::{
+    NewRuleRecord, RuleActionRecord, RuleConditionRecord, RuleRepository,
+};
 use extrittio_backend_core::{CiIngestOutcome, CiIngestParams, CiIngestRepository};
 use extrittio_backend_postgres::{
     PostgresAnalyticsRepository, PostgresCiIngestRepository, PostgresDeviceRepository,
-    PostgresEventRepository, PostgresFirmwareRepository, PostgresRuleRepository, run_pending_migrations,
+    PostgresEventRepository, PostgresFirmwareRepository, PostgresRuleRepository,
+    run_pending_migrations,
 };
 use serde_json::json;
 use std::sync::{Arc, OnceLock};
@@ -66,7 +69,8 @@ async fn postgres_rule_selector_round_trips_on_fresh_baseline() {
         eprintln!("skipping PostgreSQL rule selector: DATABASE_URL is not set");
         return;
     };
-    let pool = Pool::builder().max_size(3)
+    let pool = Pool::builder()
+        .max_size(3)
         .build(ConnectionManager::<PgConnection>::new(url))
         .expect("connect to disposable PostgreSQL database");
     migrate_once(&pool);
@@ -77,35 +81,66 @@ async fn postgres_rule_selector_round_trips_on_fresh_baseline() {
         let mut connection = pool.get().unwrap();
         for tenant in [&tenant_a, &tenant_b] {
             diesel::sql_query("INSERT INTO organizations(id,name) VALUES($1,$1)")
-                .bind::<Text, _>(tenant).execute(&mut connection).unwrap();
+                .bind::<Text, _>(tenant)
+                .execute(&mut connection)
+                .unwrap();
         }
     }
     let repository = PostgresRuleRepository::from_pool(pool);
     let tenant = TenantId::new(tenant_a).unwrap();
     let id = format!("selector-{suffix}");
-    let created = repository.create(&tenant, NewRuleRecord {
-        id: id.clone(), name: format!("Counter {suffix}"), description: None,
-        trigger_type: "telemetry".into(), target_type: "global".into(), target_id: None,
-        cooldown_seconds: 0,
-        conditions: vec![RuleConditionRecord {
-            id: format!("condition-{suffix}"), field: "machine.v2./a~1b/count".into(),
-            blueprint_id: Some("blueprint-a".into()),
-            blueprint_revision_id: Some("revision-a".into()),
-            operator: "gte".into(), value: "9007199254740993".into(),
-            condition_group: 0, zone_id: None,
-        }],
-        actions: vec![RuleActionRecord {
-            id: format!("action-{suffix}"), action_type: "alert".into(),
-            config: json!({}),
-        }],
-    }).await.unwrap();
+    let created = repository
+        .create(
+            &tenant,
+            NewRuleRecord {
+                id: id.clone(),
+                name: format!("Counter {suffix}"),
+                description: None,
+                trigger_type: "telemetry".into(),
+                target_type: "global".into(),
+                target_id: None,
+                cooldown_seconds: 0,
+                conditions: vec![RuleConditionRecord {
+                    id: format!("condition-{suffix}"),
+                    field: "machine.v2./a~1b/count".into(),
+                    blueprint_id: Some("blueprint-a".into()),
+                    blueprint_revision_id: Some("revision-a".into()),
+                    operator: "gte".into(),
+                    value: "9007199254740993".into(),
+                    condition_group: 0,
+                    zone_id: None,
+                }],
+                actions: vec![RuleActionRecord {
+                    id: format!("action-{suffix}"),
+                    action_type: "alert".into(),
+                    config: json!({}),
+                }],
+            },
+        )
+        .await
+        .unwrap();
     assert_eq!(created.conditions[0].field, "machine.v2./a~1b/count");
-    assert_eq!(created.conditions[0].blueprint_revision_id.as_deref(), Some("revision-a"));
-    assert!(repository.get(&TenantId::new(tenant_b).unwrap(), &id).await.unwrap().is_none());
+    assert_eq!(
+        created.conditions[0].blueprint_revision_id.as_deref(),
+        Some("revision-a")
+    );
+    assert!(
+        repository
+            .get(&TenantId::new(tenant_b).unwrap(), &id)
+            .await
+            .unwrap()
+            .is_none()
+    );
     let snapshot = repository.load_snapshot().await.unwrap();
     let cached = snapshot.rules.iter().find(|rule| rule.id == id).unwrap();
-    assert_eq!(cached.conditions[0].blueprint_id.as_deref(), Some("blueprint-a"));
-    assert_eq!(cached.conditions[0].blueprint_revision_id.as_deref(), Some("revision-a"));
+    assert_eq!(
+        cached.conditions[0].blueprint_id.as_deref(),
+        Some("blueprint-a")
+    );
+    assert_eq!(
+        cached.conditions[0].blueprint_revision_id.as_deref(),
+        Some("revision-a")
+    );
 }
 
 fn migrate_once(pool: &Pool<ConnectionManager<PgConnection>>) {

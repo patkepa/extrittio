@@ -99,6 +99,48 @@ mod metric_validation_tests {
             .is_err()
         );
     }
+
+    #[test]
+    fn multi_stream_conditions_require_one_event_route() {
+        let mut blueprint: extrittio_device_contract::DeviceBlueprint = serde_json::from_str(
+            include_str!("../../../../blueprints/smart-plug.create-request.json"),
+        )
+        .unwrap();
+        let mut auxiliary = blueprint.spec.streams[0].clone();
+        auxiliary.key = "aux".into();
+        auxiliary
+            .fields
+            .retain(|field| field.path == "/voltageVolts");
+        blueprint.spec.streams.push(auxiliary);
+        let power = crate::rule_engine::metric::MetricSelector {
+            stream_key: "power".into(),
+            field_path: "/powerWatts".into(),
+        };
+        let voltage = crate::rule_engine::metric::MetricSelector {
+            stream_key: "aux".into(),
+            field_path: "/voltageVolts".into(),
+        };
+        let mut route = None;
+        assert!(validate_metric_field(&blueprint, &power, "100", &mut route).is_ok());
+        assert!(validate_metric_field(&blueprint, &voltage, "200", &mut route).is_ok());
+        blueprint.spec.streams[1].route = "aux-readings".into();
+        assert!(matches!(
+            validate_metric_field(&blueprint, &voltage, "200", &mut route),
+            Err(ApplicationError::InvalidInput(message)) if message.contains("one event route")
+        ));
+        assert!(
+            validate_metric_field(
+                &blueprint,
+                &crate::rule_engine::metric::MetricSelector {
+                    stream_key: "power".into(),
+                    field_path: "/relayOn".into(),
+                },
+                "1",
+                &mut None
+            )
+            .is_err()
+        );
+    }
 }
 
 fn condition_records(conditions: Vec<RuleConditionInput>) -> Vec<RuleConditionRecord> {
@@ -364,6 +406,7 @@ impl RuleApplication {
             return Ok(());
         }
         let mut shared_revision = None;
+        let mut shared_route: Option<String> = None;
         for condition in conditions {
             let blueprint_id = condition.blueprint_id.as_deref().ok_or_else(|| {
                 ApplicationError::InvalidInput("telemetry selector requires blueprint_id".into())
@@ -404,30 +447,7 @@ impl RuleApplication {
                 .ok_or_else(|| {
                     ApplicationError::InvalidInput("invalid telemetry selector path".into())
                 })?;
-            let field = blueprint
-                .spec
-                .streams
-                .iter()
-                .find(|stream| stream.key == selector.stream_key)
-                .and_then(|stream| {
-                    stream
-                        .fields
-                        .iter()
-                        .find(|field| field.path == selector.field_path)
-                })
-                .filter(|field| field.value_type.is_numeric())
-                .ok_or_else(|| {
-                    ApplicationError::InvalidInput(
-                        "telemetry selector is not a declared numeric field".into(),
-                    )
-                })?;
-            if field.value_type == extrittio_device_contract::FieldValueType::Int64
-                && condition.value.parse::<i64>().is_err()
-            {
-                return Err(ApplicationError::InvalidInput(
-                    "int64 telemetry conditions require an exact integer threshold".into(),
-                ));
-            }
+            validate_metric_field(&blueprint, &selector, &condition.value, &mut shared_route)?;
         }
         Ok(())
     }
@@ -452,6 +472,51 @@ impl RuleApplication {
         }
         Ok(())
     }
+}
+
+fn validate_metric_field(
+    blueprint: &extrittio_device_contract::DeviceBlueprint,
+    selector: &crate::rule_engine::metric::MetricSelector,
+    threshold: &str,
+    shared_route: &mut Option<String>,
+) -> Result<(), ApplicationError> {
+    let stream = blueprint
+        .spec
+        .streams
+        .iter()
+        .find(|stream| stream.key == selector.stream_key)
+        .ok_or_else(|| {
+            ApplicationError::InvalidInput(
+                "telemetry selector is not a declared numeric field".into(),
+            )
+        })?;
+    if shared_route
+        .as_ref()
+        .is_some_and(|route| route != &stream.route)
+    {
+        return Err(ApplicationError::InvalidInput(
+            "telemetry conditions must use streams on one event route".into(),
+        ));
+    }
+    let field = stream
+        .fields
+        .iter()
+        .find(|field| field.path == selector.field_path)
+        .filter(|field| field.value_type.is_numeric())
+        .ok_or_else(|| {
+            ApplicationError::InvalidInput(
+                "telemetry selector is not a declared numeric field".into(),
+            )
+        })?;
+    if field.value_type == extrittio_device_contract::FieldValueType::Int64
+        && threshold.parse::<i64>().is_err()
+    {
+        return Err(ApplicationError::InvalidInput(
+            "int64 telemetry conditions require an exact integer threshold".into(),
+        ));
+    }
+    *shared_route = Some(stream.route.clone());
+    Ok(())
 }
 
 #[allow(

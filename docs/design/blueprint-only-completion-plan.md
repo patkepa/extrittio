@@ -227,6 +227,24 @@ evidence all pass. Existing unit tests do not substitute for browser checks.
 - Firmware/OTA required-revision schema regression passed; OpenAPI/types updated.
 - A disposable PostgreSQL 17 container is available for the current execution
   pass; no existing development database was deleted.
+- On a fresh disposable Edge data directory, the backend API published the
+  smart-plug blueprint (no temperature, battery or location), provisioned a
+  device, and created a structured revision-bound power rule. An undeclared
+  metric returned HTTP 400. A temporary Zenoh producer sent one contract event;
+  the assignment converged, five typed samples appeared with originating
+  revision metadata, analytics returned the 150 W point, and the rule created
+  one alert. Replaying the same event ID left five samples and one alert.
+  This is Turso API/ingress evidence only; PostgreSQL host flow remains open.
+- The in-app Browser runtime reported no available browser sessions during the
+  rendered UI check. Browser QA remains open; no screenshot or interaction
+  evidence was claimed from the passing web build.
+- A second Edge API/Zenoh flow published a two-stream smart-plug blueprint
+  without temperature, battery or location, provisioned a device, and fired a
+  rule requiring exact fields from both streams in the same event route. History
+  returned six typed samples with distinct stream keys. A split-route variant
+  now rejects an impossible cross-route AND rule with HTTP 400; the web picker
+  keeps added conditions on one route. This defines event-scoped multi-stream
+  behavior without silently creating rules that can never fire.
 
 ## Deferred scope
 
