@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useParams, useSearchParams, Navigate, useNavigate } from 'react-router-dom';
 import { Spinner, Callout } from '@blueprintjs/core';
 import { hasRequiredPermissions, type PermissionKey } from '../../../auth/permissions';
-import { useDevice } from '../../../hooks/use-devices';
+import { useDevice, useDeviceContract } from '../../../hooks/use-devices';
+import { locationBinding } from '../../../components/devices/contract-location-model';
 import { DeviceHeader } from '../../../components/devices/device-header';
 import { OverviewTab } from '../../../components/devices/overview-tab';
 import { TelemetryTab } from '../../../components/devices/telemetry-tab';
@@ -43,9 +44,16 @@ export const DeviceDetail = () => {
   const permissions = useAuthStore((s) => s.user?.permissions);
   const [searchParams, setSearchParams] = useSearchParams();
   const { data: device, isLoading, error } = useDevice(deviceId ?? null);
+  const { data: contract } = useDeviceContract(deviceId ?? '', { retry: false });
+  const hasLocationBinding = contract ? Boolean(locationBinding(contract)) : false;
   const visibleTabs = useMemo(
-    () => DEVICE_TABS.filter((tab) => hasRequiredPermissions(permissions, tab.requiredPermissions)),
-    [permissions],
+    () =>
+      DEVICE_TABS.filter(
+        (tab) =>
+          (tab.id !== 'location' || hasLocationBinding) &&
+          hasRequiredPermissions(permissions, tab.requiredPermissions),
+      ),
+    [permissions, hasLocationBinding],
   );
   const visibleTabIds = useMemo(() => visibleTabs.map((tab) => tab.id), [visibleTabs]);
 
