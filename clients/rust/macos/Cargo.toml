@@ -9,6 +9,8 @@ homepage.workspace = true
 publish.workspace = true
 
 [dependencies]
+extrittio-client-runtime = { version = "0.1.0", path = "../runtime" }
+chrono = "0.4"
 extrittio-common = { version = "0.1.0", path = "../../../crates/common" }
 extrittio-sdk = { version = "0.1.0", path = "../sdk", features = ["native-ota"] }
 zenoh = { version = "1", default-features = false, features = ["transport_tcp", "transport_tls"] }

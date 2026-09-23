@@ -52,7 +52,6 @@ pub async fn initialize_state(
             "Embedded Turso database has reached its configured size warning threshold"
         );
     }
-    init::seed_persistence_device_types(&persistence).await?;
     let jwt_secret = init::init_persistence_jwt_secret(&persistence).await?;
     init::seed_persistence_admin_user(&persistence).await?;
     init::init_persistence_ca_certificate(&persistence).await?;

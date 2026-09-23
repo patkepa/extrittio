@@ -33,8 +33,6 @@ pub struct RuleDefinitions {
     pub global_rules: Vec<CachedRule>,
     /// Rules scoped to a stable device blueprint across its revisions.
     pub by_blueprint: Vec<CachedRule>,
-    /// Rules scoped to a specific device type (target_type = 'device_type')
-    pub by_device_type: Vec<CachedRule>,
     /// Rules scoped to a specific fleet (target_type = 'fleet')
     pub by_fleet: Vec<CachedRule>,
     /// Rules scoped to a specific device (target_type = 'device')
@@ -76,7 +74,6 @@ impl RuleCache {
         &self,
         tenant_id: &str,
         device_id: &str,
-        device_type_id: &str,
         fleet_id: Option<&str>,
         blueprint_id: Option<&str>,
     ) -> Vec<&CachedRule> {
@@ -84,12 +81,6 @@ impl RuleCache {
 
         for rule in &self.global_rules {
             if rule.tenant_id == tenant_id {
-                applicable.push(rule);
-            }
-        }
-
-        for rule in &self.by_device_type {
-            if rule.tenant_id == tenant_id && rule.target_id.as_deref() == Some(device_type_id) {
                 applicable.push(rule);
             }
         }
@@ -128,7 +119,6 @@ impl RuleCache {
         let bucket: &mut Vec<CachedRule> = match compile_target_type(&rule.target_type) {
             Some(RuleTargetType::Global) => &mut self.global_rules,
             Some(RuleTargetType::Blueprint) => &mut self.by_blueprint,
-            Some(RuleTargetType::DeviceType) => &mut self.by_device_type,
             Some(RuleTargetType::Fleet) => &mut self.by_fleet,
             Some(RuleTargetType::Device) => &mut self.by_device,
             None => return,

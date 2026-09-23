@@ -57,6 +57,8 @@ fn condition_record(condition: RuleCondition) -> RuleConditionRecord {
     RuleConditionRecord {
         id: condition.id,
         field: condition.field,
+        blueprint_id: condition.blueprint_id,
+        blueprint_revision_id: condition.blueprint_revision_id,
         operator: condition.operator,
         value: condition.value,
         condition_group: condition.condition_group,
@@ -95,37 +97,6 @@ fn load_details(
 
 #[async_trait]
 impl RuleRepository for PostgresRuleRepository {
-    async fn apply_legacy_zone_entry(
-        &self,
-        tenant: &TenantId,
-        entry: extrittio_backend_core::rule_snapshots::LegacyZoneEntry,
-    ) -> Result<(), PersistenceError> {
-        let tenant = tenant.as_str().to_owned();
-        self.executor.run(move |connection| {
-            use diesel::prelude::*;
-            use diesel::sql_types::{Text,Timestamptz};
-            connection.transaction(|connection| {
-                use crate::schema::devices;
-                devices::table.filter(devices::tenant_id.eq(&tenant)).filter(devices::id.eq(&entry.device_id))
-                    .for_update().select(devices::id).first::<String>(connection)?;
-                let changed = diesel::sql_query(r#"INSERT INTO rule_zone_handoffs(tenant_id,rule_id,device_id,live_seen,legacy_created_at,legacy_event_id)
-                    VALUES($1,$2,$3,FALSE,$4,$5) ON CONFLICT(tenant_id,rule_id,device_id) DO UPDATE SET legacy_created_at=EXCLUDED.legacy_created_at,legacy_event_id=EXCLUDED.legacy_event_id
-                    WHERE NOT rule_zone_handoffs.live_seen AND (rule_zone_handoffs.legacy_created_at IS NULL OR rule_zone_handoffs.legacy_created_at<$4 OR (rule_zone_handoffs.legacy_created_at=$4 AND rule_zone_handoffs.legacy_event_id COLLATE "C" < $5 COLLATE "C"))"#)
-                    .bind::<Text,_>(&tenant).bind::<Text,_>(&entry.rule_id).bind::<Text,_>(&entry.device_id)
-                    .bind::<Timestamptz,_>(entry.created_at).bind::<Text,_>(&entry.event_id).execute(connection)?;
-                if changed == 0 { return Ok(()); }
-                if let Some(time)=entry.entered_at {
-                    diesel::sql_query("INSERT INTO rule_zone_entries(tenant_id,rule_id,device_id,entered_at) VALUES($1,$2,$3,$4) ON CONFLICT(tenant_id,rule_id,device_id) DO UPDATE SET entered_at=EXCLUDED.entered_at")
-                        .bind::<Text,_>(&tenant).bind::<Text,_>(&entry.rule_id).bind::<Text,_>(&entry.device_id).bind::<Timestamptz,_>(time).execute(connection)?;
-                } else {
-                    diesel::sql_query("DELETE FROM rule_zone_entries WHERE tenant_id=$1 AND rule_id=$2 AND device_id=$3")
-                        .bind::<Text,_>(&tenant).bind::<Text,_>(&entry.rule_id).bind::<Text,_>(&entry.device_id).execute(connection)?;
-                }
-                Ok(())
-            }).map_err(map_diesel_error)
-        }).await
-    }
-
     async fn list(
         &self,
         tenant: &TenantId,
@@ -197,6 +168,8 @@ impl RuleRepository for PostgresRuleRepository {
                                 tenant_id: tenant_id.clone(),
                                 rule_id: record.id.clone(),
                                 field: condition.field,
+                                blueprint_id: condition.blueprint_id,
+                                blueprint_revision_id: condition.blueprint_revision_id,
                                 operator: condition.operator,
                                 value: condition.value,
                                 condition_group: condition.condition_group,
@@ -266,6 +239,8 @@ impl RuleRepository for PostgresRuleRepository {
                                     tenant_id: tenant_id.clone(),
                                     rule_id: id.clone(),
                                     field: condition.field,
+                                    blueprint_id: condition.blueprint_id,
+                                    blueprint_revision_id: condition.blueprint_revision_id,
                                     operator: condition.operator,
                                     value: condition.value,
                                     condition_group: condition.condition_group,
@@ -368,6 +343,8 @@ impl RuleRepository for PostgresRuleRepository {
                                     .into_iter()
                                     .map(|condition| CachedCondition {
                                         field: condition.field,
+                                        blueprint_id: condition.blueprint_id,
+                                        blueprint_revision_id: condition.blueprint_revision_id,
                                         operator: condition.operator,
                                         value: condition.value,
                                         zone_id: condition.zone_id,

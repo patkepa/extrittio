@@ -199,12 +199,21 @@ export const ActivityLogs = () => {
   const [source, setSource] = useState<SourceFilter>('all');
   const [severity, setSeverity] = useState<SeverityFilter>('all');
   const [range, setRange] = useState<RangeFilter>('all');
-  const [since, setSince] = useState<string>();
+  const [rangeAnchor, setRangeAnchor] = useState(() => Date.now());
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [live, setLive] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState<ActivityEvent | null>(null);
   const debouncedSearch = useDebouncedValue(search.trim(), 350);
+
+  useEffect(() => {
+    if (!live || range === 'all') return;
+    const timer = window.setInterval(() => setRangeAnchor(Date.now()), 10_000);
+    return () => window.clearInterval(timer);
+  }, [live, range]);
+
+  const since =
+    range === 'all' ? undefined : new Date(rangeAnchor - RANGE_MILLISECONDS[range]).toISOString();
 
   const params = useMemo<ActivityEventsParams>(
     () => ({
@@ -218,7 +227,9 @@ export const ActivityLogs = () => {
     [debouncedSearch, page, severity, since, source],
   );
 
-  const eventsQuery = useActivityEvents(params, { refetchInterval: live ? 10_000 : false });
+  const eventsQuery = useActivityEvents(params, {
+    refetchInterval: live && range === 'all' ? 10_000 : false,
+  });
   const events = eventsQuery.data?.data ?? [];
   const total = eventsQuery.data?.total ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
@@ -229,7 +240,7 @@ export const ActivityLogs = () => {
     setSource('all');
     setSeverity('all');
     setRange('all');
-    setSince(undefined);
+    setRangeAnchor(Date.now());
     setSearch('');
     setPage(0);
   };
@@ -247,13 +258,19 @@ export const ActivityLogs = () => {
           <Switch
             checked={live}
             label="Live updates"
-            onChange={(event) => setLive(event.currentTarget.checked)}
+            onChange={(event) => {
+              setLive(event.currentTarget.checked);
+              setRangeAnchor(Date.now());
+            }}
           />
           <Tooltip content="Refresh event stream" minimal>
             <Button
               icon="refresh"
               loading={eventsQuery.isFetching}
-              onClick={() => void eventsQuery.refetch()}
+              onClick={() => {
+                if (range === 'all') void eventsQuery.refetch();
+                else setRangeAnchor(Date.now());
+              }}
             >
               Refresh
             </Button>
@@ -288,11 +305,7 @@ export const ActivityLogs = () => {
             onChange={(event) => {
               const nextRange = event.target.value as RangeFilter;
               setRange(nextRange);
-              setSince(
-                nextRange === 'all'
-                  ? undefined
-                  : new Date(Date.now() - RANGE_MILLISECONDS[nextRange]).toISOString(),
-              );
+              setRangeAnchor(Date.now());
               resetPage();
             }}
             options={[

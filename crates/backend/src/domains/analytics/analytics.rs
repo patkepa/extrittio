@@ -66,13 +66,36 @@ fn default_weighting() -> AnalyticsWeightingName {
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AnalyticsScopeRequest {
-    #[serde(default)]
-    pub device_type_ids: Vec<i32>,
     #[serde(default)]
     pub fleet_ids: Vec<i32>,
     #[serde(default)]
     pub device_ids: Vec<String>,
+}
+
+#[cfg(test)]
+mod blueprint_scope_tests {
+    use super::AnalyticsScopeRequest;
+    use serde_json::json;
+
+    #[test]
+    fn analytics_scope_rejects_retired_device_type_filters() {
+        assert!(
+            serde_json::from_value::<AnalyticsScopeRequest>(json!({
+                "device_type_ids": [1]
+            }))
+            .is_err()
+        );
+        let scope: AnalyticsScopeRequest = serde_json::from_value(json!({
+            "fleet_ids": [2], "device_ids": ["device-a"]
+        }))
+        .unwrap();
+        assert_eq!(scope.fleet_ids, vec![2]);
+        assert_eq!(scope.device_ids, vec!["device-a"]);
+        let empty: AnalyticsScopeRequest = serde_json::from_value(json!({})).unwrap();
+        assert!(empty.fleet_ids.is_empty() && empty.device_ids.is_empty());
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
@@ -262,7 +285,6 @@ pub(crate) async fn run_query(
             &ctx.tenant_context(),
             AnalyticsRequest {
                 scope: AnalyticsScope {
-                    device_type_ids: body.scope.device_type_ids,
                     fleet_ids: body.scope.fleet_ids,
                     device_ids: body.scope.device_ids,
                 },
@@ -293,6 +315,9 @@ impl From<AnalyticsResult> for AnalyticsQueryResponse {
                 bucket_seconds: result.bucket_seconds,
                 source: match result.source {
                     AnalyticsDataSource::BlueprintMetricSamples => "blueprint_metric_samples",
+                    AnalyticsDataSource::BlueprintMetricSamplesAndRollups => {
+                        "blueprint_metric_samples_and_rollups"
+                    }
                 }
                 .to_string(),
                 weighting: match result.weighting {

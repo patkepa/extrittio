@@ -247,6 +247,38 @@ pub fn validate_blueprint(blueprint: DeviceBlueprint) -> Result<ValidatedBluepri
         }
     }
 
+    if let Some(location) = &blueprint.spec.location {
+        validate_duration(&location.max_age, "/spec/location/maxAge", &mut issues);
+        if location.latitude_path == location.longitude_path {
+            issues.push(ValidationIssue::new(
+                "/spec/location/longitudePath",
+                "coordinates must reference distinct fields",
+            ));
+        }
+        if let Some(stream) = streams.get(location.stream.as_str()) {
+            for (name, pointer) in [
+                ("latitudePath", &location.latitude_path),
+                ("longitudePath", &location.longitude_path),
+            ] {
+                if !stream
+                    .fields
+                    .iter()
+                    .any(|field| field.path == *pointer && field.value_type.is_numeric())
+                {
+                    issues.push(ValidationIssue::new(
+                        format!("/spec/location/{name}"),
+                        "must reference a declared numeric field in the location stream",
+                    ));
+                }
+            }
+        } else {
+            issues.push(ValidationIssue::new(
+                "/spec/location/stream",
+                "unknown location stream",
+            ));
+        }
+    }
+
     keyed(
         &blueprint.spec.commands,
         |item| item.key.as_str(),

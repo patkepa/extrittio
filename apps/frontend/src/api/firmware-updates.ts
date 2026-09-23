@@ -51,13 +51,6 @@ export async function deleteFirmwareUpdate(id: number): Promise<void> {
   await client.delete(`/firmware-updates/${id}`);
 }
 
-export async function getNextVersion(deviceTypeId: number): Promise<NextVersionResponse> {
-  const { data } = await client.get<NextVersionResponse>(
-    `/firmware-updates/next-version/${deviceTypeId}`,
-  );
-  return data;
-}
-
 export async function getNextBlueprintVersion(revisionId: string): Promise<NextVersionResponse> {
   const { data } = await client.get<NextVersionResponse>(
     `/firmware-updates/next-version/blueprint/${revisionId}`,

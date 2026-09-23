@@ -37,11 +37,10 @@ export const OtaTab = ({ device }: OtaTabProps) => {
     data: firmwareUpdates = [],
     isLoading,
     isError,
-  } = useFirmwareUpdates({
-    ...(contractQuery.data?.blueprint_revision_id
-      ? { blueprint_revision_id: contractQuery.data.blueprint_revision_id }
-      : { device_type_id: device.device_type_id }),
-  });
+  } = useFirmwareUpdates(
+    { blueprint_revision_id: contractQuery.data?.blueprint_revision_id },
+    { enabled: !!contractQuery.data?.blueprint_revision_id && !contractQuery.isError },
+  );
   const { data: shadow } = useDeviceShadow(device.id);
   const { data: deployments = [] } = useOtaDeployments(device.id);
   const triggerOtaMutation = useTriggerOta();
@@ -61,6 +60,14 @@ export const OtaTab = ({ device }: OtaTabProps) => {
 
   if (isLoading || contractQuery.isLoading) return <Spinner />;
 
+  if (contractQuery.isError || !contractQuery.data?.blueprint_revision_id) {
+    return (
+      <Callout intent="danger" icon="error">
+        An assigned device contract is required to select firmware. Try refreshing the page.
+      </Callout>
+    );
+  }
+
   if (isError) {
     return (
       <Callout intent="danger" icon="error">
@@ -72,9 +79,9 @@ export const OtaTab = ({ device }: OtaTabProps) => {
   const selectedFw = firmwareUpdates.find((f) => f.id === selectedFwId);
 
   const handleTrigger = () => {
-    if (!selectedFwId) return;
+    if (!selectedFw || !canDeployFirmware) return;
     triggerOtaMutation.mutate(
-      { deviceId: device.id, body: { firmware_update_id: selectedFwId } },
+      { deviceId: device.id, body: { firmware_update_id: selectedFw.id } },
       {
         onSuccess: () => {
           setSelectedFwId(null);
@@ -144,8 +151,8 @@ export const OtaTab = ({ device }: OtaTabProps) => {
 
           {firmwareUpdates.length === 0 ? (
             <Callout icon="info-sign" intent="primary">
-              No firmware releases registered for device type "{device.device_type_name}". Register
-              one in Settings &rarr; Firmware.
+              No firmware releases registered for this blueprint revision. Register one in Settings
+              &rarr; Firmware.
             </Callout>
           ) : (
             <>

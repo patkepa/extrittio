@@ -4,10 +4,9 @@ use std::time::Duration;
 
 use clap::Parser;
 use extrittio_client_runtime::{
-    EMBED_MARKER_LEN, EMBED_SLOT_LEN, NativeClientConfig, TelemetrySource, contract::ContractEvent,
+    EMBED_MARKER_LEN, EMBED_SLOT_LEN, EventSource, NativeClientConfig, contract::ContractEvent,
     run_native_client,
 };
-use extrittio_common::extrittio::DeviceTelemetry;
 
 #[used]
 #[unsafe(no_mangle)]
@@ -29,11 +28,12 @@ struct Args {
     device_id: Option<String>,
     /// Provisioned contract JSON downloaded from the Extrittio device contract endpoint.
     #[arg(long)]
-    contract: Option<String>,
+    contract: String,
+    /// Validate the provisioned contract and a local sample, then exit without networking.
+    #[arg(long)]
+    check_contract: bool,
     #[arg(long, default_value_t = 10)]
     interval: u64,
-    #[arg(long, default_value_t = 30)]
-    heartbeat_interval: u64,
     #[arg(long)]
     connect: Option<String>,
     #[arg(long)]
@@ -56,79 +56,33 @@ impl SystemTelemetry {
     }
 }
 
-impl TelemetrySource for SystemTelemetry {
-    fn sample(&mut self, device_id: &str, timestamp: i64) -> DeviceTelemetry {
-        let cpu_usage = match (metrics::CpuSnapshot::take(), &self.previous_cpu) {
-            (Some(current), Some(previous)) => {
-                let usage = current.usage_since(previous);
-                self.previous_cpu = Some(current);
-                usage
-            }
-            (Some(current), None) => {
-                self.previous_cpu = Some(current);
-                0.0
-            }
-            _ => 0.0,
-        };
-        let cpu_temperature = metrics::cpu_temperature();
-        let memory_usage = metrics::memory_usage_percent();
-        let mut metadata = metrics::extended_metrics();
-        metadata.insert("cpu_usage_pct".into(), format!("{cpu_usage:.1}"));
-        metadata.insert("mem_used_pct".into(), format!("{memory_usage:.1}"));
-
-        DeviceTelemetry {
-            device_id: device_id.to_string(),
-            timestamp,
-            temperature: cpu_temperature,
-            humidity: 0.0,
-            battery_level: 0.0,
-            metadata,
-            latitude: 0.0,
-            longitude: 0.0,
-            speed: 0.0,
-            altitude: 0.0,
-            heading: 0.0,
-            has_location: false,
-        }
-    }
-
-    fn summary(&self, telemetry: &DeviceTelemetry) -> String {
-        format!(
-            "Telemetry: cpu_temp={:.1}°C mem={}% cpu={}% load={}",
-            telemetry.temperature,
-            telemetry
-                .metadata
-                .get("mem_used_pct")
-                .map_or("-", String::as_str),
-            telemetry
-                .metadata
-                .get("cpu_usage_pct")
-                .map_or("-", String::as_str),
-            telemetry
-                .metadata
-                .get("load_1m")
-                .map_or("-", String::as_str),
-        )
-    }
-
-    fn contract_event(&self, telemetry: &DeviceTelemetry) -> Option<ContractEvent> {
+impl EventSource for SystemTelemetry {
+    fn sample(&mut self) -> ContractEvent {
+        let current = metrics::CpuSnapshot::take();
+        let cpu_usage = current
+            .as_ref()
+            .zip(self.previous_cpu.as_ref())
+            .map(|(current, previous)| current.usage_since(previous));
+        self.previous_cpu = current;
+        let metadata = metrics::extended_metrics();
         let number = |key: &str| {
-            telemetry
-                .metadata
+            metadata
                 .get(key)
                 .and_then(|value| value.parse::<f64>().ok())
         };
-        Some(ContractEvent::new(
-            "system",
-            serde_json::json!({
-                "cpuTemperature": telemetry.temperature,
-                "cpuUsagePercent": number("cpu_usage_pct"),
-                "memoryUsagePercent": number("mem_used_pct"),
-                "load1m": number("load_1m"),
-                "load5m": number("load_5m"),
-                "load15m": number("load_15m")
-            }),
-        ))
+        let mut payload = serde_json::json!({
+            "cpuTemperature": metrics::cpu_temperature(),
+            "cpuUsagePercent": cpu_usage,
+            "memoryUsagePercent": metrics::memory_usage_percent(),
+            "load1m": number("load_1m"),
+            "load5m": number("load_5m"),
+            "load15m": number("load_15m")
+        });
+        payload
+            .as_object_mut()
+            .expect("object payload")
+            .retain(|_, value| !value.is_null());
+        ContractEvent::new("system", payload)
     }
 }
 
@@ -142,11 +96,34 @@ async fn main() {
         )
         .init();
     let args = Args::parse();
+    if args.check_contract {
+        let result = async {
+            let contract =
+                extrittio_client_runtime::contract::ProvisionedContract::load(&args.contract)
+                    .await?;
+            if let Some(device_id) = args.device_id.as_deref() {
+                contract.validate_device_id(device_id)?;
+            }
+            if let Some(embedded_id) =
+                extrittio_client_runtime::read_embedded_device_id(&DEVICE_ID_EMBED)
+            {
+                contract.validate_device_id(&embedded_id)?;
+            }
+            contract.zenoh_endpoint()?;
+            contract.encode_event(&SystemTelemetry::new().sample(), chrono::Utc::now())?;
+            Ok::<(), extrittio_client_runtime::contract::ProvisionedContractError>(())
+        }
+        .await;
+        if let Err(error) = result {
+            eprintln!("Contract validation failed: {error}");
+            std::process::exit(1);
+        }
+        return;
+    }
     let config = NativeClientConfig {
         device_id: args.device_id,
         contract_path: args.contract,
         telemetry_interval: Duration::from_secs(args.interval),
-        heartbeat_interval: Duration::from_secs(args.heartbeat_interval),
         connect: args.connect,
         ca_cert: args.ca_cert,
         client_cert: args.client_cert,
@@ -154,4 +131,29 @@ async fn main() {
         client_name: "Raspberry Pi client",
     };
     run_native_client(config, SystemTelemetry::new(), &DEVICE_ID_EMBED).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn contract_is_required_and_missing_readings_are_omitted() {
+        assert!(Args::try_parse_from(["extrittio-rpi"]).is_err());
+        assert!(Args::try_parse_from(["extrittio-rpi", "--contract", "contract.json"]).is_ok());
+        let event = SystemTelemetry { previous_cpu: None }.sample();
+        assert_eq!(event.stream_key, "system");
+        assert!(event.payload.get("cpuUsagePercent").is_none());
+        assert!(
+            event
+                .payload
+                .as_object()
+                .unwrap()
+                .values()
+                .all(serde_json::Value::is_number)
+        );
+        for key in ["humidity", "batteryLevel", "metadata"] {
+            assert!(event.payload.get(key).is_none());
+        }
+    }
 }

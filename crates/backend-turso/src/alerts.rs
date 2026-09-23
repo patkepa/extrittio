@@ -6,8 +6,7 @@ use extrittio_backend_core::PersistenceError;
 use extrittio_backend_core::TenantId;
 use extrittio_backend_core::alerts::AlertRepository;
 use extrittio_backend_core::alerts::{
-    AlertListFilter, AlertRecord, AlertTransition, AlertTransitionOutcome, CooldownRecord,
-    NewRuleAlertRecord,
+    AlertListFilter, AlertRecord, AlertTransition, AlertTransitionOutcome, NewRuleAlertRecord,
 };
 
 use crate::{TursoConnectionHandles, row};
@@ -108,7 +107,6 @@ async fn transition_from(
                 upsert_cooldown(c, t.as_str(), rule_id, &current.device_id, now).await?;
             }
             AlertTransition::Reactivate => {
-                c.execute("INSERT INTO rule_cooldown_resets(tenant_id,rule_id,device_id,reset_at) VALUES(?1,?2,?3,?4) ON CONFLICT(tenant_id,rule_id,device_id) DO UPDATE SET reset_at=max(rule_cooldown_resets.reset_at,excluded.reset_at)",params![t.as_str(),rule_id.as_str(),current.device_id.as_str(),now]).await.map_err(row::legacy_error)?;
                 c.execute(
                     "DELETE FROM rule_cooldowns WHERE tenant_id=?1 AND rule_id=?2 AND device_id=?3",
                     params![t.as_str(), rule_id.as_str(), current.device_id.as_str()],
@@ -279,21 +277,6 @@ impl AlertRepository for TursoAlertRepository {
         }
         Ok(out)
     }
-    async fn persist_cooldowns(&self, cs: Vec<CooldownRecord>) -> Result<(), PersistenceError> {
-        let mut w = self.handles.lock_writer().await;
-        let tx = w.transaction().await.map_err(row::legacy_error)?;
-        for c in cs {
-            upsert_legacy_cooldown(
-                &tx,
-                &c.tenant_id,
-                &c.rule_id,
-                &c.device_id,
-                c.last_fired_at.and_utc().timestamp_micros(),
-            )
-            .await?;
-        }
-        tx.commit().await.map_err(row::legacy_error)
-    }
     async fn delete_all_resolved_before(
         &self,
         cutoff: NaiveDateTime,
@@ -357,30 +340,88 @@ pub(crate) async fn upsert_cooldown(
     device: &str,
     fired_at: i64,
 ) -> Result<(), PersistenceError> {
-    write_cooldown(c, tenant, rule, device, fired_at, true).await
-}
-
-async fn upsert_legacy_cooldown(
-    c: &Connection,
-    tenant: &str,
-    rule: &str,
-    device: &str,
-    fired_at: i64,
-) -> Result<(), PersistenceError> {
-    write_cooldown(c, tenant, rule, device, fired_at, false).await
-}
-
-async fn write_cooldown(
-    c: &Connection,
-    tenant: &str,
-    rule: &str,
-    device: &str,
-    fired_at: i64,
-    current_decision: bool,
-) -> Result<(), PersistenceError> {
     c.execute("INSERT INTO rule_cooldowns(tenant_id,rule_id,device_id,last_fired_at)
-        SELECT ?1,?2,?3,?4 WHERE ?5=1 OR NOT EXISTS (
-            SELECT 1 FROM rule_cooldown_resets WHERE tenant_id=?1 AND rule_id=?2 AND device_id=?3 AND reset_at>=?4
-        ) ON CONFLICT(tenant_id,rule_id,device_id) DO UPDATE SET last_fired_at=max(rule_cooldowns.last_fired_at,excluded.last_fired_at)",params![tenant,rule,device,fired_at,i64::from(current_decision)]).await.map_err(row::legacy_error)?;
+        VALUES (?1,?2,?3,?4) ON CONFLICT(tenant_id,rule_id,device_id) DO UPDATE SET last_fired_at=max(rule_cooldowns.last_fired_at,excluded.last_fired_at)",params![tenant,rule,device,fired_at]).await.map_err(row::legacy_error)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod cooldown_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn fresh_baseline_cooldowns_are_monotonic_and_reactivation_clears_them() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = crate::TursoDatabase::open(
+            directory.path(),
+            &directory.path().join("cooldowns.db"),
+            std::time::Duration::from_secs(1),
+        )
+        .await
+        .unwrap();
+        database.migrate().await.unwrap();
+        let handles = database.shared_handles();
+        {
+            let mut writer = handles.lock_writer().await;
+            writer.execute_batch("INSERT INTO devices(id,tenant_id,name,status,firmware,created_at,updated_at)
+                VALUES('device','default','Device','online','1',0,0);
+                INSERT INTO rules(id,tenant_id,name,enabled,trigger_type,target_type,cooldown_seconds,created_at,updated_at)
+                VALUES('rule','default','Rule',1,'telemetry','global',60,0,0);
+                INSERT INTO alerts(id,tenant_id,rule_id,device_id,severity,status,message,created_at)
+                VALUES('alert','default','rule','device','warning','resolved','Test',0);").await.unwrap();
+            let tx = writer.transaction().await.unwrap();
+            upsert_cooldown(&tx, "default", "rule", "device", 20)
+                .await
+                .unwrap();
+            upsert_cooldown(&tx, "default", "rule", "device", 10)
+                .await
+                .unwrap();
+            tx.commit().await.unwrap();
+        }
+        let connection = handles.connect().unwrap();
+        let mut rows = connection
+            .query("SELECT last_fired_at FROM rule_cooldowns", ())
+            .await
+            .unwrap();
+        assert_eq!(
+            rows.next().await.unwrap().unwrap().get::<i64>(0).unwrap(),
+            20
+        );
+        drop(rows);
+        let repository = TursoAlertRepository::from_handles(handles.clone());
+        let outcome = repository
+            .transition(
+                &TenantId::new("default").unwrap(),
+                "alert",
+                AlertTransition::Reactivate,
+            )
+            .await
+            .unwrap();
+        assert!(matches!(outcome, AlertTransitionOutcome::Updated(_)));
+        let mut rows = connection
+            .query("SELECT count(*) FROM rule_cooldowns", ())
+            .await
+            .unwrap();
+        assert_eq!(
+            rows.next().await.unwrap().unwrap().get::<i64>(0).unwrap(),
+            0
+        );
+        drop(rows);
+        {
+            let mut writer = handles.lock_writer().await;
+            let tx = writer.transaction().await.unwrap();
+            upsert_cooldown(&tx, "default", "rule", "device", 30)
+                .await
+                .unwrap();
+            tx.rollback().await.unwrap();
+        }
+        let mut rows = connection
+            .query("SELECT count(*) FROM rule_cooldowns", ())
+            .await
+            .unwrap();
+        assert_eq!(
+            rows.next().await.unwrap().unwrap().get::<i64>(0).unwrap(),
+            0
+        );
+    }
 }

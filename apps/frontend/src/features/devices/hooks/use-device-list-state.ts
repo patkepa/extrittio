@@ -1,11 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useSelectionStore } from '../../../stores/selection-store';
-import type { BulkDeviceFilters, Device, ListDevicesParams } from '../../../types/api';
-import { useAllDevices } from '../queries/use-devices';
+import type { Device, ListDevicesParams } from '../../../types/api';
+import { useDevices } from '../queries/use-devices';
 import {
-  countDeviceStatuses,
-  filterAndSortDevices,
   type DeviceSortDir,
   type DeviceSortField,
   type DeviceStatusFilter,
@@ -14,6 +12,7 @@ import {
 export type { DeviceSortDir, DeviceSortField, DeviceStatusFilter } from '../model/device-list';
 
 export function useDeviceListState() {
+  const pageSize = 100;
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const clearSelection = useSelectionStore((state) => state.clearSelection);
@@ -22,6 +21,7 @@ export function useDeviceListState() {
   const [sortField, setSortField] = useState<DeviceSortField>('last_seen');
   const [sortDir, setSortDir] = useState<DeviceSortDir>('desc');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [page, setPage] = useState(0);
 
   const filterFleetId = searchParams.get('fleet_id') ? Number(searchParams.get('fleet_id')) : null;
 
@@ -49,53 +49,26 @@ export function useDeviceListState() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const queryParams = useMemo<ListDevicesParams | undefined>(() => {
-    const params: ListDevicesParams = {
-      ...(filterFleetId ? { fleet_id: filterFleetId } : {}),
-      ...(debouncedSearch ? { search: debouncedSearch } : {}),
-    };
-    return Object.keys(params).length > 0 ? params : undefined;
-  }, [debouncedSearch, filterFleetId]);
+  const queryParams: ListDevicesParams = {
+    limit: pageSize,
+    offset: page * pageSize,
+    sort_by: sortField,
+    sort_dir: sortDir,
+    ...(filterStatus === 'all' ? {} : { status: filterStatus }),
+    ...(filterFleetId ? { fleet_id: filterFleetId } : {}),
+    ...(debouncedSearch ? { search: debouncedSearch } : {}),
+  };
 
-  const devicesQuery = useAllDevices(queryParams);
-  const devices = useMemo(() => devicesQuery.data?.data ?? [], [devicesQuery.data?.data]);
-  const totalDeviceCount = devicesQuery.data?.total ?? 0;
-
-  const currentFilters = useMemo<BulkDeviceFilters>(
-    () => ({
-      ...(filterStatus !== 'all' ? { status: filterStatus } : {}),
-      ...(searchQuery ? { search: searchQuery } : {}),
-      ...(filterFleetId ? { fleet_id: filterFleetId } : {}),
-    }),
-    [filterFleetId, filterStatus, searchQuery],
-  );
+  const devicesQuery = useDevices(queryParams);
+  const devices = devicesQuery.data?.data ?? [];
+  const total = devicesQuery.data?.total ?? 0;
 
   const deviceParam = searchParams.get('device');
   useEffect(() => {
-    if (!deviceParam || devices.length === 0) return;
+    if (deviceParam) navigate(`/devices/${deviceParam}`, { replace: true });
+  }, [deviceParam, navigate]);
 
-    const device = devices.find((d) => d.id === deviceParam);
-    if (device) {
-      navigate(`/devices/${device.id}`, { replace: true });
-      return;
-    }
-
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        next.delete('device');
-        return next;
-      },
-      { replace: true },
-    );
-  }, [deviceParam, devices, navigate, setSearchParams]);
-
-  const filteredDevices = useMemo(
-    () => filterAndSortDevices(devices, filterStatus, sortField, sortDir),
-    [devices, filterStatus, sortDir, sortField],
-  );
-
-  const statusCounts = useMemo(() => countDeviceStatuses(devices), [devices]);
+  const filteredDevices = devices;
 
   const handleSort = useCallback(
     (field: DeviceSortField) => {
@@ -105,6 +78,7 @@ export function useDeviceListState() {
         setSortField(field);
         setSortDir('asc');
       }
+      setPage(0);
     },
     [sortDir, sortField],
   );
@@ -116,22 +90,36 @@ export function useDeviceListState() {
     [navigate],
   );
 
+  const changeSearchQuery = (value: string) => {
+    setSearchQuery(value);
+    setPage(0);
+  };
+  const changeFilterStatus = (value: DeviceStatusFilter) => {
+    setFilterStatus(value);
+    setPage(0);
+  };
+  const changeFilterFleetId = (value: number | null) => {
+    setFilterFleetId(value);
+    setPage(0);
+  };
+
   return {
     devicesQuery,
     devices,
-    totalDeviceCount,
+    total,
+    page,
+    pageSize,
+    setPage,
     searchQuery,
-    setSearchQuery,
+    setSearchQuery: changeSearchQuery,
     filterStatus,
-    setFilterStatus,
+    setFilterStatus: changeFilterStatus,
     filterFleetId,
-    setFilterFleetId,
+    setFilterFleetId: changeFilterFleetId,
     sortField,
     sortDir,
     queryParams,
-    currentFilters,
     filteredDevices,
-    statusCounts,
     handleSort,
     handleViewDevice,
   };

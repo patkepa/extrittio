@@ -125,7 +125,7 @@ export const FleetGraphCanvas = memo(
       let cancelled = false;
       const icons = new Set<string>([DEFAULT_DEVICE_TYPE_ICON]);
       for (const node of graphData.nodes) {
-        icons.add(normalizeIconName(node.deviceTypeIcon));
+        icons.add(normalizeIconName(node.visualIcon));
       }
 
       void Promise.all(Array.from(icons, (icon) => loadIconPaths(icon)))
@@ -135,7 +135,7 @@ export const FleetGraphCanvas = memo(
           }
         })
         .catch((error: unknown) => {
-          console.error('[FleetGraph] Failed to load device type icons', error);
+          console.error('[FleetGraph] Failed to load node icons', error);
         });
 
       return () => {

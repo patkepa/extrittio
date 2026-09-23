@@ -24,9 +24,22 @@ pub struct RuleRecord {
 pub struct RuleConditionRecord {
     pub id: String,
     pub field: String,
+    pub blueprint_id: Option<String>,
+    pub blueprint_revision_id: Option<String>,
     pub operator: String,
     pub value: String,
     pub condition_group: i32,
+    pub zone_id: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RuleConditionInput {
+    /// Canonical `stream./json-pointer`, `status`, or a geofence field.
+    pub field: String,
+    pub blueprint_id: Option<String>,
+    pub blueprint_revision_id: Option<String>,
+    pub operator: String,
+    pub value: String,
     pub zone_id: Option<String>,
 }
 
@@ -79,14 +92,6 @@ pub struct UpdateRuleRecord {
 
 #[async_trait]
 pub trait RuleRepository: Send + Sync {
-    /// Apply ordered legacy state only before a live location observation takes
-    /// ownership of this rule/device pair. Replays and superseded updates no-op.
-    async fn apply_legacy_zone_entry(
-        &self,
-        tenant: &TenantId,
-        entry: crate::rule_snapshots::LegacyZoneEntry,
-    ) -> Result<(), PersistenceError>;
-
     async fn list(
         &self,
         tenant: &TenantId,

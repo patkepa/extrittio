@@ -38,10 +38,6 @@ pub mod device_blueprints {
     pub use crate::api::device_blueprints as api;
 }
 
-pub mod device_types {
-    pub use crate::api::device_types as api;
-}
-
 pub mod firmware {
     pub mod download;
 

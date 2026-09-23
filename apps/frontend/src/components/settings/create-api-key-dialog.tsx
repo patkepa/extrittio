@@ -13,7 +13,7 @@ import {
 } from '@blueprintjs/core';
 import { useCreateApiKey } from '../../hooks/use-api-keys';
 import { useConfirmShortcut } from '@patkepa/kantzen-ui/interactions';
-import { useDeviceTypes } from '../../hooks/use-device-types';
+import { useDeviceBlueprints } from '../../hooks/use-device-blueprints';
 
 interface Props {
   isOpen: boolean;
@@ -22,18 +22,27 @@ interface Props {
 
 export const CreateApiKeyDialog = ({ isOpen, onClose }: Props) => {
   const [name, setName] = useState('');
-  const [deviceTypeId, setDeviceTypeId] = useState<number | undefined>();
+  const [blueprintId, setBlueprintId] = useState<string | undefined>();
   const [createdKey, setCreatedKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   const createMutation = useCreateApiKey();
-  const { data: deviceTypes } = useDeviceTypes();
-  const canCreate = !createdKey && !!name.trim() && !createMutation.isPending;
+  const {
+    data: blueprints,
+    isLoading: loadingBlueprints,
+    error: blueprintError,
+  } = useDeviceBlueprints();
+  const canCreate =
+    !createdKey &&
+    !!name.trim() &&
+    !createMutation.isPending &&
+    !loadingBlueprints &&
+    !blueprintError;
 
   const handleCreate = async () => {
     const result = await createMutation.mutateAsync({
       name,
-      device_type_id: deviceTypeId,
+      blueprint_id: blueprintId,
     });
     setCreatedKey(result.key);
   };
@@ -48,7 +57,7 @@ export const CreateApiKeyDialog = ({ isOpen, onClose }: Props) => {
 
   const handleClose = () => {
     setName('');
-    setDeviceTypeId(undefined);
+    setBlueprintId(undefined);
     setCreatedKey(null);
     setCopied(false);
     onClose();
@@ -79,6 +88,7 @@ export const CreateApiKeyDialog = ({ isOpen, onClose }: Props) => {
           </Callout>
         ) : (
           <>
+            {blueprintError ? <Callout intent="danger">Failed to load blueprints.</Callout> : null}
             <FormGroup label="Name" labelFor="key-name">
               <InputGroup
                 id="key-name"
@@ -89,16 +99,14 @@ export const CreateApiKeyDialog = ({ isOpen, onClose }: Props) => {
             </FormGroup>
             <FormGroup
               label="Scope (optional)"
-              helperText="Restrict this key to a specific device type"
+              helperText="Restrict this key to a specific blueprint"
             >
               <HTMLSelect
-                value={deviceTypeId ?? ''}
-                onChange={(e) =>
-                  setDeviceTypeId(e.target.value ? Number(e.target.value) : undefined)
-                }
+                value={blueprintId ?? ''}
+                onChange={(e) => setBlueprintId(e.target.value ? e.target.value : undefined)}
               >
-                <option value="">All device types</option>
-                {deviceTypes?.map((dt) => (
+                <option value="">All blueprints (tenant-wide)</option>
+                {blueprints?.map((dt) => (
                   <option key={dt.id} value={dt.id}>
                     {dt.name}
                   </option>

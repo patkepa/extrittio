@@ -183,7 +183,7 @@ export function paintGraphNode(
     }
   } else if (isExternal) {
     ctx.shadowBlur = 0;
-    const typeColor = node.deviceTypeColor ?? node.color;
+    const typeColor = node.visualColor ?? node.color;
     const side = externalNodeSide(radius);
     const rx = node.x! - side / 2;
     const ry = node.y! - side / 2;
@@ -204,7 +204,7 @@ export function paintGraphNode(
     ctx.fillStyle = shouldDim ? colorWithAlpha(node.color, DIM_OPACITY) : node.color;
     ctx.fill();
 
-    const iconPaths = getIconPaths(node.deviceTypeIcon);
+    const iconPaths = getIconPaths(node.visualIcon);
     ctx.fillStyle = shouldDim ? `rgba(255,255,255,${DIM_OPACITY})` : '#ffffff';
     if (iconsReady || iconPaths.length > 0) {
       drawIcon(ctx, iconPaths, node.x!, node.y! - stripHeight / 2, radius * 1.35);
@@ -275,7 +275,7 @@ export function paintGraphNode(
       ctx.strokeRect(rx - selOffset, ry - selOffset, side + selOffset * 2, side + selOffset * 2);
     }
 
-    const iconPaths = getIconPaths(node.deviceTypeIcon);
+    const iconPaths = getIconPaths(node.visualIcon);
     const iconSize = effectiveRadius * 1.2;
     ctx.fillStyle = '#ffffff';
     if (iconsReady || iconPaths.length > 0) {

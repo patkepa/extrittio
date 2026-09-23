@@ -9,9 +9,29 @@ use crate::state::AppState;
 use extrittio_backend_core::CreateApiKey;
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CreateApiKeyRequest {
     pub name: String,
-    pub device_type_id: Option<i32>,
+    pub blueprint_id: Option<String>,
+}
+
+#[cfg(test)]
+mod blueprint_request_tests {
+    use super::*;
+
+    #[test]
+    fn api_keys_accept_blueprint_scope_and_reject_retired_scope() {
+        let scoped: CreateApiKeyRequest =
+            serde_json::from_value(serde_json::json!({"name":"CI","blueprint_id":"blueprint"}))
+                .unwrap();
+        assert_eq!(scoped.blueprint_id.as_deref(), Some("blueprint"));
+        assert!(
+            serde_json::from_value::<CreateApiKeyRequest>(
+                serde_json::json!({"name":"CI","device_type_id":1})
+            )
+            .is_err()
+        );
+    }
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -20,7 +40,7 @@ pub struct CreateApiKeyResponse {
     pub name: String,
     pub key: String,
     pub key_prefix: String,
-    pub device_type_id: Option<i32>,
+    pub blueprint_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -28,8 +48,8 @@ pub struct ApiKeyResponse {
     pub id: i32,
     pub name: String,
     pub key_prefix: String,
-    pub device_type_id: Option<i32>,
-    pub device_type_name: Option<String>,
+    pub blueprint_id: Option<String>,
+    pub blueprint_name: Option<String>,
     pub created_at: String,
     pub last_used_at: Option<String>,
 }
@@ -59,7 +79,7 @@ pub(crate) async fn create_api_key(
             &ctx.tenant_context(),
             CreateApiKey {
                 name: body.name,
-                device_type_id: body.device_type_id,
+                blueprint_id: body.blueprint_id,
             },
         )
         .await
@@ -78,7 +98,7 @@ pub(crate) async fn create_api_key(
             name: api_key.name,
             key: created.plaintext,
             key_prefix: api_key.key_prefix,
-            device_type_id: api_key.device_type_id,
+            blueprint_id: api_key.blueprint_id,
         }),
     ))
 }
@@ -102,8 +122,8 @@ pub(crate) async fn list_api_keys(
             id: summary.key.id,
             name: summary.key.name,
             key_prefix: summary.key.key_prefix,
-            device_type_id: summary.key.device_type_id,
-            device_type_name: summary.device_type_name,
+            blueprint_id: summary.key.blueprint_id,
+            blueprint_name: summary.blueprint_name,
             created_at: summary
                 .key
                 .created_at

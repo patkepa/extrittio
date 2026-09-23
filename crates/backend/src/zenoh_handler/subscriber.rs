@@ -7,13 +7,8 @@ use crate::zenoh_handler::DeviceMessageApplications;
 
 use super::handlers;
 
-/// Start zenoh subscribers for telemetry, heartbeat, shadow, log, and command
-/// response topics.
-///
-/// Spawns five subscriber handlers in background tokio tasks (heartbeat,
-/// shadow_report, shadow_get, log, command_response) and runs the telemetry
-/// handler in the current task. All loop indefinitely, receiving messages and
-/// dispatching them to the appropriate handler function.
+/// Subscribe to contract events and universal device control-plane messages.
+/// Supervise all subscribers and fail if any subscriber exits.
 ///
 /// Handlers receive core application capabilities; persistence and blocking
 /// boundaries remain behind those applications.
@@ -31,8 +26,6 @@ pub(crate) async fn run_subscriber(
     use extrittio_common::topics;
     use extrittio_common::topics::patterns;
 
-    let telemetry_sub = session.declare_subscriber(patterns::TELEMETRY).await?;
-
     let contract_sub = session
         .declare_subscriber(patterns::CONTRACT_INGRESS)
         .await?;
@@ -49,9 +42,7 @@ pub(crate) async fn run_subscriber(
         .declare_subscriber(patterns::COMMANDS_RESPONSE)
         .await?;
 
-    info!(
-        "Zenoh subscribers declared for telemetry, heartbeat, shadow, log, and command response topics"
-    );
+    info!("Zenoh subscribers declared for contract events and device control-plane topics");
     let mut subscriber_tasks = tokio::task::JoinSet::new();
 
     let contract_applications = applications.clone();
@@ -303,56 +294,13 @@ pub(crate) async fn run_subscriber(
         }
     });
 
-    // Run telemetry handler in the current task
-    loop {
-        tokio::select! {
-            child = subscriber_tasks.join_next() => {
-                let message = match child {
-                    Some(Ok(Ok(()))) => "a Zenoh subscriber exited unexpectedly".to_string(),
-                    Some(Ok(Err(error))) => error,
-                    Some(Err(error)) => format!("Zenoh subscriber task panicked: {error}"),
-                    None => "all Zenoh subscriber tasks exited".to_string(),
-                };
-                return Err(message.into());
-            }
-            sample = telemetry_sub.recv_async() => {
-                match sample {
-                    Ok(sample) => {
-                        let Some((topic_device_id, payload)) = accept_sample(
-                            &sample,
-                            topics::telemetry_device_id,
-                            max_payload_size_bytes,
-                            "telemetry",
-                        ) else {
-                            continue;
-                        };
-                        let Some(identity) = handlers::resolve_ingress_identity(
-                            &applications.identity,
-                            "telemetry",
-                            &topic_device_id,
-                            true,
-                        )
-                        .await
-                        else {
-                            continue;
-                        };
-                        handlers::telemetry::handle_telemetry(
-                            &applications.telemetry,
-                            &identity,
-                            &topic_device_id,
-                            &payload,
-                            &rule_cache,
-                        )
-                        .await;
-                        zenoh_metrics.messages_in.fetch_add(1, Ordering::Relaxed);
-                    }
-                    Err(error) => {
-                        return Err(format!("telemetry subscriber channel closed: {error}").into());
-                    }
-                }
-            }
-        }
-    }
+    let message = match subscriber_tasks.join_next().await {
+        Some(Ok(Ok(()))) => "a Zenoh subscriber exited unexpectedly".to_string(),
+        Some(Ok(Err(error))) => error,
+        Some(Err(error)) => format!("Zenoh subscriber task panicked: {error}"),
+        None => "all Zenoh subscriber tasks exited".to_string(),
+    };
+    Err(message.into())
 }
 
 fn accept_sample<'a>(

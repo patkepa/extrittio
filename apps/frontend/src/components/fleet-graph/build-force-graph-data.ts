@@ -1,10 +1,6 @@
-import type { Device, DeviceType, Fleet } from '../../types/api';
-import { STATUS_COLORS, FLEET_COLOR, DEFAULT_COLOR, TYPE_ABBREVS } from './constants';
+import type { Device, Fleet } from '../../types/api';
+import { STATUS_COLORS, FLEET_COLOR, DEFAULT_COLOR } from './constants';
 import { getUptimeArcAngle, getHealthTier } from './health-utils';
-
-function getTypeAbbrev(deviceTypeName: string): string {
-  return TYPE_ABBREVS[deviceTypeName.toLowerCase()] ?? '?';
-}
 
 // --- Graph types ---
 export interface GraphNode {
@@ -19,10 +15,9 @@ export interface GraphNode {
   /** Generic metadata rows used by other topology views reusing this canvas. */
   details?: Array<{ label: string; value: string }>;
   status?: string;
-  deviceTypeName?: string;
-  deviceTypeIcon?: string;
-  deviceTypeColor?: string;
-  typeAbbrev?: string;
+  visualName?: string;
+  visualIcon?: string;
+  visualColor?: string;
   /** Centers the initial viewport on this node instead of fitting every node. */
   initialViewportAnchor?: boolean;
   // Health data (computed from last_seen_at / uptime_seconds)
@@ -98,7 +93,7 @@ const CONNECTION_TYPE_VISUALS: Array<[string[], { icon: string; color: string }]
   [['host', 'ip'], { icon: 'ip-address', color: EXTERNAL_COLOR }],
 ];
 
-function normalizeDeviceTypeKey(value?: string | null): string {
+function normalizeConnectionSearchKey(value?: string | null): string {
   return value?.trim().toLowerCase().replaceAll('-', '_') ?? '';
 }
 
@@ -112,7 +107,7 @@ function getConnectionSearchText(
     connection.source,
     connection.external_id,
   ]
-    .map(normalizeDeviceTypeKey)
+    .map(normalizeConnectionSearchKey)
     .filter(Boolean)
     .join(' ');
 }
@@ -193,15 +188,11 @@ export function buildForceGraphData(
   devices: Device[],
   fleets: Fleet[],
   prevNodes?: GraphNode[],
-  deviceTypes?: DeviceType[],
 ): GraphData {
   const nodes: GraphNode[] = [];
   const links: GraphLink[] = [];
   const nodeMap = new Map<string, GraphNode>();
   const deviceNodeIdByDeviceId = new Map<string, string>();
-  const deviceTypeByName = new Map(
-    (deviceTypes ?? []).map((deviceType) => [normalizeDeviceTypeKey(deviceType.name), deviceType]),
-  );
 
   const prevNodeMap = new Map<string, GraphNode>();
   if (prevNodes) {
@@ -335,10 +326,9 @@ export function buildForceGraphData(
       color: STATUS_COLORS[device.status] ?? DEFAULT_COLOR,
       device,
       status: device.status,
-      deviceTypeName: device.device_type_name,
-      deviceTypeIcon: device.device_type_icon,
-      deviceTypeColor: device.device_type_color_hex,
-      typeAbbrev: getTypeAbbrev(device.device_type_name),
+      visualName: device.blueprint_name,
+      visualIcon: device.blueprint_icon ?? undefined,
+      visualColor: device.blueprint_color ?? undefined,
       lastSeenTimestamp,
       uptimeSeconds,
       uptimeArcAngle: getUptimeArcAngle(uptimeSeconds),
@@ -385,8 +375,7 @@ export function buildForceGraphData(
         if (!nodeMap.has(targetNodeId)) {
           const prev = prevNodeMap.get(targetNodeId);
           const sourceLayout = deviceLayoutById.get(device.id);
-          const deviceTypeName = connection.device_type ?? connection.connection_type;
-          const deviceType = deviceTypeByName.get(normalizeDeviceTypeKey(deviceTypeName));
+          const visualName = connection.device_type ?? connection.connection_type;
           const visual = getConnectionVisual(connection);
           const node: GraphNode = {
             ...prev,
@@ -394,14 +383,12 @@ export function buildForceGraphData(
             name: getConnectionLabel(connection),
             type: 'external',
             val: 2,
-            color:
-              STATUS_COLORS[connection.status ?? ''] ?? deviceType?.color_hex ?? EXTERNAL_COLOR,
+            color: STATUS_COLORS[connection.status ?? ''] ?? EXTERNAL_COLOR,
             connection,
             status: connection.status ?? 'external',
-            deviceTypeName,
-            deviceTypeIcon: deviceType?.icon ?? visual.icon,
-            deviceTypeColor: deviceType?.color_hex ?? visual.color,
-            typeAbbrev: '?',
+            visualName,
+            visualIcon: visual.icon,
+            visualColor: visual.color,
             neighbors: [],
             links: [],
             layoutX: sourceLayout ? sourceLayout.x + 72 : undefined,

@@ -4,7 +4,7 @@ export interface Rule {
   description: string | null;
   enabled: boolean;
   trigger_type: 'telemetry' | 'device_status' | 'geofence';
-  target_type: 'global' | 'device_type' | 'fleet' | 'device';
+  target_type: 'global' | 'blueprint' | 'fleet' | 'device';
   target_id: string | null;
   cooldown_seconds: number;
   conditions: RuleCondition[];
@@ -15,11 +15,21 @@ export interface Rule {
 
 export interface RuleCondition {
   id: string;
-  field: string;
+  selector: RuleConditionSelector;
   operator: string;
   value: string;
-  zone_id?: string;
 }
+
+export type RuleConditionSelector =
+  | {
+      kind: 'metric';
+      blueprint_id: string;
+      blueprint_revision_id: string;
+      stream_key: string;
+      field_path: string;
+    }
+  | { kind: 'status' }
+  | { kind: 'geofence'; zone_id: string; field: string };
 
 export interface RuleAction {
   id: string;
@@ -31,10 +41,10 @@ export interface CreateRuleRequest {
   name: string;
   description?: string;
   trigger_type: string;
-  target_type: string;
+  target_type: Rule['target_type'];
   target_id?: string;
   cooldown_seconds?: number;
-  conditions: { field: string; operator: string; value: string; zone_id?: string }[];
+  conditions: { selector: RuleConditionSelector; operator: string; value: string }[];
   actions: { action_type: string; config: Record<string, unknown> }[];
 }
 

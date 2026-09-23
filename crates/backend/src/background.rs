@@ -5,8 +5,39 @@ use tracing::{info, warn};
 
 use extrittio_backend_core::{
     AlertMaintenanceApplication, CommandWorkerApplication, DeviceIngressApplication,
-    LogIngressApplication, TelemetryMaintenanceApplication,
+    LogIngressApplication,
 };
+
+pub async fn run_metric_retention(
+    application: extrittio_backend_core::application::MetricMaintenanceApplication,
+    raw_days: u64,
+    rollup_days: u64,
+) {
+    let mut interval = tokio::time::interval(Duration::from_secs(3_600));
+    info!(raw_days, rollup_days, "Metric retention started");
+    loop {
+        interval.tick().await;
+        match application
+            .prune(raw_days, rollup_days, chrono::Utc::now())
+            .await
+        {
+            Ok(outcome) => {
+                if outcome.events_deleted > 0
+                    || outcome.rollups_deleted > 0
+                    || outcome.receipts_deleted > 0
+                {
+                    info!(
+                        events_deleted = outcome.events_deleted,
+                        rollups_deleted = outcome.rollups_deleted,
+                        receipts_deleted = outcome.receipts_deleted,
+                        "Metric retention pruned expired data"
+                    );
+                }
+            }
+            Err(error) => warn!("Metric retention error: {error}"),
+        }
+    }
+}
 
 /// Compute a backoff sleep duration based on consecutive failures.
 /// Doubles each failure from `base` up to `max`.
@@ -195,68 +226,6 @@ pub async fn run_log_retention(application: LogIngressApplication, retention_day
                     );
                 } else {
                     warn!("Log retention error: {}", error);
-                }
-            }
-        }
-    }
-}
-
-pub async fn run_telemetry_rollup_and_retention(
-    application: TelemetryMaintenanceApplication,
-    retention_days: u64,
-) {
-    let base_interval = Duration::from_secs(3600);
-    let max_backoff = Duration::from_secs(7200);
-    let mut consecutive_failures: u32 = 0;
-    info!(
-        "Telemetry rollup and retention started ({}d retention)",
-        retention_days
-    );
-
-    loop {
-        let sleep_dur = if consecutive_failures == 0 {
-            base_interval
-        } else {
-            backoff_duration(base_interval, consecutive_failures, max_backoff)
-        };
-        tokio::time::sleep(sleep_dur).await;
-
-        let result = application.maintain(retention_days).await;
-
-        match result {
-            Ok(outcome) => {
-                consecutive_failures = 0;
-                if outcome.rollups_upserted > 0 {
-                    info!(
-                        "Telemetry rollup: upserted {} hourly buckets",
-                        outcome.rollups_upserted
-                    );
-                }
-                if outcome.partitions.created_count > 0 || outcome.partitions.dropped_count > 0 {
-                    info!(
-                        "Telemetry partitions: created {}, dropped {}",
-                        outcome.partitions.created_count, outcome.partitions.dropped_count
-                    );
-                }
-                if outcome.rows_deleted > 0 {
-                    info!(
-                        "Telemetry retention: deleted {} raw rows",
-                        outcome.rows_deleted
-                    );
-                }
-            }
-            Err(error) => {
-                consecutive_failures = consecutive_failures.saturating_add(1);
-                if consecutive_failures >= 5 {
-                    tracing::error!(
-                        "Telemetry rollup/retention: {} consecutive failures (next retry in {}s): {}",
-                        consecutive_failures,
-                        backoff_duration(base_interval, consecutive_failures, max_backoff)
-                            .as_secs(),
-                        error,
-                    );
-                } else {
-                    warn!("Telemetry rollup/retention error: {}", error);
                 }
             }
         }

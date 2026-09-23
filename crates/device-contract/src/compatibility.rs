@@ -141,6 +141,13 @@ pub fn compare_blueprints(
         &mut changes,
     );
     compare_serialized(
+        &previous.spec.location,
+        &next.spec.location,
+        "/spec/location",
+        previous.spec.location.is_some(),
+        &mut changes,
+    );
+    compare_serialized(
         &previous.spec.presentation,
         &next.spec.presentation,
         "/spec/presentation",

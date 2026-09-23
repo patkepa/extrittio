@@ -27,11 +27,3 @@ export const TIER_COLORS = {
 } as const;
 
 export type HealthTier = keyof typeof TIER_COLORS;
-
-// --- Device type abbreviations (fallback for labels) ---
-export const TYPE_ABBREVS: Record<string, string> = {
-  'mac-device': 'M',
-  organbath: 'O',
-  linux: 'L',
-  esp32: 'E',
-};

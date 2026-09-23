@@ -1,7 +1,4 @@
-use super::{
-    AlertWorkerApplication, CommandApplication, OutboxWorkerApplication, RuleRuntimeApplication,
-};
-use crate::alerts::CooldownRecord;
+use super::{AlertWorkerApplication, CommandApplication, OutboxWorkerApplication};
 use crate::outbox::{FailureClass, OutboxEventRecord};
 use crate::rule_engine::types::PendingAction;
 use crate::{ApplicationError, TenantId};
@@ -12,7 +9,6 @@ pub struct RuleDeliveryApplication {
     outbox: OutboxWorkerApplication,
     alerts: AlertWorkerApplication,
     commands: CommandApplication,
-    rules: RuleRuntimeApplication,
     webhook: Arc<dyn crate::rule_actions::WebhookSender>,
 }
 impl RuleDeliveryApplication {
@@ -20,21 +16,19 @@ impl RuleDeliveryApplication {
         outbox: OutboxWorkerApplication,
         alerts: AlertWorkerApplication,
         commands: CommandApplication,
-        rules: RuleRuntimeApplication,
         webhook: Arc<dyn crate::rule_actions::WebhookSender>,
     ) -> Self {
         Self {
             outbox,
             alerts,
             commands,
-            rules,
             webhook,
         }
     }
     pub async fn deliver(&self, event: &OutboxEventRecord) -> Result<bool, ApplicationError> {
         let (result, failure) = match crate::rule_actions::decode_event(event) {
             Ok(action) => (
-                self.execute(action, &event.id, event.created_at).await,
+                self.execute(action, &event.id).await,
                 FailureClass::Retryable,
             ),
             Err(error) => (
@@ -47,12 +41,7 @@ impl RuleDeliveryApplication {
             Err(error) => self.outbox.failed(event, failure, &error).await,
         }
     }
-    async fn execute(
-        &self,
-        action: PendingAction,
-        delivery_id: &str,
-        delivery_created_at: chrono::NaiveDateTime,
-    ) -> Result<(), String> {
+    async fn execute(&self, action: PendingAction, delivery_id: &str) -> Result<(), String> {
         match action {
             PendingAction::CreateAlert {
                 tenant_id,
@@ -123,44 +112,8 @@ impl RuleDeliveryApplication {
                     .map_err(|error| error.to_string())?;
                 Ok(())
             }
-            PendingAction::UpdateCooldown {
-                tenant_id,
-                rule_id,
-                device_id,
-                fired_at,
-            } => {
-                self.alerts
-                    .apply_legacy_cooldown(CooldownRecord {
-                        tenant_id,
-                        rule_id,
-                        device_id,
-                        last_fired_at: fired_at,
-                    })
-                    .await
-                    .map_err(|error| error.to_string())?;
-
-                Ok(())
-            }
-            PendingAction::UpdateZoneEntry {
-                tenant_id,
-                rule_id,
-                device_id,
-                entered_at,
-            } => {
-                let tenant = TenantId::new(tenant_id).map_err(|error| error.to_string())?;
-                self.rules
-                    .apply_legacy_zone_entry(
-                        &tenant,
-                        crate::rule_snapshots::LegacyZoneEntry {
-                            rule_id,
-                            device_id,
-                            entered_at,
-                            event_id: delivery_id.to_owned(),
-                            created_at: delivery_created_at,
-                        },
-                    )
-                    .await
-                    .map_err(|error| error.to_string())
+            PendingAction::UpdateCooldown { .. } | PendingAction::UpdateZoneEntry { .. } => {
+                Err("runtime state must be committed during ingestion, not delivered".into())
             }
         }
     }

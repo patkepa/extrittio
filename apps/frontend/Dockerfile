@@ -4,6 +4,7 @@ FROM docker.io/library/node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb8
 WORKDIR /app
 
 COPY package.json package-lock.json ./
+COPY scripts/ ./scripts/
 RUN npm ci
 
 COPY . .

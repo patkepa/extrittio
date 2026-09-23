@@ -8,5 +8,7 @@ pub mod cache;
 pub mod compiler;
 pub mod evaluate;
 pub mod geo;
+pub mod metric;
 pub mod model;
+pub mod number;
 pub mod types;

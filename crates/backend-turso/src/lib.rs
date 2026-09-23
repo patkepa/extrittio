@@ -5,8 +5,6 @@ pub use firmware::TursoFirmwareRepository;
 pub mod api_keys;
 mod fleets;
 pub use fleets::TursoFleetRepository;
-mod device_types;
-pub use device_types::TursoDeviceTypeRepository;
 mod bootstrap;
 pub use bootstrap::TursoBootstrapRepository;
 mod certificates;
@@ -66,9 +64,6 @@ pub use events::TursoEventRepository;
 
 mod device_ingress;
 pub use device_ingress::TursoDeviceIngressRepository;
-
-mod telemetry;
-pub use telemetry::TursoTelemetryRepository;
 
 mod activity;
 pub use activity::TursoActivityRepository;

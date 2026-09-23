@@ -511,7 +511,9 @@ fn check_source_boundaries(root: &Path, report: &mut Report) -> Result<()> {
         ("crates/backend-postgres", "PostgreSQL adapter"),
         ("crates/backend-turso", "Turso adapter"),
     ] {
-        let files = rust_files(root, Path::new(directory))?;
+        // Adapter integration tests may read process configuration to select an
+        // isolated database. Keep the runtime source boundary scoped to src/.
+        let files = rust_files(root, &Path::new(directory).join("src"))?;
         let forbidden = if directory == "crates/backend-core" {
             CORE_FORBIDDEN_SOURCE_TOKENS
         } else {

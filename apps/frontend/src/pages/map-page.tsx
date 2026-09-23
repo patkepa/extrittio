@@ -8,6 +8,8 @@ import type { MapDevice } from '../components/map/zone-panel';
 import { ZoneDrawControls } from '../components/map/zone-draw-controls';
 import { DeviceCanvasLayer } from '../components/map/device-canvas-layer';
 import { useAllDevices } from '../hooks/use-devices';
+import { useDeviceLocations } from '../hooks/use-device-locations';
+import { locatedMapDevices, nextLocationExpiry } from '../components/map/map-device-model';
 import { useZones } from '../hooks/use-zones';
 import type { Device } from '../types/api';
 import type { Zone, CircleGeometry, PolygonGeometry } from '../types/zones';
@@ -33,26 +35,12 @@ function MapRef({ mapRef }: { mapRef: MutableRefObject<L.Map | null> }) {
   return null;
 }
 
-type DeviceLocationFields = {
-  latest_latitude?: number | null;
-  latest_longitude?: number | null;
-};
-
-type LocatedDevice = Device & {
-  latest_latitude: number;
-  latest_longitude: number;
-};
-
-function hasLocation(device: Device): device is LocatedDevice {
-  const candidate = device as Device & DeviceLocationFields;
-  return (
-    typeof candidate.latest_latitude === 'number' && typeof candidate.latest_longitude === 'number'
-  );
-}
-
 export default function MapPage() {
-  const { data: devicesData } = useAllDevices(undefined, { refetchInterval: 30_000 });
-  const devices = devicesData?.data ?? EMPTY_DEVICES;
+  const devicesQuery = useAllDevices(undefined, { refetchInterval: 30_000 });
+  const devices = devicesQuery.data?.data ?? EMPTY_DEVICES;
+  const locationsQuery = useDeviceLocations(devices);
+  const [locationClock, setLocationClock] = useState(Date.now);
+  const locationNow = Math.max(locationClock, locationsQuery.dataUpdatedAt);
   const { data: zones = [] } = useZones();
 
   const [drawMode, setDrawMode] = useState(false);
@@ -61,6 +49,16 @@ export default function MapPage() {
   const [hiddenZoneIds, setHiddenZoneIds] = useState<Set<string>>(new Set());
   const mapRef = useRef<L.Map | null>(null);
   const acceptDrawnLayerRef = useRef<((layer: L.Layer, type: string) => void) | null>(null);
+
+  useEffect(() => {
+    const next = nextLocationExpiry(locationsQuery.data ?? [], locationNow);
+    if (next === null) return;
+    const timer = window.setTimeout(
+      () => setLocationClock(Date.now()),
+      Math.min(Math.max(next - Date.now(), 0), 2_147_483_647),
+    );
+    return () => window.clearTimeout(timer);
+  }, [locationsQuery.data, locationNow]);
 
   const handleToggleDrawMode = useCallback(() => {
     setDrawMode((prev) => !prev);
@@ -89,7 +87,7 @@ export default function MapPage() {
   const handleDeviceClick = useCallback((device: MapDevice) => {
     const map = mapRef.current;
     if (!map) return;
-    map.flyTo([device.latest_latitude, device.latest_longitude], 16);
+    map.flyTo([device.location.latitude, device.location.longitude], 16);
   }, []);
 
   const handleToggleZoneVisibility = useCallback((id: string) => {
@@ -101,17 +99,11 @@ export default function MapPage() {
     });
   }, []);
 
-  const devicesWithLocation: MapDevice[] = useMemo(
+  const locationsFailed = devicesQuery.isError || locationsQuery.isError;
+  const devicesWithLocation = useMemo(
     () =>
-      devices.filter(hasLocation).map((device) => ({
-        id: device.id,
-        name: device.name,
-        status: device.status,
-        latest_latitude: device.latest_latitude,
-        latest_longitude: device.latest_longitude,
-        last_seen_at: device.last_seen_at,
-      })),
-    [devices],
+      locationsFailed ? [] : locatedMapDevices(devices, locationsQuery.data ?? [], locationNow),
+    [devices, locationsQuery.data, locationsFailed, locationNow],
   );
 
   const visibleZones = useMemo(
@@ -122,6 +114,15 @@ export default function MapPage() {
   return (
     <div className="map-page">
       <div className="map-page-content">
+        {locationsFailed ? (
+          <div role="alert" className="map-location-status">
+            Device locations could not be loaded.
+          </div>
+        ) : devicesQuery.isPending || (devices.length > 0 && locationsQuery.isPending) ? (
+          <div role="status" className="map-location-status">
+            Loading device locations…
+          </div>
+        ) : null}
         <DeviceMap zoom={5}>
           <MapRef mapRef={mapRef} />
           <ZoneLayer zones={visibleZones} />

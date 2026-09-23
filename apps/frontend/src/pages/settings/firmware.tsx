@@ -14,10 +14,14 @@ import {
 } from '@blueprintjs/core';
 import { useFirmwareUpdates, useDeleteFirmwareUpdate } from '../../hooks/use-firmware-updates';
 import { AddFirmwareDialog } from '../../components/settings/add-firmware-dialog';
+import { hasPermission } from '../../auth/permissions';
+import { useAuthStore } from '../../stores/auth-store';
 import './settings.css';
 
 export const FirmwareSettings = () => {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const permissions = useAuthStore((s) => s.user?.permissions);
+  const canManageFirmware = hasPermission(permissions, 'firmware.manage');
 
   const { data: firmwareUpdates = [], isLoading, error } = useFirmwareUpdates();
   const deleteMutation = useDeleteFirmwareUpdate();
@@ -50,9 +54,11 @@ export const FirmwareSettings = () => {
             registered
           </p>
         </div>
-        <Button intent="primary" icon="add" onClick={() => setIsAddDialogOpen(true)}>
-          Add Firmware
-        </Button>
+        {canManageFirmware && (
+          <Button intent="primary" icon="add" onClick={() => setIsAddDialogOpen(true)}>
+            Add Firmware
+          </Button>
+        )}
       </div>
 
       <Card elevation={Elevation.ONE} className="settings-table-card">
@@ -96,9 +102,7 @@ export const FirmwareSettings = () => {
                       </div>
                     )}
                   </td>
-                  <td className="mono-data">
-                    {fw.blueprint_revision_id ?? `legacy:${fw.device_type_name}`}
-                  </td>
+                  <td className="mono-data">{fw.blueprint_revision_id}</td>
                   <td>
                     <Tag minimal intent={fw.source === 'ci' ? 'primary' : 'none'}>
                       {fw.source === 'ci' ? 'CI' : 'Manual'}
@@ -120,21 +124,29 @@ export const FirmwareSettings = () => {
                         <Button icon="download" minimal small title="Download" />
                       </a>
                     )}
-                    <Button
-                      icon="trash"
-                      minimal
-                      small
-                      intent="danger"
-                      loading={deleteMutation.isPending && deleteMutation.variables === fw.id}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteMutation.mutate(fw.id, {
-                          onSuccess: () => void showSuccessToast('Firmware deleted'),
-                          onError: () => void showErrorToast('Failed to delete firmware'),
-                        });
-                      }}
-                      title="Delete"
-                    />
+                    {canManageFirmware && (
+                      <Button
+                        icon="trash"
+                        minimal
+                        small
+                        intent="danger"
+                        loading={deleteMutation.isPending && deleteMutation.variables === fw.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (
+                            !window.confirm(
+                              `Delete firmware v${fw.version}? This cannot be undone.`,
+                            )
+                          )
+                            return;
+                          deleteMutation.mutate(fw.id, {
+                            onSuccess: () => void showSuccessToast('Firmware deleted'),
+                            onError: () => void showErrorToast('Failed to delete firmware'),
+                          });
+                        }}
+                        title="Delete"
+                      />
+                    )}
                   </td>
                 </tr>
               ))}
@@ -143,7 +155,9 @@ export const FirmwareSettings = () => {
         )}
       </Card>
 
-      <AddFirmwareDialog isOpen={isAddDialogOpen} onClose={() => setIsAddDialogOpen(false)} />
+      {canManageFirmware && (
+        <AddFirmwareDialog isOpen={isAddDialogOpen} onClose={() => setIsAddDialogOpen(false)} />
+      )}
     </div>
   );
 };

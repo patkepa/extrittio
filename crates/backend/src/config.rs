@@ -85,6 +85,7 @@ const DEFAULT_ALERT_RETENTION_DAYS: u64 = 30;
 const RPI_ALERT_RETENTION_DAYS: u64 = 7;
 const DEFAULT_TELEMETRY_RETENTION_DAYS: u64 = 30;
 const RPI_TELEMETRY_RETENTION_DAYS: u64 = 7;
+const DEFAULT_METRIC_ROLLUP_RETENTION_DAYS: u64 = 365;
 const DEFAULT_LOG_RETENTION_DAYS: u64 = 30;
 const RPI_LOG_RETENTION_DAYS: u64 = 7;
 const DEFAULT_SYSTEM_METRICS_INTERVAL_SECS: u64 = 10;
@@ -122,6 +123,7 @@ pub struct AppConfig {
     pub firmware_storage: FirmwareStorageConfig,
     pub alert_retention_days: u64,
     pub telemetry_retention_days: u64,
+    pub metric_rollup_retention_days: u64,
     pub log_retention_days: u64,
     pub rule_snapshot_refresh_interval_secs: u64,
     pub system_metrics_interval_secs: u64,
@@ -314,6 +316,8 @@ impl AppConfig {
                     DEFAULT_TELEMETRY_RETENTION_DAYS
                 },
             ),
+            metric_rollup_retention_days: env_parse(&read_env, "METRIC_ROLLUP_RETENTION_DAYS")?
+                .unwrap_or(DEFAULT_METRIC_ROLLUP_RETENTION_DAYS),
             log_retention_days: env_parse(&read_env, "LOG_RETENTION_DAYS")?.unwrap_or(
                 if rpi_mode {
                     RPI_LOG_RETENTION_DAYS
@@ -369,6 +373,14 @@ impl AppConfig {
     }
 
     pub fn validate(&self) -> Result<(), ConfigError> {
+        if self.telemetry_retention_days == 0
+            || self.metric_rollup_retention_days < self.telemetry_retention_days
+        {
+            return Err(ConfigError::Validation(
+                "METRIC_ROLLUP_RETENTION_DAYS must be at least the positive TELEMETRY_RETENTION_DAYS"
+                    .to_string(),
+            ));
+        }
         if self.port == 0 || self.zenoh_tls_port == 0 {
             return Err(ConfigError::Validation(
                 "PORT and ZENOH_TLS_PORT must be greater than zero".to_string(),
@@ -791,10 +803,23 @@ mod tests {
         assert_eq!(config.command_timeout_secs, 60);
         assert_eq!(config.alert_retention_days, 7);
         assert_eq!(config.telemetry_retention_days, 7);
+        assert_eq!(config.metric_rollup_retention_days, 365);
         assert_eq!(config.log_retention_days, 7);
         assert_eq!(config.system_metrics_interval_secs, 60);
         assert_eq!(config.app_metrics_flush_interval_secs, 60);
         assert_eq!(config.metrics_retention_hours, 24);
+    }
+
+    #[test]
+    fn metric_retention_requires_rollups_to_outlive_raw_events() {
+        assert!(config_result(&[("TELEMETRY_RETENTION_DAYS", "0")]).is_err());
+        assert!(
+            config_result(&[
+                ("TELEMETRY_RETENTION_DAYS", "31"),
+                ("METRIC_ROLLUP_RETENTION_DAYS", "30"),
+            ])
+            .is_err()
+        );
     }
 
     #[cfg(any(feature = "postgres", feature = "turso"))]
@@ -806,6 +831,7 @@ mod tests {
             ("OFFLINE_TIMEOUT_SECS", "900"),
             ("COMMAND_TIMEOUT_SECS", "120"),
             ("TELEMETRY_RETENTION_DAYS", "3"),
+            ("METRIC_ROLLUP_RETENTION_DAYS", "90"),
             ("LOG_RETENTION_DAYS", "2"),
             ("SYSTEM_METRICS_INTERVAL_SECS", "300"),
             ("APP_METRICS_FLUSH_INTERVAL_SECS", "120"),
@@ -819,6 +845,7 @@ mod tests {
         assert_eq!(config.offline_timeout_secs, 900);
         assert_eq!(config.command_timeout_secs, 120);
         assert_eq!(config.telemetry_retention_days, 3);
+        assert_eq!(config.metric_rollup_retention_days, 90);
         assert_eq!(config.log_retention_days, 2);
         assert_eq!(config.system_metrics_interval_secs, 300);
         assert_eq!(config.app_metrics_flush_interval_secs, 120);

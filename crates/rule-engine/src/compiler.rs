@@ -1,6 +1,6 @@
 use super::model::{
     CompiledAction, CompiledCondition, ConditionField, ConditionOperator, RuleActionKind,
-    RuleTargetType, RuleTrigger, TelemetryField,
+    RuleTargetType, RuleTrigger,
 };
 use super::types::{CachedAction, CachedCondition};
 
@@ -17,23 +17,8 @@ pub fn compile_target_type(value: &str) -> Option<RuleTargetType> {
     match value {
         "global" => Some(RuleTargetType::Global),
         "blueprint" => Some(RuleTargetType::Blueprint),
-        "device_type" => Some(RuleTargetType::DeviceType),
         "fleet" => Some(RuleTargetType::Fleet),
         "device" => Some(RuleTargetType::Device),
-        _ => None,
-    }
-}
-
-pub fn compile_telemetry_field(value: &str) -> Option<TelemetryField> {
-    match value {
-        "temperature" => Some(TelemetryField::Temperature),
-        "humidity" => Some(TelemetryField::Humidity),
-        "battery_level" => Some(TelemetryField::BatteryLevel),
-        "latitude" => Some(TelemetryField::Latitude),
-        "longitude" => Some(TelemetryField::Longitude),
-        "speed" => Some(TelemetryField::Speed),
-        "altitude" => Some(TelemetryField::Altitude),
-        "heading" => Some(TelemetryField::Heading),
         _ => None,
     }
 }
@@ -60,12 +45,12 @@ pub fn compile_action_kind(value: &str) -> Option<RuleActionKind> {
 }
 
 pub fn compile_condition(condition: &CachedCondition) -> Option<CompiledCondition> {
-    let field = if let Some(field) = compile_telemetry_field(&condition.field) {
-        ConditionField::Telemetry(field)
-    } else if condition.field == "status" {
+    let field = if condition.field == "status" {
         ConditionField::Status
     } else if condition.zone_id.is_some() {
         ConditionField::Zone
+    } else if !condition.field.is_empty() {
+        ConditionField::Metric
     } else {
         return None;
     };
@@ -84,4 +69,18 @@ pub fn compile_action(action: &CachedAction) -> Option<CompiledAction> {
         kind: compile_action_kind(&action.action_type)?,
         config: action.config.clone(),
     })
+}
+
+#[cfg(test)]
+mod target_tests {
+    use super::*;
+
+    #[test]
+    fn accepts_blueprint_targets_and_rejects_retired_device_types() {
+        assert_eq!(
+            compile_target_type("blueprint"),
+            Some(RuleTargetType::Blueprint)
+        );
+        assert_eq!(compile_target_type("device_type"), None);
+    }
 }

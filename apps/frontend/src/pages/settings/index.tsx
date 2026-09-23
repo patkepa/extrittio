@@ -1,6 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { ProfileSettings } from './profile';
-import { DeviceTypesSettings } from './device-types';
 import { DeviceBlueprintsSettings } from './device-blueprints';
 import { FleetsSettings } from './fleets';
 import { UsersSettings } from './users';
@@ -14,7 +13,6 @@ import { useAuthStore } from '../../stores/auth-store';
 const settingsElements = {
   profile: <ProfileSettings />,
   'device-blueprints': <DeviceBlueprintsSettings />,
-  'device-types': <DeviceTypesSettings />,
   fleets: <FleetsSettings />,
   users: <UsersSettings />,
   roles: <RolesSettings />,

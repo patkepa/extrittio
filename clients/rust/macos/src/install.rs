@@ -46,7 +46,17 @@ fn generate_plist(exe_path: &str, home: &str) -> String {
 }
 
 /// Install the LaunchAgent: create config dir, write default config, write plist, load agent.
-pub fn install(device_id: Option<&str>, connect: Option<&str>) {
+pub fn install(device_id: Option<&str>, connect: Option<&str>, contract_path: &str) {
+    let contract_path = std::fs::canonicalize(contract_path).expect("contract file must exist");
+    let contract = extrittio_client_runtime::contract::ProvisionedContract::from_api_response(
+        &std::fs::read(&contract_path).expect("read provisioned contract"),
+    )
+    .expect("valid provisioned contract required");
+    if let Some(id) = device_id {
+        contract
+            .validate_device_id(id)
+            .expect("device identity must match contract");
+    }
     let config_dir = Config::config_dir();
     let config_path = Config::config_path();
     let log_directory = log_dir();
@@ -57,18 +67,23 @@ pub fn install(device_id: Option<&str>, connect: Option<&str>) {
         .unwrap_or_else(|e| panic!("Failed to create {}: {e}", config_dir.display()));
 
     if !config_path.exists() {
-        let mut cfg = Config::default();
-        if let Some(id) = device_id {
-            cfg.device_id = Some(id.to_string());
-        }
-        if let Some(ep) = connect {
-            cfg.connect = Some(ep.to_string());
-        }
+        let cfg = Config {
+            contract_path: contract_path.to_string_lossy().into_owned(),
+            device_id: device_id.map(str::to_string),
+            connect: connect.map(str::to_string),
+            ..Config::default()
+        };
         cfg.save(&config_path)
             .unwrap_or_else(|e| panic!("Failed to write config: {e}"));
         println!("Config written to {}", config_path.display());
     } else {
-        println!("Config already exists at {}", config_path.display());
+        let mut cfg = Config::load();
+        cfg.contract_path = contract_path.to_string_lossy().into_owned();
+        cfg.device_id = Some(contract.device_id().to_string());
+        if let Some(endpoint) = connect {
+            cfg.connect = Some(endpoint.to_string());
+        }
+        cfg.save(&config_path).expect("save contract configuration");
     }
 
     // 2. Log directory

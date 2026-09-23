@@ -14,10 +14,6 @@ export const queryKeys = {
     catalog: ['analytics', 'catalog'] as const,
     query: (request: unknown) => ['analytics', 'query', request] as const,
   },
-  telemetry: {
-    list: (deviceId: string, params?: unknown) => ['telemetry', deviceId, params] as const,
-    all: (deviceId: string) => ['telemetry-all', deviceId] as const,
-  },
   metrics: {
     list: (deviceId: string, params?: unknown) => ['device-metrics', deviceId, params] as const,
     all: (deviceId: string) => ['device-metrics', deviceId, 'all'] as const,
@@ -41,8 +37,7 @@ export const queryKeys = {
   firmware: {
     all: ['firmware-updates'] as const,
     list: (params?: unknown) => ['firmware-updates', params] as const,
-    nextVersionAll: ['firmware-next-version'] as const,
-    nextVersion: (deviceTypeId: number) => ['firmware-next-version', deviceTypeId] as const,
+    nextBlueprintVersionAll: ['firmware-next-blueprint-version'] as const,
     nextBlueprintVersion: (revisionId: string) =>
       ['firmware-next-blueprint-version', revisionId] as const,
     deployments: (deviceId: string) => ['ota-deployments', deviceId] as const,
@@ -50,9 +45,6 @@ export const queryKeys = {
   },
   fleets: {
     all: ['fleets'] as const,
-  },
-  deviceTypes: {
-    all: ['device-types'] as const,
   },
   deviceBlueprints: {
     all: ['device-blueprints'] as const,
@@ -95,6 +87,8 @@ export const queryKeys = {
     detail: (id: string) => ['zone', id] as const,
   },
   locations: {
+    batch: (identities: readonly (readonly [string, string])[]) =>
+      ['device-locations', identities] as const,
     latest: (deviceId: string) => ['device-location', deviceId, 'latest'] as const,
   },
   thread: {

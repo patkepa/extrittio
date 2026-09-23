@@ -1,5 +1,4 @@
 use crate::certificates::NewDeviceCertificateRecord;
-use crate::device_types::DeviceTypeRecord;
 use crate::fleets::FleetRecord;
 use crate::{PersistenceError, TenantId};
 use async_trait::async_trait;
@@ -9,22 +8,29 @@ use serde_json::Value;
 pub struct DeviceRecord {
     pub id: String,
     pub name: String,
-    pub device_type_id: i32,
     pub fleet_id: Option<i32>,
     pub status: String,
     pub firmware: String,
     pub last_seen: Option<DateTime<Utc>>,
     pub uptime_seconds: i32,
-    pub latest_latitude: Option<f64>,
-    pub latest_longitude: Option<f64>,
     pub declared_connections: Value,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeviceDetails {
     pub device: DeviceRecord,
-    pub device_type: DeviceTypeRecord,
+    pub blueprint: DeviceBlueprintIdentity,
     pub fleet: Option<FleetRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeviceBlueprintIdentity {
+    pub id: String,
+    pub revision_id: String,
+    pub key: String,
+    pub name: String,
+    pub icon: Option<String>,
+    pub color: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -38,6 +44,8 @@ pub struct DeviceListQuery {
     pub status: Option<String>,
     pub search: Option<String>,
     pub fleet_id: Option<i32>,
+    pub sort_by: Option<String>,
+    pub sort_dir: Option<String>,
     pub limit: i64,
     pub offset: i64,
 }
@@ -53,7 +61,6 @@ pub struct DeviceFilter {
 pub struct CreateDeviceRecord {
     pub id: String,
     pub name: String,
-    pub device_type_id: i32,
     pub fleet_id: Option<i32>,
     pub firmware: String,
     pub contract: NewDeviceContractRecord,
@@ -77,7 +84,6 @@ pub struct DeviceContractRecord {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct UpdateDeviceRecord {
     pub name: Option<String>,
-    pub device_type_id: Option<i32>,
     pub fleet_id: Option<Option<i32>>,
     pub firmware: Option<String>,
     pub updated_at: Option<DateTime<Utc>>,

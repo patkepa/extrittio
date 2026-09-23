@@ -23,7 +23,8 @@ impl BackendKind {
 pub struct BackendCapabilities {
     pub multi_process: bool,
     pub concurrent_claimers: bool,
-    pub partitioned_telemetry: bool,
+    /// The local engine requires an explicit periodic WAL checkpoint.
+    pub periodic_checkpoint: bool,
 }
 
 /// Safe, backend-neutral database information shared by application state.
@@ -42,7 +43,7 @@ impl BackendDescriptor {
             capabilities: BackendCapabilities {
                 multi_process: true,
                 concurrent_claimers: true,
-                partitioned_telemetry: true,
+                periodic_checkpoint: false,
             },
             local_file: None,
         }
@@ -55,7 +56,7 @@ impl BackendDescriptor {
             capabilities: BackendCapabilities {
                 multi_process: false,
                 concurrent_claimers: false,
-                partitioned_telemetry: false,
+                periodic_checkpoint: true,
             },
             local_file: Some(local_file),
         }
@@ -67,13 +68,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn local_checkpoint_scheduling_is_independent_of_device_measurements() {
+        let descriptor = BackendDescriptor::turso(PathBuf::from("database.db"));
+        assert!(descriptor.capabilities.periodic_checkpoint);
+        assert!(
+            !BackendDescriptor::postgres()
+                .capabilities
+                .periodic_checkpoint
+        );
+    }
+
+    #[test]
     fn postgres_descriptor_preserves_production_capabilities() {
         let descriptor = BackendDescriptor::postgres();
 
         assert_eq!(descriptor.kind, BackendKind::Postgres);
         assert!(descriptor.capabilities.multi_process);
         assert!(descriptor.capabilities.concurrent_claimers);
-        assert!(descriptor.capabilities.partitioned_telemetry);
+        assert!(!descriptor.capabilities.periodic_checkpoint);
         assert!(descriptor.local_file.is_none());
     }
 }

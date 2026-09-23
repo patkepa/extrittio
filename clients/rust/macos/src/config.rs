@@ -2,13 +2,13 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Config {
+    pub contract_path: String,
     pub device_id: Option<String>,
     pub connect: Option<String>,
     #[serde(default = "default_telemetry_interval")]
     pub telemetry_interval_secs: u64,
-    #[serde(default = "default_heartbeat_interval")]
-    pub heartbeat_interval_secs: u64,
     #[serde(default = "default_firmware_version")]
     pub firmware_version: String,
     #[serde(default)]
@@ -24,10 +24,6 @@ pub struct TlsConfig {
 
 fn default_telemetry_interval() -> u64 {
     5
-}
-
-fn default_heartbeat_interval() -> u64 {
-    30
 }
 
 fn default_firmware_version() -> String {
@@ -76,7 +72,7 @@ impl Default for Config {
             device_id: None,
             connect: None,
             telemetry_interval_secs: default_telemetry_interval(),
-            heartbeat_interval_secs: default_heartbeat_interval(),
+            contract_path: String::new(),
             firmware_version: default_firmware_version(),
             tls: None,
         }
@@ -88,12 +84,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn rejects_missing_contract_and_retired_heartbeat_override() {
+        assert!(toml::from_str::<Config>("device_id = 'mac-1'").is_err());
+        assert!(
+            toml::from_str::<Config>(
+                "contract_path = '/contract.json'\nheartbeat_interval_secs = 30"
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
     fn parse_full_config() {
         let toml = r#"
 device_id = "mac-001"
 connect = "tcp/192.0.2.10:7447"
 telemetry_interval_secs = 10
-heartbeat_interval_secs = 60
+contract_path = "/path/to/contract.json"
 firmware_version = "v2.0.0-macos"
 
 [tls]
@@ -105,7 +112,7 @@ client_key = "/path/to/device.key"
         assert_eq!(cfg.device_id.as_deref(), Some("mac-001"));
         assert_eq!(cfg.connect.as_deref(), Some("tcp/192.0.2.10:7447"));
         assert_eq!(cfg.telemetry_interval_secs, 10);
-        assert_eq!(cfg.heartbeat_interval_secs, 60);
+        assert_eq!(cfg.contract_path, "/path/to/contract.json");
         assert_eq!(cfg.firmware_version, "v2.0.0-macos");
         let tls = cfg.tls.unwrap();
         assert_eq!(tls.ca_cert.as_deref(), Some("/path/to/ca.pem"));
@@ -117,12 +124,12 @@ client_key = "/path/to/device.key"
     fn parse_minimal_config() {
         let toml = r#"
 device_id = "mac-002"
+contract_path = "/path/to/contract.json"
 "#;
         let cfg: Config = toml::from_str(toml).unwrap();
         assert_eq!(cfg.device_id.as_deref(), Some("mac-002"));
         assert_eq!(cfg.connect, None);
         assert_eq!(cfg.telemetry_interval_secs, 5);
-        assert_eq!(cfg.heartbeat_interval_secs, 30);
         assert_eq!(cfg.firmware_version, "v1.0.0-macos");
         assert!(cfg.tls.is_none());
     }

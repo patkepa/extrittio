@@ -1,12 +1,12 @@
 import { Button, HTMLSelect, InputGroup } from '@blueprintjs/core';
-import type { Dispatch, SetStateAction } from 'react';
 import type { ConditionRow } from '../model/rule-form';
+import type { RuleMetricFieldOption } from '../model/rule-metric-fields';
 
 const STATUS_FIELDS = [{ value: 'status', label: 'Status' }];
 
 const GEOFENCE_FIELDS = [
   { label: 'Zone State', value: 'zone_state' },
-  { label: 'Dwell Time (seconds)', value: 'dwell_seconds' },
+  { label: 'Minimum Dwell (seconds)', value: 'dwell_seconds' },
 ];
 
 const ZONE_STATE_VALUES = [
@@ -26,18 +26,14 @@ const STATUS_OPERATORS = [
   { value: 'eq', label: '=' },
   { value: 'neq', label: '!=' },
 ];
-const ZONE_STATE_OPERATORS = [
-  { value: 'eq', label: '=' },
-  { value: 'neq', label: '!=' },
-];
+const ZONE_STATE_OPERATORS = [{ value: 'eq', label: '=' }];
 const STATUS_VALUES = ['online', 'offline', 'warning'];
 
 interface Props {
   conditions: ConditionRow[];
   triggerType: string;
-  telemetryFields: { value: string; label: string }[];
+  telemetryFields: RuleMetricFieldOption[];
   zones: { id: string; name: string }[];
-  setConditions: Dispatch<SetStateAction<ConditionRow[]>>;
   updateCondition: (index: number, field: keyof ConditionRow, value: string) => void;
   addCondition: () => void;
   removeCondition: (index: number) => void;
@@ -47,11 +43,16 @@ export function RuleConditions({
   triggerType,
   telemetryFields,
   zones,
-  setConditions,
   updateCondition,
   addCondition,
   removeCondition,
 }: Props) {
+  const selectedRoute = conditions
+    .map((condition) => telemetryFields.find((field) => field.value === condition.field)?.route)
+    .find((route) => route !== undefined);
+  const availableMetrics = selectedRoute
+    ? telemetryFields.filter((field) => field.route === selectedRoute)
+    : telemetryFields;
   return (
     <div style={{ marginBottom: 16 }}>
       <div
@@ -65,14 +66,23 @@ export function RuleConditions({
         <span className="section-label" style={{ margin: 0 }}>
           Conditions
         </span>
-        <Button icon="add" minimal small onClick={addCondition}>
+        <Button
+          icon="add"
+          minimal
+          small
+          onClick={addCondition}
+          disabled={
+            triggerType === 'geofence' &&
+            (conditions.length >= 2 || conditions[0]?.value !== 'inside')
+          }
+        >
           Add
         </Button>
       </div>
       {conditions.map((cond, i) => {
         if (triggerType === 'geofence') {
           const isZoneState = cond.field === 'zone_state';
-          const operators = isZoneState ? ZONE_STATE_OPERATORS : NUMERIC_OPERATORS;
+          const operators = isZoneState ? ZONE_STATE_OPERATORS : [{ value: 'gte', label: '>=' }];
 
           return (
             <div
@@ -89,27 +99,7 @@ export function RuleConditions({
             >
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 {/* Field selector */}
-                <HTMLSelect
-                  value={cond.field}
-                  onChange={(e) => {
-                    const newField = e.target.value;
-                    updateCondition(i, 'field', newField);
-                    // Reset operator and value when field changes
-                    setConditions((prev) =>
-                      prev.map((c, idx) =>
-                        idx === i
-                          ? {
-                              ...c,
-                              field: newField,
-                              operator: newField === 'zone_state' ? 'eq' : 'gt',
-                              value: '',
-                            }
-                          : c,
-                      ),
-                    );
-                  }}
-                  style={{ flex: 1 }}
-                >
+                <HTMLSelect value={cond.field} disabled style={{ flex: 1 }}>
                   {GEOFENCE_FIELDS.map((f) => (
                     <option key={f.value} value={f.value}>
                       {f.label}
@@ -120,7 +110,7 @@ export function RuleConditions({
                   icon="cross"
                   minimal
                   small
-                  disabled={conditions.length <= 1}
+                  disabled={conditions.length <= 1 || cond.field === 'zone_state'}
                   onClick={() => removeCondition(i)}
                 />
               </div>
@@ -177,7 +167,7 @@ export function RuleConditions({
         }
 
         // Telemetry / device_status conditions (original layout)
-        const fields = triggerType === 'device_status' ? STATUS_FIELDS : telemetryFields;
+        const fields = triggerType === 'device_status' ? STATUS_FIELDS : availableMetrics;
         const operators = triggerType === 'device_status' ? STATUS_OPERATORS : NUMERIC_OPERATORS;
         const isStatusField = cond.field === 'status';
 
@@ -200,12 +190,9 @@ export function RuleConditions({
                 ))}
               </HTMLSelect>
             ) : (
-              <InputGroup
-                value={cond.field}
-                onChange={(e) => updateCondition(i, 'field', e.target.value)}
-                placeholder="Metric key, e.g. environment./temperature"
-                style={{ flex: 1 }}
-              />
+              <HTMLSelect value="" disabled style={{ flex: 1 }}>
+                <option value="">Select a blueprint with numeric fields...</option>
+              </HTMLSelect>
             )}
             <HTMLSelect
               value={cond.operator}

@@ -3,6 +3,9 @@ import type { DeviceBlueprintRevision, DeviceContract } from '../../../types/api
 export interface RuleMetricFieldOption {
   value: string;
   label: string;
+  route?: string;
+  blueprint_id?: string;
+  blueprint_revision_id?: string;
 }
 
 interface BlueprintField {
@@ -14,6 +17,7 @@ interface BlueprintField {
 
 interface BlueprintStream {
   key?: string;
+  route?: string;
   fields?: BlueprintField[];
 }
 
@@ -31,6 +35,7 @@ interface ContractField {
 }
 
 interface ContractStream {
+  route?: string;
   fields?: Record<string, ContractField>;
 }
 
@@ -68,8 +73,7 @@ function isNumeric(valueType: string | undefined): boolean {
 }
 
 function canonicalMetric(streamKey: string, path: string): string {
-  const normalizedPath = path.split('/').filter(Boolean).join('.');
-  return normalizedPath ? `${streamKey}.${normalizedPath}` : streamKey;
+  return `${streamKey}.${path}`;
 }
 
 function option(
@@ -77,12 +81,18 @@ function option(
   path: string,
   label: string | undefined,
   semantic: string | undefined,
+  route?: string,
+  blueprintId?: string,
+  revisionId?: string,
 ): RuleMetricFieldOption {
   const value = canonicalMetric(streamKey, path);
   const displayLabel = label ?? value;
   return {
     value,
     label: semantic ? `${displayLabel} · ${semantic}` : displayLabel,
+    ...(route && { route }),
+    blueprint_id: blueprintId,
+    blueprint_revision_id: revisionId,
   };
 }
 
@@ -94,17 +104,38 @@ export function blueprintRuleMetricFields(
     if (!stream.key) return [];
     return (stream.fields ?? [])
       .filter((field) => field.path && isNumeric(field.type))
-      .map((field) => option(stream.key!, field.path!, field.label, field.semantic));
+      .map((field) =>
+        option(
+          stream.key!,
+          field.path!,
+          field.label,
+          field.semantic,
+          stream.route,
+          revision?.blueprint_id,
+          revision?.id,
+        ),
+      );
   });
 }
 
 export function contractRuleMetricFields(
   contract: DeviceContract | undefined,
+  blueprintId?: string,
 ): RuleMetricFieldOption[] {
   const document = contract?.document as ContractDocument | undefined;
   return Object.entries(document?.streams ?? {}).flatMap(([streamKey, stream]) =>
     Object.entries(stream.fields ?? {})
       .filter(([, field]) => isNumeric(field.valueType))
-      .map(([path, field]) => option(streamKey, path, field.label, field.semantic)),
+      .map(([path, field]) =>
+        option(
+          streamKey,
+          path,
+          field.label,
+          field.semantic,
+          stream.route,
+          blueprintId,
+          contract?.blueprint_revision_id,
+        ),
+      ),
   );
 }

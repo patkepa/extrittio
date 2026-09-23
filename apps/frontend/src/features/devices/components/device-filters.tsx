@@ -1,7 +1,7 @@
 import { Card, Elevation } from '@blueprintjs/core';
 import { BulkActionBar } from '../../../components/devices/bulk-action-bar';
 import { FilterPill, SearchField } from '@patkepa/kantzen-ui';
-import type { BulkDeviceFilters, Fleet } from '../../../types/api';
+import type { Fleet } from '../../../types/api';
 import type { DeviceStatusFilter } from '../hooks/use-device-list-state';
 
 interface DeviceFiltersProps {
@@ -13,11 +13,7 @@ interface DeviceFiltersProps {
   filterFleetId: number | null;
   onFilterFleetIdChange: (value: number | null) => void;
   fleets: Fleet[];
-  statusCounts: Record<DeviceStatusFilter, number>;
   hasSelection: boolean;
-  totalMatchingCount: number;
-  visibleCount: number;
-  currentFilters: BulkDeviceFilters;
 }
 
 export function DeviceFilters({
@@ -29,24 +25,19 @@ export function DeviceFilters({
   filterFleetId,
   onFilterFleetIdChange,
   fleets,
-  statusCounts,
   hasSelection,
-  totalMatchingCount,
-  visibleCount,
-  currentFilters,
 }: DeviceFiltersProps) {
   return (
     <Card elevation={Elevation.ONE} className="devices-controls">
       <div
         className={`bulk-action-bar-overlay ${hasSelection ? 'bulk-action-bar-overlay--visible' : ''}`}
       >
-        <BulkActionBar
-          totalMatchingCount={totalMatchingCount}
-          visibleCount={visibleCount}
-          currentFilters={currentFilters}
-        />
+        {hasSelection && <BulkActionBar />}
       </div>
-      <div className={`controls-content ${hasSelection ? 'controls-content--hidden' : ''}`}>
+      <div
+        className={`controls-content ${hasSelection ? 'controls-content--hidden' : ''}`}
+        inert={hasSelection}
+      >
         <div className="controls-row">
           <div className="search-section">
             <SearchField
@@ -66,7 +57,6 @@ export function DeviceFilters({
                 active={filterStatus === status}
                 className={status !== 'all' ? `pill-${status}` : undefined}
                 status={status !== 'all' ? status : undefined}
-                count={statusCounts[status]}
                 onSelect={onFilterStatusChange}
               />
             ))}

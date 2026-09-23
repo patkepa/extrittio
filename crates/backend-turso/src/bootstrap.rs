@@ -3,9 +3,7 @@ use chrono::Utc;
 use turso::params;
 
 use extrittio_backend_core::TenantId;
-use extrittio_backend_core::bootstrap::{
-    BootstrapOwner, BootstrapRepository, BuiltinDeviceType, SeedOwnerOutcome,
-};
+use extrittio_backend_core::bootstrap::{BootstrapOwner, BootstrapRepository, SeedOwnerOutcome};
 use extrittio_backend_core::{Permission, PersistenceError};
 
 use crate::TursoConnectionHandles;
@@ -26,34 +24,6 @@ impl TursoBootstrapRepository {
 
 #[async_trait]
 impl BootstrapRepository for TursoBootstrapRepository {
-    async fn seed_builtin_device_types(
-        &self,
-        tenant: &TenantId,
-        records: Vec<BuiltinDeviceType>,
-    ) -> Result<(), PersistenceError> {
-        let mut writer = self.handles.lock_writer().await;
-        let transaction = writer.transaction().await.map_err(map_error)?;
-        let now = Utc::now().timestamp_micros();
-        for record in records {
-            transaction
-                .execute(
-                    "INSERT INTO device_types (tenant_id, name, icon, color_hex, created_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5)
-                     ON CONFLICT (tenant_id, name) DO NOTHING",
-                    params![
-                        tenant.as_str(),
-                        record.name,
-                        record.icon,
-                        record.color_hex,
-                        now
-                    ],
-                )
-                .await
-                .map_err(map_error)?;
-        }
-        transaction.commit().await.map_err(map_error)
-    }
-
     async fn get_or_create_server_config(
         &self,
         key: &str,
@@ -188,4 +158,85 @@ impl BootstrapRepository for TursoBootstrapRepository {
 
 fn map_error(error: turso::Error) -> PersistenceError {
     PersistenceError::Internal(error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn bootstrap_preserves_owner_and_secret_without_device_type_seeding() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = crate::TursoDatabase::open_and_migrate(
+            directory.path(),
+            &directory.path().join("bootstrap.db"),
+            std::time::Duration::from_secs(1),
+        )
+        .await
+        .unwrap();
+        let repository = TursoBootstrapRepository::from_handles(database.shared_handles());
+        let tenant = TenantId::new("default").unwrap();
+        assert!(!repository.users_exist().await.unwrap());
+        assert_eq!(
+            repository
+                .get_or_create_server_config("jwt_secret", "first".into())
+                .await
+                .unwrap(),
+            "first"
+        );
+        assert_eq!(
+            repository
+                .get_or_create_server_config("jwt_secret", "second".into())
+                .await
+                .unwrap(),
+            "first"
+        );
+        let owner = BootstrapOwner {
+            username: "operator".into(),
+            password_hash: extrittio_backend_core::EncodedPasswordHash::new("test-only-verifier"),
+        };
+        assert_eq!(
+            repository
+                .seed_owner_if_empty(&tenant, owner.clone())
+                .await
+                .unwrap(),
+            SeedOwnerOutcome::Created
+        );
+        assert_eq!(
+            repository
+                .seed_owner_if_empty(&tenant, owner)
+                .await
+                .unwrap(),
+            SeedOwnerOutcome::SkippedUsersExist
+        );
+        assert!(repository.users_exist().await.unwrap());
+        let connection = database.shared_handles().connect().unwrap();
+        let mut rows = connection
+            .query(
+                "SELECT u.username,u.auth_epoch,r.name FROM users u
+             JOIN user_roles ur ON ur.tenant_id=u.tenant_id AND ur.user_id=u.id
+             JOIN roles r ON r.tenant_id=ur.tenant_id AND r.id=ur.role_id
+             WHERE u.tenant_id='default'",
+                (),
+            )
+            .await
+            .unwrap();
+        let row = rows.next().await.unwrap().unwrap();
+        assert_eq!(row.get::<String>(0).unwrap(), "operator");
+        assert!(!row.get::<String>(1).unwrap().is_empty());
+        assert_eq!(row.get::<String>(2).unwrap(), "owner");
+        assert!(rows.next().await.unwrap().is_none());
+        drop(rows);
+        let mut rows = connection
+            .query(
+                "SELECT (SELECT count(*) FROM device_blueprints),
+                    (SELECT count(*) FROM sqlite_schema WHERE name='device_types')",
+                (),
+            )
+            .await
+            .unwrap();
+        let row = rows.next().await.unwrap().unwrap();
+        assert_eq!(row.get::<i64>(0).unwrap(), 0);
+        assert_eq!(row.get::<i64>(1).unwrap(), 0);
+    }
 }

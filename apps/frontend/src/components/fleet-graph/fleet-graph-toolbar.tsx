@@ -175,7 +175,8 @@ const SelectedDeviceActions = ({ device }: SelectedDeviceActionsProps) => {
             {(firmwareUpdates ?? []).map((fw) => (
               <MenuItem
                 key={fw.id}
-                text={`${fw.version} (${fw.device_type_name})`}
+                text={`${fw.version} (${fw.blueprint_revision_id})`}
+                disabled={!fw.blueprint_revision_id}
                 onClick={() => void handleOta(fw.id)}
               />
             ))}
@@ -244,7 +245,7 @@ export const FleetGraphToolbar = ({
             <div className="fleet-graph-toolbar-divider" aria-hidden="true" />
 
             <div className="fleet-graph-toolbar-metrics" aria-label="Selected device summary">
-              <ToolbarMetric label="Type" value={selectedDevice.device_type_name} />
+              <ToolbarMetric label="Blueprint" value={selectedDevice.blueprint_name} />
               <ToolbarMetric label="Fleet" value={selectedDevice.fleet_name ?? 'Unassigned'} />
               <ToolbarMetric
                 label="Firmware"

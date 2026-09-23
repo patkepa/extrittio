@@ -52,8 +52,6 @@ pub(crate) enum Command {
     Ready,
     /// Manage devices.
     Devices(DevicesCommand),
-    /// Manage device types.
-    DeviceTypes(DeviceTypesCommand),
     /// Manage fleets.
     Fleets(FleetsCommand),
     /// Publish and list firmware artifacts.
@@ -286,9 +284,13 @@ pub(crate) struct ServiceConfigArgs {
     #[arg(long, env = "ALERT_RETENTION_DAYS")]
     pub(crate) alert_retention_days: Option<u64>,
 
-    /// Days to keep raw telemetry.
+    /// Days to keep raw contract events and typed metric samples.
     #[arg(long, env = "TELEMETRY_RETENTION_DAYS")]
     pub(crate) telemetry_retention_days: Option<u64>,
+
+    /// Days to keep hourly metric rollups and delivery receipts.
+    #[arg(long, env = "METRIC_ROLLUP_RETENTION_DAYS")]
+    pub(crate) metric_rollup_retention_days: Option<u64>,
 }
 
 #[derive(Debug, Args)]
@@ -376,32 +378,10 @@ pub(crate) struct CreateDeviceArgs {
     pub(crate) blueprint_revision_id: String,
 
     #[arg(long)]
-    pub(crate) device_type_id: Option<i32>,
-
-    #[arg(long, value_name = "NAME")]
-    pub(crate) device_type: Option<String>,
-
-    #[arg(long)]
     pub(crate) fleet_id: Option<i32>,
 
     #[arg(long)]
     pub(crate) firmware: Option<String>,
-}
-
-#[derive(Debug, Args)]
-pub(crate) struct DeviceTypesCommand {
-    #[command(subcommand)]
-    pub(crate) command: DeviceTypesSubcommand,
-}
-
-#[derive(Debug, Subcommand)]
-pub(crate) enum DeviceTypesSubcommand {
-    /// List device types.
-    List(PageArgs),
-    /// Create a device type.
-    Create { name: String },
-    /// Delete a device type.
-    Delete { id: i32 },
 }
 
 #[derive(Debug, Args)]
@@ -438,8 +418,9 @@ pub(crate) enum FirmwareSubcommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct ListFirmwareArgs {
-    #[arg(long)]
-    pub(crate) device_type_id: Option<i32>,
+    /// Filter by published blueprint revision.
+    #[arg(long, value_parser = parse_non_empty_string)]
+    pub(crate) blueprint_revision_id: Option<String>,
     #[arg(long, default_value_t = 50)]
     pub(crate) limit: i64,
     #[arg(long, default_value_t = 0)]
@@ -448,8 +429,6 @@ pub(crate) struct ListFirmwareArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct UploadFirmwareArgs {
-    #[arg(long)]
-    pub(crate) device_type_id: i32,
     /// Published immutable blueprint revision associated with the firmware.
     #[arg(long, value_parser = parse_non_empty_string)]
     pub(crate) blueprint_revision_id: String,
@@ -529,7 +508,7 @@ pub(crate) enum ApiKeysSubcommand {
     Create {
         name: String,
         #[arg(long)]
-        device_type_id: Option<i32>,
+        blueprint_id: Option<String>,
     },
     /// Delete an API key.
     Delete { id: i32 },

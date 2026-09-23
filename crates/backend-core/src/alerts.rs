@@ -105,13 +105,6 @@ pub trait AlertRepository: Send + Sync {
         &self,
         tenant: &TenantId,
     ) -> Result<Vec<(String, String, i64)>, PersistenceError>;
-    /// Legacy queued cooldown updates. Ignore timestamps at/before a persisted
-    /// reactivation reset, and never move an existing cooldown backward.
-    /// Current transaction decisions use adapter-owned transaction participants.
-    async fn persist_cooldowns(
-        &self,
-        cooldowns: Vec<CooldownRecord>,
-    ) -> Result<(), PersistenceError>;
     /// System-scoped retention operation. Unlike tenant-facing alert CRUD,
     /// retention must cover every tenant and must never fabricate a default
     /// tenant identity.

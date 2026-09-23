@@ -39,5 +39,8 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tracing = "0.1"
 dirs = "6"
 
+[dev-dependencies]
+tempfile = "3"
+
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
 tikv-jemallocator = { version = "0.6", optional = true }

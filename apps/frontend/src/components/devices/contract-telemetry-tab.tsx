@@ -6,12 +6,17 @@ import type { DeviceContract, DeviceMetric } from '../../types/api';
 import { hexToRgba } from '../../utils/color';
 import { UPlotChart, type UPlotXRange } from '../charts/UPlot';
 import { toAlignedData, tooltipPlugin } from '../charts/uplot-helpers';
-import { computeSince, RANGE_OPTIONS, RANGES, type RangeKey } from './telemetry-profiles';
+import { computeSince, RANGE_OPTIONS, RANGES, type RangeKey } from './telemetry-ranges';
+import { contractMetricDefinitions } from './contract-telemetry-model';
 import {
-  contractMetricDefinitions,
-  metricKey,
-  type MetricDefinition,
-} from './contract-telemetry-model';
+  currentContractValues,
+  historyChartSamples,
+  historyEventRows,
+  historyHasUnplottableValues,
+  historyMetricDefinitions,
+  latestCurrentMetric,
+  type HistoryMetricDefinition,
+} from './contract-history-model';
 
 const DEFAULT_REFRESH_INTERVAL_MS = 10_000;
 const REFRESH_INTERVAL_STORAGE_KEY = 'extrittio.telemetry-refresh-interval.v1';
@@ -26,12 +31,6 @@ const REFRESH_INTERVAL_OPTIONS = [
 ];
 const REFRESH_INTERVAL_VALUES = new Set(REFRESH_INTERVAL_OPTIONS.map(({ value }) => value));
 const MAX_ALL_METRICS = 100_000;
-
-interface EventRow {
-  eventId: string;
-  occurredAt: string;
-  values: Record<string, DeviceMetric['value']>;
-}
 
 function loadRefreshInterval(): number | false {
   try {
@@ -63,22 +62,6 @@ function formatValue(value: DeviceMetric['value'] | undefined, precision?: numbe
   return String(value);
 }
 
-function eventRows(metrics: DeviceMetric[]): EventRow[] {
-  const rows = new Map<string, EventRow>();
-  for (const metric of metrics) {
-    const row = rows.get(metric.event_id) ?? {
-      eventId: metric.event_id,
-      occurredAt: metric.occurred_at,
-      values: {},
-    };
-    row.values[metricKey(metric.stream_key, metric.field_path)] = metric.value;
-    rows.set(metric.event_id, row);
-  }
-  return [...rows.values()].sort(
-    (left, right) => new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime(),
-  );
-}
-
 interface ContractTelemetryTabProps {
   deviceId: string;
   contract: DeviceContract;
@@ -94,15 +77,23 @@ export const ContractTelemetryTab = ({ deviceId, contract }: ContractTelemetryTa
   const definitions = useMemo(() => contractMetricDefinitions(contract), [contract]);
   const boundedQuery = useDeviceMetrics(
     isAll ? null : deviceId,
-    { limit: Math.min(range.limit * Math.max(definitions.length, 1), 10_000), since },
+    { limit: 10_000, since },
     { refetchInterval: refreshInterval },
   );
   const allQuery = useAllDeviceMetrics(isAll ? deviceId : null);
   const query = isAll ? allQuery : boundedQuery;
   const metrics = useMemo(() => query.data ?? [], [query.data]);
-  const rows = useMemo(() => eventRows(metrics), [metrics]);
-  const latestValues = rows[0]?.values ?? {};
-  const chartDefinitions = definitions.filter(
+  const rows = useMemo(() => historyEventRows(metrics), [metrics]);
+  const latestValues = useMemo(
+    () => currentContractValues(metrics, contract.id),
+    [contract.id, metrics],
+  );
+  const latestMetric = useMemo(
+    () => latestCurrentMetric(metrics, contract.id),
+    [contract.id, metrics],
+  );
+  const historyDefinitions = useMemo(() => historyMetricDefinitions(metrics), [metrics]);
+  const chartDefinitions = historyDefinitions.filter(
     ({ valueType, presentation }) =>
       (valueType === 'float64' || valueType === 'int64') && presentation?.chart !== 'none',
   );
@@ -140,9 +131,9 @@ export const ContractTelemetryTab = ({ deviceId, contract }: ContractTelemetryTa
             ))}
           </div>
         )}
-        {rows[0] && (
+        {latestMetric && (
           <div className="telemetry-current-timestamp">
-            Last updated {formatTimestamp(rows[0].occurredAt)}
+            Last updated {formatTimestamp(latestMetric.occurred_at)}
           </div>
         )}
       </div>
@@ -191,9 +182,10 @@ export const ContractTelemetryTab = ({ deviceId, contract }: ContractTelemetryTa
             />
           </div>
         </div>
-        {isAll && metrics.length >= MAX_ALL_METRICS && (
+        {metrics.length >= (isAll ? MAX_ALL_METRICS : 10_000) && (
           <Callout intent="warning" icon="info-sign" compact style={{ marginTop: 8 }}>
-            Showing the most recent {MAX_ALL_METRICS.toLocaleString()} metric samples.
+            Showing the most recent {(isAll ? MAX_ALL_METRICS : 10_000).toLocaleString()} metric
+            samples.
           </Callout>
         )}
         {metrics.length === 0 ? (
@@ -202,7 +194,7 @@ export const ContractTelemetryTab = ({ deviceId, contract }: ContractTelemetryTa
           </Callout>
         ) : chartDefinitions.length === 0 ? (
           <Callout icon="info-sign" intent="primary" style={{ marginTop: 12 }}>
-            The contract does not declare any numeric chart fields.
+            No numeric chart fields have samples in this range.
           </Callout>
         ) : (
           chartDefinitions.map((definition) => (
@@ -224,8 +216,12 @@ export const ContractTelemetryTab = ({ deviceId, contract }: ContractTelemetryTa
             <thead>
               <tr>
                 <th>Time</th>
-                {definitions.map((definition) => (
-                  <th key={definition.key}>{definition.label}</th>
+                <th>Blueprint revision</th>
+                {historyDefinitions.map((definition) => (
+                  <th key={definition.key}>
+                    {definition.label} · {definition.blueprintName} r{definition.blueprintRevision}
+                    {definition.unit ? ` (${definition.unit})` : ''}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -233,7 +229,10 @@ export const ContractTelemetryTab = ({ deviceId, contract }: ContractTelemetryTa
               {rows.map((row) => (
                 <tr key={row.eventId}>
                   <td className="mono-data">{formatTimestamp(row.occurredAt)}</td>
-                  {definitions.map((definition) => (
+                  <td>
+                    {row.blueprintName} r{row.blueprintRevision}
+                  </td>
+                  {historyDefinitions.map((definition) => (
                     <td key={definition.key} className="mono-data">
                       {formatValue(row.values[definition.key], definition.presentation?.precision)}
                     </td>
@@ -254,30 +253,15 @@ function ContractMetricChart({
   zoomRange,
   onZoomRangeChange,
 }: {
-  definition: MetricDefinition;
+  definition: HistoryMetricDefinition;
   metrics: DeviceMetric[];
   zoomRange: UPlotXRange | null;
   onZoomRangeChange: (range: UPlotXRange | null) => void;
 }) {
-  const samples = useMemo(
-    () =>
-      metrics
-        .flatMap((metric): Record<string, string | number | null>[] => {
-          if (
-            metric.stream_key !== definition.streamKey ||
-            metric.field_path !== definition.fieldPath ||
-            typeof metric.value !== 'number'
-          ) {
-            return [];
-          }
-          return [{ occurred_at: metric.occurred_at, [definition.key]: metric.value }];
-        })
-        .sort(
-          (left, right) =>
-            new Date(String(left.occurred_at)).getTime() -
-            new Date(String(right.occurred_at)).getTime(),
-        ),
-    [definition.fieldPath, definition.key, definition.streamKey, metrics],
+  const samples = useMemo(() => historyChartSamples(metrics, definition), [definition, metrics]);
+  const hasUnplottableValues = useMemo(
+    () => historyHasUnplottableValues(metrics, definition),
+    [definition, metrics],
   );
   const plotData = useMemo(
     () => toAlignedData(samples, 'occurred_at', [definition.key]),
@@ -285,6 +269,8 @@ function ContractMetricChart({
   );
   const latest = samples[samples.length - 1]?.[definition.key];
   const unit = definition.unit ?? '';
+  const singleSample = samples.length === 1;
+  const singleSampleTime = singleSample ? Number(plotData[0][0]) : null;
   const options = useMemo((): Omit<uPlot.Options, 'width' | 'height'> => {
     const percentageRange: uPlot.Range.MinMax | undefined = unit.includes('%')
       ? [0, 100]
@@ -310,14 +296,22 @@ function ContractMetricChart({
           values: (_plot: uPlot, values: number[]) => values.map((value) => `${value}${unit}`),
         },
       ],
-      scales: { y: percentageRange ? { range: () => percentageRange } : {} },
+      scales: {
+        x:
+          singleSampleTime != null && zoomRange == null
+            ? {
+                range: () => [singleSampleTime - 3600, singleSampleTime + 3600],
+              }
+            : {},
+        y: percentageRange ? { range: () => percentageRange } : {},
+      },
       series: [
         {},
         {
           stroke: definition.color,
           width: 1.5,
           fill: hexToRgba(definition.color, 0.15),
-          points: { show: false },
+          points: { show: singleSample },
           spanGaps: true,
         },
       ],
@@ -329,26 +323,42 @@ function ContractMetricChart({
         ),
       ],
     };
-  }, [definition.color, definition.presentation?.precision, unit]);
+  }, [
+    definition.color,
+    definition.presentation?.precision,
+    singleSample,
+    singleSampleTime,
+    unit,
+    zoomRange,
+  ]);
 
   return (
     <div className="telemetry-chart">
       <div className="telemetry-header">
-        <span className="section-label">{definition.label}</span>
+        <span className="section-label">
+          {definition.label} · {definition.blueprintName} r{definition.blueprintRevision}
+        </span>
         <span className="mono-data" style={{ fontSize: 14, color: definition.color }}>
           {latest == null
             ? '—'
             : `${formatValue(latest, definition.presentation?.precision)}${unit}`}
         </span>
       </div>
-      <UPlotChart
-        options={options}
-        data={plotData}
-        height={160}
-        zoomable
-        xRange={zoomRange}
-        onXRangeChange={onZoomRangeChange}
-      />
+      {hasUnplottableValues && (
+        <Callout icon="info-sign" intent="primary">
+          Some integer values are too large to chart precisely. Their exact values appear below.
+        </Callout>
+      )}
+      {samples.length > 0 && (
+        <UPlotChart
+          options={options}
+          data={plotData}
+          height={160}
+          zoomable
+          xRange={zoomRange}
+          onXRangeChange={onZoomRangeChange}
+        />
+      )}
     </div>
   );
 }

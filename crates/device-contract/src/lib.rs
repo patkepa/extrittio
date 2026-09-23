@@ -17,8 +17,8 @@ pub use compatibility::{
 };
 pub use compiler::{
     BlueprintCompiler, CompileContext, CompiledCommand, CompiledConfiguration, CompiledContract,
-    CompiledContractDocument, CompiledField, CompiledRoute, CompiledRuntime, CompiledSchema,
-    CompiledStream, CompiledTransport, ContractHash, ResolvedTransport,
+    CompiledContractDocument, CompiledField, CompiledLocation, CompiledRoute, CompiledRuntime,
+    CompiledSchema, CompiledStream, CompiledTransport, ContractHash, ResolvedTransport,
 };
 pub use error::{ContractError, ValidationIssue};
 pub use model::*;

@@ -4,7 +4,6 @@ pub mod event;
 pub mod heartbeat;
 pub mod log;
 pub mod shadow;
-pub mod telemetry;
 
 use crate::tenancy::DeviceIdentity;
 use extrittio_backend_core::DeviceIngressApplication;

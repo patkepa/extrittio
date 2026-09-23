@@ -3,7 +3,6 @@ import { Spinner, Callout, Icon, H4 } from '@blueprintjs/core';
 import { useDevices, useBulkChangeFleet } from '../hooks/use-devices';
 import { useFleets } from '../hooks/use-fleets';
 import { useAlerts } from '../features/alerts/queries/use-alerts';
-import { useDeviceTypes } from '../hooks/use-device-types';
 import { hasPermission } from '../auth/permissions';
 import { buildForceGraphData } from '../components/fleet-graph/build-force-graph-data';
 import { FleetGraphCanvas } from '../components/fleet-graph/fleet-graph-canvas';
@@ -53,8 +52,6 @@ export const FleetGraph = () => {
   const devicesError = devicesQuery.error;
   const { data: fleetsData, isLoading: fleetsLoading, error: fleetsError } = useFleets();
   const fleets = useMemo(() => fleetsData ?? [], [fleetsData]);
-  const { data: deviceTypesData } = useDeviceTypes();
-  const deviceTypes = useMemo(() => deviceTypesData ?? [], [deviceTypesData]);
   const activeAlertsQuery = useAlerts(
     { status: 'active', limit: 10000 },
     { enabled: canReadAlerts },
@@ -128,36 +125,26 @@ export const FleetGraph = () => {
     prevNodes: GraphNode[] | undefined;
     inputDevices: typeof visibleDevices;
     inputFleets: typeof fleets;
-    inputDeviceTypes: typeof deviceTypes;
   }>(() => {
-    const data =
-      visibleDevices.length === 0
-        ? null
-        : buildForceGraphData(visibleDevices, fleets, undefined, deviceTypes);
+    const data = visibleDevices.length === 0 ? null : buildForceGraphData(visibleDevices, fleets);
     return {
       data,
       prevNodes: data?.nodes,
       inputDevices: visibleDevices,
       inputFleets: fleets,
-      inputDeviceTypes: deviceTypes,
     };
   });
 
-  if (
-    visibleDevices !== graphState.inputDevices ||
-    fleets !== graphState.inputFleets ||
-    deviceTypes !== graphState.inputDeviceTypes
-  ) {
+  if (visibleDevices !== graphState.inputDevices || fleets !== graphState.inputFleets) {
     const newData =
       visibleDevices.length === 0
         ? null
-        : buildForceGraphData(visibleDevices, fleets, graphState.prevNodes, deviceTypes);
+        : buildForceGraphData(visibleDevices, fleets, graphState.prevNodes);
     setGraphState({
       data: newData,
       prevNodes: newData?.nodes ?? graphState.prevNodes,
       inputDevices: visibleDevices,
       inputFleets: fleets,
-      inputDeviceTypes: deviceTypes,
     });
   }
 

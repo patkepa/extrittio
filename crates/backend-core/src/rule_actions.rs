@@ -5,6 +5,14 @@ use sha2::{Digest, Sha256};
 pub fn outbox_event_for_action(
     action: &PendingAction,
 ) -> Result<NewOutboxEventRecord, serde_json::Error> {
+    if matches!(
+        action,
+        PendingAction::UpdateZoneEntry { .. } | PendingAction::UpdateCooldown { .. }
+    ) {
+        return Err(serde::ser::Error::custom(
+            "runtime state is not a deliverable action",
+        ));
+    }
     Ok(NewOutboxEventRecord {
         id: uuid::Uuid::new_v4().to_string(),
         tenant_id: tenant_id_for_action(action).to_string(),
@@ -127,24 +135,32 @@ fn stable_hash(bytes: &[u8]) -> String {
     format!("{digest:x}")
 }
 
-/// Version 1 wraps the unchanged externally tagged action. Legacy raw enum
-/// payloads remain readable; unknown envelope versions are rejected explicitly.
+/// Decode the required versioned envelope for external rule actions.
 pub fn decode_event(event: &OutboxEventRecord) -> Result<PendingAction, crate::ApplicationError> {
-    let payload = if let Some(version) = event.payload.get("version") {
-        if version.as_u64() != Some(1) {
-            return Err(crate::ApplicationError::InvalidOperation(format!(
-                "unsupported persisted rule-action version: {version}"
-            )));
-        }
-        event.payload.get("action").cloned().ok_or_else(|| {
-            crate::ApplicationError::InvalidOperation("rule-action envelope has no action".into())
-        })?
-    } else {
-        event.payload.clone()
-    };
+    if event
+        .payload
+        .get("version")
+        .and_then(serde_json::Value::as_u64)
+        != Some(1)
+    {
+        return Err(crate::ApplicationError::InvalidOperation(
+            "rule-action envelope requires version 1".into(),
+        ));
+    }
+    let payload = event.payload.get("action").cloned().ok_or_else(|| {
+        crate::ApplicationError::InvalidOperation("rule-action envelope has no action".into())
+    })?;
     let action: PendingAction = serde_json::from_value(payload).map_err(|error| {
         crate::ApplicationError::InvalidOperation(format!("invalid persisted rule action: {error}"))
     })?;
+    if matches!(
+        action,
+        PendingAction::UpdateZoneEntry { .. } | PendingAction::UpdateCooldown { .. }
+    ) {
+        return Err(crate::ApplicationError::InvalidOperation(
+            "runtime state is not a deliverable action".into(),
+        ));
+    }
     if tenant_id_for_action(&action) != event.tenant_id
         || event_type_for_action(&action) != event.event_type
     {
@@ -165,4 +181,73 @@ pub trait WebhookSender: Send + Sync {
         payload: &serde_json::Value,
         delivery_id: &str,
     ) -> Result<(), String>;
+}
+
+#[cfg(test)]
+mod zone_delivery_tests {
+    use super::*;
+
+    fn event(action: &PendingAction) -> OutboxEventRecord {
+        let now = chrono::Utc::now().naive_utc();
+        OutboxEventRecord {
+            claim_token: None,
+            id: "event".into(),
+            tenant_id: tenant_id_for_action(action).into(),
+            event_type: event_type_for_action(action).into(),
+            aggregate_type: aggregate_type_for_action(action).into(),
+            aggregate_id: aggregate_id_for_action(action),
+            payload: serde_json::json!({"version": 1, "action": action}),
+            attempts: 0,
+            max_attempts: 3,
+            last_error: None,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    #[test]
+    fn delivery_requires_a_versioned_envelope_and_matching_metadata() {
+        let action = PendingAction::ResolveAlert {
+            tenant_id: "tenant".into(),
+            alert_id: "alert".into(),
+        };
+        let mut record = event(&action);
+        assert!(decode_event(&record).is_ok());
+        record.payload = serde_json::to_value(&action).unwrap();
+        assert!(decode_event(&record).is_err());
+        record.payload = serde_json::json!({"version": 2, "action": action});
+        assert!(decode_event(&record).is_err());
+        record.payload = serde_json::json!({"version": 1});
+        assert!(decode_event(&record).is_err());
+        record = event(&action);
+        record.tenant_id = "other".into();
+        assert!(decode_event(&record).is_err());
+        record = event(&action);
+        record.event_type = "rule.send_command".into();
+        assert!(decode_event(&record).is_err());
+    }
+
+    #[test]
+    fn cooldown_state_is_neither_enqueued_nor_decoded_for_delivery() {
+        let action = PendingAction::UpdateCooldown {
+            tenant_id: "tenant".into(),
+            rule_id: "rule".into(),
+            device_id: "device".into(),
+            fired_at: chrono::Utc::now().naive_utc(),
+        };
+        assert!(outbox_event_for_action(&action).is_err());
+        assert!(decode_event(&event(&action)).is_err());
+    }
+
+    #[test]
+    fn zone_state_cannot_be_enqueued_for_later_delivery() {
+        let action = PendingAction::UpdateZoneEntry {
+            tenant_id: "tenant".into(),
+            rule_id: "rule".into(),
+            device_id: "device".into(),
+            entered_at: None,
+        };
+        assert!(outbox_event_for_action(&action).is_err());
+        assert!(decode_event(&event(&action)).is_err());
+    }
 }

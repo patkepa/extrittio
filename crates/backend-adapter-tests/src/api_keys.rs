@@ -8,7 +8,7 @@ pub async fn run(repository: &dyn ApiKeyRepository) {
         name: name.into(),
         key_hash: hash.into(),
         key_prefix: "extr_display".into(),
-        device_type_id: None,
+        blueprint_id: None,
     };
     let a = repository
         .create(&tenant_a, create(" Same name ", "api-contract-a1"))
@@ -30,7 +30,7 @@ pub async fn run(repository: &dyn ApiKeyRepository) {
         listed.iter().map(|entry| entry.key.id).collect::<Vec<_>>(),
         [later.id, a.id]
     );
-    assert!(listed.iter().all(|entry| entry.device_type_name.is_none()));
+    assert!(listed.iter().all(|entry| entry.blueprint_name.is_none()));
     assert_eq!(repository.list(&tenant_b).await.unwrap()[0].key.id, b.id);
     assert!(!repository.delete(&tenant_b, a.id).await.unwrap());
     assert_eq!(repository.list(&tenant_a).await.unwrap().len(), 2);

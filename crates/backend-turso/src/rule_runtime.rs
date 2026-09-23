@@ -20,20 +20,19 @@ pub async fn evaluate_rules_in_transaction(
             "rule evaluation scope does not match ingress".into(),
         ));
     }
-    let mut targets = connection.query("SELECT d.device_type_id,d.fleet_id,(SELECT r.blueprint_id FROM device_contract_assignments a JOIN device_contracts c ON c.tenant_id=a.tenant_id AND c.id=a.desired_contract_id JOIN device_blueprint_revisions r ON r.tenant_id=c.tenant_id AND r.id=c.blueprint_revision_id WHERE a.tenant_id=d.tenant_id AND a.device_id=d.id) AS blueprint_id FROM devices d WHERE d.tenant_id=?1 AND d.id=?2",params![tenant,device]).await.map_err(row::legacy_error)?;
+    let mut targets = connection.query("SELECT d.fleet_id,(SELECT r.blueprint_id FROM device_contract_assignments a JOIN device_contracts c ON c.tenant_id=a.tenant_id AND c.id=a.desired_contract_id JOIN device_blueprint_revisions r ON r.tenant_id=c.tenant_id AND r.id=c.blueprint_revision_id WHERE a.tenant_id=d.tenant_id AND a.device_id=d.id) AS blueprint_id FROM devices d WHERE d.tenant_id=?1 AND d.id=?2",params![tenant,device]).await.map_err(row::legacy_error)?;
     let target = targets
         .next()
         .await
         .map_err(row::legacy_error)?
         .ok_or(PersistenceError::NotFound)?;
     let mut plan = plan.clone();
-    plan.device_type_id = row::i32(target.get(0).map_err(row::legacy_error)?, "device_type_id")?;
     plan.fleet_id = target
-        .get::<Option<i64>>(1)
+        .get::<Option<i64>>(0)
         .map_err(row::legacy_error)?
         .map(|v| row::i32(v, "fleet_id"))
         .transpose()?;
-    plan.blueprint_id = target.get(2).map_err(row::legacy_error)?;
+    plan.blueprint_id = target.get(1).map_err(row::legacy_error)?;
     drop(targets);
     let mut runtime = DeviceRuleRuntime::default();
     // The outer write transaction prevents rule deletion after this lookup.
@@ -108,8 +107,6 @@ pub async fn evaluate_rules_in_transaction(
             connection.execute("DELETE FROM rule_zone_entries WHERE tenant_id=?1 AND rule_id=?2 AND device_id=?3",params![entry.tenant_id,entry.rule_id,entry.device_id]).await.map_err(row::legacy_error)?;
         }
     }
-    for rule in decision.zone_observations {
-        connection.execute("INSERT INTO rule_zone_handoffs(tenant_id,rule_id,device_id,live_seen) VALUES(?1,?2,?3,1) ON CONFLICT(tenant_id,rule_id,device_id) DO UPDATE SET live_seen=1",params![tenant,rule,device]).await.map_err(row::legacy_error)?;
-    }
+
     Ok(decision.deliveries)
 }

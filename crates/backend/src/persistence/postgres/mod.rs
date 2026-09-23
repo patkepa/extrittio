@@ -16,7 +16,6 @@ fn build_repositories(pool: PostgresPool) -> RepositorySetInput {
     let roles = crate::database::postgres_roles(&pool);
     let users = crate::database::postgres_users(&pool);
     let api_keys = crate::database::postgres_api_keys(&pool);
-    let telemetry = crate::database::postgres_telemetry(&pool);
     let device_ingress = crate::database::postgres_device_ingress(&pool);
     let events = crate::database::postgres_events(&pool);
     let logs = crate::database::postgres_logs(&pool);
@@ -29,7 +28,6 @@ fn build_repositories(pool: PostgresPool) -> RepositorySetInput {
     let outbox = crate::database::postgres_outbox(&pool);
     let rules = crate::database::postgres_rules(&pool);
     let devices = crate::database::postgres_devices(&pool);
-    let device_types = crate::database::postgres_device_types(&pool);
     let bootstrap = crate::database::postgres_bootstrap(&pool);
     let certificates = crate::database::postgres_certificates(&pool);
     let metrics = crate::database::postgres_metrics(&pool);
@@ -52,7 +50,6 @@ fn build_repositories(pool: PostgresPool) -> RepositorySetInput {
         configuration,
         dashboard,
         device_blueprints,
-        device_types,
         devices,
         device_ingress,
         events,
@@ -64,7 +61,6 @@ fn build_repositories(pool: PostgresPool) -> RepositorySetInput {
         roles,
         rules,
         shadows,
-        telemetry,
         users,
         zones,
     }

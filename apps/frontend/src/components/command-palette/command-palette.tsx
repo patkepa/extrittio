@@ -62,12 +62,12 @@ export const CommandPalette = () => {
             <Command.Item
               key={device.id}
               value={device.name}
-              keywords={[device.device_type_name, device.id]}
+              keywords={[device.blueprint_name, device.id]}
               onSelect={() => runAction(() => navigate(`/devices?device=${device.id}`))}
             >
               <StatusLed status={device.status} className="cmdk-status-led" />
               <span className="cmdk-item-label">{device.name}</span>
-              <span className="cmdk-item-meta">{device.device_type_name}</span>
+              <span className="cmdk-item-meta">{device.blueprint_name}</span>
             </Command.Item>
           ))}
           {totalDevices > MAX_PALETTE_DEVICES && (

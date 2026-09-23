@@ -30,14 +30,6 @@ pub fn ota_transition_allowed(previous: &str, next: &str) -> bool {
 }
 
 #[derive(Debug, Clone)]
-pub struct LegacyFirmwareBlob {
-    pub tenant_id: String,
-    pub firmware_update_id: i32,
-    pub filename: String,
-    pub data: Vec<u8>,
-}
-
-#[derive(Debug, Clone)]
 pub struct OtaDeploymentRecord {
     pub id: i32,
     pub device_id: String,
@@ -64,6 +56,29 @@ pub enum TriggerOtaOutcome {
     Ready { delta: Value, version: i32 },
 }
 
+/// OTA requires an assignment matching the artifact's immutable revision.
+pub fn ota_revision_matches(assigned: Option<&str>, artifact: &str) -> bool {
+    assigned.is_some_and(|assigned| !assigned.is_empty() && assigned == artifact)
+}
+
+#[cfg(test)]
+mod revision_tests {
+    use super::ota_revision_matches;
+
+    #[test]
+    fn ota_requires_matching_nonempty_revisions_on_both_sides() {
+        assert!(ota_revision_matches(Some("revision-1"), "revision-1"));
+        for (assigned, artifact) in [
+            (None, "revision-1"),
+            (Some("revision-1"), ""),
+            (Some("revision-1"), "revision-2"),
+            (Some(""), ""),
+        ] {
+            assert!(!ota_revision_matches(assigned, artifact));
+        }
+    }
+}
+
 pub fn valid_ota_artifact(version: &str, hash: Option<&str>, url: &str) -> bool {
     !version.is_empty()
         && version.len() <= 63
@@ -75,8 +90,6 @@ pub fn valid_ota_artifact(version: &str, hash: Option<&str>, url: &str) -> bool 
 #[derive(Debug, Clone)]
 pub struct FirmwareRecord {
     pub id: i32,
-    pub device_type_id: i32,
-    pub device_type_name: String,
     pub version: String,
     pub url: String,
     pub sha256: Option<String>,
@@ -90,7 +103,7 @@ pub struct FirmwareRecord {
     pub build_timestamp: Option<NaiveDateTime>,
     pub changelog: Option<String>,
     pub source: String,
-    pub blueprint_revision_id: Option<String>,
+    pub blueprint_revision_id: String,
     pub compatibility: Value,
     pub update_strategy: Option<String>,
 }
@@ -103,7 +116,6 @@ pub struct FirmwarePage {
 
 #[derive(Debug, Clone)]
 pub struct NewFirmwareRecord {
-    pub device_type_id: i32,
     pub version: String,
     pub url: String,
     pub sha256: Option<String>,
@@ -114,7 +126,7 @@ pub struct NewFirmwareRecord {
     pub build_timestamp: Option<NaiveDateTime>,
     pub changelog: Option<String>,
     pub source: Option<String>,
-    pub blueprint_revision_id: Option<String>,
+    pub blueprint_revision_id: String,
     pub compatibility: Value,
     pub update_strategy: Option<String>,
 }
@@ -129,10 +141,9 @@ pub struct NewFirmwareBlobRecord {
 
 #[derive(Debug, Clone)]
 pub struct FirmwareBlobRecord {
-    pub data: Option<Vec<u8>>,
     pub size: i32,
     pub filename: String,
-    pub storage_key: Option<String>,
+    pub storage_key: String,
     pub storage_backend: String,
 }
 
@@ -143,8 +154,8 @@ pub struct GlobalOtaDeploymentRecord {
     pub device_name: String,
     pub device_status: String,
     pub current_firmware: String,
-    pub device_type_id: i32,
-    pub device_type_name: String,
+    /// Revision targeted by the deployed firmware artifact.
+    pub blueprint_revision_id: String,
     pub fleet_id: Option<i32>,
     pub fleet_name: Option<String>,
     pub firmware_update_id: i32,
@@ -170,7 +181,6 @@ pub trait FirmwareRepository: Send + Sync {
     async fn list(
         &self,
         tenant: &TenantId,
-        device_type_id: Option<i32>,
         blueprint_revision_id: Option<String>,
         limit: i64,
         offset: i64,
@@ -190,12 +200,6 @@ pub trait FirmwareRepository: Send + Sync {
         record: NewFirmwareRecord,
         blob: Option<NewFirmwareBlobRecord>,
     ) -> Result<Option<FirmwareRecord>, PersistenceError>;
-
-    async fn next_version(
-        &self,
-        tenant: &TenantId,
-        device_type_id: i32,
-    ) -> Result<String, PersistenceError>;
 
     async fn next_blueprint_version(
         &self,
@@ -236,16 +240,6 @@ pub trait FirmwareRepository: Send + Sync {
         firmware_update_id: i32,
         public_url: &str,
     ) -> Result<TriggerOtaOutcome, PersistenceError>;
-
-    async fn next_legacy_blob(&self) -> Result<Option<LegacyFirmwareBlob>, PersistenceError>;
-
-    async fn mark_blob_migrated(
-        &self,
-        tenant_id: &str,
-        firmware_update_id: i32,
-        storage_backend: &str,
-        storage_key: &str,
-    ) -> Result<bool, PersistenceError>;
 }
 
 /// Host capability for firmware objects; database orchestration belongs to core.
@@ -253,7 +247,6 @@ pub trait FirmwareRepository: Send + Sync {
 pub trait FirmwareObjectStorage: Send + Sync {
     fn backend(&self) -> &str;
     fn allocate_key(&self, tenant: &TenantId, filename: &str) -> String;
-    fn legacy_key(&self, tenant: &str, firmware_update_id: i32, filename: &str) -> String;
     async fn get(&self, key: &str) -> Result<Vec<u8>, String>;
     async fn put(&self, key: &str, data: Vec<u8>) -> Result<(), String>;
     async fn delete(&self, key: &str) -> Result<(), String>;

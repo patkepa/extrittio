@@ -26,6 +26,8 @@ impl std::fmt::Display for ConstraintName {
 pub enum PersistenceError {
     #[error("resource was not found")]
     NotFound,
+    #[error("requested metric history is outside the retained range")]
+    HistoryExpired,
     #[error("unique constraint violated: {constraint}")]
     UniqueViolation { constraint: ConstraintName },
     #[error("foreign-key constraint violated: {constraint}")]

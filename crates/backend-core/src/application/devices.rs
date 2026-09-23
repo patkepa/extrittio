@@ -1,6 +1,4 @@
-use super::{
-    CertificateApplication, DeviceBlueprintApplication, DeviceTypeApplication, require_permission,
-};
+use super::{CertificateApplication, DeviceBlueprintApplication, require_permission};
 use crate::devices::*;
 use crate::{ApplicationError, Clock, Permission, PersistenceError, TenantContext};
 use std::sync::Arc;
@@ -8,7 +6,6 @@ use std::sync::Arc;
 pub struct ProvisionDevice {
     pub name: String,
     pub blueprint_revision_id: String,
-    pub device_type_id: Option<i32>,
     pub fleet_id: Option<i32>,
     pub firmware: Option<String>,
     pub configuration: Option<serde_json::Value>,
@@ -45,7 +42,6 @@ fn map_device_write_error(error: PersistenceError) -> ApplicationError {
 pub struct DeviceApplication {
     repository: Arc<dyn DeviceRepository>,
     blueprints: DeviceBlueprintApplication,
-    device_types: DeviceTypeApplication,
     certificates: CertificateApplication,
     clock: Arc<dyn Clock>,
 }
@@ -53,14 +49,12 @@ impl DeviceApplication {
     pub fn new(
         repository: Arc<dyn DeviceRepository>,
         blueprints: DeviceBlueprintApplication,
-        device_types: DeviceTypeApplication,
         certificates: CertificateApplication,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
             repository,
             blueprints,
-            device_types,
             certificates,
             clock,
         }
@@ -90,16 +84,11 @@ impl DeviceApplication {
                 request.configuration,
             )
             .await?;
-        let device_type = self
-            .device_types
-            .resolve_for_device_creation(ctx, request.device_type_id)
-            .await?;
         self.create(
             ctx,
             CreateDeviceRecord {
                 id,
                 name: request.name,
-                device_type_id: device_type.id,
                 fleet_id: request.fleet_id,
                 firmware: request.firmware.unwrap_or_else(|| "unknown".into()),
                 contract,

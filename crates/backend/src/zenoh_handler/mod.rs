@@ -6,7 +6,6 @@ pub mod subscriber;
 #[derive(Clone)]
 pub(crate) struct DeviceMessageApplications {
     pub identity: extrittio_backend_core::DeviceIngressApplication,
-    pub telemetry: extrittio_backend_core::TelemetryIngressApplication,
     pub events: extrittio_backend_core::EventIngressApplication,
     pub contracts: extrittio_backend_core::application::ContractIngressApplication,
     pub logs: extrittio_backend_core::LogIngressApplication,

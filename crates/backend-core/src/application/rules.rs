@@ -2,30 +2,159 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use super::require_permission;
+use crate::device_blueprints::DeviceBlueprintRepository;
 use crate::rules::RuleRepository;
 use crate::rules::WebhookUrlPolicy;
 use crate::rules::{
-    NewRuleRecord, RuleActionRecord, RuleConditionRecord, RuleDetails, RuleFilter, UpdateRuleRecord,
+    NewRuleRecord, RuleActionRecord, RuleConditionInput, RuleConditionRecord, RuleDetails,
+    RuleFilter, UpdateRuleRecord,
 };
+use crate::zones::ZoneRepository;
 use crate::{ApplicationError, Clock, Permission, TenantContext};
 use std::sync::Arc;
 
-const TELEMETRY_FIELDS: &[&str] = &["temperature", "humidity", "battery_level"];
 const TELEMETRY_OPERATORS: &[&str] = &["gt", "gte", "lt", "lte", "eq", "neq"];
 const STATUS_VALUES: &[&str] = &["online", "offline", "warning"];
-const TARGET_TYPES: &[&str] = &["global", "blueprint", "device_type", "fleet", "device"];
-const TRIGGER_TYPES: &[&str] = &["telemetry", "device_status"];
+const TARGET_TYPES: &[&str] = &["global", "blueprint", "fleet", "device"];
+const TRIGGER_TYPES: &[&str] = &["telemetry", "device_status", "geofence"];
 
-fn condition_records(conditions: Vec<(String, String, String)>) -> Vec<RuleConditionRecord> {
+#[cfg(test)]
+mod metric_validation_tests {
+    use super::*;
+    struct NoWebhooks;
+    impl WebhookUrlPolicy for NoWebhooks {
+        fn validate(&self, _: &str) -> Result<(), ApplicationError> {
+            panic!("no webhook action")
+        }
+    }
+
+    #[test]
+    fn validates_arbitrary_stream_fields_and_rejects_fixed_names_or_nonfinite_values() {
+        let validate = |field: &str, threshold: &str| {
+            validate_rule(
+                &NoWebhooks,
+                "counter rule",
+                "telemetry",
+                "blueprint",
+                &Some("blueprint-a".into()),
+                0,
+                &[RuleConditionInput {
+                    field: field.into(),
+                    blueprint_id: Some("blueprint-a".into()),
+                    blueprint_revision_id: Some("revision-a".into()),
+                    operator: "gt".into(),
+                    value: threshold.into(),
+                    zone_id: None,
+                }],
+                &[("alert".into(), serde_json::json!({}))],
+            )
+        };
+        assert!(validate("machine.v2./counter/total", "9007199254740993").is_ok());
+        assert!(validate("temperature", "20").is_err());
+        assert!(validate("machine./counter", "NaN").is_err());
+        assert!(validate("machine./counter", "inf").is_err());
+    }
+
+    #[test]
+    fn geofence_requires_one_state_and_only_inside_dwell() {
+        let state = RuleConditionInput {
+            field: "zone_state".into(),
+            blueprint_id: None,
+            blueprint_revision_id: None,
+            operator: "eq".into(),
+            value: "inside".into(),
+            zone_id: Some("zone-a".into()),
+        };
+        let dwell = RuleConditionInput {
+            field: "dwell_seconds".into(),
+            blueprint_id: None,
+            blueprint_revision_id: None,
+            operator: "gte".into(),
+            value: "30".into(),
+            zone_id: Some("zone-a".into()),
+        };
+        let validate = |conditions: &[RuleConditionInput]| {
+            validate_rule(
+                &NoWebhooks,
+                "zone rule",
+                "geofence",
+                "global",
+                &None,
+                0,
+                conditions,
+                &[("alert".into(), serde_json::json!({}))],
+            )
+        };
+        assert!(validate(&[state.clone(), dwell.clone()]).is_ok());
+        assert!(validate(&[state.clone(), state.clone()]).is_err());
+        assert!(validate(std::slice::from_ref(&dwell)).is_err());
+        assert!(
+            validate(&[
+                RuleConditionInput {
+                    value: "outside".into(),
+                    ..state.clone()
+                },
+                dwell
+            ])
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn multi_stream_conditions_require_one_event_route() {
+        let mut blueprint: extrittio_device_contract::DeviceBlueprint = serde_json::from_str(
+            include_str!("../../../../blueprints/smart-plug.create-request.json"),
+        )
+        .unwrap();
+        let mut auxiliary = blueprint.spec.streams[0].clone();
+        auxiliary.key = "aux".into();
+        auxiliary
+            .fields
+            .retain(|field| field.path == "/voltageVolts");
+        blueprint.spec.streams.push(auxiliary);
+        let power = crate::rule_engine::metric::MetricSelector {
+            stream_key: "power".into(),
+            field_path: "/powerWatts".into(),
+        };
+        let voltage = crate::rule_engine::metric::MetricSelector {
+            stream_key: "aux".into(),
+            field_path: "/voltageVolts".into(),
+        };
+        let mut route = None;
+        assert!(validate_metric_field(&blueprint, &power, "100", &mut route).is_ok());
+        assert!(validate_metric_field(&blueprint, &voltage, "200", &mut route).is_ok());
+        blueprint.spec.streams[1].route = "aux-readings".into();
+        assert!(matches!(
+            validate_metric_field(&blueprint, &voltage, "200", &mut route),
+            Err(ApplicationError::InvalidInput(message)) if message.contains("one event route")
+        ));
+        assert!(
+            validate_metric_field(
+                &blueprint,
+                &crate::rule_engine::metric::MetricSelector {
+                    stream_key: "power".into(),
+                    field_path: "/relayOn".into(),
+                },
+                "1",
+                &mut None
+            )
+            .is_err()
+        );
+    }
+}
+
+fn condition_records(conditions: Vec<RuleConditionInput>) -> Vec<RuleConditionRecord> {
     conditions
         .into_iter()
-        .map(|(field, operator, value)| RuleConditionRecord {
+        .map(|condition| RuleConditionRecord {
             id: Uuid::new_v4().to_string(),
-            field,
-            operator,
-            value,
+            field: condition.field,
+            blueprint_id: condition.blueprint_id,
+            blueprint_revision_id: condition.blueprint_revision_id,
+            operator: condition.operator,
+            value: condition.value,
             condition_group: 0,
-            zone_id: None,
+            zone_id: condition.zone_id,
         })
         .collect()
 }
@@ -44,6 +173,8 @@ fn action_records(actions: Vec<(String, Value)>) -> Vec<RuleActionRecord> {
 #[derive(Clone)]
 pub struct RuleApplication {
     repository: Arc<dyn RuleRepository>,
+    blueprints: Arc<dyn DeviceBlueprintRepository>,
+    zones: Arc<dyn ZoneRepository>,
     clock: Arc<dyn Clock>,
     webhook_urls: Arc<dyn WebhookUrlPolicy>,
     changes: Arc<dyn crate::rules::RuleChangeNotifier>,
@@ -51,12 +182,16 @@ pub struct RuleApplication {
 impl RuleApplication {
     pub fn new(
         repository: Arc<dyn RuleRepository>,
+        blueprints: Arc<dyn DeviceBlueprintRepository>,
+        zones: Arc<dyn ZoneRepository>,
         clock: Arc<dyn Clock>,
         webhook_urls: Arc<dyn WebhookUrlPolicy>,
         changes: Arc<dyn crate::rules::RuleChangeNotifier>,
     ) -> Self {
         Self {
             repository,
+            blueprints,
+            zones,
             clock,
             webhook_urls,
             changes,
@@ -94,7 +229,7 @@ impl RuleApplication {
         target_type: &str,
         target_id: Option<String>,
         cooldown_seconds: i32,
-        conditions: Vec<(String, String, String)>,
+        conditions: Vec<RuleConditionInput>,
         actions: Vec<(String, Value)>,
     ) -> Result<RuleDetails, ApplicationError> {
         require_permission(ctx, Permission::ManageRules)?;
@@ -108,6 +243,16 @@ impl RuleApplication {
             &conditions,
             &actions,
         )?;
+        self.validate_metric_declarations(
+            ctx,
+            trigger_type,
+            target_type,
+            target_id.as_deref(),
+            &conditions,
+        )
+        .await?;
+        self.validate_geofence_zones(ctx, trigger_type, &conditions)
+            .await?;
         let created = self
             .repository
             .create(
@@ -140,7 +285,7 @@ impl RuleApplication {
         target_type: Option<String>,
         target_id: Option<Option<String>>,
         cooldown_seconds: Option<i32>,
-        conditions: Option<Vec<(String, String, String)>>,
+        conditions: Option<Vec<RuleConditionInput>>,
         actions: Option<Vec<(String, Value)>>,
     ) -> Result<RuleDetails, ApplicationError> {
         require_permission(ctx, Permission::ManageRules)?;
@@ -157,12 +302,13 @@ impl RuleApplication {
             current
                 .conditions
                 .iter()
-                .map(|condition| {
-                    (
-                        condition.field.clone(),
-                        condition.operator.clone(),
-                        condition.value.clone(),
-                    )
+                .map(|condition| RuleConditionInput {
+                    field: condition.field.clone(),
+                    blueprint_id: condition.blueprint_id.clone(),
+                    blueprint_revision_id: condition.blueprint_revision_id.clone(),
+                    operator: condition.operator.clone(),
+                    value: condition.value.clone(),
+                    zone_id: condition.zone_id.clone(),
                 })
                 .collect()
         });
@@ -185,6 +331,24 @@ impl RuleApplication {
             &validated_conditions,
             &validated_actions,
         )?;
+        self.validate_metric_declarations(
+            ctx,
+            trigger_type
+                .as_deref()
+                .unwrap_or(&current.rule.trigger_type),
+            target_type.as_deref().unwrap_or(&current.rule.target_type),
+            resolved_target_id.as_deref(),
+            &validated_conditions,
+        )
+        .await?;
+        self.validate_geofence_zones(
+            ctx,
+            trigger_type
+                .as_deref()
+                .unwrap_or(&current.rule.trigger_type),
+            &validated_conditions,
+        )
+        .await?;
         self.repository
             .update(
                 ctx.tenant_id(),
@@ -229,6 +393,130 @@ impl RuleApplication {
             .ok_or_else(|| ApplicationError::NotFound(format!("Rule '{id}' not found")))
             .inspect(|_| self.changes.committed())
     }
+
+    async fn validate_metric_declarations(
+        &self,
+        ctx: &TenantContext,
+        trigger_type: &str,
+        target_type: &str,
+        target_id: Option<&str>,
+        conditions: &[RuleConditionInput],
+    ) -> Result<(), ApplicationError> {
+        if trigger_type != "telemetry" {
+            return Ok(());
+        }
+        let mut shared_revision = None;
+        let mut shared_route: Option<String> = None;
+        for condition in conditions {
+            let blueprint_id = condition.blueprint_id.as_deref().ok_or_else(|| {
+                ApplicationError::InvalidInput("telemetry selector requires blueprint_id".into())
+            })?;
+            let revision_id = condition.blueprint_revision_id.as_deref().ok_or_else(|| {
+                ApplicationError::InvalidInput(
+                    "telemetry selector requires blueprint_revision_id".into(),
+                )
+            })?;
+            if target_type == "blueprint" && target_id != Some(blueprint_id) {
+                return Err(ApplicationError::InvalidInput(
+                    "telemetry selector blueprint must match the rule target".into(),
+                ));
+            }
+            if shared_revision.is_some_and(|previous| previous != revision_id) {
+                return Err(ApplicationError::InvalidInput(
+                    "all telemetry conditions must use one blueprint revision".into(),
+                ));
+            }
+            shared_revision = Some(revision_id);
+            let revision = self
+                .blueprints
+                .get_revision(ctx.tenant_id(), revision_id)
+                .await?
+                .filter(|revision| revision.blueprint_id == blueprint_id)
+                .ok_or_else(|| {
+                    ApplicationError::InvalidInput(
+                        "telemetry selector references an unknown blueprint revision".into(),
+                    )
+                })?;
+            let blueprint: extrittio_device_contract::DeviceBlueprint =
+                serde_json::from_value(revision.document).map_err(|error| {
+                    ApplicationError::Internal(format!(
+                        "Stored published blueprint is invalid: {error}"
+                    ))
+                })?;
+            let selector = crate::rule_engine::metric::MetricSelector::parse(&condition.field)
+                .ok_or_else(|| {
+                    ApplicationError::InvalidInput("invalid telemetry selector path".into())
+                })?;
+            validate_metric_field(&blueprint, &selector, &condition.value, &mut shared_route)?;
+        }
+        Ok(())
+    }
+
+    async fn validate_geofence_zones(
+        &self,
+        ctx: &TenantContext,
+        trigger_type: &str,
+        conditions: &[RuleConditionInput],
+    ) -> Result<(), ApplicationError> {
+        if trigger_type != "geofence" {
+            return Ok(());
+        }
+        let zone_id = conditions[0]
+            .zone_id
+            .as_deref()
+            .expect("geofence conditions validated");
+        if self.zones.get(ctx.tenant_id(), zone_id).await?.is_none() {
+            return Err(ApplicationError::InvalidInput(
+                "geofence zone is unknown".into(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn validate_metric_field(
+    blueprint: &extrittio_device_contract::DeviceBlueprint,
+    selector: &crate::rule_engine::metric::MetricSelector,
+    threshold: &str,
+    shared_route: &mut Option<String>,
+) -> Result<(), ApplicationError> {
+    let stream = blueprint
+        .spec
+        .streams
+        .iter()
+        .find(|stream| stream.key == selector.stream_key)
+        .ok_or_else(|| {
+            ApplicationError::InvalidInput(
+                "telemetry selector is not a declared numeric field".into(),
+            )
+        })?;
+    if shared_route
+        .as_ref()
+        .is_some_and(|route| route != &stream.route)
+    {
+        return Err(ApplicationError::InvalidInput(
+            "telemetry conditions must use streams on one event route".into(),
+        ));
+    }
+    let field = stream
+        .fields
+        .iter()
+        .find(|field| field.path == selector.field_path)
+        .filter(|field| field.value_type.is_numeric())
+        .ok_or_else(|| {
+            ApplicationError::InvalidInput(
+                "telemetry selector is not a declared numeric field".into(),
+            )
+        })?;
+    if field.value_type == extrittio_device_contract::FieldValueType::Int64
+        && threshold.parse::<i64>().is_err()
+    {
+        return Err(ApplicationError::InvalidInput(
+            "int64 telemetry conditions require an exact integer threshold".into(),
+        ));
+    }
+    *shared_route = Some(stream.route.clone());
+    Ok(())
 }
 
 #[allow(
@@ -242,7 +530,7 @@ fn validate_rule(
     target_type: &str,
     target_id: &Option<String>,
     cooldown_seconds: i32,
-    conditions: &[(String, String, String)],
+    conditions: &[RuleConditionInput],
     actions: &[(String, Value)],
 ) -> Result<(), ApplicationError> {
     let name = name.trim();
@@ -282,26 +570,79 @@ fn validate_rule(
             "at least one condition is required".into(),
         ));
     }
-    for (field, operator, value) in conditions {
+    for condition in conditions {
+        let field = &condition.field;
+        let operator = &condition.operator;
+        let value = &condition.value;
         if trigger_type == "telemetry" {
-            if !TELEMETRY_FIELDS.contains(&field.as_str())
+            if crate::rule_engine::metric::MetricSelector::parse(field).is_none()
+                || condition.blueprint_id.as_deref().is_none_or(str::is_empty)
+                || condition
+                    .blueprint_revision_id
+                    .as_deref()
+                    .is_none_or(str::is_empty)
+                || condition.zone_id.is_some()
                 || !TELEMETRY_OPERATORS.contains(&operator.as_str())
             {
                 return Err(ApplicationError::InvalidInput(
                     "invalid telemetry condition field or operator".into(),
                 ));
             }
-            value.parse::<f32>().map_err(|_| {
+            crate::rule_engine::number::MetricNumber::parse(value).ok_or_else(|| {
                 ApplicationError::InvalidInput(format!(
                     "telemetry condition value '{value}' is not a valid number"
                 ))
             })?;
+        } else if trigger_type == "geofence" {
+            if condition.blueprint_id.is_some()
+                || condition.blueprint_revision_id.is_some()
+                || condition.zone_id.as_deref().is_none_or(str::is_empty)
+                || !match field.as_str() {
+                    "zone_state" => {
+                        operator == "eq" && ["inside", "outside"].contains(&value.as_str())
+                    }
+                    "dwell_seconds" => {
+                        operator == "gte" && value.parse::<i64>().is_ok_and(|seconds| seconds >= 0)
+                    }
+                    _ => false,
+                }
+            {
+                return Err(ApplicationError::InvalidInput(
+                    "invalid geofence condition".into(),
+                ));
+            }
         } else if field != "status"
+            || condition.blueprint_id.is_some()
+            || condition.blueprint_revision_id.is_some()
+            || condition.zone_id.is_some()
             || !["eq", "neq"].contains(&operator.as_str())
             || !STATUS_VALUES.contains(&value.as_str())
         {
             return Err(ApplicationError::InvalidInput(
                 "invalid device_status condition".into(),
+            ));
+        }
+    }
+    if trigger_type == "geofence" {
+        let zone_id = conditions[0].zone_id.as_deref();
+        let states: Vec<_> = conditions
+            .iter()
+            .filter(|condition| condition.field == "zone_state")
+            .collect();
+        let dwells: Vec<_> = conditions
+            .iter()
+            .filter(|condition| condition.field == "dwell_seconds")
+            .collect();
+        if states.len() != 1
+            || dwells.len() > 1
+            || conditions.len() != states.len() + dwells.len()
+            || conditions
+                .iter()
+                .any(|condition| condition.zone_id.as_deref() != zone_id)
+            || (!dwells.is_empty() && states[0].value != "inside")
+        {
+            return Err(ApplicationError::InvalidInput(
+                "geofence requires one zone state and an optional inside dwell threshold".into(),
             ));
         }
     }
@@ -341,30 +682,4 @@ fn validate_rule(
         }
     }
     Ok(())
-}
-
-/// System worker compatibility operations; never exposed through tenant routes.
-#[derive(Clone)]
-pub struct RuleRuntimeApplication {
-    repository: std::sync::Arc<dyn crate::rules::RuleRepository>,
-}
-impl RuleRuntimeApplication {
-    pub fn new(repository: std::sync::Arc<dyn crate::rules::RuleRepository>) -> Self {
-        Self { repository }
-    }
-    pub async fn apply_legacy_zone_entry(
-        &self,
-        tenant: &crate::TenantId,
-        entry: crate::rule_snapshots::LegacyZoneEntry,
-    ) -> Result<(), crate::ApplicationError> {
-        if entry.event_id.is_empty() {
-            return Err(crate::ApplicationError::InvalidInput(
-                "legacy zone update requires its durable event ID".into(),
-            ));
-        }
-        Ok(self
-            .repository
-            .apply_legacy_zone_entry(tenant, entry)
-            .await?)
-    }
 }

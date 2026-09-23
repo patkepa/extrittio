@@ -22,6 +22,8 @@ pub struct CachedRule {
 #[derive(Debug, Clone, Serialize)]
 pub struct CachedCondition {
     pub field: String,
+    pub blueprint_id: Option<String>,
+    pub blueprint_revision_id: Option<String>,
     pub operator: String,
     pub value: String,
     pub zone_id: Option<String>,
@@ -88,17 +90,11 @@ pub enum PendingAction {
 
 #[derive(Debug, Clone)]
 pub struct TelemetryData {
-    pub temperature: f32,
-    pub humidity: f32,
-    pub battery_level: f32,
     pub latitude: Option<f64>,
     pub longitude: Option<f64>,
-    pub speed: f32,
-    pub altitude: f32,
-    pub heading: f32,
     /// Contract-defined numeric metrics keyed by canonical stream field
-    /// (for example `environment./temperature`) and declared semantic aliases.
-    pub metrics: std::collections::BTreeMap<String, f64>,
+    /// (for example `environment./temperature`). Semantic labels are not keys.
+    pub metrics: std::collections::BTreeMap<String, crate::number::MetricNumber>,
 }
 
 #[derive(Debug, Clone)]

@@ -9,7 +9,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use clap::{Parser, Subcommand};
-use extrittio_common::extrittio::{DeviceHeartbeat, DeviceTelemetry, ShadowDelta, ShadowGet};
+use extrittio_client_runtime::contract::{ContractEvent, ProvisionedContract};
+use extrittio_common::extrittio::{DeviceHeartbeat, ShadowDelta, ShadowGet};
 use extrittio_common::{device_status, ota::fields as ota_fields, topics};
 use prost::Message;
 use tokio::sync::Mutex;
@@ -36,12 +37,15 @@ enum Commands {
         #[arg(long)]
         interval: Option<u64>,
 
-        /// Override heartbeat interval (seconds)
+        /// Override the provisioned device contract JSON path
         #[arg(long)]
-        heartbeat_interval: Option<u64>,
+        contract: Option<String>,
     },
     /// Create config + install LaunchAgent
     Install {
+        /// Provisioned device contract JSON path
+        #[arg(long)]
+        contract: String,
         /// Device ID to write into default config
         #[arg(long)]
         device_id: Option<String>,
@@ -62,12 +66,16 @@ fn main() {
         Commands::Run {
             connect,
             interval,
-            heartbeat_interval,
+            contract,
         } => {
-            run(connect, interval, heartbeat_interval);
+            run(connect, interval, contract);
         }
-        Commands::Install { device_id, connect } => {
-            install::install(device_id.as_deref(), connect.as_deref());
+        Commands::Install {
+            device_id,
+            connect,
+            contract,
+        } => {
+            install::install(device_id.as_deref(), connect.as_deref(), &contract);
         }
         Commands::Uninstall => {
             install::uninstall();
@@ -78,7 +86,7 @@ fn main() {
 fn run(
     connect_override: Option<String>,
     interval_override: Option<u64>,
-    heartbeat_override: Option<u64>,
+    contract_override: Option<String>,
 ) {
     // Load config, apply overrides
     let mut cfg = config::Config::load();
@@ -88,29 +96,33 @@ fn run(
     if let Some(i) = interval_override {
         cfg.telemetry_interval_secs = i;
     }
-    if let Some(h) = heartbeat_override {
-        cfg.heartbeat_interval_secs = h;
+    if let Some(path) = contract_override {
+        cfg.contract_path = path;
     }
-
-    let device_id = cfg.device_id.clone().unwrap_or_else(|| {
-        eprintln!(
-            "Error: no device_id set.\n\
-             Run: extrittio-macos install --device-id <ID>\n\
-             Or add device_id to {}",
-            config::Config::config_path().display()
-        );
-        std::process::exit(1);
-    });
 
     // Start the async runtime
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .expect("Failed to build tokio runtime")
-        .block_on(run_async(cfg, device_id));
+        .block_on(run_async(cfg));
 }
 
-async fn run_async(cfg: config::Config, device_id: String) {
+async fn run_async(cfg: config::Config) {
+    let contract = ProvisionedContract::load(&cfg.contract_path)
+        .await
+        .expect("a valid provisioned contract is required");
+    let device_id = cfg
+        .device_id
+        .clone()
+        .unwrap_or_else(|| contract.device_id().to_string());
+    contract
+        .validate_device_id(&device_id)
+        .expect("device identity must match contract");
+    assert!(
+        cfg.telemetry_interval_secs > 0,
+        "telemetry interval must be positive"
+    );
     let installed_version =
         extrittio_sdk::native_ota::boot(&std::env::current_exe().expect("executable path"))
             .expect("OTA journal");
@@ -125,15 +137,22 @@ async fn run_async(cfg: config::Config, device_id: String) {
         "Starting macOS client '{}' (telemetry every {}s, heartbeat every {}s)",
         device_id,
         cfg.telemetry_interval_secs,
-        cfg.heartbeat_interval_secs
+        contract.heartbeat_interval().as_secs()
     );
 
     // -- Zenoh session setup --
     let mut zenoh_config = zenoh::Config::default();
 
-    if let Some(ref endpoint) = cfg.connect {
+    {
+        let endpoint = cfg
+            .connect
+            .as_deref()
+            .unwrap_or(contract.zenoh_endpoint().expect("contract Zenoh transport"));
         zenoh_config
-            .insert_json5("connect/endpoints", &format!("[\"{endpoint}\"]"))
+            .insert_json5(
+                "connect/endpoints",
+                &serde_json::json!([endpoint]).to_string(),
+            )
             .expect("Failed to set Zenoh connect endpoint");
         zenoh_config
             .insert_json5("scouting/multicast/enabled", "false")
@@ -182,7 +201,6 @@ async fn run_async(cfg: config::Config, device_id: String) {
 
     tracing::info!("Zenoh session opened");
 
-    let telemetry_topic = topics::telemetry(&device_id);
     let heartbeat_topic = topics::heartbeat(&device_id);
     let shadow_get_topic = topics::shadow_get(&device_id);
     let shadow_delta_topic = topics::shadow_delta(&device_id);
@@ -200,11 +218,11 @@ async fn run_async(cfg: config::Config, device_id: String) {
     // -- Heartbeat task --
     let hb_session = session.clone();
     let hb_device_id = device_id.clone();
-    let hb_interval = cfg.heartbeat_interval_secs;
+    let hb_interval = contract.heartbeat_interval();
     let hb_firmware = firmware_version.clone();
     let hb_heartbeat_topic = heartbeat_topic.clone();
     let hb_task = tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(hb_interval));
+        let mut interval = tokio::time::interval(hb_interval);
         loop {
             interval.tick().await;
 
@@ -372,7 +390,7 @@ async fn run_async(cfg: config::Config, device_id: String) {
     let telemetry_interval = cfg.telemetry_interval_secs;
     let mut interval = tokio::time::interval(Duration::from_secs(telemetry_interval));
 
-    tracing::info!("Sending system telemetry to '{}'", telemetry_topic);
+    tracing::info!("Sending validated system contract events");
 
     // Graceful shutdown: listen for SIGTERM/SIGINT
     let shutdown = async {
@@ -391,46 +409,34 @@ async fn run_async(cfg: config::Config, device_id: String) {
             _ = interval.tick() => {
                 collector.refresh();
 
-                let battery_level = collector.battery_level();
-                let metadata = collector.extended_metrics();
-
-                let loc = location_provider.latest();
-                let telemetry = DeviceTelemetry {
-                    device_id: device_id.clone(),
-                    timestamp: extrittio_sdk::time::now_millis(),
-                    temperature: 0.0,
-                    humidity: 0.0,
-                    battery_level,
-                    metadata,
-                    latitude: loc.map_or(0.0, |l| l.latitude),
-                    longitude: loc.map_or(0.0, |l| l.longitude),
-                    speed: loc.map_or(0.0, |l| l.speed),
-                    altitude: loc.map_or(0.0, |l| l.altitude),
-                    heading: loc.map_or(0.0, |l| l.heading),
-                    has_location: loc.is_some(),
-                };
-
-                let payload = telemetry.encode_to_vec();
-                if let Err(e) = session.put(&telemetry_topic, payload).await {
-                    tracing::warn!("Failed to send telemetry: {}", e);
-                } else if let Some(ref l) = loc {
-                    tracing::info!(
-                        "Telemetry: battery={:.1}% cpu={}% mem={}% load={} loc=({:.6},{:.6})",
-                        battery_level,
-                        telemetry.metadata.get("cpu_usage_percent").map_or("-", String::as_str),
-                        telemetry.metadata.get("memory_usage_percent").map_or("-", String::as_str),
-                        telemetry.metadata.get("load_1m").map_or("-", String::as_str),
-                        l.latitude,
-                        l.longitude,
-                    );
-                } else {
-                    tracing::info!(
-                        "Telemetry: battery={:.1}% cpu={}% mem={}% load={} loc=none",
-                        battery_level,
-                        telemetry.metadata.get("cpu_usage_percent").map_or("-", String::as_str),
-                        telemetry.metadata.get("memory_usage_percent").map_or("-", String::as_str),
-                        telemetry.metadata.get("load_1m").map_or("-", String::as_str),
-                    );
+                let mut payload = serde_json::Map::new();
+                for (key, value) in collector.extended_metrics() {
+                    let value = match key.as_str() {
+                        "hostname" | "os_version" | "chip_model" | "battery_state" => serde_json::Value::String(value),
+                        _ => match value.parse::<serde_json::Number>() {
+                            Ok(number) => serde_json::Value::Number(number),
+                            Err(_) => continue,
+                        },
+                    };
+                    payload.insert(key, value);
+                }
+                if let Some(level) = collector.battery_level() {
+                    payload.insert("batteryLevel".into(), serde_json::json!(level));
+                }
+                if let Some(loc) = contract.location_max_age().and_then(|age| location_provider.latest(age)) {
+                    payload.insert("position".into(), serde_json::json!({
+                        "latitude": loc.latitude, "longitude": loc.longitude,
+                        "speed": loc.speed, "altitude": loc.altitude, "heading": loc.heading
+                    }));
+                }
+                let event = ContractEvent::new("system", serde_json::Value::Object(payload));
+                match contract.encode_event(&event, chrono::Utc::now()) {
+                    Ok(encoded) => {
+                        if let Err(error) = session.put(encoded.address, encoded.payload).await {
+                            tracing::warn!("Failed to send contract event: {error}");
+                        }
+                    }
+                    Err(error) => tracing::warn!("Contract rejected system observation: {error}"),
                 }
             }
             _ = &mut shutdown => {

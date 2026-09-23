@@ -15,27 +15,6 @@ impl BootstrapApplication {
     pub async fn users_exist(&self) -> Result<bool, ApplicationError> {
         Ok(self.repository.users_exist().await?)
     }
-    pub async fn seed_device_types(&self, tenant: &TenantId) -> Result<(), ApplicationError> {
-        let values = [
-            ("default", "cube", "#8ABBFF"),
-            ("mac-device", "desktop", "#F7C948"),
-            ("OrganBath", "heatmap", "#E76A6E"),
-        ];
-        self.repository
-            .seed_builtin_device_types(
-                tenant,
-                values
-                    .into_iter()
-                    .map(|(name, icon, color_hex)| BuiltinDeviceType {
-                        name: name.into(),
-                        icon: icon.into(),
-                        color_hex: color_hex.into(),
-                    })
-                    .collect(),
-            )
-            .await?;
-        Ok(())
-    }
     /// Generated material is supplied by the host; persistence selects the winner.
     pub async fn jwt_secret(&self, generated: String) -> Result<String, ApplicationError> {
         Ok(self

@@ -10,7 +10,6 @@ import {
   getAllOtaDeployments,
   createFirmwareUpdate,
   deleteFirmwareUpdate,
-  getNextVersion,
   getNextBlueprintVersion,
   getOtaDeployments,
   triggerOta,
@@ -19,20 +18,15 @@ import {
 import type { UploadFirmwareRequest } from '../api/firmware-updates';
 import { queryKeys } from './query-keys';
 
-export function useFirmwareUpdates(params?: FirmwareUpdatesParams) {
+export function useFirmwareUpdates(
+  params?: FirmwareUpdatesParams,
+  options?: { enabled?: boolean },
+) {
   return useQuery({
     queryKey: queryKeys.firmware.list(params),
     queryFn: () => getFirmwareUpdates(params),
+    enabled: options?.enabled ?? true,
     staleTime: 30_000,
-  });
-}
-
-export function useNextVersion(deviceTypeId: number | null) {
-  return useQuery({
-    queryKey: queryKeys.firmware.nextVersion(deviceTypeId ?? 0),
-    queryFn: () => getNextVersion(deviceTypeId!),
-    enabled: !!deviceTypeId,
-    staleTime: 5_000,
   });
 }
 
@@ -70,7 +64,7 @@ export function useCreateFirmwareUpdate() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.firmware.all });
       void queryClient.invalidateQueries({
-        queryKey: queryKeys.firmware.nextVersionAll,
+        queryKey: queryKeys.firmware.nextBlueprintVersionAll,
       });
     },
   });
@@ -83,7 +77,7 @@ export function useUploadFirmwareUpdate() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.firmware.all });
       void queryClient.invalidateQueries({
-        queryKey: queryKeys.firmware.nextVersionAll,
+        queryKey: queryKeys.firmware.nextBlueprintVersionAll,
       });
     },
   });
@@ -96,7 +90,7 @@ export function useDeleteFirmwareUpdate() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.firmware.all });
       void queryClient.invalidateQueries({
-        queryKey: queryKeys.firmware.nextVersionAll,
+        queryKey: queryKeys.firmware.nextBlueprintVersionAll,
       });
     },
   });

@@ -11,7 +11,6 @@ import {
   Spinner,
 } from '@blueprintjs/core';
 import type { Device } from '../../../types/api';
-import { useDeviceTypes } from '../../../hooks/use-device-types';
 import { useFleets } from '../../../hooks/use-fleets';
 import { useAllDevices } from '../../devices/queries/use-devices';
 import {
@@ -29,7 +28,6 @@ import { analyticsMetricId, groupAnalyticsMetrics } from '../model/metric-catalo
 import './analytics.css';
 
 interface AnalyticsDraft {
-  deviceTypeId: string;
   fleetId: string;
   deviceIds: string[] | null;
   metricId: string;
@@ -40,7 +38,6 @@ interface AnalyticsDraft {
 }
 
 const DEFAULT_DRAFT: AnalyticsDraft = {
-  deviceTypeId: '',
   fleetId: '',
   deviceIds: null,
   metricId: '',
@@ -60,7 +57,6 @@ function buildRequest(
   const from = new Date(to.getTime() - draft.rangeHours * 60 * 60 * 1000);
   return {
     scope: {
-      device_type_ids: draft.deviceTypeId ? [Number(draft.deviceTypeId)] : [],
       fleet_ids: draft.fleetId ? [Number(draft.fleetId)] : [],
       device_ids: draft.deviceIds ?? [],
     },
@@ -83,28 +79,21 @@ function errorMessage(error: Error | null): string {
   return candidate.response?.data?.message ?? error?.message ?? 'The analytics query failed.';
 }
 
-function deviceMatches(device: Device, deviceTypeId: string, fleetId: string): boolean {
-  return (
-    (!deviceTypeId || device.device_type_id === Number(deviceTypeId)) &&
-    (!fleetId || device.fleet_id === Number(fleetId))
-  );
+function deviceMatches(device: Device, fleetId: string): boolean {
+  return !fleetId || device.fleet_id === Number(fleetId);
 }
 
 export function Analytics() {
   const [draft, setDraft] = useState<AnalyticsDraft>(DEFAULT_DRAFT);
   const [request, setRequest] = useState<AnalyticsQueryRequest | null>(null);
   const catalogQuery = useAnalyticsCatalog();
-  const deviceTypesQuery = useDeviceTypes();
   const fleetsQuery = useFleets();
   const devicesQuery = useAllDevices();
   const analyticsQuery = useAnalyticsQuery(request);
 
   const compatibleDevices = useMemo(
-    () =>
-      (devicesQuery.data?.data ?? []).filter((device) =>
-        deviceMatches(device, draft.deviceTypeId, draft.fleetId),
-      ),
-    [devicesQuery.data?.data, draft.deviceTypeId, draft.fleetId],
+    () => (devicesQuery.data?.data ?? []).filter((device) => deviceMatches(device, draft.fleetId)),
+    [devicesQuery.data?.data, draft.fleetId],
   );
   const selectedDeviceSet = useMemo(
     () => new Set(draft.deviceIds ?? compatibleDevices.map((device) => device.id)),
@@ -179,21 +168,6 @@ export function Analytics() {
       </header>
 
       <section className="analytics-query-bar" aria-label="Analytics query">
-        <FormGroup label="Device type">
-          <HTMLSelect
-            fill
-            value={draft.deviceTypeId}
-            onChange={(event) => resetScopeSelection({ deviceTypeId: event.target.value })}
-          >
-            <option value="">All device types</option>
-            {(deviceTypesQuery.data ?? []).map((deviceType) => (
-              <option key={deviceType.id} value={deviceType.id}>
-                {deviceType.name}
-              </option>
-            ))}
-          </HTMLSelect>
-        </FormGroup>
-
         <FormGroup label="Fleet">
           <HTMLSelect
             fill

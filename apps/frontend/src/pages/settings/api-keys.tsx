@@ -57,7 +57,7 @@ export const ApiKeysSettings = () => {
                     <code>{key.key_prefix}...</code>
                   </td>
                   <td>
-                    <Tag minimal>{key.device_type_name ?? 'All'}</Tag>
+                    <Tag minimal>{key.blueprint_name ?? key.blueprint_id ?? 'Tenant-wide'}</Tag>
                   </td>
                   <td>{key.last_used_at ?? 'Never'}</td>
                   <td>{key.created_at}</td>

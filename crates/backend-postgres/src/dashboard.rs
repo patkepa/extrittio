@@ -36,7 +36,7 @@ impl DashboardReadRepository for PostgresDashboardRepository {
                     "SELECT count(*) AS total_devices,
                 count(*) FILTER (WHERE status = 'online') AS online_devices,
                 count(*) FILTER (WHERE status = 'offline') AS offline_devices,
-                (SELECT count(*) FROM telemetry WHERE tenant_id = $1) AS total_messages
+                (SELECT count(*) FROM device_events WHERE tenant_id = $1) AS total_messages
                 FROM devices WHERE tenant_id = $1",
                 )
                 .bind::<Text, _>(tenant)

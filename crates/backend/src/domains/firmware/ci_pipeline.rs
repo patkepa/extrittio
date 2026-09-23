@@ -16,8 +16,9 @@ use crate::state::AppState;
 use extrittio_backend_core::CiIngestParams;
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CiIngestRequest {
-    pub device_type: String,
+    pub blueprint_revision_id: String,
     pub version: String,
     pub artifact_url: String,
     pub sha256: Option<String>,
@@ -29,11 +30,32 @@ pub struct CiIngestRequest {
     pub changelog: Option<String>,
 }
 
+#[cfg(test)]
+mod blueprint_request_tests {
+    use super::*;
+
+    #[test]
+    fn ci_requires_revision_and_rejects_device_type() {
+        let mut input = serde_json::json!({
+            "blueprint_revision_id":"revision", "version":"1",
+            "artifact_url":"https://example.test/fw.bin"
+        });
+        assert!(serde_json::from_value::<CiIngestRequest>(input.clone()).is_ok());
+        input["device_type"] = "sensor".into();
+        assert!(serde_json::from_value::<CiIngestRequest>(input.clone()).is_err());
+        input
+            .as_object_mut()
+            .unwrap()
+            .remove("blueprint_revision_id");
+        assert!(serde_json::from_value::<CiIngestRequest>(input).is_err());
+    }
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct CiIngestResponse {
     pub id: i32,
     pub version: String,
-    pub device_type: String,
+    pub blueprint_revision_id: String,
 }
 
 pub fn router() -> Router<Arc<AppState>> {
@@ -112,7 +134,7 @@ pub(crate) async fn ci_ingest(
         .ingest(
             &key_hash,
             CiIngestParams {
-                device_type_name: body.device_type,
+                blueprint_revision_id: body.blueprint_revision_id,
                 version: body.version,
                 artifact_url: body.artifact_url,
                 sha256: body.sha256,
@@ -131,7 +153,7 @@ pub(crate) async fn ci_ingest(
         Json(CiIngestResponse {
             id: result.0,
             version: result.1,
-            device_type: result.2,
+            blueprint_revision_id: result.2,
         }),
     ))
 }

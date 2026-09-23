@@ -153,25 +153,6 @@
   white-space: nowrap;
 }
 
-.updates-progress-cell {
-  min-width: 180px;
-}
-
-.updates-progress-cell .bp6-progress-bar {
-  width: 120px;
-  display: inline-block;
-  margin-right: 8px;
-  vertical-align: middle;
-}
-
-.updates-progress-label {
-  display: inline-block;
-  min-width: 36px;
-  color: hsl(var(--muted));
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
 .updates-loading {
   display: flex;
   justify-content: center;
@@ -206,9 +187,5 @@
 
   .updates-card {
     overflow-x: auto;
-  }
-
-  .updates-progress-cell {
-    min-width: 150px;
   }
 }

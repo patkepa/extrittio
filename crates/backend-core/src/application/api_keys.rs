@@ -29,6 +29,15 @@ impl ApiKeyApplication {
             return Err(ApplicationError::InvalidInput("name is required".into()));
         }
         require_permission(context, Permission::ManageApiKeys)?;
+        if input
+            .blueprint_id
+            .as_deref()
+            .is_some_and(|id| id.trim().is_empty())
+        {
+            return Err(ApplicationError::InvalidInput(
+                "blueprint_id must not be blank".into(),
+            ));
+        }
         let generated = self.generator.generate();
         let record = self
             .repository
@@ -36,7 +45,7 @@ impl ApiKeyApplication {
                 context.tenant_id(),
                 CreateApiKeyRecord {
                     name: input.name,
-                    device_type_id: input.device_type_id,
+                    blueprint_id: input.blueprint_id,
                     key_hash: generated.hash,
                     key_prefix: generated.prefix,
                 },

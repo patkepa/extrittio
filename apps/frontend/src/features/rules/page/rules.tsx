@@ -14,7 +14,7 @@ import {
   Tooltip,
 } from '@blueprintjs/core';
 import { useRules, useDeleteRule, useToggleRule } from '../queries/use-rules';
-import { useDeviceTypes } from '../../../hooks/use-device-types';
+import { useDeviceBlueprints } from '../../../hooks/use-device-blueprints';
 import { useFleets } from '../../../hooks/use-fleets';
 import { useAllDevices } from '../../../hooks/use-devices';
 import { useUIStore } from '../../../stores/ui-store';
@@ -23,6 +23,12 @@ import { EmptyState, FilterPill } from '@patkepa/kantzen-ui';
 import { showSuccessToast, showErrorToast } from '../../../utils/toaster';
 import type { Rule } from '../../../types/rules';
 import './rules.css';
+
+const TRIGGER_LABELS: Record<Rule['trigger_type'], string> = {
+  telemetry: 'Telemetry',
+  device_status: 'Device Status',
+  geofence: 'Geofence',
+};
 
 export const Rules = () => {
   const [filterEnabled, setFilterEnabled] = useState<string>('all');
@@ -33,7 +39,7 @@ export const Rules = () => {
   const rulesQuery = useRules();
   const deleteMutation = useDeleteRule();
   const toggleMutation = useToggleRule();
-  const { data: deviceTypes } = useDeviceTypes();
+  const { data: blueprints } = useDeviceBlueprints();
   const { data: fleets } = useFleets();
   const { data: devicesData } = useAllDevices();
 
@@ -53,6 +59,7 @@ export const Rules = () => {
       all: rules.length,
       telemetry: rules.filter((r) => r.trigger_type === 'telemetry').length,
       device_status: rules.filter((r) => r.trigger_type === 'device_status').length,
+      geofence: rules.filter((r) => r.trigger_type === 'geofence').length,
     }),
     [rules],
   );
@@ -61,8 +68,8 @@ export const Rules = () => {
     if (rule.target_type === 'global') return 'All devices';
     if (!rule.target_id) return rule.target_type;
     switch (rule.target_type) {
-      case 'device_type': {
-        const dt = (deviceTypes ?? []).find((d) => String(d.id) === rule.target_id);
+      case 'blueprint': {
+        const dt = (blueprints ?? []).find((d) => d.id === rule.target_id);
         return dt ? dt.name : rule.target_id;
       }
       case 'fleet': {
@@ -118,7 +125,15 @@ export const Rules = () => {
   const conditionsSummary = (rule: Rule) => {
     if (!rule.conditions || rule.conditions.length === 0) return 'No conditions';
     return rule.conditions
-      .map((c) => `${c.field} ${operatorLabel[c.operator] ?? c.operator} ${c.value}`)
+      .map((c) => {
+        const field =
+          c.selector.kind === 'metric'
+            ? `${c.selector.stream_key}.${c.selector.field_path}`
+            : c.selector.kind === 'geofence'
+              ? `${c.selector.zone_id} ${c.selector.field}`
+              : 'status';
+        return `${field} ${operatorLabel[c.operator] ?? c.operator} ${c.value}`;
+      })
       .join(', ');
   };
 
@@ -197,24 +212,20 @@ export const Rules = () => {
             ))}
           </div>
           <div className="filter-section">
-            {(['all', 'telemetry', 'device_status'] as const).map((trigger) => (
+            {(['all', 'telemetry', 'device_status', 'geofence'] as const).map((trigger) => (
               <FilterPill
                 key={trigger}
                 value={trigger}
-                label={
-                  trigger === 'all'
-                    ? 'All Triggers'
-                    : trigger === 'telemetry'
-                      ? 'Telemetry'
-                      : 'Device Status'
-                }
+                label={trigger === 'all' ? 'All Triggers' : TRIGGER_LABELS[trigger]}
                 active={filterTrigger === trigger}
                 icon={
                   trigger === 'all'
                     ? undefined
                     : trigger === 'telemetry'
                       ? 'pulse'
-                      : 'signal-search'
+                      : trigger === 'geofence'
+                        ? 'map-marker'
+                        : 'signal-search'
                 }
                 count={triggerCounts[trigger]}
                 onSelect={setFilterTrigger}
@@ -257,13 +268,11 @@ export const Rules = () => {
                     </div>
                   </td>
                   <td>
-                    <Tag minimal>
-                      {rule.trigger_type === 'telemetry' ? 'Telemetry' : 'Device Status'}
-                    </Tag>
+                    <Tag minimal>{TRIGGER_LABELS[rule.trigger_type]}</Tag>
                   </td>
                   <td>
                     <Tag minimal intent={rule.target_type === 'global' ? 'primary' : undefined}>
-                      {rule.target_type === 'device_type' ? 'type' : rule.target_type}
+                      {rule.target_type}
                     </Tag>
                     {rule.target_type !== 'global' && (
                       <span style={{ marginLeft: 6 }}>{resolveTargetName(rule)}</span>

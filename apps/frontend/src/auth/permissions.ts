@@ -6,8 +6,6 @@ export type PermissionKey =
   | 'commands.send'
   | 'device_blueprints.manage'
   | 'device_blueprints.read'
-  | 'device_types.manage'
-  | 'device_types.read'
   | 'devices.manage'
   | 'devices.read'
   | 'firmware.deploy'
@@ -52,7 +50,6 @@ const IMPLIED_PERMISSIONS: Partial<Record<PermissionKey, PermissionKey[]>> = {
   'alerts.read': ['alerts.manage'],
   'commands.read': ['commands.send'],
   'device_blueprints.read': ['device_blueprints.manage'],
-  'device_types.read': ['device_types.manage'],
   'devices.read': ['devices.manage'],
   'firmware.read': ['firmware.manage', 'firmware.deploy'],
   'fleets.read': ['fleets.manage'],

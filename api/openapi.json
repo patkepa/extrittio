@@ -1331,199 +1331,6 @@
         ]
       }
     },
-    "/api/v1/device-types": {
-      "get": {
-        "tags": [
-          "device-types"
-        ],
-        "summary": "List all device types.",
-        "operationId": "list_device_types",
-        "parameters": [
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "int64"
-            }
-          },
-          {
-            "name": "offset",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "int64"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Paginated list of device types",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PaginatedResponse_DeviceTypeResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer_auth": []
-          },
-          {
-            "session_cookie": []
-          }
-        ]
-      },
-      "post": {
-        "tags": [
-          "device-types"
-        ],
-        "summary": "Create a new device type.",
-        "operationId": "create_device_type",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/NewDeviceTypeRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Device type created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DeviceTypeResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input"
-          }
-        },
-        "security": [
-          {
-            "bearer_auth": []
-          },
-          {
-            "session_cookie": []
-          }
-        ]
-      }
-    },
-    "/api/v1/device-types/{id}": {
-      "delete": {
-        "tags": [
-          "device-types"
-        ],
-        "summary": "Delete a device type by ID.",
-        "operationId": "delete_device_type",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Device type ID",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int32"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Device type deleted"
-          },
-          "404": {
-            "description": "Device type not found"
-          },
-          "409": {
-            "description": "Devices still reference this type"
-          },
-          "422": {
-            "description": "Cannot delete the default type"
-          }
-        },
-        "security": [
-          {
-            "bearer_auth": []
-          },
-          {
-            "session_cookie": []
-          }
-        ]
-      },
-      "patch": {
-        "tags": [
-          "device-types"
-        ],
-        "summary": "Update a device type.",
-        "operationId": "update_device_type",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Device type ID",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int32"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateDeviceTypeRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Device type updated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DeviceTypeResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input"
-          },
-          "404": {
-            "description": "Device type not found"
-          }
-        },
-        "security": [
-          {
-            "bearer_auth": []
-          },
-          {
-            "session_cookie": []
-          }
-        ]
-      }
-    },
     "/api/v1/devices": {
       "get": {
         "tags": [
@@ -1564,6 +1371,28 @@
                 "null"
               ],
               "format": "int32"
+            }
+          },
+          {
+            "name": "sort_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "sort_dir",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           {
@@ -1797,6 +1626,48 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BulkResultResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices/locations/latest": {
+      "post": {
+        "tags": [
+          "devices"
+        ],
+        "summary": "Get the latest fresh location declared by the currently assigned contract.",
+        "operationId": "get_device_locations",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceLocationsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Fresh contract locations for up to 500 devices",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DeviceLocationResponse"
+                  }
                 }
               }
             }
@@ -2353,7 +2224,7 @@
         "tags": [
           "devices"
         ],
-        "summary": "Get the latest location recorded for a device.",
+        "summary": "Get the latest fresh location declared by the currently assigned contract.",
         "operationId": "get_device_latest_location",
         "parameters": [
           {
@@ -2483,7 +2354,7 @@
         "tags": [
           "telemetry"
         ],
-        "summary": "Get typed metric samples extracted according to the device's assigned contract.",
+        "summary": "Get typed metric samples with each event's originating contract and field metadata.",
         "operationId": "get_device_metrics",
         "parameters": [
           {
@@ -2498,7 +2369,7 @@
           {
             "name": "stream_key",
             "in": "query",
-            "description": "Filter by the stream key declared in the assigned device contract.",
+            "description": "Filter by the stream key recorded under each event's originating contract.",
             "required": false,
             "schema": {
               "type": [
@@ -2926,215 +2797,6 @@
         ]
       }
     },
-    "/api/v1/devices/{id}/telemetry": {
-      "get": {
-        "tags": [
-          "telemetry"
-        ],
-        "summary": "Get telemetry data for a device.",
-        "operationId": "get_device_telemetry",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Device ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "description": "Maximum number of records to return (default 50, max 1000).",
-            "required": false,
-            "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "int64"
-            }
-          },
-          {
-            "name": "since",
-            "in": "query",
-            "description": "Only return records after this timestamp (RFC 3339 or YYYY-MM-DDTHH:MM:SS).",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          {
-            "name": "before",
-            "in": "query",
-            "description": "Only return records before this timestamp (RFC 3339 or YYYY-MM-DDTHH:MM:SS).",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Telemetry records",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/TelemetryResponse"
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Device not found"
-          }
-        },
-        "security": [
-          {
-            "bearer_auth": []
-          },
-          {
-            "session_cookie": []
-          }
-        ]
-      }
-    },
-    "/api/v1/devices/{id}/telemetry/hourly": {
-      "get": {
-        "tags": [
-          "telemetry"
-        ],
-        "summary": "Get hourly telemetry aggregates for a device.",
-        "operationId": "get_hourly_device_telemetry",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Device ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "description": "Maximum number of records to return (default 50, max 1000).",
-            "required": false,
-            "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "int64"
-            }
-          },
-          {
-            "name": "since",
-            "in": "query",
-            "description": "Only return records after this timestamp (RFC 3339 or YYYY-MM-DDTHH:MM:SS).",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          {
-            "name": "before",
-            "in": "query",
-            "description": "Only return records before this timestamp (RFC 3339 or YYYY-MM-DDTHH:MM:SS).",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Hourly telemetry aggregates",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/HourlyTelemetryResponse"
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Device not found"
-          }
-        },
-        "security": [
-          {
-            "bearer_auth": []
-          },
-          {
-            "session_cookie": []
-          }
-        ]
-      }
-    },
-    "/api/v1/devices/{id}/telemetry/latest": {
-      "get": {
-        "tags": [
-          "telemetry"
-        ],
-        "summary": "Get the most recently received telemetry sample for a device.",
-        "operationId": "get_latest_device_telemetry",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Device ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Latest telemetry sample",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TelemetryResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Device or telemetry sample not found"
-          }
-        },
-        "security": [
-          {
-            "bearer_auth": []
-          },
-          {
-            "session_cookie": []
-          }
-        ]
-      }
-    },
     "/api/v1/firmware-updates": {
       "get": {
         "tags": [
@@ -3143,19 +2805,6 @@
         "summary": "List firmware updates.",
         "operationId": "list_firmware_updates",
         "parameters": [
-          {
-            "name": "device_type_id",
-            "in": "query",
-            "description": "Filter by device type.",
-            "required": false,
-            "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "int32"
-            }
-          },
           {
             "name": "blueprint_revision_id",
             "in": "query",
@@ -3312,47 +2961,6 @@
             "required": true,
             "schema": {
               "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Next version string",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NextVersionResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer_auth": []
-          },
-          {
-            "session_cookie": []
-          }
-        ]
-      }
-    },
-    "/api/v1/firmware-updates/next-version/{device_type_id}": {
-      "get": {
-        "tags": [
-          "firmware"
-        ],
-        "summary": "Get the next auto-generated version for a device type.",
-        "operationId": "get_next_version",
-        "parameters": [
-          {
-            "name": "device_type_id",
-            "in": "path",
-            "description": "Device type ID",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int32"
             }
           }
         ],
@@ -5865,13 +5473,6 @@
               "type": "string"
             }
           },
-          "device_type_ids": {
-            "type": "array",
-            "items": {
-              "type": "integer",
-              "format": "int32"
-            }
-          },
           "fleet_ids": {
             "type": "array",
             "items": {
@@ -5879,7 +5480,8 @@
               "format": "int32"
             }
           }
-        }
+        },
+        "additionalProperties": false
       },
       "AnalyticsScopeResponse": {
         "type": "object",
@@ -5991,21 +5593,20 @@
           "created_at"
         ],
         "properties": {
-          "created_at": {
-            "type": "string"
-          },
-          "device_type_id": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32"
-          },
-          "device_type_name": {
+          "blueprint_id": {
             "type": [
               "string",
               "null"
             ]
+          },
+          "blueprint_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string"
           },
           "id": {
             "type": "integer",
@@ -6516,12 +6117,15 @@
       "CiIngestRequest": {
         "type": "object",
         "required": [
-          "device_type",
+          "blueprint_revision_id",
           "version",
           "artifact_url"
         ],
         "properties": {
           "artifact_url": {
+            "type": "string"
+          },
+          "blueprint_revision_id": {
             "type": "string"
           },
           "branch": {
@@ -6560,9 +6164,6 @@
               "null"
             ]
           },
-          "device_type": {
-            "type": "string"
-          },
           "sha256": {
             "type": [
               "string",
@@ -6572,17 +6173,18 @@
           "version": {
             "type": "string"
           }
-        }
+        },
+        "additionalProperties": false
       },
       "CiIngestResponse": {
         "type": "object",
         "required": [
           "id",
           "version",
-          "device_type"
+          "blueprint_revision_id"
         ],
         "properties": {
-          "device_type": {
+          "blueprint_revision_id": {
             "type": "string"
           },
           "id": {
@@ -6638,16 +6240,16 @@
       "ConditionInput": {
         "type": "object",
         "required": [
-          "field",
+          "selector",
           "operator",
           "value"
         ],
         "properties": {
-          "field": {
-            "type": "string"
-          },
           "operator": {
             "type": "string"
+          },
+          "selector": {
+            "$ref": "#/components/schemas/ConditionSelector"
           },
           "value": {
             "type": "string"
@@ -6658,24 +6260,94 @@
         "type": "object",
         "required": [
           "id",
-          "field",
+          "selector",
           "operator",
           "value"
         ],
         "properties": {
-          "field": {
-            "type": "string"
-          },
           "id": {
             "type": "string"
           },
           "operator": {
             "type": "string"
           },
+          "selector": {
+            "$ref": "#/components/schemas/ConditionSelector"
+          },
           "value": {
             "type": "string"
           }
         }
+      },
+      "ConditionSelector": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "blueprint_id",
+              "blueprint_revision_id",
+              "stream_key",
+              "field_path",
+              "kind"
+            ],
+            "properties": {
+              "blueprint_id": {
+                "type": "string"
+              },
+              "blueprint_revision_id": {
+                "type": "string"
+              },
+              "field_path": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "metric"
+                ]
+              },
+              "stream_key": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "status"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "zone_id",
+              "field",
+              "kind"
+            ],
+            "properties": {
+              "field": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "geofence"
+                ]
+              },
+              "zone_id": {
+                "type": "string"
+              }
+            }
+          }
+        ]
       },
       "ConfigResponse": {
         "type": "object",
@@ -6718,17 +6390,17 @@
           "name"
         ],
         "properties": {
-          "device_type_id": {
+          "blueprint_id": {
             "type": [
-              "integer",
+              "string",
               "null"
-            ],
-            "format": "int32"
+            ]
           },
           "name": {
             "type": "string"
           }
-        }
+        },
+        "additionalProperties": false
       },
       "CreateApiKeyResponse": {
         "type": "object",
@@ -6739,12 +6411,11 @@
           "key_prefix"
         ],
         "properties": {
-          "device_type_id": {
+          "blueprint_id": {
             "type": [
-              "integer",
+              "string",
               "null"
-            ],
-            "format": "int32"
+            ]
           },
           "id": {
             "type": "integer",
@@ -7214,26 +6885,103 @@
           }
         }
       },
+      "DeviceLocationResponse": {
+        "type": "object",
+        "required": [
+          "device_id",
+          "location"
+        ],
+        "properties": {
+          "device_id": {
+            "type": "string"
+          },
+          "location": {
+            "$ref": "#/components/schemas/LocationResponse"
+          }
+        }
+      },
+      "DeviceLocationsRequest": {
+        "type": "object",
+        "required": [
+          "device_ids"
+        ],
+        "properties": {
+          "device_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
       "DeviceMetricResponse": {
         "type": "object",
         "required": [
+          "contract_id",
+          "blueprint_id",
+          "blueprint_name",
+          "blueprint_revision_id",
+          "blueprint_revision",
           "event_id",
           "device_id",
           "stream_key",
           "field_path",
+          "field_label",
           "value_type",
           "value",
           "occurred_at"
         ],
         "properties": {
+          "blueprint_id": {
+            "type": "string"
+          },
+          "blueprint_name": {
+            "type": "string"
+          },
+          "blueprint_revision": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "blueprint_revision_id": {
+            "type": "string"
+          },
+          "contract_id": {
+            "type": "string"
+          },
           "device_id": {
             "type": "string"
           },
           "event_id": {
             "type": "string"
           },
+          "field_label": {
+            "type": "string"
+          },
           "field_path": {
             "type": "string"
+          },
+          "field_presentation": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MetricFieldPresentationResponse"
+              }
+            ]
+          },
+          "field_semantic": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "field_unit": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "occurred_at": {
             "type": "string"
@@ -7254,10 +7002,10 @@
         "required": [
           "id",
           "name",
-          "device_type_id",
-          "device_type_name",
-          "device_type_icon",
-          "device_type_color_hex",
+          "blueprint_id",
+          "blueprint_revision_id",
+          "blueprint_key",
+          "blueprint_name",
           "status",
           "last_seen",
           "firmware",
@@ -7266,24 +7014,35 @@
           "declared_connections"
         ],
         "properties": {
+          "blueprint_color": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "blueprint_icon": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "blueprint_id": {
+            "type": "string"
+          },
+          "blueprint_key": {
+            "type": "string"
+          },
+          "blueprint_name": {
+            "type": "string"
+          },
+          "blueprint_revision_id": {
+            "type": "string"
+          },
           "declared_connections": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/DeviceConnectionResponse"
             }
-          },
-          "device_type_color_hex": {
-            "type": "string"
-          },
-          "device_type_icon": {
-            "type": "string"
-          },
-          "device_type_id": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "device_type_name": {
-            "type": "string"
           },
           "firmware": {
             "type": "string"
@@ -7313,20 +7072,6 @@
               "null"
             ]
           },
-          "latest_latitude": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double"
-          },
-          "latest_longitude": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double"
-          },
           "name": {
             "type": "string"
           },
@@ -7339,30 +7084,6 @@
           "uptime_seconds": {
             "type": "integer",
             "format": "int32"
-          }
-        }
-      },
-      "DeviceTypeResponse": {
-        "type": "object",
-        "required": [
-          "id",
-          "name",
-          "icon",
-          "color_hex"
-        ],
-        "properties": {
-          "color_hex": {
-            "type": "string"
-          },
-          "icon": {
-            "type": "string"
-          },
-          "id": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "name": {
-            "type": "string"
           }
         }
       },
@@ -7410,21 +7131,17 @@
         "type": "object",
         "required": [
           "id",
-          "device_type_id",
-          "device_type_name",
           "version",
           "url",
           "created_at",
           "has_blob",
           "source",
+          "blueprint_revision_id",
           "compatibility"
         ],
         "properties": {
           "blueprint_revision_id": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string"
           },
           "branch": {
             "type": [
@@ -7465,13 +7182,6 @@
               "string",
               "null"
             ]
-          },
-          "device_type_id": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "device_type_name": {
-            "type": "string"
           },
           "file_size": {
             "type": [
@@ -7545,14 +7255,17 @@
           "device_name",
           "device_status",
           "current_firmware",
-          "device_type_id",
-          "device_type_name",
+          "blueprint_revision_id",
           "firmware_update_id",
           "firmware_version",
           "status",
           "initiated_at"
         ],
         "properties": {
+          "blueprint_revision_id": {
+            "type": "string",
+            "description": "Revision targeted by the deployed firmware artifact."
+          },
           "completed_at": {
             "type": [
               "string",
@@ -7569,13 +7282,6 @@
             "type": "string"
           },
           "device_status": {
-            "type": "string"
-          },
-          "device_type_id": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "device_type_name": {
             "type": "string"
           },
           "error_message": {
@@ -7627,89 +7333,6 @@
           }
         }
       },
-      "HourlyTelemetryResponse": {
-        "type": "object",
-        "required": [
-          "device_id",
-          "bucket_start",
-          "sample_count"
-        ],
-        "properties": {
-          "avg_battery_level": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "float"
-          },
-          "avg_humidity": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "float"
-          },
-          "avg_temperature": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "float"
-          },
-          "bucket_start": {
-            "type": "string"
-          },
-          "device_id": {
-            "type": "string"
-          },
-          "max_battery_level": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "float"
-          },
-          "max_humidity": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "float"
-          },
-          "max_temperature": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "float"
-          },
-          "min_battery_level": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "float"
-          },
-          "min_humidity": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "float"
-          },
-          "min_temperature": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "float"
-          },
-          "sample_count": {
-            "type": "integer",
-            "format": "int64"
-          }
-        }
-      },
       "ImportThreadDatasetRequest": {
         "type": "object",
         "required": [
@@ -7726,24 +7349,22 @@
       "LocationResponse": {
         "type": "object",
         "required": [
+          "contract_id",
+          "event_id",
           "latitude",
           "longitude",
-          "timestamp"
+          "timestamp",
+          "expires_at"
         ],
         "properties": {
-          "altitude": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "float"
+          "contract_id": {
+            "type": "string"
           },
-          "heading": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "float"
+          "event_id": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string"
           },
           "latitude": {
             "type": "number",
@@ -7752,13 +7373,6 @@
           "longitude": {
             "type": "number",
             "format": "double"
-          },
-          "speed": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "float"
           },
           "timestamp": {
             "type": "string"
@@ -7836,6 +7450,44 @@
           }
         }
       },
+      "MetricChartKindResponse": {
+        "type": "string",
+        "enum": [
+          "line",
+          "step",
+          "bar",
+          "none"
+        ]
+      },
+      "MetricFieldPresentationResponse": {
+        "type": "object",
+        "properties": {
+          "chart": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MetricChartKindResponse"
+              }
+            ]
+          },
+          "color": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "precision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
       "MetricValueResponse": {
         "oneOf": [
           {
@@ -7843,8 +7495,8 @@
             "format": "double"
           },
           {
-            "type": "integer",
-            "format": "int64"
+            "type": "string",
+            "description": "Decimal text preserves values outside JavaScript's safe integer range."
           },
           {
             "type": "string"
@@ -7892,14 +7544,6 @@
           "configuration": {
             "description": "Device-specific configuration overlay, validated against the blueprint schema."
           },
-          "device_type_id": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32",
-            "description": "Deprecated compatibility selector. Omit for blueprint-based devices."
-          },
           "firmware": {
             "type": [
               "string",
@@ -7916,30 +7560,8 @@
           "name": {
             "type": "string"
           }
-        }
-      },
-      "NewDeviceTypeRequest": {
-        "type": "object",
-        "required": [
-          "name"
-        ],
-        "properties": {
-          "color_hex": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "icon": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "name": {
-            "type": "string"
-          }
-        }
+        },
+        "additionalProperties": false
       },
       "NewFirmwareUpdateRequest": {
         "type": "object",
@@ -8204,10 +7826,10 @@
               "required": [
                 "id",
                 "name",
-                "device_type_id",
-                "device_type_name",
-                "device_type_icon",
-                "device_type_color_hex",
+                "blueprint_id",
+                "blueprint_revision_id",
+                "blueprint_key",
+                "blueprint_name",
                 "status",
                 "last_seen",
                 "firmware",
@@ -8216,24 +7838,35 @@
                 "declared_connections"
               ],
               "properties": {
+                "blueprint_color": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "blueprint_icon": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "blueprint_id": {
+                  "type": "string"
+                },
+                "blueprint_key": {
+                  "type": "string"
+                },
+                "blueprint_name": {
+                  "type": "string"
+                },
+                "blueprint_revision_id": {
+                  "type": "string"
+                },
                 "declared_connections": {
                   "type": "array",
                   "items": {
                     "$ref": "#/components/schemas/DeviceConnectionResponse"
                   }
-                },
-                "device_type_color_hex": {
-                  "type": "string"
-                },
-                "device_type_icon": {
-                  "type": "string"
-                },
-                "device_type_id": {
-                  "type": "integer",
-                  "format": "int32"
-                },
-                "device_type_name": {
-                  "type": "string"
                 },
                 "firmware": {
                   "type": "string"
@@ -8263,20 +7896,6 @@
                     "null"
                   ]
                 },
-                "latest_latitude": {
-                  "type": [
-                    "number",
-                    "null"
-                  ],
-                  "format": "double"
-                },
-                "latest_longitude": {
-                  "type": [
-                    "number",
-                    "null"
-                  ],
-                  "format": "double"
-                },
                 "name": {
                   "type": "string"
                 },
@@ -8289,56 +7908,6 @@
                 "uptime_seconds": {
                   "type": "integer",
                   "format": "int32"
-                }
-              }
-            }
-          },
-          "limit": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "offset": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "total": {
-            "type": "integer",
-            "format": "int64"
-          }
-        }
-      },
-      "PaginatedResponse_DeviceTypeResponse": {
-        "type": "object",
-        "required": [
-          "data",
-          "total",
-          "limit",
-          "offset"
-        ],
-        "properties": {
-          "data": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": [
-                "id",
-                "name",
-                "icon",
-                "color_hex"
-              ],
-              "properties": {
-                "color_hex": {
-                  "type": "string"
-                },
-                "icon": {
-                  "type": "string"
-                },
-                "id": {
-                  "type": "integer",
-                  "format": "int32"
-                },
-                "name": {
-                  "type": "string"
                 }
               }
             }
@@ -8372,21 +7941,17 @@
               "type": "object",
               "required": [
                 "id",
-                "device_type_id",
-                "device_type_name",
                 "version",
                 "url",
                 "created_at",
                 "has_blob",
                 "source",
+                "blueprint_revision_id",
                 "compatibility"
               ],
               "properties": {
                 "blueprint_revision_id": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
+                  "type": "string"
                 },
                 "branch": {
                   "type": [
@@ -8427,13 +7992,6 @@
                     "string",
                     "null"
                   ]
-                },
-                "device_type_id": {
-                  "type": "integer",
-                  "format": "int32"
-                },
-                "device_type_name": {
-                  "type": "string"
                 },
                 "file_size": {
                   "type": [
@@ -8559,14 +8117,17 @@
                 "device_name",
                 "device_status",
                 "current_firmware",
-                "device_type_id",
-                "device_type_name",
+                "blueprint_revision_id",
                 "firmware_update_id",
                 "firmware_version",
                 "status",
                 "initiated_at"
               ],
               "properties": {
+                "blueprint_revision_id": {
+                  "type": "string",
+                  "description": "Revision targeted by the deployed firmware artifact."
+                },
                 "completed_at": {
                   "type": [
                     "string",
@@ -8583,13 +8144,6 @@
                   "type": "string"
                 },
                 "device_status": {
-                  "type": "string"
-                },
-                "device_type_id": {
-                  "type": "integer",
-                  "format": "int32"
-                },
-                "device_type_name": {
                   "type": "string"
                 },
                 "error_message": {
@@ -9247,88 +8801,6 @@
           }
         }
       },
-      "TelemetryResponse": {
-        "type": "object",
-        "required": [
-          "id",
-          "device_id",
-          "received_at"
-        ],
-        "properties": {
-          "altitude": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "float"
-          },
-          "battery_level": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "float"
-          },
-          "custom_json": {
-            "type": [
-              "object",
-              "null"
-            ]
-          },
-          "device_id": {
-            "type": "string"
-          },
-          "heading": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "float"
-          },
-          "humidity": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "float"
-          },
-          "id": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "latitude": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double"
-          },
-          "longitude": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double"
-          },
-          "received_at": {
-            "type": "string"
-          },
-          "speed": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "float"
-          },
-          "temperature": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "float"
-          }
-        }
-      },
       "ThreadChannelDiagnosticsResponse": {
         "type": "object",
         "required": [
@@ -9954,13 +9426,6 @@
       "UpdateDeviceRequest": {
         "type": "object",
         "properties": {
-          "device_type_id": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32"
-          },
           "firmware": {
             "type": [
               "string",
@@ -9980,30 +9445,8 @@
               "null"
             ]
           }
-        }
-      },
-      "UpdateDeviceTypeRequest": {
-        "type": "object",
-        "properties": {
-          "color_hex": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "icon": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "name": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
+        },
+        "additionalProperties": false
       },
       "UpdateFleetRequest": {
         "type": "object",
@@ -10272,10 +9715,6 @@
     {
       "name": "devices",
       "description": "Device management"
-    },
-    {
-      "name": "device-types",
-      "description": "Device type management"
     },
     {
       "name": "device-blueprints",

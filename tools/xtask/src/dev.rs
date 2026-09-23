@@ -8,7 +8,7 @@ use anyhow::{Context, Result, bail, ensure};
 use clap::Args;
 
 use crate::command::{command_in, output, require_program, run, succeeds};
-use crate::edge::ensure_frontend_dependencies;
+use crate::edge::{build_frontend_assets, ensure_frontend_dependencies};
 use crate::supervisor::{self, ChildSpec};
 
 const DEFAULT_BACKEND_PORT: u16 = 8080;
@@ -86,6 +86,11 @@ pub(crate) struct CloudTestArgs {
 
 pub(crate) fn run_edge(root: &Path, args: EdgeArgs) -> Result<()> {
     preflight(root, &args.common, false)?;
+    if !args.common.frontend_only {
+        // Keep the built UI available from the backend's filesystem fallback.
+        // Dev builds omit embedded-ui so frontend edits do not recompile Rust.
+        build_frontend_assets(root)?;
+    }
     let data_dir = args
         .data_dir
         .unwrap_or_else(|| root.join("target/xtask/edge-dev/data"));
@@ -105,7 +110,6 @@ pub(crate) fn run_edge(root: &Path, args: EdgeArgs) -> Result<()> {
             "edge-runtime",
             "--",
             "run",
-            "--no-ui",
             "--port",
             &args.common.port.to_string(),
             "--zenoh-port",

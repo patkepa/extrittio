@@ -5,6 +5,7 @@ import { getActivityEvents } from '../api/activity';
 
 interface ActivityQueryOptions {
   refetchInterval?: number | false;
+  enabled?: boolean;
 }
 
 export function useActivityEvents(params?: ActivityEventsParams, options?: ActivityQueryOptions) {
@@ -13,6 +14,7 @@ export function useActivityEvents(params?: ActivityEventsParams, options?: Activ
     queryFn: () => getActivityEvents(params),
     staleTime: 5_000,
     refetchInterval: options?.refetchInterval ?? false,
+    enabled: options?.enabled ?? true,
     placeholderData: (previous) => previous,
   });
 }

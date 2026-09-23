@@ -93,7 +93,6 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  background-color: transparent !important;
   opacity: 0.6;
 }
 
@@ -151,6 +150,18 @@
   display: grid;
   grid-template-columns: 1.4fr 1fr;
   gap: 16px;
+}
+.content-grid--single {
+  grid-template-columns: minmax(0, 1fr);
+}
+.dashboard-loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 120px;
+}
+.dashboard-error {
+  margin-bottom: 16px;
 }
 
 .content-card {

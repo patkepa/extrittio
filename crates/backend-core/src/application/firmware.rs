@@ -16,7 +16,6 @@ impl FirmwareApplication {
     pub async fn list(
         &self,
         ctx: &TenantContext,
-        device_type_id: Option<i32>,
         blueprint_revision_id: Option<String>,
         limit: i64,
         offset: i64,
@@ -24,13 +23,7 @@ impl FirmwareApplication {
         require_permission(ctx, Permission::ReadFirmware)?;
         Ok(self
             .repository
-            .list(
-                ctx.tenant_id(),
-                device_type_id,
-                blueprint_revision_id,
-                limit,
-                offset,
-            )
+            .list(ctx.tenant_id(), blueprint_revision_id, limit, offset)
             .await?)
     }
 
@@ -60,23 +53,11 @@ impl FirmwareApplication {
             .await
             .map_err(|error| match error {
                 PersistenceError::UniqueViolation { .. } => ApplicationError::Conflict(
-                    "Firmware version already exists for this device type".into(),
+                    "Firmware version already exists for this blueprint revision".into(),
                 ),
                 other => ApplicationError::Persistence(other),
             })?
-            .ok_or_else(|| ApplicationError::NotFound("Device type not found".into()))
-    }
-
-    pub async fn next_version(
-        &self,
-        ctx: &TenantContext,
-        device_type_id: i32,
-    ) -> Result<String, ApplicationError> {
-        require_permission(ctx, Permission::ReadFirmware)?;
-        Ok(self
-            .repository
-            .next_version(ctx.tenant_id(), device_type_id)
-            .await?)
+            .ok_or_else(|| ApplicationError::NotFound("Blueprint revision not found".into()))
     }
 
     pub async fn next_blueprint_version(
@@ -150,6 +131,7 @@ impl FirmwareApplication {
     ) -> Result<FirmwareRecord, ApplicationError> {
         #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
         let size = data.len() as i32;
+        require_permission(ctx, Permission::ManageFirmware)?;
         let key = store.allocate_key(ctx.tenant_id(), &filename);
         store
             .put(&key, data)
@@ -183,11 +165,9 @@ impl FirmwareApplication {
         store: &dyn crate::firmware::FirmwareObjectStorage,
         id: i32,
     ) -> Result<Option<String>, ApplicationError> {
-        if let Some(blob) = self.delete(ctx, id).await?
-            && let Some(key) = blob.storage_key
-        {
+        if let Some(blob) = self.delete(ctx, id).await? {
             if blob.storage_backend == store.backend() {
-                let _ = store.delete(&key).await;
+                let _ = store.delete(&blob.storage_key).await;
             } else {
                 return Ok(Some(blob.storage_backend));
             }
@@ -196,9 +176,9 @@ impl FirmwareApplication {
     }
 }
 
-use crate::{DeviceBlueprintApplication, DeviceTypeApplication};
+use crate::DeviceBlueprintApplication;
 pub struct PreparedBlueprintFirmware {
-    device_type_id: i32,
+    blueprint_revision_id: String,
     compatibility: serde_json::Value,
     update_strategy: Option<String>,
 }
@@ -206,14 +186,12 @@ pub struct PreparedBlueprintFirmware {
 impl PreparedBlueprintFirmware {
     pub fn into_record(
         self,
-        revision_id: String,
         version: String,
         url: String,
         sha256: Option<String>,
         description: Option<String>,
     ) -> NewFirmwareRecord {
         NewFirmwareRecord {
-            device_type_id: self.device_type_id,
             version,
             url,
             sha256,
@@ -224,7 +202,7 @@ impl PreparedBlueprintFirmware {
             build_timestamp: None,
             changelog: None,
             source: None,
-            blueprint_revision_id: Some(revision_id),
+            blueprint_revision_id: self.blueprint_revision_id,
             compatibility: self.compatibility,
             update_strategy: self.update_strategy,
         }
@@ -236,9 +214,9 @@ impl FirmwareApplication {
         &self,
         ctx: &TenantContext,
         blueprints: &DeviceBlueprintApplication,
-        device_types: &DeviceTypeApplication,
         revision_id: &str,
     ) -> Result<PreparedBlueprintFirmware, ApplicationError> {
+        require_permission(ctx, Permission::ManageFirmware)?;
         let revision = blueprints.get_revision(ctx, revision_id).await?;
         let blueprint: extrittio_device_contract::DeviceBlueprint =
             serde_json::from_value(revision.document).map_err(|error| {
@@ -257,48 +235,12 @@ impl FirmwareApplication {
             .map(ToOwned::to_owned);
         let compatibility = serde_json::to_value(firmware_definition.compatibility)
             .map_err(|error| ApplicationError::Internal(error.to_string()))?;
-        let compatibility_type = device_types.resolve_for_device_creation(ctx, None).await?;
 
         Ok(PreparedBlueprintFirmware {
-            device_type_id: compatibility_type.id,
+            blueprint_revision_id: revision_id.to_owned(),
             compatibility,
             update_strategy,
         })
-    }
-}
-
-/// Global operational capability used only by the host migration worker.
-#[derive(Clone)]
-pub struct FirmwareMigrationApplication {
-    repository: Arc<dyn FirmwareRepository>,
-}
-impl FirmwareMigrationApplication {
-    pub fn new(repository: Arc<dyn FirmwareRepository>) -> Self {
-        Self { repository }
-    }
-    pub async fn migrate_next(
-        &self,
-        store: &dyn crate::firmware::FirmwareObjectStorage,
-    ) -> Result<Option<(i32, bool)>, ApplicationError> {
-        let Some(blob) = self.repository.next_legacy_blob().await? else {
-            return Ok(None);
-        };
-        let key = store.legacy_key(&blob.tenant_id, blob.firmware_update_id, &blob.filename);
-        store.put(&key, blob.data).await.map_err(|error| {
-            ApplicationError::Internal(format!("Failed to migrate legacy firmware object: {error}"))
-        })?;
-        // Retain the deterministic object on metadata failure; the next pass
-        // retries the same key. Never delete an object a competing worker may use.
-        let changed = self
-            .repository
-            .mark_blob_migrated(
-                &blob.tenant_id,
-                blob.firmware_update_id,
-                store.backend(),
-                &key,
-            )
-            .await?;
-        Ok(Some((blob.firmware_update_id, changed)))
     }
 }
 
@@ -328,24 +270,15 @@ impl FirmwareApplication {
         blob: FirmwareBlobRecord,
         store: &dyn crate::firmware::FirmwareObjectStorage,
     ) -> Result<crate::firmware::FirmwareDownload, ApplicationError> {
-        let data = match (blob.data, blob.storage_key.as_deref()) {
-            (Some(data), _) => data,
-            (None, Some(key)) => {
-                if blob.storage_backend != store.backend() {
-                    return Err(ApplicationError::Internal(
-                        "Firmware storage configuration does not match stored metadata".into(),
-                    ));
-                }
-                store.get(key).await.map_err(|_| {
-                    ApplicationError::Internal("Firmware storage is unavailable".into())
-                })?
-            }
-            (None, None) => {
-                return Err(ApplicationError::Internal(
-                    "Firmware blob has no storage location".into(),
-                ));
-            }
-        };
+        if blob.storage_backend != store.backend() {
+            return Err(ApplicationError::Internal(
+                "Firmware storage configuration does not match stored metadata".into(),
+            ));
+        }
+        let data = store
+            .get(&blob.storage_key)
+            .await
+            .map_err(|_| ApplicationError::Internal("Firmware storage is unavailable".into()))?;
         if data.len() != blob.size as usize {
             return Err(ApplicationError::Internal(
                 "Firmware object failed integrity validation".into(),
@@ -380,10 +313,66 @@ impl FirmwareApplication {
         match self.repository.trigger_ota(ctx.tenant_id(), device_id, firmware_update_id, &download_url).await? {
             TriggerOtaOutcome::DeviceNotFound => Err(ApplicationError::NotFound(format!("Device '{device_id}' not found"))),
             TriggerOtaOutcome::FirmwareNotFound => Err(ApplicationError::NotFound(format!("Firmware update {firmware_update_id} not found"))),
-            TriggerOtaOutcome::Incompatible => Err(ApplicationError::InvalidInput("Firmware device type does not match device".into())),
+            TriggerOtaOutcome::Incompatible => Err(ApplicationError::InvalidInput("Firmware blueprint revision does not match the device contract".into())),
             TriggerOtaOutcome::InvalidArtifact => Err(ApplicationError::InvalidInput("Firmware requires a valid SHA-256, a version of at most 63 bytes and a download URL of at most 1023 bytes".into())),
             TriggerOtaOutcome::Ready { delta, version } => Ok((delta, version)),
         }
+    }
+}
+
+#[cfg(test)]
+mod download_tests {
+    use super::*;
+
+    struct Store;
+
+    #[async_trait::async_trait]
+    impl crate::firmware::FirmwareObjectStorage for Store {
+        fn backend(&self) -> &str {
+            "memory"
+        }
+        fn allocate_key(&self, _: &crate::TenantId, _: &str) -> String {
+            unreachable!()
+        }
+        async fn get(&self, key: &str) -> Result<Vec<u8>, String> {
+            assert_eq!(key, "object");
+            Ok(vec![1, 2, 3])
+        }
+        async fn put(&self, _: &str, _: Vec<u8>) -> Result<(), String> {
+            unreachable!()
+        }
+        async fn delete(&self, _: &str) -> Result<(), String> {
+            unreachable!()
+        }
+    }
+
+    fn blob(key: &str, backend: &str, size: i32) -> FirmwareBlobRecord {
+        FirmwareBlobRecord {
+            size,
+            filename: "firmware.bin".into(),
+            storage_key: key.to_owned(),
+            storage_backend: backend.into(),
+        }
+    }
+
+    #[test]
+    fn downloads_require_object_storage_and_validate_size() {
+        futures::executor::block_on(async {
+            let result = FirmwareApplication::read_download(blob("object", "memory", 3), &Store)
+                .await
+                .unwrap();
+            assert_eq!(result.data, vec![1, 2, 3]);
+            for invalid in [
+                blob("object", "different-store", 3),
+                blob("object", "memory", 2),
+            ] {
+                assert!(
+                    FirmwareApplication::read_download(invalid, &Store)
+                        .await
+                        .is_err()
+                );
+            }
+        });
     }
 }
 

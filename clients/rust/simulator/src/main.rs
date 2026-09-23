@@ -1,10 +1,10 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use clap::{Parser, ValueEnum};
-use extrittio_common::extrittio::{DeviceHeartbeat, DeviceTelemetry};
+use extrittio_client_runtime::contract::{ContractEvent, ProvisionedContract};
+use extrittio_common::extrittio::DeviceHeartbeat;
 use extrittio_common::{device_status, topics};
 use extrittio_sdk::sensor::SensorState;
 use prost::Message;
@@ -18,6 +18,13 @@ use tracing::{info, warn};
     about = "Simulate many Extrittio devices over the real Zenoh protocol"
 )]
 struct Args {
+    /// Directory containing <device-id>.json responses from the device contract API.
+    #[arg(long)]
+    contracts_dir: std::path::PathBuf,
+
+    /// Declared stream receiving the simulator's scenario payload.
+    #[arg(long, default_value = "environment")]
+    stream: String,
     /// Number of logical devices to simulate.
     #[arg(long, default_value_t = 100)]
     count: u32,
@@ -33,10 +40,6 @@ struct Args {
     /// Seconds between telemetry messages per simulated device.
     #[arg(long, default_value_t = 5)]
     telemetry_interval: u64,
-
-    /// Seconds between heartbeat messages per simulated device.
-    #[arg(long, default_value_t = 30)]
-    heartbeat_interval: u64,
 
     /// Spread initial device startup over this many milliseconds.
     #[arg(long, default_value_t = 2_000)]
@@ -114,6 +117,8 @@ enum SessionMode {
 }
 
 struct DeviceRuntime {
+    contract: ProvisionedContract,
+    stream: String,
     id: String,
     firmware: String,
     sensor: SensorState,
@@ -179,8 +184,15 @@ async fn main() {
     let args = Args::parse();
     validate_args(&args);
 
+    let devices = load_devices(&args).await.unwrap_or_else(|error| {
+        eprintln!("Invalid simulator provisioning: {error}");
+        std::process::exit(2);
+    });
     let estimated_telemetry_rate = args.count as f64 / args.telemetry_interval as f64;
-    let estimated_heartbeat_rate = args.count as f64 / args.heartbeat_interval as f64;
+    let estimated_heartbeat_rate: f64 = devices
+        .iter()
+        .map(|device| 1.0 / device.heartbeat_period.as_secs_f64())
+        .sum();
     info!(
         "Starting {} simulated devices ({:?}, {:?}); nominal inbound rate: {:.1} telemetry/s + {:.1} heartbeat/s; jitter={}%, device variance={}%, sensor noise={}%",
         args.count,
@@ -194,12 +206,21 @@ async fn main() {
     );
 
     match args.session_mode {
-        SessionMode::Shared => run_shared(args).await,
-        SessionMode::PerDevice => run_per_device(args).await,
+        SessionMode::Shared => run_shared(args, devices).await,
+        SessionMode::PerDevice => run_per_device(args, devices).await,
     }
 }
 
-async fn run_shared(args: Args) {
+async fn run_shared(mut args: Args, devices: Vec<DeviceRuntime>) {
+    if args.connect.is_none() {
+        args.connect = Some(
+            devices[0]
+                .contract
+                .zenoh_endpoint()
+                .expect("validated transport")
+                .to_string(),
+        );
+    }
     let session = Arc::new(open_session(&args).await);
     info!("Opened shared Zenoh session");
 
@@ -210,8 +231,7 @@ async fn run_shared(args: Args) {
         args.count,
         Duration::from_secs(args.stats_interval),
     ));
-    for index in 0..args.count {
-        let device = build_device(&args, index);
+    for device in devices {
         let device_args = args.clone();
         let device_session = session.clone();
         let device_metrics = metrics.clone();
@@ -223,7 +243,7 @@ async fn run_shared(args: Args) {
     wait_for_shutdown(args.duration, tasks).await;
 }
 
-async fn run_per_device(args: Args) {
+async fn run_per_device(args: Args, devices: Vec<DeviceRuntime>) {
     let metrics = Arc::new(SimulatorMetrics::default());
     let mut tasks = JoinSet::new();
     tasks.spawn(report_stats(
@@ -231,9 +251,17 @@ async fn run_per_device(args: Args) {
         args.count,
         Duration::from_secs(args.stats_interval),
     ));
-    for index in 0..args.count {
-        let device = build_device(&args, index);
-        let device_args = args.clone();
+    for device in devices {
+        let mut device_args = args.clone();
+        if device_args.connect.is_none() {
+            device_args.connect = Some(
+                device
+                    .contract
+                    .zenoh_endpoint()
+                    .expect("validated transport")
+                    .to_string(),
+            );
+        }
         let device_metrics = metrics.clone();
         tasks.spawn(async move {
             let session = Arc::new(open_session(&device_args).await);
@@ -359,52 +387,55 @@ async fn publish_telemetry(
     sensor_noise_percent: u8,
     session: &zenoh::Session,
 ) -> Result<(), zenoh::Error> {
-    let mut metadata = HashMap::new();
-    metadata.insert("simulated".to_string(), "true".to_string());
-    metadata.insert(
-        "scenario".to_string(),
-        format!("{scenario:?}").to_lowercase(),
-    );
+    let event = sample_event(device, scenario, sensor_noise_percent);
+    let encoded = device.contract.encode_event(&event, chrono::Utc::now())?;
+    session.put(encoded.address, encoded.payload).await
+}
 
-    let has_location = matches!(scenario, Scenario::Mobile);
-    let message = DeviceTelemetry {
-        device_id: device.id.clone(),
-        timestamp: extrittio_sdk::time::now_millis(),
-        temperature: noisy_reading(
-            device.sensor.temperature,
-            sensor_noise_percent,
-            0.3,
-            15.0,
-            95.0,
-        ),
-        humidity: noisy_reading(
-            device.sensor.humidity,
-            sensor_noise_percent,
-            0.6,
-            20.0,
-            80.0,
-        ),
-        battery_level: noisy_reading(device.sensor.battery, sensor_noise_percent, 0.2, 0.0, 100.0),
-        metadata,
-        latitude: if has_location { device.latitude } else { 0.0 },
-        longitude: if has_location { device.longitude } else { 0.0 },
-        speed: if has_location {
-            noisy_reading(device.speed, sensor_noise_percent, 0.4, 0.0, 60.0)
-        } else {
-            0.0
-        },
-        altitude: if has_location {
-            noisy_reading(device.altitude, sensor_noise_percent, 0.8, -100.0, 5_000.0)
-        } else {
-            0.0
-        },
-        heading: if has_location { device.heading } else { 0.0 },
-        has_location,
-    };
+fn sample_event(device: &DeviceRuntime, scenario: Scenario, noise: u8) -> ContractEvent {
+    let mut payload = serde_json::json!({
+        "temperature": noisy_reading(device.sensor.temperature, noise, 0.3, 15.0, 95.0),
+        "humidity": noisy_reading(device.sensor.humidity, noise, 0.6, 20.0, 80.0),
+        "batteryLevel": noisy_reading(device.sensor.battery, noise, 0.2, 0.0, 100.0)
+    });
+    if matches!(scenario, Scenario::Mobile) {
+        payload["position"] = serde_json::json!({
+            "latitude": device.latitude,
+            "longitude": device.longitude,
+            "speed": noisy_reading(device.speed, noise, 0.4, 0.0, 60.0),
+            "altitude": noisy_reading(device.altitude, noise, 0.8, -100.0, 5_000.0),
+            "heading": device.heading
+        });
+    }
+    ContractEvent::new(&device.stream, payload)
+}
 
-    session
-        .put(topics::telemetry(&device.id), message.encode_to_vec())
-        .await
+async fn load_devices(args: &Args) -> Result<Vec<DeviceRuntime>, zenoh::Error> {
+    let mut devices = Vec::with_capacity(args.count as usize);
+    let mut shared_endpoint: Option<String> = None;
+    for index in 0..args.count {
+        let id = format!("{}-{:06}", args.prefix, index + 1);
+        let contract =
+            ProvisionedContract::load(args.contracts_dir.join(format!("{id}.json"))).await?;
+        contract.validate_device_id(&id)?;
+        let endpoint = contract.zenoh_endpoint()?.to_string();
+        if matches!(args.session_mode, SessionMode::Shared) && args.connect.is_none() {
+            if shared_endpoint
+                .as_ref()
+                .is_some_and(|previous| previous != &endpoint)
+            {
+                return Err("shared session requires identical contract endpoints or an explicit --connect override".into());
+            }
+            shared_endpoint = Some(endpoint);
+        }
+        let device = build_device(args, index, contract);
+        device.contract.encode_event(
+            &sample_event(&device, args.scenario, args.sensor_noise_percent),
+            chrono::Utc::now(),
+        )?;
+        devices.push(device);
+    }
+    Ok(devices)
 }
 
 fn advance_device(device: &mut DeviceRuntime, scenario: Scenario) {
@@ -453,7 +484,7 @@ fn advance_device(device: &mut DeviceRuntime, scenario: Scenario) {
     }
 }
 
-fn build_device(args: &Args, index: u32) -> DeviceRuntime {
+fn build_device(args: &Args, index: u32, contract: ProvisionedContract) -> DeviceRuntime {
     let ordinal = index + 1;
     let mut rng = rand::rng();
     let mut sensor = SensorState::new();
@@ -474,10 +505,9 @@ fn build_device(args: &Args, index: u32) -> DeviceRuntime {
             Duration::from_secs(args.telemetry_interval),
             args.device_interval_variance_percent,
         ),
-        heartbeat_period: varied_period(
-            Duration::from_secs(args.heartbeat_interval),
-            args.device_interval_variance_percent,
-        ),
+        heartbeat_period: contract.heartbeat_interval(),
+        contract,
+        stream: args.stream.clone(),
         battery_drain_multiplier: rng.random_range(0.6..=1.6),
         latitude,
         longitude,
@@ -560,10 +590,6 @@ fn validate_args(args: &Args) {
     }
     if args.telemetry_interval == 0 {
         eprintln!("--telemetry-interval must be greater than 0");
-        std::process::exit(2);
-    }
-    if args.heartbeat_interval == 0 {
-        eprintln!("--heartbeat-interval must be greater than 0");
         std::process::exit(2);
     }
     if args.jitter_percent > 100 {
@@ -695,5 +721,115 @@ fn parse_duration(value: &str) -> Result<Duration, String> {
         'm' | 'M' => Ok(Duration::from_secs(amount.saturating_mul(60))),
         'h' | 'H' => Ok(Duration::from_secs(amount.saturating_mul(60 * 60))),
         _ => Err("duration must end with s, m, or h".to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use extrittio_device_contract::{
+        BlueprintCompiler, CompileContext, ResolvedTransport, TransportProtocol, validate_blueprint,
+    };
+
+    fn response(id: &str) -> serde_json::Value {
+        let blueprint = validate_blueprint(
+            serde_json::from_str(include_str!("../../../../blueprints/simulator.json")).unwrap(),
+        )
+        .unwrap();
+        let compiled = BlueprintCompiler::compile(
+            &blueprint,
+            &CompileContext {
+                contract_id: format!("contract-{id}"),
+                tenant_id: "tenant-a".into(),
+                device_id: id.into(),
+                blueprint_revision_id: "revision-a".into(),
+                blueprint_revision: 1,
+                transport_bindings: std::collections::BTreeMap::from([(
+                    "primary_zenoh".into(),
+                    ResolvedTransport {
+                        protocol: TransportProtocol::Zenoh,
+                        endpoint: "tcp/127.0.0.1:7447".into(),
+                        server_ca_pem: None,
+                        credential_ref: None,
+                    },
+                )]),
+                configuration_layers: vec![],
+            },
+        )
+        .unwrap();
+        serde_json::json!({"document": compiled.document, "contract_hash": compiled.hash.to_string()})
+    }
+
+    #[test]
+    fn every_scenario_encodes_only_declared_contract_fields() {
+        let args =
+            Args::try_parse_from(["simulator", "--contracts-dir", "/unused", "--count", "1"])
+                .unwrap();
+        assert!(Args::try_parse_from(["simulator"]).is_err());
+        let contract = ProvisionedContract::from_api_response(
+            &serde_json::to_vec(&response("sim-device-000001")).unwrap(),
+        )
+        .unwrap();
+        let mut device = build_device(&args, 0, contract);
+        assert_eq!(device.heartbeat_period, Duration::from_secs(30));
+        for scenario in [
+            Scenario::Normal,
+            Scenario::Hot,
+            Scenario::LowBattery,
+            Scenario::Mobile,
+            Scenario::Flaky,
+            Scenario::Burst,
+        ] {
+            advance_device(&mut device, scenario);
+            let event = sample_event(&device, scenario, 5);
+            let encoded = device
+                .contract
+                .encode_event(&event, chrono::Utc::now())
+                .unwrap();
+            assert_eq!(
+                encoded.address,
+                "extrittio/devices/sim-device-000001/events/readings"
+            );
+            let envelope: serde_json::Value = serde_json::from_slice(&encoded.payload).unwrap();
+            let wire_payload: serde_json::Value =
+                serde_json::from_slice(&serde_json::to_vec(&event.payload).unwrap()).unwrap();
+            assert_eq!(envelope["payload"], wire_payload);
+            assert_eq!(
+                event.payload.get("position").is_some(),
+                matches!(scenario, Scenario::Mobile)
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn startup_requires_matching_contracts_for_every_device() {
+        let directory = tempfile::tempdir().unwrap();
+        let args = Args::try_parse_from([
+            "simulator",
+            "--contracts-dir",
+            directory.path().to_str().unwrap(),
+            "--count",
+            "2",
+        ])
+        .unwrap();
+        assert!(load_devices(&args).await.is_err());
+        for index in 1..=2 {
+            let id = format!("sim-device-{index:06}");
+            std::fs::write(
+                directory.path().join(format!("{id}.json")),
+                serde_json::to_vec(&response(&id)).unwrap(),
+            )
+            .unwrap();
+        }
+        assert_eq!(load_devices(&args).await.unwrap().len(), 2);
+        let mut undeclared_stream = args.clone();
+        undeclared_stream.stream = "not-declared".into();
+        assert!(load_devices(&undeclared_stream).await.is_err());
+        std::fs::write(
+            directory.path().join("sim-device-000002.json"),
+            serde_json::to_vec(&response("wrong-device")).unwrap(),
+        )
+        .unwrap();
+        assert!(load_devices(&args).await.is_err());
     }
 }

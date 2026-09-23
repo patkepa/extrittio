@@ -163,7 +163,7 @@
   margin-bottom: 0;
 }
 
-/* Settings sub-pages with tables (Device Types, Fleets) */
+/* Settings sub-pages with tables */
 .settings-page .page-header {
   display: flex;
   justify-content: space-between;

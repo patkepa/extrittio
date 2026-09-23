@@ -30,8 +30,12 @@ export const OverviewTab = ({ device }: OverviewTabProps) => {
           <span className="detail-value mono-data">{device.id}</span>
         </div>
         <div className="detail-item">
-          <span className="section-label">Type</span>
-          <span className="detail-value">{device.device_type_name}</span>
+          <span className="section-label">Blueprint</span>
+          <span className="detail-value">{device.blueprint_name}</span>
+        </div>
+        <div className="detail-item">
+          <span className="section-label">Blueprint revision</span>
+          <span className="detail-value mono-data">{device.blueprint_revision_id}</span>
         </div>
         <div className="detail-item">
           <span className="section-label">Fleet</span>

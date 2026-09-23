@@ -11,7 +11,6 @@ use uuid::Uuid;
 
 use crate::config::FirmwareStorageConfig;
 use crate::state::ReadinessRegistry;
-use extrittio_backend_core::application::FirmwareMigrationApplication;
 
 #[derive(Clone)]
 pub struct FirmwareObjectStore {
@@ -105,13 +104,6 @@ impl FirmwareObjectStore {
         Ok(())
     }
 
-    #[must_use]
-    fn legacy_key(&self, tenant_id: &str, firmware_update_id: i32, filename: &str) -> String {
-        let tenant = safe_segment(tenant_id, "tenant");
-        let filename = safe_segment(filename, "firmware.bin");
-        format!("tenants/{tenant}/firmware/legacy-{firmware_update_id}/{filename}")
-    }
-
     pub async fn put(&self, key: &str, data: Vec<u8>) -> anyhow::Result<()> {
         let path = object_path(key)?;
         self.inner
@@ -141,32 +133,6 @@ impl FirmwareObjectStore {
             .delete(&path)
             .await
             .with_context(|| format!("failed to delete firmware object {key}"))
-    }
-}
-
-/// Incrementally move pre-object-storage BYTEA rows out of PostgreSQL. The key
-/// is deterministic so concurrent application replicas can safely converge on
-/// the same object and conditional database update.
-pub async fn run_legacy_blob_migrator(
-    application: FirmwareMigrationApplication,
-    store: FirmwareObjectStore,
-) {
-    loop {
-        match application.migrate_next(&store).await {
-            Ok(None) => tokio::time::sleep(std::time::Duration::from_secs(300)).await,
-            Ok(Some((firmware_update_id, true))) => tracing::info!(
-                firmware_update_id,
-                backend = store.backend(),
-                "Migrated legacy firmware blob to object storage"
-            ),
-            Ok(Some((firmware_update_id, false))) => {
-                tracing::debug!(firmware_update_id, "Firmware blob was already migrated")
-            }
-            Err(error) => {
-                tracing::warn!(%error, "Legacy firmware blob migration failed; retaining data for retry");
-                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-            }
-        }
     }
 }
 
@@ -231,7 +197,7 @@ mod tests {
     }
 
     #[test]
-    fn allocated_object_key_preserves_the_legacy_layout() {
+    fn allocated_object_key_is_tenant_scoped_and_unique() {
         let store = FirmwareObjectStore::in_memory();
         let key = store.allocate_key("tenant/acme", "../device firmware.bin");
         let segments = key.split('/').collect::<Vec<_>>();
@@ -240,15 +206,9 @@ mod tests {
         assert!(Uuid::parse_str(segments[3]).is_ok());
         assert_eq!(segments[4], "___device_firmware_bin");
         assert_eq!(segments.len(), 5);
-    }
-
-    #[test]
-    fn migrated_blob_object_key_preserves_the_legacy_layout() {
-        let store = FirmwareObjectStore::in_memory();
-
-        assert_eq!(
-            store.legacy_key("tenant/acme", 42, "../device firmware.bin"),
-            "tenants/tenant_acme/firmware/legacy-42/___device_firmware_bin"
+        assert_ne!(
+            key,
+            store.allocate_key("tenant/acme", "../device firmware.bin")
         );
     }
 }
@@ -261,9 +221,7 @@ impl extrittio_backend_core::firmware::FirmwareObjectStorage for FirmwareObjectS
     fn allocate_key(&self, tenant: &extrittio_backend_core::TenantId, filename: &str) -> String {
         FirmwareObjectStore::allocate_key(self, tenant.as_str(), filename)
     }
-    fn legacy_key(&self, tenant: &str, firmware_update_id: i32, filename: &str) -> String {
-        FirmwareObjectStore::legacy_key(self, tenant, firmware_update_id, filename)
-    }
+
     async fn get(&self, key: &str) -> Result<Vec<u8>, String> {
         FirmwareObjectStore::get(self, key).await.map_err(|error| {
             tracing::error!(%error, "Firmware object download failed");

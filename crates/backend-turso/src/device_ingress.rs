@@ -21,7 +21,7 @@ use extrittio_backend_core::device_ingress::DeviceIngressRepository;
 use extrittio_backend_core::device_ingress::*;
 use extrittio_backend_core::rule_engine::types::PendingAction;
 use turso::{Connection, Row, params};
-const INGRESS_SELECT: &str = "SELECT d.tenant_id, d.id, d.device_type_id, d.fleet_id, d.status,
+const INGRESS_SELECT: &str = "SELECT d.tenant_id, d.id, d.fleet_id, d.status,
        (SELECT revision.blueprint_id
           FROM device_contract_assignments assignment
           JOIN device_contracts contract
@@ -40,17 +40,13 @@ fn ingress(record: &Row) -> Result<DeviceIngressContext, PersistenceError> {
     Ok(DeviceIngressContext {
         identity: DeviceIdentity::new(tenant_id, device_id)
             .map_err(|error| PersistenceError::CorruptData(error.to_string()))?,
-        device_type_id: row::i32(
-            record.get(2).map_err(row::legacy_error)?,
-            "devices.device_type_id",
-        )?,
         fleet_id: record
-            .get::<Option<i64>>(3)
+            .get::<Option<i64>>(2)
             .map_err(row::legacy_error)?
             .map(|id| row::i32(id, "devices.fleet_id"))
             .transpose()?,
-        blueprint_id: record.get(5).map_err(row::legacy_error)?,
-        status: record.get(4).map_err(row::legacy_error)?,
+        blueprint_id: record.get(4).map_err(row::legacy_error)?,
+        status: record.get(3).map_err(row::legacy_error)?,
     })
 }
 

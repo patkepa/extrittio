@@ -38,10 +38,12 @@ pub struct DeviceConnectionResponse {
 pub struct DeviceResponse {
     pub id: String,
     pub name: String,
-    pub device_type_id: i32,
-    pub device_type_name: String,
-    pub device_type_icon: String,
-    pub device_type_color_hex: String,
+    pub blueprint_id: String,
+    pub blueprint_revision_id: String,
+    pub blueprint_key: String,
+    pub blueprint_name: String,
+    pub blueprint_icon: Option<String>,
+    pub blueprint_color: Option<String>,
     pub fleet_id: Option<i32>,
     pub fleet_name: Option<String>,
     pub status: String,
@@ -50,16 +52,13 @@ pub struct DeviceResponse {
     pub firmware: String,
     pub uptime: String,
     pub uptime_seconds: i32,
-    pub latest_latitude: Option<f64>,
-    pub latest_longitude: Option<f64>,
     pub declared_connections: Vec<DeviceConnectionResponse>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct NewDeviceRequest {
     pub name: String,
-    /// Deprecated compatibility selector. Omit for blueprint-based devices.
-    pub device_type_id: Option<i32>,
     pub fleet_id: Option<i32>,
     pub firmware: Option<String>,
     /// Published immutable blueprint revision used to compile this device's contract.
@@ -82,12 +81,108 @@ pub struct DeviceContractResponse {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct UpdateDeviceRequest {
     pub name: Option<String>,
-    pub device_type_id: Option<i32>,
     #[schema(value_type = Option<i32>)]
     pub fleet_id: Option<Option<i32>>,
     pub firmware: Option<String>,
+}
+
+#[cfg(test)]
+mod blueprint_request_tests {
+    use super::*;
+
+    #[test]
+    fn location_batches_accept_only_explicit_device_ids() {
+        let request: DeviceLocationsRequest =
+            serde_json::from_value(serde_json::json!({"device_ids":["opaque-device"]})).unwrap();
+        assert_eq!(request.device_ids, vec!["opaque-device"]);
+        assert!(
+            serde_json::from_value::<DeviceLocationsRequest>(
+                serde_json::json!({"device_type_id":1})
+            )
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<DeviceLocationsRequest>(
+                serde_json::json!({"device_ids":[],"latitude":0})
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn device_responses_expose_blueprint_identity_without_fixed_measurements() {
+        use extrittio_backend_core::devices::{DeviceBlueprintIdentity, DeviceRecord};
+        let response = to_device_response(DeviceDetails {
+            device: DeviceRecord {
+                id: "device".into(),
+                name: "Device".into(),
+                fleet_id: None,
+                status: "offline".into(),
+                firmware: "1".into(),
+                last_seen: None,
+                uptime_seconds: 0,
+                declared_connections: serde_json::json!([]),
+            },
+            blueprint: DeviceBlueprintIdentity {
+                id: "blueprint".into(),
+                revision_id: "revision".into(),
+                key: "arbitrary".into(),
+                name: "Arbitrary".into(),
+                icon: None,
+                color: None,
+            },
+            fleet: None,
+        });
+        let json = serde_json::to_value(response).unwrap();
+        assert_eq!(json["blueprint_id"], "blueprint");
+        assert_eq!(json["blueprint_revision_id"], "revision");
+        assert_eq!(json["blueprint_key"], "arbitrary");
+        assert!(json["blueprint_icon"].is_null());
+        for field in [
+            "device_type_id",
+            "device_type_name",
+            "device_type_icon",
+            "device_type_color_hex",
+            "latest_latitude",
+            "latest_longitude",
+            "temperature",
+            "humidity",
+        ] {
+            assert!(json.get(field).is_none(), "{field}");
+        }
+    }
+
+    #[test]
+    fn device_writes_reject_retired_type_selectors() {
+        let create = serde_json::json!({"name":"sensor","blueprint_revision_id":"revision"});
+        assert!(serde_json::from_value::<NewDeviceRequest>(create.clone()).is_ok());
+        for field in ["device_type_id", "device_type", "temperature", "humidity"] {
+            let mut input = create.clone();
+            input[field] = serde_json::json!(1);
+            assert!(
+                serde_json::from_value::<NewDeviceRequest>(input).is_err(),
+                "{field}"
+            );
+            assert!(
+                serde_json::from_value::<UpdateDeviceRequest>(serde_json::json!({field:1}))
+                    .is_err(),
+                "{field}"
+            );
+        }
+        assert!(
+            serde_json::from_value::<NewDeviceRequest>(serde_json::json!({"name":"sensor"}))
+                .is_err()
+        );
+        assert!(
+            serde_json::from_value::<UpdateDeviceRequest>(
+                serde_json::json!({"name":"renamed","fleet_id":7})
+            )
+            .is_ok()
+        );
+    }
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -95,6 +190,8 @@ pub struct ListDevicesQuery {
     pub status: Option<String>,
     pub search: Option<String>,
     pub fleet_id: Option<i32>,
+    pub sort_by: Option<String>,
+    pub sort_dir: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
@@ -153,12 +250,24 @@ pub struct BulkAffectedResponse {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct LocationResponse {
+    pub contract_id: String,
+    pub event_id: String,
     pub latitude: f64,
     pub longitude: f64,
-    pub speed: Option<f32>,
-    pub altitude: Option<f32>,
-    pub heading: Option<f32>,
     pub timestamp: String,
+    pub expires_at: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DeviceLocationsRequest {
+    pub device_ids: Vec<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DeviceLocationResponse {
+    pub device_id: String,
+    pub location: LocationResponse,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -211,7 +320,7 @@ fn bulk_target_selection<'a>(
 fn to_device_response(
     DeviceDetails {
         device,
-        device_type,
+        blueprint,
         fleet,
     }: DeviceDetails,
 ) -> DeviceResponse {
@@ -222,10 +331,12 @@ fn to_device_response(
     DeviceResponse {
         id: device.id,
         name: device.name,
-        device_type_id: device_type.id,
-        device_type_name: device_type.name,
-        device_type_icon: device_type.icon,
-        device_type_color_hex: device_type.color_hex,
+        blueprint_id: blueprint.id,
+        blueprint_revision_id: blueprint.revision_id,
+        blueprint_key: blueprint.key,
+        blueprint_name: blueprint.name,
+        blueprint_icon: blueprint.icon,
+        blueprint_color: blueprint.color,
         fleet_id: fleet.as_ref().map(|f| f.id),
         fleet_name: fleet.map(|f| f.name),
         status: device.status,
@@ -238,8 +349,6 @@ fn to_device_response(
         uptime: device_service::format_uptime(Some(device.uptime_seconds))
             .unwrap_or_else(|| "0m".to_string()),
         uptime_seconds: device.uptime_seconds,
-        latest_latitude: device.latest_latitude,
-        latest_longitude: device.latest_longitude,
         declared_connections,
     }
 }
@@ -252,6 +361,10 @@ const MAX_BULK_SIZE: usize = 500;
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
+        .route(
+            "/api/v1/devices/locations/latest",
+            post(get_device_locations),
+        )
         .route("/api/v1/devices", get(list_devices).post(create_device))
         .route(
             "/api/v1/devices/{id}",
@@ -305,6 +418,8 @@ pub(crate) async fn list_devices(
                 status: params.status,
                 search: params.search,
                 fleet_id: params.fleet_id,
+                sort_by: params.sort_by,
+                sort_dir: params.sort_dir,
                 limit,
                 offset,
             },
@@ -413,7 +528,6 @@ pub(crate) async fn create_device(
             extrittio_backend_core::ProvisionDevice {
                 name: body.name,
                 blueprint_revision_id: body.blueprint_revision_id,
-                device_type_id: body.device_type_id,
                 fleet_id: body.fleet_id,
                 firmware: body.firmware,
                 configuration: body.configuration,
@@ -503,7 +617,6 @@ pub(crate) async fn update_device(
             &id,
             UpdateDeviceRecord {
                 name: body.name,
-                device_type_id: body.device_type_id,
                 fleet_id: body.fleet_id,
                 firmware: body.firmware,
                 updated_at: None,
@@ -792,7 +905,41 @@ pub(crate) async fn list_ota_deployments(
     Ok(Json(response))
 }
 
-/// Get the latest location recorded for a device.
+/// Get the latest fresh location declared by the currently assigned contract.
+#[utoipa::path(
+    post, path = "/api/v1/devices/locations/latest", tag = "devices",
+    security(("bearer_auth" = [])), request_body = DeviceLocationsRequest,
+    responses((status = 200, description = "Fresh contract locations for up to 500 devices", body = Vec<DeviceLocationResponse>)),
+)]
+pub(crate) async fn get_device_locations(
+    State(state): State<Arc<AppState>>,
+    Extension(ctx): Extension<RequestContext>,
+    Json(request): Json<DeviceLocationsRequest>,
+) -> Result<Json<Vec<DeviceLocationResponse>>, AppError> {
+    let locations = state
+        .application()
+        .events()
+        .latest_locations(&ctx.tenant_context(), request.device_ids)
+        .await?;
+    Ok(Json(
+        locations
+            .into_iter()
+            .map(|r| DeviceLocationResponse {
+                device_id: r.device_id,
+                location: LocationResponse {
+                    contract_id: r.location.contract_id,
+                    event_id: r.location.event_id,
+                    latitude: r.location.latitude,
+                    longitude: r.location.longitude,
+                    timestamp: r.location.occurred_at.to_rfc3339(),
+                    expires_at: r.location.expires_at.to_rfc3339(),
+                },
+            })
+            .collect(),
+    ))
+}
+
+/// Get the latest fresh location declared by the currently assigned contract.
 #[utoipa::path(
     get,
     path = "/api/v1/devices/{id}/location/latest",
@@ -810,16 +957,16 @@ pub(crate) async fn get_device_latest_location(
 ) -> Result<Json<Option<LocationResponse>>, AppError> {
     let result = state
         .application()
-        .telemetry()
+        .events()
         .latest_location(&ctx.tenant_context(), &device_id)
         .await?
         .map(|r| LocationResponse {
-            latitude: r.latitude.unwrap_or(0.0),
-            longitude: r.longitude.unwrap_or(0.0),
-            speed: r.speed,
-            altitude: r.altitude,
-            heading: r.heading,
-            timestamp: r.received_at.and_utc().to_rfc3339(),
+            contract_id: r.contract_id,
+            event_id: r.event_id,
+            latitude: r.latitude,
+            longitude: r.longitude,
+            timestamp: r.occurred_at.to_rfc3339(),
+            expires_at: r.expires_at.to_rfc3339(),
         });
     Ok(Json(result))
 }

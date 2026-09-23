@@ -1,23 +1,25 @@
 # Extrittio Device Simulator
 
-Simulates many logical devices over the legacy Zenoh Protobuf heartbeat and
-telemetry topics. Every generated ID must already exist in Extrittio; the
-backend rejects traffic from unprovisioned devices and does not auto-register
-heartbeats. Create the devices from a published blueprint before starting the
-simulator, using IDs such as `sim-device-000001` through the selected `--count`.
+Simulates many logical devices using validated contract events and platform
+heartbeats. Publish the [simulator blueprint](../../../blueprints/simulator.json),
+then create devices from its published revision using IDs such as
+`sim-device-000001` through the selected `--count`. Download each device's
+`GET /api/v1/devices/{id}/contract` response into a directory as `<device-id>.json`.
+The simulator validates every contract's hash, identity and scenario schema
+before opening any network session. It does not auto-register devices.
 
 ```bash
 cargo run -p extrittio-simulator -- \
   --count 500 \
+  --contracts-dir ./simulator-contracts \
   --scenario mobile \
   --location-area poland \
   --connect tcp/127.0.0.1:7447 \
   --telemetry-interval 5 \
-  --heartbeat-interval 30 \
   --jitter-percent 35 \
   --device-interval-variance-percent 20 \
   --sensor-noise-percent 8 \
---stats-interval 5
+  --stats-interval 5
 ```
 
 For a TLS listener, also pass `--ca-cert`, `--client-cert`, and `--client-key`.
@@ -41,3 +43,9 @@ Notes:
 - `--sensor-noise-percent` adds measurement noise to emitted telemetry values.
 - `--stats-interval` controls how often aggregate send counts and rates are logged.
 - Use `shared` session mode for cheap high-count simulations, and `per-device` when testing Zenoh connection/session pressure.
+- Heartbeat periods come from each device contract; there is no heartbeat-period override.
+- `--stream` selects the declared stream (default `environment`). Scenario payloads
+  contain `temperature`, `humidity` and `batteryLevel`; mobile scenarios additionally
+  include a `position` object. These fields belong to the sample blueprint.
+- Without `--connect`, endpoints come from contracts. Shared sessions require a
+  common endpoint; per-device sessions can use distinct contract endpoints.

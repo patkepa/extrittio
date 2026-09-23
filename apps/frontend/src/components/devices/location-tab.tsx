@@ -1,42 +1,17 @@
 import { useState, useMemo } from 'react';
 import { ButtonGroup, Button, Spinner, Callout, Tag } from '@blueprintjs/core';
-import { useDeviceTelemetry } from '../../hooks/use-telemetry';
+import { useDeviceMetrics } from '../../hooks/use-telemetry';
 import { useZones } from '../../hooks/use-zones';
 import { DeviceMap } from '../map/device-map';
 import { DeviceMarker } from '../map/device-marker';
 import { LocationTrail } from '../map/location-trail';
 import { ZoneLayer } from '../map/zone-layer';
-import { RANGES, computeSince } from './telemetry-profiles';
-import type { RangeKey } from './telemetry-profiles';
-import type { TelemetryRecord } from '../../types/api';
+import { RANGES, computeSince } from './telemetry-ranges';
+import type { RangeKey } from './telemetry-ranges';
+import type { DeviceContract } from '../../types/api';
+import { useDeviceContract } from '../../hooks/use-devices';
+import { locationBinding, locationObservations } from './contract-location-model';
 import './location-tab.css';
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-/** Extended telemetry record including location fields the backend returns
- *  (not yet in the generated OpenAPI types). */
-interface TelemetryRecordWithLocation extends TelemetryRecord {
-  latitude?: number | null;
-  longitude?: number | null;
-  speed?: number | null;
-  altitude?: number | null;
-  heading?: number | null;
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-type LocationRecord = TelemetryRecordWithLocation & {
-  latitude: number;
-  longitude: number;
-};
-
-function hasLocation(r: TelemetryRecordWithLocation): r is LocationRecord {
-  return r.latitude != null && r.longitude != null;
-}
 
 function formatValue(v: number | null | undefined, decimals = 4): string {
   if (v == null) return '—';
@@ -108,7 +83,22 @@ interface LocationTabProps {
   deviceStatus: string;
 }
 
-export const LocationTab = ({ deviceId, deviceName, deviceStatus }: LocationTabProps) => {
+export const LocationTab = (props: LocationTabProps) => {
+  const query = useDeviceContract(props.deviceId, { retry: false });
+  if (query.isLoading) return <Spinner />;
+  if (query.isError || !query.data)
+    return <Callout intent="danger">Unable to load the assigned device contract.</Callout>;
+  if (!locationBinding(query.data))
+    return <Callout>This blueprint does not declare a location binding.</Callout>;
+  return <ContractLocationTab {...props} contract={query.data} />;
+};
+
+const ContractLocationTab = ({
+  deviceId,
+  deviceName,
+  deviceStatus,
+  contract,
+}: LocationTabProps & { contract: DeviceContract }) => {
   const [selectedRange, setSelectedRange] = useState<RangeKey>('1h');
   const rangeConfig = RANGES[selectedRange];
   const since = useMemo(() => computeSince(rangeConfig), [rangeConfig]);
@@ -118,7 +108,8 @@ export const LocationTab = ({ deviceId, deviceName, deviceStatus }: LocationTabP
     isLoading,
     isFetching,
     isError,
-  } = useDeviceTelemetry(deviceId, {
+  } = useDeviceMetrics(deviceId, {
+    stream_key: locationBinding(contract)!.stream,
     limit: rangeConfig.limit,
     since,
   });
@@ -127,8 +118,8 @@ export const LocationTab = ({ deviceId, deviceName, deviceStatus }: LocationTabP
 
   // Filter to records with valid location data (backend returns DESC order, newest first)
   const locationRecords = useMemo(
-    () => (rawRecords as TelemetryRecordWithLocation[]).filter(hasLocation),
-    [rawRecords],
+    () => locationObservations(contract, rawRecords),
+    [contract, rawRecords],
   );
 
   // Latest record (first in DESC order)
@@ -143,7 +134,7 @@ export const LocationTab = ({ deviceId, deviceName, deviceStatus }: LocationTabP
         .map((r) => ({
           latitude: r.latitude,
           longitude: r.longitude,
-          timestamp: r.received_at,
+          timestamp: r.occurredAt,
         })),
     [locationRecords],
   );
@@ -214,8 +205,7 @@ export const LocationTab = ({ deviceId, deviceName, deviceStatus }: LocationTabP
                   status={deviceStatus}
                   latitude={latest.latitude}
                   longitude={latest.longitude}
-                  speed={latest.speed}
-                  lastSeen={latest.received_at}
+                  lastSeen={latest.occurredAt}
                 />
               )}
             </DeviceMap>
@@ -226,7 +216,7 @@ export const LocationTab = ({ deviceId, deviceName, deviceStatus }: LocationTabP
             {/* Current values table */}
             <div className="location-tab-values">
               <div className="telemetry-section">
-                <span className="section-label">Current Position</span>
+                <span className="section-label">Last Recorded Position</span>
                 <div className="telemetry-current-table">
                   <div className="telemetry-current-row">
                     <span className="telemetry-current-key">Latitude</span>
@@ -240,28 +230,10 @@ export const LocationTab = ({ deviceId, deviceName, deviceStatus }: LocationTabP
                       {formatValue(latest?.longitude)} °
                     </span>
                   </div>
-                  <div className="telemetry-current-row">
-                    <span className="telemetry-current-key">Speed</span>
-                    <span className="telemetry-current-val mono-data">
-                      {latest?.speed != null ? `${formatValue(latest.speed, 1)} m/s` : '—'}
-                    </span>
-                  </div>
-                  <div className="telemetry-current-row">
-                    <span className="telemetry-current-key">Altitude</span>
-                    <span className="telemetry-current-val mono-data">
-                      {latest?.altitude != null ? `${formatValue(latest.altitude, 1)} m` : '—'}
-                    </span>
-                  </div>
-                  <div className="telemetry-current-row">
-                    <span className="telemetry-current-key">Heading</span>
-                    <span className="telemetry-current-val mono-data">
-                      {latest?.heading != null ? `${formatValue(latest.heading, 1)} °` : '—'}
-                    </span>
-                  </div>
                 </div>
                 {latest && (
                   <div className="telemetry-current-timestamp">
-                    Last updated {formatTimestamp(latest.received_at)}
+                    Last updated {formatTimestamp(latest.occurredAt)}
                   </div>
                 )}
               </div>
@@ -269,7 +241,7 @@ export const LocationTab = ({ deviceId, deviceName, deviceStatus }: LocationTabP
 
             {/* Zone membership badges */}
             <div className="location-tab-zones">
-              <span className="section-label">Zone Membership</span>
+              <span className="section-label">Zones at Recorded Position</span>
               {activeZones.length === 0 ? (
                 <span style={{ color: '#999', fontSize: 13 }}>Not inside any zone</span>
               ) : (
