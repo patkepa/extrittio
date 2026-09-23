@@ -64,6 +64,14 @@
         ]
       }
     ],
+    "location": {
+      "stream": "position",
+      "latitudePath": "/latitude",
+      "longitudePath": "/longitude",
+      "coordinateSystem": "wgs84",
+      "unit": "degrees",
+      "maxAge": "30s"
+    },
     "commands": [],
     "configuration": {
       "schema": {

@@ -94,11 +94,9 @@ HTTP DTOs, generated OpenAPI and frontend rule/history models.
   or value types just because field paths match.
 - [ ] Verify multi-stream evaluation, geofence freshness/dwell, revision changes
   and durable external actions with generic payloads on both adapters.
-  The web geofence form currently sends `zone_id`, `zone_state` and
-  `dwell_seconds`, but the HTTP condition DTO drops `zone_id`, creation rejects
-  the geofence trigger, and runtime evaluation only handles entry. Align the
-  public contract, validation, storage, evaluation and form before counting
-  geofence coverage.
+  The public geofence selector, tenant-owned zone validation, entry/dwell/exit
+  evaluation and web form are aligned. Adapter-backed dwell/exit and durable
+  external action delivery remain to be proven.
 
 Gate: at least two materially different blueprints and incompatible revisions
 work without reserved sensor names or fabricated zero values.
@@ -108,9 +106,9 @@ work without reserved sensor names or fabricated zero values.
 - [x] Expire map locations client-side at the declared freshness deadline,
   including between polling intervals; preserve event/contract provenance.
 - [ ] Finish revision-aware telemetry/history and structured rule controls after
-  their backend contracts are settled. The rule metric picker now emits exact
-  stream/JSON-pointer keys; the public condition DTO and contract-aware rule
-  validation still need structured selector work.
+  their backend contracts are settled. The editor now emits structured selectors
+  and history separates incompatible revisions; rendered browser verification
+  and remaining edge-state controls are still open.
 - [x] Review graph `deviceType*` presentation names and declared-connection type
   descriptors. Remove retired model assumptions; distinguish legitimate external
   connection metadata from managed-device identity before changing it.
@@ -245,6 +243,17 @@ evidence all pass. Existing unit tests do not substitute for browser checks.
   now rejects an impossible cross-route AND rule with HTTP 400; the web picker
   keeps added conditions on one route. This defines event-scoped multi-stream
   behavior without silently creating rules that can never fire.
+- A disposable Edge API/Zenoh geofence flow published an asset tracker blueprint
+  with explicit `spec.location`, provisioned a device, created a tenant zone and
+  structured inside rule, and ingested a fresh position event. The API returned
+  the location with contract ID and expiration; one zone entry alert was created.
+  A zone centered elsewhere did not alert. A fresh outside event resolved the
+  inside alert. A second inside rule with one-second dwell did not alert on its
+  first event and alerted after the next event; a two-minute-old outside event
+  did not resolve either active alert. The asset tracker example now declares
+  its coordinate stream as a location source, and its contract suite passes
+  (9 unit and 7 integration tests). PostgreSQL host and durable external action
+  verification remain open.
 
 ## Deferred scope
 
