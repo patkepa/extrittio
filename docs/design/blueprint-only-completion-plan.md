@@ -38,6 +38,30 @@ client payloads are not supported by the blueprint-only backend.
 5. Record evidence and remaining blockers here as work completes. Do not keep
    appending contradictory completion claims to the historical log.
 
+## Execution order from the current branch
+
+1. **Close the data contract.** Specify the meaning of each declared aggregate
+   (`count`, `sum`, `min`, `max`, `avg`, `last`) and which history/analytics modes
+   may use it. Add identical adapter cases for incompatible revisions, empty and
+   partial hours, late and duplicate events, retention/restart, and a large
+   sample set. Fix SQL/core behavior from those cases before expanding web UI.
+2. **Close rule and transaction behavior.** Add both-adapter tests for rule
+   selector validation, tenant/zone isolation, reassignment and fleet-change
+   races, geofence dwell/exit, and durable webhook/command outbox retries.
+   Exercise the same cases through supported API and Zenoh event paths on fresh
+   PostgreSQL and Edge databases. Keep unsupported cross-route AND rules
+   rejected at creation.
+3. **Finish web consumers.** Verify revision-aware history and analytics,
+   structured rule editing, provisioning, map freshness, and firmware/OTA against
+   the settled API. Add focused tests only for behavior that cannot be reliably
+   checked through the integration flow. Regenerate OpenAPI types, then run
+   typecheck, unit tests, lint and production build.
+4. **Run merge gates.** Audit backend/web routes, fixtures, CI and setup docs for
+   retired model assumptions; document fresh-database setup and deferred-client
+   limits. Run the full core/contract/rule-engine/adapter/HTTP/CLI matrix, fresh
+   restart checks, and rendered browser journeys. Attach commands and results to
+   PR #109, review all checkboxes below, then move it out of draft.
+
 ## 1. PostgreSQL runtime coverage and transactional correctness
 
 Primary areas: `crates/backend-postgres/src/{devices,events,analytics,firmware,
