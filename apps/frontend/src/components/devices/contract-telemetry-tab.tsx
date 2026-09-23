@@ -297,11 +297,12 @@ function ContractMetricChart({
         },
       ],
       scales: {
-        x: singleSampleTime != null && zoomRange == null
-          ? {
-              range: () => [singleSampleTime - 3600, singleSampleTime + 3600],
-            }
-          : {},
+        x:
+          singleSampleTime != null && zoomRange == null
+            ? {
+                range: () => [singleSampleTime - 3600, singleSampleTime + 3600],
+              }
+            : {},
         y: percentageRange ? { range: () => percentageRange } : {},
       },
       series: [
@@ -322,7 +323,14 @@ function ContractMetricChart({
         ),
       ],
     };
-  }, [definition.color, definition.presentation?.precision, singleSample, singleSampleTime, unit, zoomRange]);
+  }, [
+    definition.color,
+    definition.presentation?.precision,
+    singleSample,
+    singleSampleTime,
+    unit,
+    zoomRange,
+  ]);
 
   return (
     <div className="telemetry-chart">

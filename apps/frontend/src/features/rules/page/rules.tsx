@@ -268,9 +268,7 @@ export const Rules = () => {
                     </div>
                   </td>
                   <td>
-                    <Tag minimal>
-                      {TRIGGER_LABELS[rule.trigger_type]}
-                    </Tag>
+                    <Tag minimal>{TRIGGER_LABELS[rule.trigger_type]}</Tag>
                   </td>
                   <td>
                     <Tag minimal intent={rule.target_type === 'global' ? 'primary' : undefined}>
