@@ -13,6 +13,9 @@ cargo xtask edge run dev
 ```
 
 These commands supervise the backend and Vite development server together.
+Edge development uses `edge-runtime` and serves the built UI from disk, so
+frontend edits do not invalidate the Rust binary. Deployable Edge builds use
+`edge` to embed the UI.
 For direct CLI and service invocation:
 
 ```bash

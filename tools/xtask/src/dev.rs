@@ -87,9 +87,8 @@ pub(crate) struct CloudTestArgs {
 pub(crate) fn run_edge(root: &Path, args: EdgeArgs) -> Result<()> {
     preflight(root, &args.common, false)?;
     if !args.common.frontend_only {
-        // Edge builds serve the production frontend from the backend as well as
-        // optionally running Vite for HMR. Keep that deployable UI available by
-        // default so http://localhost:<backend port> behaves like a real Edge.
+        // Keep the built UI available from the backend's filesystem fallback.
+        // Dev builds omit embedded-ui so frontend edits do not recompile Rust.
         build_frontend_assets(root)?;
     }
     let data_dir = args
@@ -108,7 +107,7 @@ pub(crate) fn run_edge(root: &Path, args: EdgeArgs) -> Result<()> {
             "extrittio",
             "--no-default-features",
             "--features",
-            "edge",
+            "edge-runtime",
             "--",
             "run",
             "--port",
