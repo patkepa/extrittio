@@ -156,7 +156,7 @@ dependencies = [
  "libloading",
  "linkme",
  "once_cell",
- "rand 0.8.6",
+ "rand 0.8.8",
  "rustc_version_runtime",
  "serde",
  "serde_json",
@@ -1447,7 +1447,7 @@ dependencies = [
  "opentelemetry_sdk",
  "pem",
  "prost",
- "rand 0.8.6",
+ "rand 0.10.2",
  "rcgen",
  "reqwest",
  "ring",
@@ -1548,7 +1548,7 @@ dependencies = [
  "clap",
  "extrittio-client-runtime",
  "extrittio-sdk",
- "rand 0.9.4",
+ "rand 0.10.2",
  "serde_json",
  "tokio",
  "tracing-subscriber",
@@ -1696,7 +1696,7 @@ dependencies = [
  "extrittio-device-contract",
  "extrittio-sdk",
  "prost",
- "rand 0.9.4",
+ "rand 0.10.2",
  "serde_json",
  "tempfile",
  "tokio",
@@ -3889,9 +3889,9 @@ checksum = "dc33ff2d4973d518d823d61aa239014831e521c75da58e3df4840d3f47749d09"
 
 [[package]]
 name = "rand"
-version = "0.8.6"
+version = "0.8.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ca0ecfa931c29007047d1bc58e623ab12e5590e8c7cc53200d5202b69266d8a"
+checksum = "e058c7de0b26af77780c769414d6257830bb240f3c38477dbc2c16e5f54d6d4c"
 dependencies = [
  "libc",
  "rand_chacha 0.3.1",
@@ -4724,7 +4724,7 @@ dependencies = [
  "generator",
  "hex",
  "owo-colors",
- "rand 0.8.6",
+ "rand 0.8.8",
  "rand_core 0.6.4",
  "rand_pcg 0.3.1",
  "scoped-tls",
@@ -5742,7 +5742,7 @@ dependencies = [
  "humantime",
  "lazy_static",
  "log",
- "rand 0.8.6",
+ "rand 0.8.8",
  "serde",
  "spin 0.10.1",
 ]
@@ -6656,7 +6656,7 @@ dependencies = [
  "once_cell",
  "petgraph",
  "phf",
- "rand 0.8.6",
+ "rand 0.8.8",
  "rustc_version",
  "serde",
  "serde_json",
@@ -6761,7 +6761,7 @@ checksum = "44b80a042fc71419fc4952a90c9cbcfb323c0ced048125d8b44fd362f184045f"
 dependencies = [
  "aes",
  "hmac",
- "rand 0.8.6",
+ "rand 0.8.8",
  "rand_chacha 0.3.1",
  "sha3",
  "zenoh-result",
@@ -6776,7 +6776,7 @@ dependencies = [
  "getrandom 0.2.17",
  "hashbrown 0.16.1",
  "keyed-set",
- "rand 0.8.6",
+ "rand 0.8.8",
  "schemars 1.2.1",
  "serde",
  "token-cell",
@@ -6908,7 +6908,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eeab45020bbecc077f14f06ee8f5aee65ce760af72481e663cac58b5dbfa66dd"
 dependencies = [
  "const_format",
- "rand 0.8.6",
+ "rand 0.8.8",
  "serde",
  "uhlc",
  "zenoh-buffers",
@@ -6982,7 +6982,7 @@ dependencies = [
  "futures",
  "lazy_static",
  "lz4_flex",
- "rand 0.8.6",
+ "rand 0.8.8",
  "ringbuffer-spsc",
  "serde",
  "sha3",
