@@ -8,6 +8,7 @@ use extrittio_backend_core::analytics::{
     AnalyticsMetric, AnalyticsMetricSelector, AnalyticsQuery, AnalyticsRepository, AnalyticsScope,
 };
 use extrittio_backend_core::certificates::NewDeviceCertificateRecord;
+use extrittio_backend_core::dashboard::DashboardReadRepository;
 use extrittio_backend_core::devices::{
     CreateDeviceRecord, DeviceFilter, DeviceListQuery, DeviceRepository, NewDeviceContractRecord,
     UpdateDeviceRecord,
@@ -29,9 +30,9 @@ use extrittio_backend_core::rules::{
 };
 use extrittio_backend_core::{CiIngestOutcome, CiIngestParams, CiIngestRepository};
 use extrittio_backend_postgres::{
-    PostgresAnalyticsRepository, PostgresCiIngestRepository, PostgresDeviceRepository,
-    PostgresEventRepository, PostgresFirmwareRepository, PostgresRuleRepository,
-    run_pending_migrations,
+    PostgresAnalyticsRepository, PostgresCiIngestRepository, PostgresDashboardRepository,
+    PostgresDeviceRepository, PostgresEventRepository, PostgresFirmwareRepository,
+    PostgresRuleRepository, run_pending_migrations,
 };
 use serde_json::json;
 use std::sync::{Arc, OnceLock};
@@ -62,6 +63,24 @@ struct Rollup {
 }
 
 static BASELINE_READY: OnceLock<()> = OnceLock::new();
+
+#[tokio::test]
+async fn postgres_dashboard_uses_contract_events_on_fresh_baseline() {
+    let Ok(url) = std::env::var("DATABASE_URL") else {
+        eprintln!("skipping PostgreSQL dashboard: DATABASE_URL is not set");
+        return;
+    };
+    let pool = Pool::builder()
+        .max_size(3)
+        .build(ConnectionManager::<PgConnection>::new(url))
+        .expect("connect to disposable PostgreSQL database");
+    migrate_once(&pool);
+    let summary = PostgresDashboardRepository::from_pool(pool)
+        .get_summary(&TenantId::new("default").unwrap())
+        .await
+        .unwrap();
+    assert!(summary.total_devices >= summary.online_devices + summary.offline_devices);
+}
 
 #[tokio::test]
 async fn postgres_rule_selector_round_trips_on_fresh_baseline() {

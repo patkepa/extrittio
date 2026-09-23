@@ -46,6 +46,10 @@ docker compose \
   up -d
 ```
 
+This blueprint-only release starts from a fresh database schema. It has no
+legacy device-type backfill or dual-read path. After first boot, publish a
+[device blueprint](../architecture/device-blueprints.md) before provisioning.
+
 The application runs pending migrations during initialization. Verify the
 public routing path and the dependency-aware readiness check:
 

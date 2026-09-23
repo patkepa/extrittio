@@ -24,6 +24,12 @@ import { showSuccessToast, showErrorToast } from '../../../utils/toaster';
 import type { Rule } from '../../../types/rules';
 import './rules.css';
 
+const TRIGGER_LABELS: Record<Rule['trigger_type'], string> = {
+  telemetry: 'Telemetry',
+  device_status: 'Device Status',
+  geofence: 'Geofence',
+};
+
 export const Rules = () => {
   const [filterEnabled, setFilterEnabled] = useState<string>('all');
   const [filterTrigger, setFilterTrigger] = useState<string>('all');
@@ -53,6 +59,7 @@ export const Rules = () => {
       all: rules.length,
       telemetry: rules.filter((r) => r.trigger_type === 'telemetry').length,
       device_status: rules.filter((r) => r.trigger_type === 'device_status').length,
+      geofence: rules.filter((r) => r.trigger_type === 'geofence').length,
     }),
     [rules],
   );
@@ -205,24 +212,20 @@ export const Rules = () => {
             ))}
           </div>
           <div className="filter-section">
-            {(['all', 'telemetry', 'device_status'] as const).map((trigger) => (
+            {(['all', 'telemetry', 'device_status', 'geofence'] as const).map((trigger) => (
               <FilterPill
                 key={trigger}
                 value={trigger}
-                label={
-                  trigger === 'all'
-                    ? 'All Triggers'
-                    : trigger === 'telemetry'
-                      ? 'Telemetry'
-                      : 'Device Status'
-                }
+                label={trigger === 'all' ? 'All Triggers' : TRIGGER_LABELS[trigger]}
                 active={filterTrigger === trigger}
                 icon={
                   trigger === 'all'
                     ? undefined
                     : trigger === 'telemetry'
                       ? 'pulse'
-                      : 'signal-search'
+                      : trigger === 'geofence'
+                        ? 'map-marker'
+                        : 'signal-search'
                 }
                 count={triggerCounts[trigger]}
                 onSelect={setFilterTrigger}
@@ -266,7 +269,7 @@ export const Rules = () => {
                   </td>
                   <td>
                     <Tag minimal>
-                      {rule.trigger_type === 'telemetry' ? 'Telemetry' : 'Device Status'}
+                      {TRIGGER_LABELS[rule.trigger_type]}
                     </Tag>
                   </td>
                   <td>

@@ -49,6 +49,10 @@ The data directory contains the database and lock, certificates, local firmware
 objects, backups, and Edge/OpenThread state. Do not place it inside a release
 directory.
 
+Use a fresh data directory for the blueprint-only schema. Publish a
+[device blueprint](../architecture/device-blueprints.md) before provisioning;
+existing legacy client payloads are not accepted by this backend.
+
 `extrittio run` enables Thread supervision by default but continues in
 Wi-Fi-only mode when it cannot find both an RCP and a compatible `otbr-agent`.
 Use `--thread-required` when Thread availability is mandatory. See

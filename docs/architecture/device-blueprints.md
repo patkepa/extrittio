@@ -1,7 +1,10 @@
 # Device blueprints and contracts
 
-Status: implemented for new device creation, contract-routed events, analytics,
-rules, firmware targeting, and shared Rust runtime provisioning.
+Status: implemented for backend and web device creation, contract-routed events,
+analytics, rules, and firmware targeting. A fresh database is required for the
+blueprint-only baselines. iOS, C SDK, Arduino, shared Protobuf, and embedded
+producer migrations are deferred; their old payloads are not accepted by this
+backend.
 
 Device blueprints keep device-family knowledge in validated data instead of
 hard-coded backend or frontend branches. Extrittio still owns the universal
@@ -54,16 +57,15 @@ GET       /api/v1/device-blueprint-revisions/{id}
 ```
 
 Only published revisions can create devices. `POST /api/v1/devices` requires a
-`blueprint_revision_id`; `device_type_id` is an optional compatibility field.
+`blueprint_revision_id`; `device_type_id` is no longer accepted.
 Creation validates the configuration overlay and atomically creates the device,
 initial shadow, certificate material, materialized contract, and assignment.
 
 `GET /api/v1/devices/{id}/contract` returns the effective contract and current
 assignment state. The first valid contract event acknowledges convergence.
 
-Use the web console for blueprint-based provisioning. The administrative CLI's
-legacy `devices create` arguments still target `device_type_id`
-and are not the source of truth for this workflow.
+Use the web console or `extrittio devices create --blueprint-revision-id` for
+blueprint-based provisioning.
 
 ## Blueprint contents
 
@@ -88,13 +90,14 @@ therefore do not contain environment-specific server addresses or credentials.
 
 ## Runtime behavior
 
-Contract-routed device traffic uses a universal envelope containing the device,
-route, schema, sequence, timestamp, contract hash, encoding, and payload. The
-backend:
+Contract-routed device events use a universal envelope containing `apiVersion`,
+`eventId`, `contractHash`, `occurredAt`, and `payload`. Device and route identity
+come from the Zenoh topic; schema and encoding come from the assigned contract.
+The backend:
 
 1. verifies the provisioned device and topic identity;
 2. resolves the route from the assigned contract;
-3. checks direction, schema, payload size, sequence, and contract hash;
+3. checks direction, schema, payload size, event ID, and contract hash;
 4. stores the canonical event idempotently;
 5. extracts declared typed metric samples;
 6. makes those metrics available to analytics and rules.

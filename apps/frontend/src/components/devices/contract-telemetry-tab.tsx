@@ -269,6 +269,8 @@ function ContractMetricChart({
   );
   const latest = samples[samples.length - 1]?.[definition.key];
   const unit = definition.unit ?? '';
+  const singleSample = samples.length === 1;
+  const singleSampleTime = singleSample ? Number(plotData[0][0]) : null;
   const options = useMemo((): Omit<uPlot.Options, 'width' | 'height'> => {
     const percentageRange: uPlot.Range.MinMax | undefined = unit.includes('%')
       ? [0, 100]
@@ -294,14 +296,21 @@ function ContractMetricChart({
           values: (_plot: uPlot, values: number[]) => values.map((value) => `${value}${unit}`),
         },
       ],
-      scales: { y: percentageRange ? { range: () => percentageRange } : {} },
+      scales: {
+        x: singleSampleTime != null && zoomRange == null
+          ? {
+              range: () => [singleSampleTime - 3600, singleSampleTime + 3600],
+            }
+          : {},
+        y: percentageRange ? { range: () => percentageRange } : {},
+      },
       series: [
         {},
         {
           stroke: definition.color,
           width: 1.5,
           fill: hexToRgba(definition.color, 0.15),
-          points: { show: false },
+          points: { show: singleSample },
           spanGaps: true,
         },
       ],
@@ -313,7 +322,7 @@ function ContractMetricChart({
         ),
       ],
     };
-  }, [definition.color, definition.presentation?.precision, unit]);
+  }, [definition.color, definition.presentation?.precision, singleSample, singleSampleTime, unit, zoomRange]);
 
   return (
     <div className="telemetry-chart">

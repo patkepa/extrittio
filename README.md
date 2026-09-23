@@ -45,6 +45,11 @@ The API runs at `http://localhost:8080` and the web console at
 `http://localhost:5173`. See the command help for backend-only, frontend-only,
 and custom-port options.
 
+On a fresh database, create and publish a [device blueprint](docs/architecture/device-blueprints.md)
+before provisioning a device. This backend accepts contract events from the
+published blueprint revision. iOS, C SDK, Arduino, shared Protobuf, and embedded
+producer migrations are still pending; their old event payloads are unsupported.
+
 ## Project structure
 
 | Path | Description |
