@@ -79,7 +79,10 @@ export type DeviceBlueprintDraft = components['schemas']['BlueprintDraftResponse
 export type DeviceBlueprintValidation = components['schemas']['BlueprintValidationResponse'];
 export type DeviceBlueprintDocument = Record<string, unknown>;
 
-export type ListDevicesParams = NonNullable<operations['list_devices']['parameters']['query']>;
+export type ListDevicesParams = NonNullable<operations['list_devices']['parameters']['query']> & {
+  sort_by?: 'name' | 'status' | 'last_seen' | 'uptime';
+  sort_dir?: 'asc' | 'desc';
+};
 
 // ---------------------------------------------------------------------------
 // Bulk Operations

@@ -7,9 +7,9 @@ import {
 } from '../src/features/devices/model/device-list.ts';
 
 const devices = [
-  { name: 'Beta', status: 'offline', last_seen_at: '2026-08-01', uptime: '2h' },
-  { name: 'Alpha', status: 'online', last_seen_at: '2026-08-03', uptime: '10h' },
-  { name: 'Gamma', status: 'online', last_seen_at: null, uptime: '1h' },
+  { name: 'Beta', status: 'offline', last_seen_at: '2026-08-01', uptime_seconds: 7200 },
+  { name: 'Alpha', status: 'online', last_seen_at: '2026-08-03', uptime_seconds: 36000 },
+  { name: 'Gamma', status: 'online', last_seen_at: null, uptime_seconds: 3600 },
 ];
 
 test('filters devices before applying a stable domain sort', () => {
@@ -26,6 +26,11 @@ test('sort direction is applied to timestamp fields', () => {
     result.map((device) => device.name),
     ['Alpha', 'Beta', 'Gamma'],
   );
+});
+
+test('sorts uptime by duration instead of display text', () => {
+  const result = filterAndSortDevices(devices, 'all', 'uptime', 'asc');
+  assert.deepEqual(result.map((device) => device.name), ['Gamma', 'Beta', 'Alpha']);
 });
 
 test('counts only recognized online and offline states', () => {

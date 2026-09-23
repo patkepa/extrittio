@@ -67,6 +67,8 @@ mod blueprint_device_tests {
                     status: None,
                     search: Some("arbitrary".into()),
                     fleet_id: None,
+                    sort_by: None,
+                    sort_dir: None,
                     limit: 10,
                     offset: 0,
                 },
@@ -96,6 +98,48 @@ mod blueprint_device_tests {
                 .unwrap()
                 .is_empty()
         );
+        let mut second = record.clone();
+        second.id = "device-z".into();
+        second.name = "Zeta".into();
+        second.contract.id = "contract-z".into();
+        repository.create(&tenant, second, None).await.unwrap();
+        connection
+            .execute_batch("UPDATE devices SET uptime_seconds = 7200 WHERE id = 'device'; UPDATE devices SET uptime_seconds = 36000 WHERE id = 'device-z';")
+            .await
+            .unwrap();
+        let sorted = repository
+            .list(
+                &tenant,
+                DeviceListQuery {
+                    status: None,
+                    search: None,
+                    fleet_id: None,
+                    sort_by: Some("uptime".into()),
+                    sort_dir: Some("desc".into()),
+                    limit: 1,
+                    offset: 0,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(sorted.total, 2);
+        assert_eq!(sorted.records[0].device.id, "device-z");
+        let next_page = repository
+            .list(
+                &tenant,
+                DeviceListQuery {
+                    status: None,
+                    search: None,
+                    fleet_id: None,
+                    sort_by: Some("uptime".into()),
+                    sort_dir: Some("desc".into()),
+                    limit: 1,
+                    offset: 1,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(next_page.records[0].device.id, "device");
         let updated = repository
             .update(
                 &tenant,
@@ -266,9 +310,27 @@ impl DeviceRepository for TursoDeviceRepository {
             .ok_or(PersistenceError::NotFound)?
             .get(0)
             .map_err(row::legacy_error)?;
+        let sort_column = match query.sort_by.as_deref() {
+            Some("status") => "d.status",
+            Some("last_seen") => "d.last_seen",
+            Some("uptime") => "d.uptime_seconds",
+            _ => "d.name",
+        };
+        let sort_direction = if query.sort_dir.as_deref() == Some("desc") {
+            "DESC"
+        } else {
+            "ASC"
+        };
+        let null_order = if sort_column == "d.last_seen" {
+            "(d.last_seen IS NULL) ASC,"
+        } else {
+            ""
+        };
         let mut rows = connection
             .query(
-                &format!("{base} ORDER BY d.name, d.id LIMIT ?5 OFFSET ?6"),
+                &format!(
+                    "{base} ORDER BY {null_order} {sort_column} {sort_direction}, d.id ASC LIMIT ?5 OFFSET ?6"
+                ),
                 params![
                     tenant.as_str(),
                     query.status,

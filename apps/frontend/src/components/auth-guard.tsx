@@ -10,10 +10,7 @@ export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
-    if (user) {
-      setChecked(true);
-      return;
-    }
+    if (user) return;
 
     let cancelled = false;
 
@@ -33,7 +30,7 @@ export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
     };
   }, [setUser, user]);
 
-  if (!checked) {
+  if (!user && !checked) {
     return (
       <div
         style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}

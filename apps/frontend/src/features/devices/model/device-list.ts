@@ -6,7 +6,7 @@ interface DeviceListItem {
   name: string;
   status: string;
   last_seen_at?: string | null;
-  uptime?: string | null;
+  uptime_seconds?: number;
 }
 
 export function filterAndSortDevices<T extends DeviceListItem>(
@@ -24,7 +24,7 @@ export function filterAndSortDevices<T extends DeviceListItem>(
       if (sortField === 'last_seen') {
         return (a.last_seen_at ?? '').localeCompare(b.last_seen_at ?? '') * direction;
       }
-      return (a.uptime ?? '').localeCompare(b.uptime ?? '') * direction;
+      return ((a.uptime_seconds ?? 0) - (b.uptime_seconds ?? 0)) * direction;
     });
 }
 

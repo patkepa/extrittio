@@ -187,8 +187,24 @@ impl DeviceRepository for PostgresDeviceRepository {
                 .get_result::<CountRow>(connection)
                 .map_err(map_diesel_error)?
                 .count;
+                let sort_column = match query.sort_by.as_deref() {
+                    Some("status") => "d.status",
+                    Some("last_seen") => "d.last_seen",
+                    Some("uptime") => "d.uptime_seconds",
+                    _ => "d.name",
+                };
+                let sort_direction = if query.sort_dir.as_deref() == Some("desc") {
+                    "DESC"
+                } else {
+                    "ASC"
+                };
+                let null_order = if sort_column == "d.last_seen" {
+                    "(d.last_seen IS NULL) ASC,"
+                } else {
+                    ""
+                };
                 let rows = diesel::sql_query(format!(
-                    "{} WHERE {DEVICE_FILTER} ORDER BY d.name,d.id LIMIT $5 OFFSET $6",
+                    "{} WHERE {DEVICE_FILTER} ORDER BY {null_order} {sort_column} {sort_direction} NULLS LAST, d.id ASC LIMIT $5 OFFSET $6",
                     details_sql()
                 ))
                 .bind::<Text, _>(&tenant_id)

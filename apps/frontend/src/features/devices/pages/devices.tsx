@@ -12,25 +12,26 @@ import {
 } from '@patkepa/kantzen-ui/interactions';
 import { useSelectionStore } from '../../../stores/selection-store';
 import { useUIStore } from '../../../stores/ui-store';
+import { hasPermission } from '../../../auth/permissions';
+import { useAuthStore } from '../../../stores/auth-store';
 import './devices.css';
 
 export const Devices = () => {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const { openAddDeviceDialog } = useUIStore();
-  const {
-    selectedDeviceIds,
-    isAllMatchingSelected,
-    toggleDevice,
-    selectAllVisible,
-    deselectAllVisible,
-    clearSelection,
-  } = useSelectionStore();
+  const permissions = useAuthStore((state) => state.user?.permissions);
+  const canManageDevices = hasPermission(permissions, 'devices.manage');
+  const { selectedDeviceIds, toggleDevice, addToSelection, removeFromSelection, clearSelection } =
+    useSelectionStore();
   const listState = useDeviceListState();
   const { data: fleets = [] } = useFleets();
   const {
     devices,
     devicesQuery,
-    totalDeviceCount,
+    total,
+    page,
+    pageSize,
+    setPage,
     searchQuery,
     setSearchQuery,
     filterStatus,
@@ -39,14 +40,12 @@ export const Devices = () => {
     setFilterFleetId,
     sortField,
     sortDir,
-    currentFilters,
     filteredDevices,
-    statusCounts,
     handleSort,
     handleViewDevice,
   } = listState;
 
-  const hasSelection = selectedDeviceIds.size > 0 || isAllMatchingSelected;
+  const hasSelection = canManageDevices && selectedDeviceIds.size > 0;
   const activeFleetName = filterFleetId
     ? fleets.find((fleet) => fleet.id === filterFleetId)?.name
     : null;
@@ -95,7 +94,7 @@ export const Devices = () => {
         return;
       }
 
-      if (event.key === ' ' && isRowFocused) {
+      if (canManageDevices && event.key === ' ' && isRowFocused) {
         const device = filteredDevices[activeRowIndex];
         if (!device) return;
         event.preventDefault();
@@ -126,6 +125,7 @@ export const Devices = () => {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [
     activeRowIndex,
+    canManageDevices,
     clearSelection,
     filteredDevices,
     focusRowIndex,
@@ -134,31 +134,17 @@ export const Devices = () => {
     toggleDevice,
   ]);
 
-  if (devicesQuery.error) {
-    return (
-      <div className="devices-page">
-        <Callout intent="danger" icon="error">
-          Failed to load devices. Is the backend running?
-        </Callout>
-      </div>
-    );
-  }
-
-  if (devicesQuery.isLoading) {
-    return (
-      <div className="devices-page">
-        <Spinner />
-      </div>
-    );
-  }
-
   return (
     <div className="devices-page">
       <div className="page-header">
         <div>
           <H3>Devices</H3>
           <p className="page-description">
-            {filteredDevices.length} of {devices.length} devices
+            {devicesQuery.isPending
+              ? 'Loading devices…'
+              : devicesQuery.isError
+                ? 'Device list unavailable'
+                : `${total === 0 ? '0' : `${page * pageSize + 1}–${page * pageSize + devices.length}`} of ${total} devices`}
             {activeFleetName && (
               <span>
                 {' '}
@@ -167,43 +153,82 @@ export const Devices = () => {
             )}
           </p>
         </div>
-        <Button intent="primary" icon="add" onClick={() => openAddDeviceDialog()}>
-          Add Device
-        </Button>
+        {canManageDevices && (
+          <Button intent="primary" icon="add" onClick={() => openAddDeviceDialog()}>
+            Add Device
+          </Button>
+        )}
       </div>
 
-      <DeviceFilters
-        searchInputRef={searchInputRef}
-        searchQuery={searchQuery}
-        onSearchQueryChange={setSearchQuery}
-        filterStatus={filterStatus}
-        onFilterStatusChange={setFilterStatus}
-        filterFleetId={filterFleetId}
-        onFilterFleetIdChange={setFilterFleetId}
-        fleets={fleets}
-        statusCounts={statusCounts}
-        hasSelection={hasSelection}
-        totalMatchingCount={totalDeviceCount}
-        visibleCount={filteredDevices.length}
-        currentFilters={currentFilters}
-      />
+      {devicesQuery.isError && (
+        <Callout intent="danger" icon="error" className="devices-load-error">
+          Could not load devices.{' '}
+          <Button minimal small icon="refresh" onClick={() => void devicesQuery.refetch()}>
+            Retry
+          </Button>
+        </Callout>
+      )}
+      {devicesQuery.isPending && (
+        <div className="devices-loading">
+          <Spinner /> Loading devices…
+        </div>
+      )}
+      {!devicesQuery.isError && !devicesQuery.isPending && (
+        <>
+          <DeviceFilters
+            searchInputRef={searchInputRef}
+            searchQuery={searchQuery}
+            onSearchQueryChange={setSearchQuery}
+            filterStatus={filterStatus}
+            onFilterStatusChange={setFilterStatus}
+            filterFleetId={filterFleetId}
+            onFilterFleetIdChange={setFilterFleetId}
+            fleets={fleets}
+            hasSelection={hasSelection}
+          />
 
-      <DeviceTable
-        devices={filteredDevices}
-        selectedDeviceIds={selectedDeviceIds}
-        sortField={sortField}
-        sortDir={sortDir}
-        activeRowIndex={activeRowIndex}
-        getRowProps={getRowProps}
-        registerRow={registerRow}
-        onSort={handleSort}
-        onViewDevice={handleViewDevice}
-        onToggleDevice={toggleDevice}
-        onSelectAllVisible={selectAllVisible}
-        onDeselectAllVisible={deselectAllVisible}
-      />
+          <DeviceTable
+            key={page}
+            devices={filteredDevices}
+            canSelect={canManageDevices}
+            selectedDeviceIds={selectedDeviceIds}
+            sortField={sortField}
+            sortDir={sortDir}
+            activeRowIndex={activeRowIndex}
+            getRowProps={getRowProps}
+            registerRow={registerRow}
+            onSort={handleSort}
+            onViewDevice={handleViewDevice}
+            onToggleDevice={toggleDevice}
+            onSelectAllVisible={addToSelection}
+            onDeselectAllVisible={removeFromSelection}
+          />
 
-      <AddDeviceDialog />
+          {total > pageSize && (
+            <div className="devices-pagination">
+              <Button
+                icon="chevron-left"
+                disabled={page === 0 || devicesQuery.isFetching}
+                onClick={() => setPage(page - 1)}
+              >
+                Previous
+              </Button>
+              <span>
+                Page {page + 1} of {Math.ceil(total / pageSize)}
+              </span>
+              <Button
+                rightIcon="chevron-right"
+                disabled={(page + 1) * pageSize >= total || devicesQuery.isFetching}
+                onClick={() => setPage(page + 1)}
+              >
+                Next
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+
+      {canManageDevices && <AddDeviceDialog />}
     </div>
   );
 };

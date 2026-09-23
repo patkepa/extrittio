@@ -10,26 +10,10 @@ import {
 import { useFirmwareUpdates } from '../../hooks/use-firmware-updates';
 import { useSelectionStore } from '../../stores/selection-store';
 import { showSuccessToast, showErrorToast, showWarningToast } from '../../utils/toaster';
-import type { BulkTargeting, BulkDeviceFilters } from '../../types/api';
+import type { BulkTargeting } from '../../types/api';
 
-interface BulkActionBarProps {
-  totalMatchingCount: number;
-  visibleCount: number;
-  currentFilters: BulkDeviceFilters;
-}
-
-export const BulkActionBar = ({
-  totalMatchingCount,
-  visibleCount,
-  currentFilters,
-}: BulkActionBarProps) => {
-  const {
-    selectedDeviceIds,
-    isAllMatchingSelected,
-    selectionFilters,
-    selectAllMatching,
-    clearSelection,
-  } = useSelectionStore();
+export const BulkActionBar = () => {
+  const { selectedDeviceIds, clearSelection } = useSelectionStore();
 
   const [deleteAlertOpen, setDeleteAlertOpen] = useState(false);
   const [restartAlertOpen, setRestartAlertOpen] = useState(false);
@@ -48,16 +32,11 @@ export const BulkActionBar = ({
     bulkRestartMutation.isPending ||
     bulkOtaMutation.isPending;
 
-  const selectionLabel = isAllMatchingSelected
-    ? `All ${totalMatchingCount} matching devices selected`
-    : `${selectedDeviceIds.size} device${selectedDeviceIds.size !== 1 ? 's' : ''} selected`;
+  const selectionLabel = `${selectedDeviceIds.size} device${selectedDeviceIds.size !== 1 ? 's' : ''} selected`;
 
-  const confirmCount = isAllMatchingSelected ? totalMatchingCount : selectedDeviceIds.size;
+  const confirmCount = selectedDeviceIds.size;
 
   function buildTargeting(): BulkTargeting {
-    if (isAllMatchingSelected) {
-      return { select_all: true, filters: selectionFilters ?? currentFilters };
-    }
     return { device_ids: Array.from(selectedDeviceIds) };
   }
 
@@ -138,23 +117,11 @@ export const BulkActionBar = ({
     }
   }
 
-  const showSelectAllBanner =
-    !isAllMatchingSelected &&
-    selectedDeviceIds.size === visibleCount &&
-    visibleCount > 0 &&
-    totalMatchingCount > visibleCount;
-
   return (
     <div className="bulk-action-bar">
       <div className="bulk-action-bar-left">
         <span className="bulk-selection-label">{selectionLabel}</span>
         <Button icon="cross" minimal small onClick={clearSelection} title="Clear selection" />
-
-        {showSelectAllBanner && (
-          <Button minimal small intent="primary" onClick={() => selectAllMatching(currentFilters)}>
-            Select all {totalMatchingCount} matching devices
-          </Button>
-        )}
       </div>
 
       <div className="bulk-action-bar-right">

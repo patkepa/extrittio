@@ -190,6 +190,8 @@ pub struct ListDevicesQuery {
     pub status: Option<String>,
     pub search: Option<String>,
     pub fleet_id: Option<i32>,
+    pub sort_by: Option<String>,
+    pub sort_dir: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
@@ -416,6 +418,8 @@ pub(crate) async fn list_devices(
                 status: params.status,
                 search: params.search,
                 fleet_id: params.fleet_id,
+                sort_by: params.sort_by,
+                sort_dir: params.sort_dir,
                 limit,
                 offset,
             },

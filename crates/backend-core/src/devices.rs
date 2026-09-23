@@ -44,6 +44,8 @@ pub struct DeviceListQuery {
     pub status: Option<String>,
     pub search: Option<String>,
     pub fleet_id: Option<i32>,
+    pub sort_by: Option<String>,
+    pub sort_dir: Option<String>,
     pub limit: i64,
     pub offset: i64,
 }
