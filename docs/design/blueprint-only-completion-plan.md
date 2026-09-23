@@ -262,8 +262,15 @@ evidence all pass. Existing unit tests do not substitute for browser checks.
   rule and ingested contract events through Zenoh. A stale event produced typed
   samples but no location or alert; a fresh event yielded a location with
   contract provenance and one zone entry alert. Eight typed samples were
-  returned across the two events. PostgreSQL API analytics, firmware/OTA and
-  wider revision/rule flows remain open.
+  returned across the two events. Wider revision and rule flows remain open.
+- The same PostgreSQL host API returned a per-device speed analytics series
+  (3 m/s, two samples), registered a firmware artifact against the published
+  revision, accepted an OTA request for its provisioned device, and listed one
+  pending deployment. This proves request and persistence paths, not a device
+  completing OTA or the complete publish-to-rollup lifecycle.
+- The disposable Edge API also registered firmware for its published smart-plug
+  revision, accepted the device OTA request, and listed one pending deployment.
+  Completion reports from a device remain unverified in both modes.
 
 ## Deferred scope
 
