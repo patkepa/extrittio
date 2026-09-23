@@ -126,6 +126,7 @@ FROM --platform=$BUILDPLATFORM docker.io/library/node:22-bookworm-slim@sha256:f3
 WORKDIR /frontend
 
 COPY apps/frontend/package*.json ./
+COPY apps/frontend/scripts/ ./scripts/
 RUN --mount=type=cache,target=/root/.npm npm ci
 
 COPY apps/frontend/ ./
