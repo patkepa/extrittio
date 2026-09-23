@@ -65,6 +65,14 @@ struct MetricRow {
     #[diesel(sql_type = Text)]
     contract_id: String,
     #[diesel(sql_type = Text)]
+    blueprint_id: String,
+    #[diesel(sql_type = Text)]
+    blueprint_name: String,
+    #[diesel(sql_type = Text)]
+    blueprint_revision_id: String,
+    #[diesel(sql_type = diesel::sql_types::Int4)]
+    blueprint_revision: i32,
+    #[diesel(sql_type = Text)]
     event_id: String,
     #[diesel(sql_type = Text)]
     device_id: String,
@@ -86,6 +94,8 @@ struct MetricRow {
     value_json: Option<serde_json::Value>,
     #[diesel(sql_type = Timestamptz)]
     occurred_at: chrono::DateTime<chrono::Utc>,
+    #[diesel(sql_type = Nullable<Jsonb>)]
+    field_definition: Option<serde_json::Value>,
 }
 
 fn decode_metric(row: MetricRow) -> Result<DeviceMetricRecord, PersistenceError> {
@@ -105,10 +115,20 @@ fn decode_metric(row: MetricRow) -> Result<DeviceMetricRecord, PersistenceError>
     })?;
     Ok(DeviceMetricRecord {
         contract_id: row.contract_id,
+        blueprint_id: row.blueprint_id,
+        blueprint_name: row.blueprint_name,
+        blueprint_revision_id: row.blueprint_revision_id,
+        blueprint_revision: row.blueprint_revision,
         event_id: row.event_id,
         device_id: row.device_id,
         stream_key: row.stream_key,
         field_path: row.field_path,
+        field: extrittio_backend_core::events::metric_field_metadata(
+            row.field_definition.as_ref().ok_or_else(|| {
+                PersistenceError::CorruptData("originating contract metric is missing".into())
+            })?,
+            &row.value_type,
+        )?,
         value,
         occurred_at: row.occurred_at,
     })
@@ -504,17 +524,30 @@ ORDER BY occurred_at DESC, event_id COLLATE "C" DESC LIMIT 1"#)
                 }
 
                 let rows = diesel::sql_query(
-                    "SELECT event_id, device_id, stream_key, field_path, value_type,
-                            value_double, value_int, value_text, value_bool, value_json,
-                            occurred_at,
-                            (SELECT contract_id FROM device_events e WHERE e.tenant_id = device_metric_samples.tenant_id AND e.id = device_metric_samples.event_id) AS contract_id
-                     FROM device_metric_samples
-                     WHERE tenant_id = $1 AND device_id = $2
-                       AND ($3::text IS NULL OR stream_key = $3)
-                       AND ($4::text IS NULL OR field_path = $4)
-                       AND ($5::timestamptz IS NULL OR occurred_at >= $5)
-                       AND ($6::timestamptz IS NULL OR occurred_at < $6)
-                     ORDER BY occurred_at DESC, event_id COLLATE \"C\" DESC, stream_key COLLATE \"C\", field_path COLLATE \"C\"
+                    "SELECT event.contract_id, revision.blueprint_id,
+                            blueprint.name AS blueprint_name,
+                            contract.blueprint_revision_id, revision.revision AS blueprint_revision,
+                            sample.event_id, sample.device_id, sample.stream_key,
+                            sample.field_path, sample.value_type, sample.value_double,
+                            sample.value_int, sample.value_text, sample.value_bool,
+                            sample.value_json, sample.occurred_at,
+                            contract.document #> ARRAY['streams', sample.stream_key, 'fields', sample.field_path] AS field_definition
+                     FROM device_metric_samples AS sample
+                     JOIN device_events AS event ON event.tenant_id = sample.tenant_id
+                       AND event.id = sample.event_id AND event.device_id = sample.device_id
+                     JOIN device_contracts AS contract ON contract.tenant_id = event.tenant_id
+                       AND contract.id = event.contract_id AND contract.device_id = event.device_id
+                     JOIN device_blueprint_revisions AS revision ON revision.tenant_id = contract.tenant_id
+                       AND revision.id = contract.blueprint_revision_id
+                     JOIN device_blueprints AS blueprint ON blueprint.tenant_id = revision.tenant_id
+                       AND blueprint.id = revision.blueprint_id
+                     WHERE sample.tenant_id = $1 AND sample.device_id = $2
+                       AND ($3::text IS NULL OR sample.stream_key = $3)
+                       AND ($4::text IS NULL OR sample.field_path = $4)
+                       AND ($5::timestamptz IS NULL OR sample.occurred_at >= $5)
+                       AND ($6::timestamptz IS NULL OR sample.occurred_at < $6)
+                     ORDER BY sample.occurred_at DESC, sample.event_id COLLATE \"C\" DESC,
+                              sample.stream_key COLLATE \"C\", sample.field_path COLLATE \"C\"
                      LIMIT $7",
                 )
                 .bind::<Text, _>(&tenant_id)

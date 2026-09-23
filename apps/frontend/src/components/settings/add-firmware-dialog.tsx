@@ -251,7 +251,8 @@ export const AddFirmwareDialog = ({ isOpen, onClose }: AddFirmwareDialogProps) =
         </FormGroup>
         {isError && (
           <Callout intent="danger" icon="error">
-            Failed to create firmware update. This version may already exist for the selected blueprint revision.
+            Failed to create firmware update. This version may already exist for the selected
+            blueprint revision.
           </Callout>
         )}
       </DialogBody>

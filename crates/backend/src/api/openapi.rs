@@ -225,6 +225,8 @@ use utoipa::{Modify, OpenApi};
         // Telemetry
         super::telemetry::MetricValueResponse,
         super::telemetry::DeviceMetricResponse,
+        super::telemetry::MetricFieldPresentationResponse,
+        super::telemetry::MetricChartKindResponse,
         // Commands
         super::commands::SendCommandRequest,
         super::commands::CommandResponse,

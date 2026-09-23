@@ -37,12 +37,93 @@ pub struct DeviceMetricSample {
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeviceMetricRecord {
     pub contract_id: String,
+    pub blueprint_id: String,
+    pub blueprint_name: String,
+    pub blueprint_revision_id: String,
+    pub blueprint_revision: i32,
     pub event_id: String,
     pub device_id: String,
     pub stream_key: String,
     pub field_path: String,
     pub value: MetricValue,
+    pub field: DeviceMetricFieldMetadata,
     pub occurred_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeviceMetricFieldMetadata {
+    pub label: String,
+    pub unit: Option<String>,
+    pub semantic: Option<String>,
+    pub presentation: Option<extrittio_device_contract::FieldPresentation>,
+}
+
+pub fn metric_field_metadata(
+    definition: &Value,
+    sample_type: &str,
+) -> Result<DeviceMetricFieldMetadata, PersistenceError> {
+    let value_type = definition.get("valueType").and_then(Value::as_str);
+    let label = definition.get("label").and_then(Value::as_str);
+    if value_type != Some(sample_type) || label.is_none() {
+        return Err(PersistenceError::CorruptData(
+            "stored metric does not match its originating contract field".into(),
+        ));
+    }
+    let optional_string = |key| {
+        definition
+            .get(key)
+            .filter(|value| !value.is_null())
+            .map(|value| {
+                value.as_str().map(str::to_owned).ok_or_else(|| {
+                    PersistenceError::CorruptData(format!(
+                        "originating contract metric has invalid {key}"
+                    ))
+                })
+            })
+            .transpose()
+    };
+    let presentation = definition
+        .get("presentation")
+        .filter(|value| !value.is_null())
+        .map(|value| {
+            serde_json::from_value(value.clone()).map_err(|error| {
+                PersistenceError::CorruptData(format!(
+                    "originating contract metric has invalid presentation: {error}"
+                ))
+            })
+        })
+        .transpose()?;
+    Ok(DeviceMetricFieldMetadata {
+        label: label.unwrap().to_owned(),
+        unit: optional_string("unit")?,
+        semantic: optional_string("semantic")?,
+        presentation,
+    })
+}
+
+#[cfg(test)]
+mod history_field_tests {
+    use super::*;
+
+    #[test]
+    fn reads_origin_presentation_and_rejects_type_mismatch() {
+        let definition = serde_json::json!({
+            "valueType": "int64", "label": "Counter", "unit": "ticks",
+            "presentation": {"chart": "step", "precision": 0, "color": "#123456"}
+        });
+        let field = metric_field_metadata(&definition, "int64").unwrap();
+        assert_eq!(field.label, "Counter");
+        assert_eq!(field.unit.as_deref(), Some("ticks"));
+        assert_eq!(
+            field.presentation.unwrap().chart,
+            Some(extrittio_device_contract::ChartKind::Step)
+        );
+        assert!(metric_field_metadata(&definition, "float64").is_err());
+        assert!(metric_field_metadata(
+            &serde_json::json!({"valueType":"int64","label":"Counter","presentation":{"chart":"invalid"}}),
+            "int64"
+        ).is_err());
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

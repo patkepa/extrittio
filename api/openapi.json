@@ -2332,7 +2332,7 @@
         "tags": [
           "telemetry"
         ],
-        "summary": "Get typed metric samples extracted according to the device's assigned contract.",
+        "summary": "Get typed metric samples with each event's originating contract and field metadata.",
         "operationId": "get_device_metrics",
         "parameters": [
           {
@@ -2347,7 +2347,7 @@
           {
             "name": "stream_key",
             "in": "query",
-            "description": "Filter by the stream key declared in the assigned device contract.",
+            "description": "Filter by the stream key recorded under each event's originating contract.",
             "required": false,
             "schema": {
               "type": [
@@ -6827,15 +6827,33 @@
         "type": "object",
         "required": [
           "contract_id",
+          "blueprint_id",
+          "blueprint_name",
+          "blueprint_revision_id",
+          "blueprint_revision",
           "event_id",
           "device_id",
           "stream_key",
           "field_path",
+          "field_label",
           "value_type",
           "value",
           "occurred_at"
         ],
         "properties": {
+          "blueprint_id": {
+            "type": "string"
+          },
+          "blueprint_name": {
+            "type": "string"
+          },
+          "blueprint_revision": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "blueprint_revision_id": {
+            "type": "string"
+          },
           "contract_id": {
             "type": "string"
           },
@@ -6845,8 +6863,33 @@
           "event_id": {
             "type": "string"
           },
+          "field_label": {
+            "type": "string"
+          },
           "field_path": {
             "type": "string"
+          },
+          "field_presentation": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MetricFieldPresentationResponse"
+              }
+            ]
+          },
+          "field_semantic": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "field_unit": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "occurred_at": {
             "type": "string"
@@ -7315,6 +7358,44 @@
           }
         }
       },
+      "MetricChartKindResponse": {
+        "type": "string",
+        "enum": [
+          "line",
+          "step",
+          "bar",
+          "none"
+        ]
+      },
+      "MetricFieldPresentationResponse": {
+        "type": "object",
+        "properties": {
+          "chart": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MetricChartKindResponse"
+              }
+            ]
+          },
+          "color": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "precision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
       "MetricValueResponse": {
         "oneOf": [
           {
@@ -7322,8 +7403,8 @@
             "format": "double"
           },
           {
-            "type": "integer",
-            "format": "int64"
+            "type": "string",
+            "description": "Decimal text preserves values outside JavaScript's safe integer range."
           },
           {
             "type": "string"

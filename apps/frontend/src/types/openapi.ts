@@ -716,7 +716,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get typed metric samples extracted according to the device's assigned contract. */
+        /** Get typed metric samples with each event's originating contract and field metadata. */
         get: operations["get_device_metrics"];
         put?: never;
         post?: never;
@@ -1928,10 +1928,19 @@ export interface components {
             device_ids: string[];
         };
         DeviceMetricResponse: {
+            blueprint_id: string;
+            blueprint_name: string;
+            /** Format: int32 */
+            blueprint_revision: number;
+            blueprint_revision_id: string;
             contract_id: string;
             device_id: string;
             event_id: string;
+            field_label: string;
             field_path: string;
+            field_presentation?: null | components["schemas"]["MetricFieldPresentationResponse"];
+            field_semantic?: string | null;
+            field_unit?: string | null;
             occurred_at: string;
             stream_key: string;
             value: components["schemas"]["MetricValueResponse"];
@@ -2064,6 +2073,14 @@ export interface components {
         LoginResponse: {
             token?: string | null;
             user: components["schemas"]["UserResponse"];
+        };
+        /** @enum {string} */
+        MetricChartKindResponse: "line" | "step" | "bar" | "none";
+        MetricFieldPresentationResponse: {
+            chart?: null | components["schemas"]["MetricChartKindResponse"];
+            color?: string | null;
+            /** Format: int32 */
+            precision?: number | null;
         };
         MetricValueResponse: number | string | boolean | Record<string, never>;
         MetricsHistoryResponse: {
@@ -4108,7 +4125,7 @@ export interface operations {
     get_device_metrics: {
         parameters: {
             query?: {
-                /** @description Filter by the stream key declared in the assigned device contract. */
+                /** @description Filter by the stream key recorded under each event's originating contract. */
                 stream_key?: string | null;
                 /** @description Filter by the JSON pointer field path declared in the stream. */
                 field_path?: string | null;

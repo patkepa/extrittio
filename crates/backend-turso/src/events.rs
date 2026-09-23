@@ -27,6 +27,114 @@ mod rollup_tests {
     use std::sync::Arc;
 
     #[tokio::test]
+    async fn history_uses_each_events_originating_revision_and_field_definition() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = crate::TursoDatabase::open(
+            directory.path(),
+            &directory.path().join("history.db"),
+            std::time::Duration::from_secs(1),
+        )
+        .await
+        .unwrap();
+        database.migrate().await.unwrap();
+        let connection = database.shared_handles().connect().unwrap();
+        connection.execute_batch(r#"
+            INSERT INTO device_blueprints VALUES ('blueprint','default','sensor','Sensor',NULL,0,0);
+            INSERT INTO device_blueprint_revisions VALUES ('revision-one','default','blueprint',1,'{}',
+                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','{}',0);
+            INSERT INTO device_blueprint_revisions VALUES ('revision-two','default','blueprint',2,'{}',
+                'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc','{}',0);
+            INSERT INTO devices (id,tenant_id,name,status,firmware,created_at,updated_at)
+                VALUES ('device','default','Device','online','1',0,0);
+            INSERT INTO device_contracts VALUES ('contract-one','default','device','revision-one',
+                '{"streams":{"readings":{"fields":{"/value":{"valueType":"float64","label":"Temperature","unit":"C"}}}}}',
+                'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',0);
+            INSERT INTO device_contracts VALUES ('contract-two','default','device','revision-two',
+                '{"streams":{"readings":{"fields":{"/value":{"valueType":"int64","label":"Counter","unit":"ticks"}}}}}',
+                'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',0);
+            INSERT INTO device_contract_assignments
+                (tenant_id,device_id,desired_contract_id,created_at,updated_at)
+                VALUES ('default','device','contract-one',0,0);
+        "#).await.unwrap();
+        let tenant = TenantId::new("default").unwrap();
+        let repository = TursoEventRepository::from_handles(database.shared_handles());
+        for (event_id, contract_id, at, value) in [
+            (
+                "old",
+                "contract-one",
+                3_600_000_000,
+                MetricValue::Float64(21.5),
+            ),
+            ("new", "contract-two", 3_601_000_000, MetricValue::Int64(22)),
+        ] {
+            if event_id == "new" {
+                connection.execute("UPDATE device_contract_assignments SET desired_contract_id = 'contract-two'", ()).await.unwrap();
+            }
+            let occurred_at = chrono::DateTime::from_timestamp_micros(at).unwrap();
+            repository
+                .record(
+                    &tenant,
+                    RecordDeviceEvent {
+                        event_id: event_id.into(),
+                        device_id: "device".into(),
+                        contract_id: contract_id.into(),
+                        route_key: "sample".into(),
+                        occurred_at,
+                        received_at: occurred_at,
+                        payload: serde_json::json!({"value": 22}),
+                        metrics: vec![DeviceMetricSample {
+                            stream_key: "readings".into(),
+                            field_path: "/value".into(),
+                            value,
+                        }],
+                        rule_evaluation: DeviceRuleEvaluation {
+                            snapshot: RuleEvaluationSnapshot::new(Arc::new(RuleCache::default())),
+                            tenant: tenant.clone(),
+                            device_id: "device".into(),
+                            fleet_id: None,
+                            blueprint_id: Some("blueprint".into()),
+                            input: RuleEvaluationInput::Telemetry {
+                                data: TelemetryData {
+                                    latitude: None,
+                                    longitude: None,
+                                    metrics: Default::default(),
+                                },
+                                geofence: false,
+                            },
+                            observed_at: occurred_at.naive_utc(),
+                        },
+                    },
+                )
+                .await
+                .unwrap();
+        }
+        let history = repository
+            .list_metrics(
+                &tenant,
+                "device",
+                DeviceMetricQuery {
+                    stream_key: Some("readings".into()),
+                    field_path: Some("/value".into()),
+                    since: None,
+                    before: None,
+                    limit: 10,
+                },
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].blueprint_id, "blueprint");
+        assert_eq!(history[0].blueprint_revision_id, "revision-two");
+        assert_eq!(history[0].field.label, "Counter");
+        assert_eq!(history[0].field.unit.as_deref(), Some("ticks"));
+        assert_eq!(history[1].contract_id, "contract-one");
+        assert_eq!(history[1].blueprint_revision_id, "revision-one");
+        assert_eq!(history[1].field.label, "Temperature");
+        assert_eq!(history[1].field.unit.as_deref(), Some("C"));
+    }
+
+    #[tokio::test]
     async fn numeric_rollups_handle_late_ties_duplicates_and_non_numeric_samples() {
         let directory = tempfile::tempdir().unwrap();
         let database = crate::TursoDatabase::open(
@@ -1142,17 +1250,30 @@ SELECT device_id,contract_id,event_id,occurred_at,expires_at,latitude,longitude 
 
         let mut rows = connection
             .query(
-                "SELECT event_id, device_id, stream_key, field_path, value_type,
-                        value_double, value_int, value_text, value_bool, value_json,
-                        occurred_at,
-                        (SELECT contract_id FROM device_events e WHERE e.tenant_id = device_metric_samples.tenant_id AND e.id = device_metric_samples.event_id) AS contract_id
-                 FROM device_metric_samples
-                 WHERE tenant_id = ?1 AND device_id = ?2
-                   AND (?3 IS NULL OR stream_key = ?3)
-                   AND (?4 IS NULL OR field_path = ?4)
-                   AND (?5 IS NULL OR occurred_at >= ?5)
-                   AND (?6 IS NULL OR occurred_at < ?6)
-                 ORDER BY occurred_at DESC, event_id COLLATE BINARY DESC, stream_key COLLATE BINARY, field_path COLLATE BINARY
+                "SELECT event.contract_id, revision.blueprint_id, blueprint.name,
+                        contract.blueprint_revision_id, revision.revision, sample.event_id, sample.device_id,
+                        sample.stream_key, sample.field_path, sample.value_type,
+                        sample.value_double, sample.value_int, sample.value_text,
+                        sample.value_bool, sample.value_json, sample.occurred_at,
+                        json_extract(contract.document,
+                            '$.streams.' || json_quote(sample.stream_key) ||
+                            '.fields.' || json_quote(sample.field_path)) AS field_definition
+                 FROM device_metric_samples AS sample
+                 JOIN device_events AS event ON event.tenant_id = sample.tenant_id
+                   AND event.id = sample.event_id AND event.device_id = sample.device_id
+                 JOIN device_contracts AS contract ON contract.tenant_id = event.tenant_id
+                   AND contract.id = event.contract_id AND contract.device_id = event.device_id
+                 JOIN device_blueprint_revisions AS revision ON revision.tenant_id = contract.tenant_id
+                   AND revision.id = contract.blueprint_revision_id
+                 JOIN device_blueprints AS blueprint ON blueprint.tenant_id = revision.tenant_id
+                   AND blueprint.id = revision.blueprint_id
+                 WHERE sample.tenant_id = ?1 AND sample.device_id = ?2
+                   AND (?3 IS NULL OR sample.stream_key = ?3)
+                   AND (?4 IS NULL OR sample.field_path = ?4)
+                   AND (?5 IS NULL OR sample.occurred_at >= ?5)
+                   AND (?6 IS NULL OR sample.occurred_at < ?6)
+                 ORDER BY sample.occurred_at DESC, sample.event_id COLLATE BINARY DESC,
+                          sample.stream_key COLLATE BINARY, sample.field_path COLLATE BINARY
                  LIMIT ?7",
                 params![
                     tenant.as_str(),
@@ -1168,27 +1289,27 @@ SELECT device_id,contract_id,event_id,occurred_at,expires_at,latitude,longitude 
             .map_err(row::legacy_error)?;
         let mut metrics = Vec::new();
         while let Some(record) = rows.next().await.map_err(row::legacy_error)? {
-            let event_id = record.get::<String>(0).map_err(row::legacy_error)?;
-            let value_type = record.get::<String>(4).map_err(row::legacy_error)?;
+            let event_id = record.get::<String>(5).map_err(row::legacy_error)?;
+            let value_type = record.get::<String>(9).map_err(row::legacy_error)?;
             let value = match value_type.as_str() {
                 "float64" => record
-                    .get::<Option<f64>>(5)
+                    .get::<Option<f64>>(10)
                     .map_err(row::legacy_error)?
                     .map(MetricValue::Float64),
                 "int64" => record
-                    .get::<Option<i64>>(6)
+                    .get::<Option<i64>>(11)
                     .map_err(row::legacy_error)?
                     .map(MetricValue::Int64),
                 "string" => record
-                    .get::<Option<String>>(7)
+                    .get::<Option<String>>(12)
                     .map_err(row::legacy_error)?
                     .map(MetricValue::String),
                 "boolean" => record
-                    .get::<Option<i64>>(8)
+                    .get::<Option<i64>>(13)
                     .map_err(row::legacy_error)?
                     .map(|value| MetricValue::Boolean(value != 0)),
                 "json" => record
-                    .get::<Option<String>>(9)
+                    .get::<Option<String>>(14)
                     .map_err(row::legacy_error)?
                     .map(|value| {
                         serde_json::from_str(&value)
@@ -1203,14 +1324,33 @@ SELECT device_id,contract_id,event_id,occurred_at,expires_at,latitude,longitude 
                     "metric '{event_id}' has invalid value_type '{value_type}' or missing value"
                 ))
             })?;
+            let field_definition = record
+                .get::<Option<String>>(16)
+                .map_err(row::legacy_error)?
+                .ok_or_else(|| {
+                    PersistenceError::CorruptData("originating contract metric is missing".into())
+                })?;
+            let field_definition: serde_json::Value = serde_json::from_str(&field_definition)
+                .map_err(|error| PersistenceError::CorruptData(error.to_string()))?;
             metrics.push(DeviceMetricRecord {
-                contract_id: record.get(11).map_err(row::legacy_error)?,
+                contract_id: record.get(0).map_err(row::legacy_error)?,
+                blueprint_id: record.get(1).map_err(row::legacy_error)?,
+                blueprint_name: record.get(2).map_err(row::legacy_error)?,
+                blueprint_revision_id: record.get(3).map_err(row::legacy_error)?,
+                blueprint_revision: row::i32(
+                    record.get(4).map_err(row::legacy_error)?,
+                    "revision",
+                )?,
                 event_id,
-                device_id: record.get(1).map_err(row::legacy_error)?,
-                stream_key: record.get(2).map_err(row::legacy_error)?,
-                field_path: record.get(3).map_err(row::legacy_error)?,
+                device_id: record.get(6).map_err(row::legacy_error)?,
+                stream_key: record.get(7).map_err(row::legacy_error)?,
+                field_path: record.get(8).map_err(row::legacy_error)?,
+                field: extrittio_backend_core::events::metric_field_metadata(
+                    &field_definition,
+                    &value_type,
+                )?,
                 value,
-                occurred_at: row::datetime(record.get(10).map_err(row::legacy_error)?)?,
+                occurred_at: row::datetime(record.get(15).map_err(row::legacy_error)?)?,
             });
         }
         drop(rows);

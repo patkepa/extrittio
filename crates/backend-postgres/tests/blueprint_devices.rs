@@ -116,6 +116,14 @@ fn new_device(id: &str, revision: &str) -> CreateDeviceRecord {
             blueprint_revision_id: revision.into(),
             document: json!({
                 "deviceId": id,
+                "streams": {
+                    "position": {
+                        "fields": {
+                            "/latitude": {"valueType": "float64", "label": "Latitude", "unit": "degrees"},
+                            "/longitude": {"valueType": "float64", "label": "Longitude", "unit": "degrees"}
+                        }
+                    }
+                },
                 "location": {
                     "coordinateSystem": "wgs84",
                     "unit": "degrees",
@@ -366,6 +374,21 @@ async fn postgres_blueprint_device_and_ci_contracts_when_configured() {
         .unwrap()
         .unwrap();
     assert_eq!(metrics.len(), 2);
+    assert!(metrics.iter().all(|metric| {
+        metric.blueprint_id == format!("{tenant_a}-blueprint")
+            && metric.blueprint_revision_id == revision_a
+            && metric.contract_id == format!("{device_a}-contract")
+            && metric.field.unit.as_deref() == Some("degrees")
+    }));
+    assert_eq!(
+        metrics
+            .iter()
+            .find(|metric| metric.field_path == "/longitude")
+            .unwrap()
+            .field
+            .label,
+        "Longitude"
+    );
     let bucket_start =
         chrono::DateTime::from_timestamp(observed_at.timestamp().div_euclid(60) * 60, 0)
             .unwrap()
@@ -569,6 +592,24 @@ async fn postgres_blueprint_device_and_ci_contracts_when_configured() {
             .await
             .is_err()
     );
+    let historical = event_repository
+        .list_metrics(
+            &a,
+            &device_a,
+            DeviceMetricQuery {
+                stream_key: Some("position".into()),
+                field_path: Some("/latitude".into()),
+                since: None,
+                before: None,
+                limit: 10,
+            },
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(historical.len(), 1);
+    assert_eq!(historical[0].contract_id, format!("{device_a}-contract"));
+    assert_eq!(historical[0].field.label, "Latitude");
     assert_eq!(
         count(&mut pool.get().unwrap(), "device_events", &tenant_a),
         2
@@ -713,6 +754,127 @@ async fn postgres_blueprint_device_and_ci_contracts_when_configured() {
         count(&mut pool.get().unwrap(), "firmware_updates", &tenant_a),
         2
     );
+}
+
+#[tokio::test]
+async fn postgres_history_uses_originating_revision_metadata() {
+    let Ok(url) = std::env::var("DATABASE_URL") else {
+        return;
+    };
+    let pool = Pool::builder()
+        .max_size(3)
+        .build(ConnectionManager::<PgConnection>::new(url))
+        .unwrap();
+    migrate_once(&pool);
+    let suffix = Uuid::new_v4().simple().to_string();
+    let tenant_id = format!("history-{suffix}");
+    let first_revision = format!("first-{suffix}");
+    let second_revision = format!("second-{suffix}");
+    let device_id = format!("history-device-{suffix}");
+    let second_contract = format!("second-contract-{suffix}");
+    let first_definition = json!({
+        "streams": {"readings": {"fields": {
+            "/value": {"valueType": "float64", "label": "Temperature", "unit": "C"}
+        }}}
+    });
+    let second_definition = json!({
+        "streams": {"readings": {"fields": {
+            "/value": {"valueType": "int64", "label": "Counter", "unit": "ticks"}
+        }}}
+    });
+    {
+        let mut connection = pool.get().unwrap();
+        seed_blueprint(&mut connection, &tenant_id, &first_revision);
+        diesel::sql_query(
+            "INSERT INTO device_blueprint_revisions
+             (id, tenant_id, blueprint_id, revision, document, document_hash, compatibility)
+             VALUES ($1, $2, $3, 2, '{}', repeat('d', 64), '{}')",
+        )
+        .bind::<Text, _>(&second_revision)
+        .bind::<Text, _>(&tenant_id)
+        .bind::<Text, _>(format!("{tenant_id}-blueprint"))
+        .execute(&mut connection)
+        .unwrap();
+    }
+    let tenant = TenantId::new(tenant_id.clone()).unwrap();
+    let devices = PostgresDeviceRepository::from_pool(pool.clone());
+    let mut first_device = new_device(&device_id, &first_revision);
+    first_device.contract.document["streams"] = first_definition["streams"].clone();
+    devices.create(&tenant, first_device, None).await.unwrap();
+    let events = PostgresEventRepository::from_pool(pool.clone());
+    let mut first = event(
+        &tenant,
+        &device_id,
+        &format!("{device_id}-contract"),
+        &format!("old-{suffix}"),
+    );
+    first.occurred_at -= Duration::seconds(1);
+    first.metrics = vec![DeviceMetricSample {
+        stream_key: "readings".into(),
+        field_path: "/value".into(),
+        value: MetricValue::Float64(21.5),
+    }];
+    events.record(&tenant, first).await.unwrap();
+    {
+        let mut connection = pool.get().unwrap();
+        diesel::sql_query(
+            "INSERT INTO device_contracts
+             (id, tenant_id, device_id, blueprint_revision_id, document, contract_hash)
+             VALUES ($1, $2, $3, $4, $5, repeat('e', 64))",
+        )
+        .bind::<Text, _>(&second_contract)
+        .bind::<Text, _>(&tenant_id)
+        .bind::<Text, _>(&device_id)
+        .bind::<Text, _>(&second_revision)
+        .bind::<Jsonb, _>(&second_definition)
+        .execute(&mut connection)
+        .unwrap();
+        diesel::sql_query(
+            "UPDATE device_contract_assignments SET desired_contract_id = $1
+             WHERE tenant_id = $2 AND device_id = $3",
+        )
+        .bind::<Text, _>(&second_contract)
+        .bind::<Text, _>(&tenant_id)
+        .bind::<Text, _>(&device_id)
+        .execute(&mut connection)
+        .unwrap();
+    }
+    let mut second = event(
+        &tenant,
+        &device_id,
+        &second_contract,
+        &format!("new-{suffix}"),
+    );
+    second.metrics = vec![DeviceMetricSample {
+        stream_key: "readings".into(),
+        field_path: "/value".into(),
+        value: MetricValue::Int64(22),
+    }];
+    events.record(&tenant, second).await.unwrap();
+    let history = events
+        .list_metrics(
+            &tenant,
+            &device_id,
+            DeviceMetricQuery {
+                stream_key: Some("readings".into()),
+                field_path: Some("/value".into()),
+                since: None,
+                before: None,
+                limit: 10,
+            },
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(history.len(), 2);
+    assert_eq!(history[0].blueprint_revision_id, second_revision);
+    assert_eq!(history[0].blueprint_revision, 2);
+    assert_eq!(history[0].field.label, "Counter");
+    assert_eq!(history[0].field.unit.as_deref(), Some("ticks"));
+    assert_eq!(history[1].blueprint_revision_id, first_revision);
+    assert_eq!(history[1].blueprint_revision, 1);
+    assert_eq!(history[1].field.label, "Temperature");
+    assert_eq!(history[1].field.unit.as_deref(), Some("C"));
 }
 
 #[tokio::test]

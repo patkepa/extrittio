@@ -89,7 +89,7 @@ HTTP DTOs, generated OpenAPI and frontend rule/history models.
   blueprint/stream/exact-path identity and contract-aware validation.
 - [ ] Reject ambiguous paths, unknown declarations and invalid type/operator
   combinations; preserve exact integer comparisons and missing-value semantics.
-- [ ] Resolve historical samples against their originating contracts/revisions,
+- [x] Resolve historical samples against their originating contracts/revisions,
   not merely the currently assigned contract. Do not merge incompatible units
   or value types just because field paths match.
 - [ ] Verify multi-stream evaluation, geofence freshness/dwell, revision changes
@@ -155,7 +155,7 @@ evidence all pass. Existing unit tests do not substitute for browser checks.
   reads inside its writer transaction.
 - The complete PostgreSQL adapter suite, including the ignored fresh-baseline
   and cooldown/rollback regressions on a separate empty database, passed.
-  The complete Turso adapter suite passed; the latest count is 24 tests.
+  The complete Turso adapter suite passed; the latest count is 25 tests.
 - Turso regressions for stale-contract ingestion and fresh/expired locations
   passed. Both adapters now recheck assignment inside the event transaction.
 - The location API exposes each observation's contract-derived expiration;
@@ -196,15 +196,20 @@ evidence all pass. Existing unit tests do not substitute for browser checks.
   rollup counts. Large-data verification remains open.
   Do not treat workstream 2 or 3 as complete.
 - Both-adapter backend compilation; the latest local core and Turso suites
-  passed with 53 and 24 tests respectively.
+  passed with 54 and 25 tests respectively.
 - PostgreSQL 17: actual Diesel baseline apply/reapply and schema constraints;
   real cooldown writer/reactivation/rollback tests passed on disposable storage.
   A fresh-baseline firmware/OTA test covers CRUD, blob metadata, tenant isolation,
   invalid artifacts, incompatible revisions, deployment creation and terminal
   status transitions.
-- Frontend typecheck and 36 tests passed after the rule picker was corrected to
-  preserve exact JSON pointers. Builds and CLI regressions passed in earlier
-  implementation steps. Re-run them for the eventual final tree.
+- The rule picker preserves exact JSON pointers. Frontend typecheck, 39 tests
+  and production build pass on the current implementation; CLI regressions
+  passed in earlier steps. Re-run them for the eventual final tree.
+- Metric history now joins each sample to its originating contract and revision
+  in both adapters, returns the field's original label, unit and presentation,
+  and serializes int64 as decimal text. Real PostgreSQL and Turso tests cover
+  incompatible revisions sharing a path; web history separates their charts
+  and table columns. The frontend suite passes 39 tests, with browser QA open.
 - Firmware/OTA required-revision schema regression passed; OpenAPI/types updated.
 - A disposable PostgreSQL 17 container is available for the current execution
   pass; no existing development database was deleted.
