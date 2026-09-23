@@ -190,7 +190,7 @@ impl Application {
     pub fn new(repositories: RepositorySet, dependencies: ApplicationDependencies) -> Self {
         let repositories = repositories.into_parts();
         let blueprints = DeviceBlueprintApplication::new(
-            repositories.device_blueprints,
+            repositories.device_blueprints.clone(),
             dependencies.clock.clone(),
         );
         let certificates = CertificateApplication::new(
@@ -231,6 +231,8 @@ impl Application {
             outbox: OutboxApplication::new(repositories.outbox),
             rules: RuleApplication::new(
                 repositories.rules,
+                repositories.device_blueprints,
+                repositories.zones.clone(),
                 dependencies.clock.clone(),
                 dependencies.webhook_urls,
                 dependencies.rule_changes,

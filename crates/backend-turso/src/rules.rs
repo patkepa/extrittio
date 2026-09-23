@@ -63,16 +63,18 @@ async fn details_from(
     };
     let rule = decode_rule(&rule_row)?;
     drop(rules);
-    let mut rows = c.query("SELECT id,field,operator,value,condition_group,zone_id FROM rule_conditions WHERE tenant_id=?1 AND rule_id=?2 ORDER BY condition_group,id",params![tenant,id]).await.map_err(row::legacy_error)?;
+    let mut rows = c.query("SELECT id,field,blueprint_id,blueprint_revision_id,operator,value,condition_group,zone_id FROM rule_conditions WHERE tenant_id=?1 AND rule_id=?2 ORDER BY condition_group,id",params![tenant,id]).await.map_err(row::legacy_error)?;
     let mut conditions = Vec::new();
     while let Some(r) = rows.next().await.map_err(row::legacy_error)? {
         conditions.push(RuleConditionRecord {
             id: r.get(0).map_err(row::legacy_error)?,
             field: r.get(1).map_err(row::legacy_error)?,
-            operator: r.get(2).map_err(row::legacy_error)?,
-            value: r.get(3).map_err(row::legacy_error)?,
-            condition_group: row::i32(r.get(4).map_err(row::legacy_error)?, "condition_group")?,
-            zone_id: r.get(5).map_err(row::legacy_error)?,
+            blueprint_id: r.get(2).map_err(row::legacy_error)?,
+            blueprint_revision_id: r.get(3).map_err(row::legacy_error)?,
+            operator: r.get(4).map_err(row::legacy_error)?,
+            value: r.get(5).map_err(row::legacy_error)?,
+            condition_group: row::i32(r.get(6).map_err(row::legacy_error)?, "condition_group")?,
+            zone_id: r.get(7).map_err(row::legacy_error)?,
         });
     }
     drop(rows);
@@ -102,7 +104,7 @@ async fn insert_children(
     actions: Vec<RuleActionRecord>,
 ) -> Result<(), PersistenceError> {
     for v in conditions {
-        c.execute("INSERT INTO rule_conditions(id,tenant_id,rule_id,field,operator,value,condition_group,zone_id)VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",params![v.id,tenant,rule_id,v.field,v.operator,v.value,v.condition_group,v.zone_id]).await.map_err(row::legacy_error)?;
+        c.execute("INSERT INTO rule_conditions(id,tenant_id,rule_id,field,blueprint_id,blueprint_revision_id,operator,value,condition_group,zone_id)VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",params![v.id,tenant,rule_id,v.field,v.blueprint_id,v.blueprint_revision_id,v.operator,v.value,v.condition_group,v.zone_id]).await.map_err(row::legacy_error)?;
     }
     for v in actions {
         c.execute("INSERT INTO rule_actions(id,tenant_id,rule_id,action_type,config)VALUES(?1,?2,?3,?4,?5)",params![v.id,tenant,rule_id,v.action_type,serde_json::to_string(&v.config).map_err(|e|PersistenceError::Internal(e.to_string()))?]).await.map_err(row::legacy_error)?;
@@ -288,6 +290,8 @@ impl RuleRepository for TursoRuleRepository {
                     .into_iter()
                     .map(|v| CachedCondition {
                         field: v.field,
+                        blueprint_id: v.blueprint_id,
+                        blueprint_revision_id: v.blueprint_revision_id,
                         operator: v.operator,
                         value: v.value,
                         zone_id: v.zone_id,
@@ -322,5 +326,49 @@ impl RuleRepository for TursoRuleRepository {
             .await
             .map(|n| n as usize)
             .map_err(row::legacy_error)
+    }
+}
+
+#[cfg(test)]
+mod selector_tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn fresh_database_preserves_metric_selector_identity_and_tenant_scope() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("rules.db");
+        let database = crate::TursoDatabase::open_and_migrate(
+            directory.path(), &path, Duration::from_secs(1),
+        ).await.unwrap();
+        let handles = database.shared_handles();
+        handles.lock_writer().await.execute(
+            "INSERT INTO organizations(id,name,created_at,updated_at) VALUES('tenant-a','Tenant A',0,0),('tenant-b','Tenant B',0,0)",
+            (),
+        ).await.unwrap();
+        let repository = TursoRuleRepository::from_handles(handles);
+        let tenant = TenantId::new("tenant-a").unwrap();
+        let created = repository.create(&tenant, NewRuleRecord {
+            id: "rule-a".into(), name: "Counter".into(), description: None,
+            trigger_type: "telemetry".into(), target_type: "global".into(), target_id: None,
+            cooldown_seconds: 0,
+            conditions: vec![RuleConditionRecord {
+                id: "condition-a".into(), field: "machine.v2./a~1b/count".into(),
+                blueprint_id: Some("blueprint-a".into()),
+                blueprint_revision_id: Some("revision-a".into()),
+                operator: "gte".into(), value: "9007199254740993".into(),
+                condition_group: 0, zone_id: None,
+            }],
+            actions: vec![RuleActionRecord {
+                id: "action-a".into(), action_type: "alert".into(),
+                config: serde_json::json!({}),
+            }],
+        }).await.unwrap();
+        assert_eq!(created.conditions[0].blueprint_revision_id.as_deref(), Some("revision-a"));
+        assert_eq!(created.conditions[0].field, "machine.v2./a~1b/count");
+        assert!(repository.get(&TenantId::new("tenant-b").unwrap(), "rule-a").await.unwrap().is_none());
+        let snapshot = repository.load_snapshot().await.unwrap();
+        assert_eq!(snapshot.rules[0].conditions[0].blueprint_id.as_deref(), Some("blueprint-a"));
+        assert_eq!(snapshot.rules[0].conditions[0].blueprint_revision_id.as_deref(), Some("revision-a"));
     }
 }

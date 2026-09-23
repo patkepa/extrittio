@@ -22,6 +22,8 @@ pub struct CachedRule {
 #[derive(Debug, Clone, Serialize)]
 pub struct CachedCondition {
     pub field: String,
+    pub blueprint_id: Option<String>,
+    pub blueprint_revision_id: Option<String>,
     pub operator: String,
     pub value: String,
     pub zone_id: Option<String>,

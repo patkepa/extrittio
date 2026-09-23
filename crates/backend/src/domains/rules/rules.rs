@@ -12,7 +12,7 @@ use utoipa::ToSchema;
 use crate::auth::context::RequestContext;
 use crate::error::AppError;
 use crate::state::AppState;
-use extrittio_backend_core::rules::{RuleDetails, RuleFilter};
+use extrittio_backend_core::rules::{RuleConditionInput, RuleDetails, RuleFilter};
 
 // ---------------------------------------------------------------------------
 // Request / Response DTOs
@@ -51,9 +51,25 @@ pub struct UpdateRuleRequest {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ConditionInput {
-    pub field: String,
+    pub selector: ConditionSelector,
     pub operator: String,
     pub value: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ConditionSelector {
+    Metric {
+        blueprint_id: String,
+        blueprint_revision_id: String,
+        stream_key: String,
+        field_path: String,
+    },
+    Status,
+    Geofence {
+        zone_id: String,
+        field: String,
+    },
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -86,7 +102,7 @@ pub struct RuleResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ConditionResponse {
     pub id: String,
-    pub field: String,
+    pub selector: ConditionSelector,
     pub operator: String,
     pub value: String,
 }
@@ -102,18 +118,78 @@ pub struct ActionResponse {
 // Conversions
 // ---------------------------------------------------------------------------
 
+fn condition_input(input: ConditionInput) -> RuleConditionInput {
+    let (field, blueprint_id, blueprint_revision_id, zone_id) = match input.selector {
+        ConditionSelector::Metric {
+            blueprint_id,
+            blueprint_revision_id,
+            stream_key,
+            field_path,
+        } => (
+            extrittio_backend_core::rule_engine::metric::MetricSelector {
+                stream_key,
+                field_path,
+            }
+            .field_key(),
+            Some(blueprint_id),
+            Some(blueprint_revision_id),
+            None,
+        ),
+        ConditionSelector::Status => ("status".into(), None, None, None),
+        ConditionSelector::Geofence { zone_id, field } => (field, None, None, Some(zone_id)),
+    };
+    RuleConditionInput {
+        field,
+        blueprint_id,
+        blueprint_revision_id,
+        operator: input.operator,
+        value: input.value,
+        zone_id,
+    }
+}
+
+fn condition_response(
+    condition: extrittio_backend_core::rules::RuleConditionRecord,
+) -> Result<ConditionResponse, AppError> {
+    let selector = match (
+        condition.blueprint_id,
+        condition.blueprint_revision_id,
+        condition.zone_id,
+    ) {
+        (Some(blueprint_id), Some(blueprint_revision_id), None) => {
+            let metric = extrittio_backend_core::rule_engine::metric::MetricSelector::parse(
+                &condition.field,
+            )
+            .ok_or_else(|| AppError::Internal("Stored rule metric selector is invalid".into()))?;
+            ConditionSelector::Metric {
+                blueprint_id,
+                blueprint_revision_id,
+                stream_key: metric.stream_key,
+                field_path: metric.field_path,
+            }
+        }
+        (None, None, None) if condition.field == "status" => ConditionSelector::Status,
+        (None, None, Some(zone_id)) => ConditionSelector::Geofence {
+            zone_id,
+            field: condition.field,
+        },
+        _ => return Err(AppError::Internal("Stored rule selector is invalid".into())),
+    };
+    Ok(ConditionResponse {
+        id: condition.id,
+        selector,
+        operator: condition.operator,
+        value: condition.value,
+    })
+}
+
 fn to_rule_response(details: RuleDetails) -> Result<RuleResponse, AppError> {
     let rule = details.rule;
     let conditions = details
         .conditions
         .into_iter()
-        .map(|c| ConditionResponse {
-            id: c.id,
-            field: c.field,
-            operator: c.operator,
-            value: c.value,
-        })
-        .collect();
+        .map(condition_response)
+        .collect::<Result<Vec<_>, _>>()?;
 
     let actions = details
         .actions
@@ -147,6 +223,41 @@ fn to_rule_response(details: RuleDetails) -> Result<RuleResponse, AppError> {
         )
         .to_rfc3339(),
     })
+}
+
+#[cfg(test)]
+mod selector_tests {
+    use super::*;
+
+    #[test]
+    fn metric_selector_round_trips_dotted_stream_and_escaped_pointer() {
+        let input = ConditionInput {
+            selector: ConditionSelector::Metric {
+                blueprint_id: "blueprint-a".into(),
+                blueprint_revision_id: "revision-a".into(),
+                stream_key: "machine.v2".into(),
+                field_path: "/a~1b/count".into(),
+            },
+            operator: "gte".into(),
+            value: "9007199254740993".into(),
+        };
+        let stored = condition_input(input);
+        assert_eq!(stored.field, "machine.v2./a~1b/count");
+        let response = condition_response(extrittio_backend_core::rules::RuleConditionRecord {
+            id: "condition-a".into(),
+            field: stored.field,
+            blueprint_id: stored.blueprint_id,
+            blueprint_revision_id: stored.blueprint_revision_id,
+            operator: stored.operator,
+            value: stored.value,
+            condition_group: 0,
+            zone_id: stored.zone_id,
+        })
+        .expect("structured stored selector");
+        let encoded = serde_json::to_value(response.selector).expect("serialize selector");
+        assert_eq!(encoded["stream_key"], "machine.v2");
+        assert_eq!(encoded["field_path"], "/a~1b/count");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -226,11 +337,8 @@ pub(crate) async fn create_rule(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreateRuleRequest>,
 ) -> Result<(StatusCode, Json<RuleResponse>), AppError> {
-    let conditions: Vec<(String, String, String)> = body
-        .conditions
-        .into_iter()
-        .map(|c| (c.field, c.operator, c.value))
-        .collect();
+    let conditions: Vec<RuleConditionInput> =
+        body.conditions.into_iter().map(condition_input).collect();
 
     let actions: Vec<(String, serde_json::Value)> = body
         .actions
@@ -270,11 +378,9 @@ pub(crate) async fn update_rule_handler(
     Path(id): Path<String>,
     Json(body): Json<UpdateRuleRequest>,
 ) -> Result<Json<RuleResponse>, AppError> {
-    let conditions: Option<Vec<(String, String, String)>> = body.conditions.map(|cs| {
-        cs.into_iter()
-            .map(|c| (c.field, c.operator, c.value))
-            .collect()
-    });
+    let conditions: Option<Vec<RuleConditionInput>> = body
+        .conditions
+        .map(|cs| cs.into_iter().map(condition_input).collect());
 
     let actions: Option<Vec<(String, serde_json::Value)>> = body.actions.map(|acts| {
         acts.into_iter()

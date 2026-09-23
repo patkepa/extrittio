@@ -391,6 +391,8 @@ diesel::table! {
         id -> Text,
         rule_id -> Text,
         field -> Text,
+        blueprint_id -> Nullable<Text>,
+        blueprint_revision_id -> Nullable<Text>,
         operator -> Text,
         value -> Text,
         condition_group -> Int4,

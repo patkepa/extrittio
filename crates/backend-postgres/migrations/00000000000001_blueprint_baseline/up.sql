@@ -453,6 +453,8 @@ CREATE TABLE public.rule_conditions (
     id text NOT NULL,
     rule_id text NOT NULL,
     field text NOT NULL,
+    blueprint_id text,
+    blueprint_revision_id text,
     operator text NOT NULL,
     value text NOT NULL,
     condition_group integer DEFAULT 0 NOT NULL,

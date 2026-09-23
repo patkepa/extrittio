@@ -312,6 +312,7 @@ impl EventIngressApplication {
             device_id: device_id.to_owned(),
             fleet_id: context.fleet_id,
             blueprint_id: context.blueprint_id,
+            blueprint_revision_id: Some(assigned.blueprint_revision_id.clone()),
             input: crate::rule_snapshots::RuleEvaluationInput::Telemetry {
                 data: crate::rule_engine::types::TelemetryData {
                     latitude: location.map(|point| point.0),

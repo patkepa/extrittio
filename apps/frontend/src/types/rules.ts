@@ -15,11 +15,21 @@ export interface Rule {
 
 export interface RuleCondition {
   id: string;
-  field: string;
+  selector: RuleConditionSelector;
   operator: string;
   value: string;
-  zone_id?: string;
 }
+
+export type RuleConditionSelector =
+  | {
+      kind: 'metric';
+      blueprint_id: string;
+      blueprint_revision_id: string;
+      stream_key: string;
+      field_path: string;
+    }
+  | { kind: 'status' }
+  | { kind: 'geofence'; zone_id: string; field: string };
 
 export interface RuleAction {
   id: string;
@@ -34,7 +44,7 @@ export interface CreateRuleRequest {
   target_type: Rule['target_type'];
   target_id?: string;
   cooldown_seconds?: number;
-  conditions: { field: string; operator: string; value: string; zone_id?: string }[];
+  conditions: { selector: RuleConditionSelector; operator: string; value: string }[];
   actions: { action_type: string; config: Record<string, unknown> }[];
 }
 

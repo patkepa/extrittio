@@ -101,6 +101,7 @@ function RuleEditor({ editingRuleId, closeRuleDialog, existingRule }: EditorProp
     triggerType,
     targetType,
     targetId,
+    selectorBlueprintId,
     cooldownSeconds,
     conditions,
     actions,
@@ -118,7 +119,13 @@ function RuleEditor({ editingRuleId, closeRuleDialog, existingRule }: EditorProp
   const setDescription = (value: string) => setField('description', value);
   const setTriggerType = (value: string) => setField('triggerType', value);
   const setTargetType = (value: string) => setField('targetType', value);
-  const setTargetId = (value: string) => setField('targetId', value);
+  const setTargetId = (value: string) => {
+    setField('targetId', value);
+    if (triggerType === 'telemetry' && (targetType === 'blueprint' || targetType === 'device')) {
+      setConditions([emptyCondition('telemetry')]);
+    }
+  };
+  const setSelectorBlueprintId = (value: string) => setField('selectorBlueprintId', value);
   const setCooldownSeconds = (value: number) => setField('cooldownSeconds', value);
   const setConditions = (value: SetStateAction<ConditionRow[]>) => setField('conditions', value);
   const setActions = (value: SetStateAction<ActionRow[]>) => setField('actions', value);
@@ -129,22 +136,28 @@ function RuleEditor({ editingRuleId, closeRuleDialog, existingRule }: EditorProp
   const { data: zones = [] } = useZones();
   const { data: blueprints = [] } = useDeviceBlueprints();
   const blueprintRevisionQuery = useLatestDeviceBlueprintRevision(
-    targetType === 'blueprint' ? targetId : '',
+    targetType === 'blueprint' ? targetId : targetType === 'device' ? '' : selectorBlueprintId,
   );
+  const selectedDevice = devices.find((device) => device.id === targetId);
   const deviceContractQuery = useDeviceContract(targetType === 'device' ? targetId : '', {
     retry: false,
   });
   const telemetryFields = useMemo(() => {
-    if (targetType === 'blueprint') {
+    if (targetType !== 'device') {
       return blueprintRuleMetricFields(blueprintRevisionQuery.data);
     }
     if (targetType === 'device') {
-      return contractRuleMetricFields(deviceContractQuery.data);
+      return contractRuleMetricFields(deviceContractQuery.data, selectedDevice?.blueprint_id);
     }
     return [];
-  }, [blueprintRevisionQuery.data, deviceContractQuery.data, targetType]);
+  }, [
+    blueprintRevisionQuery.data,
+    deviceContractQuery.data,
+    selectedDevice?.blueprint_id,
+    targetType,
+  ]);
   const commandOptions = useMemo(() => {
-    if (targetType === 'blueprint') {
+    if (targetType !== 'device') {
       return blueprintRuleCommands(blueprintRevisionQuery.data);
     }
     if (targetType === 'device') {
@@ -198,10 +211,47 @@ function RuleEditor({ editingRuleId, closeRuleDialog, existingRule }: EditorProp
   };
 
   const updateCondition = (index: number, field: keyof ConditionRow, value: string) => {
-    setConditions((prev) => prev.map((c, i) => (i === index ? { ...c, [field]: value } : c)));
+    if (field === 'zone_id' && triggerType === 'geofence') {
+      setConditions((prev) => prev.map((condition) => ({ ...condition, zone_id: value })));
+      return;
+    }
+    if (
+      field === 'value' &&
+      triggerType === 'geofence' &&
+      conditions[index]?.field === 'zone_state' &&
+      value === 'outside'
+    ) {
+      setConditions((prev) =>
+        prev
+          .filter((condition) => condition.field !== 'dwell_seconds')
+          .map((condition) => ({ ...condition, value: 'outside' })),
+      );
+      return;
+    }
+    setConditions((prev) =>
+      prev.map((c, i) => {
+        if (i !== index) return c;
+        if (field === 'field' && triggerType === 'telemetry') {
+          const option = telemetryFields.find((item) => item.value === value);
+          return {
+            ...c,
+            field: value,
+            blueprint_id: option?.blueprint_id,
+            blueprint_revision_id: option?.blueprint_revision_id,
+          };
+        }
+        return { ...c, [field]: value };
+      }),
+    );
   };
 
-  const addCondition = () => setConditions((prev) => [...prev, emptyCondition(triggerType)]);
+  const addCondition = () =>
+    setConditions((prev) => [
+      ...prev,
+      triggerType === 'geofence' && prev[0]?.value === 'inside'
+        ? { field: 'dwell_seconds', operator: 'gte', value: '', zone_id: prev[0]?.zone_id }
+        : emptyCondition(triggerType),
+    ]);
 
   const removeCondition = (index: number) => {
     setConditions((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev));
@@ -289,6 +339,7 @@ function RuleEditor({ editingRuleId, closeRuleDialog, existingRule }: EditorProp
               onChange={(e) => {
                 setTargetType(e.target.value);
                 setTargetId('');
+                if (triggerType === 'telemetry') setConditions([emptyCondition('telemetry')]);
               }}
             >
               <option value="global">Global</option>
@@ -337,6 +388,29 @@ function RuleEditor({ editingRuleId, closeRuleDialog, existingRule }: EditorProp
           </FormGroup>
         )}
 
+        {triggerType === 'telemetry' && (targetType === 'global' || targetType === 'fleet') && (
+          <FormGroup
+            label="Metric Blueprint"
+            helperText="Choose the blueprint whose metric declarations this rule uses."
+          >
+            <HTMLSelect
+              fill
+              value={selectorBlueprintId}
+              onChange={(event) => {
+                setSelectorBlueprintId(event.target.value);
+                setConditions([emptyCondition('telemetry')]);
+              }}
+            >
+              <option value="">Select blueprint...</option>
+              {blueprints.map((blueprint) => (
+                <option key={blueprint.id} value={blueprint.id}>
+                  {blueprint.name}
+                </option>
+              ))}
+            </HTMLSelect>
+          </FormGroup>
+        )}
+
         <FormGroup label="Cooldown (seconds)">
           <NumericInput
             fill
@@ -351,7 +425,6 @@ function RuleEditor({ editingRuleId, closeRuleDialog, existingRule }: EditorProp
           triggerType={triggerType}
           telemetryFields={telemetryFields}
           zones={zones}
-          setConditions={setConditions}
           updateCondition={updateCondition}
           addCondition={addCondition}
           removeCondition={removeCondition}

@@ -192,6 +192,32 @@ pub fn evaluate_telemetry_for_tenant_at(
     cache: &RuleCache,
     now: chrono::NaiveDateTime,
 ) -> Vec<PendingAction> {
+    evaluate_telemetry_for_tenant_revision_at(
+        tenant_id,
+        device_id,
+        fleet_id,
+        blueprint_id,
+        None,
+        data,
+        cache,
+        now,
+    )
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "revision-aware evaluation needs the originating contract identity"
+)]
+pub fn evaluate_telemetry_for_tenant_revision_at(
+    tenant_id: &str,
+    device_id: &str,
+    fleet_id: Option<i32>,
+    blueprint_id: Option<&str>,
+    blueprint_revision_id: Option<&str>,
+    data: &TelemetryData,
+    cache: &RuleCache,
+    now: chrono::NaiveDateTime,
+) -> Vec<PendingAction> {
     let fleet_str = fleet_id.map(|f| f.to_string());
     let fleet_ref = fleet_str.as_deref();
 
@@ -202,6 +228,19 @@ pub fn evaluate_telemetry_for_tenant_at(
     for rule in rules {
         // Only handle telemetry-triggered rules here.
         if compile_trigger(&rule.trigger_type) != Some(RuleTrigger::Telemetry) {
+            continue;
+        }
+
+        if rule.conditions.iter().any(|condition| {
+            condition
+                .blueprint_id
+                .as_deref()
+                .is_some_and(|id| Some(id) != blueprint_id)
+                || condition
+                    .blueprint_revision_id
+                    .as_deref()
+                    .is_some_and(|id| Some(id) != blueprint_revision_id)
+        }) {
             continue;
         }
 
@@ -575,16 +614,26 @@ pub fn evaluate_geofence_for_tenant_at(
             continue;
         }
 
-        // Determine if the device is currently inside ALL required zones
-        // (conditions are AND-ed; each condition refers to a zone via zone_id).
-        let conditions_met = rule.conditions.iter().all(|c| {
-            if let Some(ref zid) = c.zone_id
-                && let Some(zone) = cache.zones.get(zid)
-            {
-                return point_in_zone(latitude, longitude, &zone.geometry);
-            }
-            false
-        });
+        let Some(zone) = rule
+            .conditions
+            .first()
+            .and_then(|condition| condition.zone_id.as_ref())
+            .and_then(|id| cache.zones.get(id))
+        else {
+            continue;
+        };
+        let inside = point_in_zone(latitude, longitude, &zone.geometry);
+        let target_inside = rule
+            .conditions
+            .iter()
+            .find(|condition| condition.field == "zone_state")
+            .is_some_and(|condition| condition.value == "inside");
+        let dwell_seconds = rule
+            .conditions
+            .iter()
+            .find(|condition| condition.field == "dwell_seconds")
+            .and_then(|condition| condition.value.parse::<i64>().ok())
+            .unwrap_or(0);
 
         let alert_key = (
             rule.tenant_id.clone(),
@@ -598,19 +647,38 @@ pub fn evaluate_geofence_for_tenant_at(
             device_id.to_string(),
         );
         let was_inside = cache.zone_entry_times.contains_key(&zone_key);
+        let inside_long_enough = dwell_seconds == 0
+            || cache
+                .zone_entry_times
+                .get(&zone_key)
+                .is_some_and(|entered_at| {
+                    now.signed_duration_since(*entered_at).num_seconds() >= dwell_seconds
+                });
+        let active_state = inside == target_inside;
+        let conditions_met = active_state
+            && if target_inside {
+                inside_long_enough
+            } else {
+                was_inside || existing_alert_id.is_some()
+            };
+
+        if inside && !was_inside {
+            actions.push(PendingAction::UpdateZoneEntry {
+                tenant_id: rule.tenant_id.clone(),
+                rule_id: rule.id.clone(),
+                device_id: device_id.to_string(),
+                entered_at: Some(now),
+            });
+        } else if !inside && was_inside {
+            actions.push(PendingAction::UpdateZoneEntry {
+                tenant_id: rule.tenant_id.clone(),
+                rule_id: rule.id.clone(),
+                device_id: device_id.to_string(),
+                entered_at: None,
+            });
+        }
 
         if conditions_met {
-            // Device is inside the zone(s).
-            if !was_inside {
-                // Just entered — record entry time.
-                actions.push(PendingAction::UpdateZoneEntry {
-                    tenant_id: rule.tenant_id.clone(),
-                    rule_id: rule.id.clone(),
-                    device_id: device_id.to_string(),
-                    entered_at: Some(now),
-                });
-            }
-
             if let Some(ref alert_id) = existing_alert_id {
                 // Skip empty-string sentinel (reservation in-flight).
                 if !alert_id.is_empty() {
@@ -644,16 +712,12 @@ pub fn evaluate_geofence_for_tenant_at(
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("warning")
                                 .to_string();
-                            let zone_name = rule
-                                .conditions
-                                .first()
-                                .and_then(|c| c.zone_id.as_ref())
-                                .and_then(|zid| cache.zones.get(zid))
-                                .map(|z| z.name.as_str())
-                                .unwrap_or("unknown zone");
                             let message = format!(
-                                "device entered zone '{}' at {:.6},{:.6}",
-                                zone_name, latitude, longitude
+                                "device {} zone '{}' at {:.6},{:.6}",
+                                if target_inside { "entered" } else { "exited" },
+                                zone.name,
+                                latitude,
+                                longitude
                             );
                             actions.push(PendingAction::CreateAlert {
                                 tenant_id: rule.tenant_id.clone(),
@@ -672,7 +736,7 @@ pub fn evaluate_geofence_for_tenant_at(
                                 .unwrap_or("")
                                 .to_string();
                             let payload = json!({
-                                "event": "geofence_entered",
+                                "event": if target_inside { "geofence_entered" } else { "geofence_exited" },
                                 "timestamp": now.and_utc().to_rfc3339(),
                                 "rule": {
                                     "id": rule.id,
@@ -689,7 +753,12 @@ pub fn evaluate_geofence_for_tenant_at(
                             let mut headers = std::collections::HashMap::new();
                             headers.insert(
                                 "X-Extrittio-Event".to_string(),
-                                "geofence_entered".to_string(),
+                                if target_inside {
+                                    "geofence_entered"
+                                } else {
+                                    "geofence_exited"
+                                }
+                                .to_string(),
                             );
                             actions.push(PendingAction::SendWebhook {
                                 tenant_id: rule.tenant_id.clone(),
@@ -723,18 +792,7 @@ pub fn evaluate_geofence_for_tenant_at(
                     fired_at: now,
                 });
             }
-        } else {
-            // Device is outside the zone(s).
-            if was_inside {
-                // Just exited — clear entry time.
-                actions.push(PendingAction::UpdateZoneEntry {
-                    tenant_id: rule.tenant_id.clone(),
-                    rule_id: rule.id.clone(),
-                    device_id: device_id.to_string(),
-                    entered_at: None,
-                });
-            }
-
+        } else if !active_state {
             // Auto-resolve any active alert.
             // Skip empty-string sentinels (reservation in-flight).
             if let Some(alert_id) = existing_alert_id
@@ -861,6 +919,8 @@ mod tests {
     fn make_condition(field: &str, operator: &str, value: &str) -> CachedCondition {
         CachedCondition {
             field: field.to_string(),
+            blueprint_id: None,
+            blueprint_revision_id: None,
             operator: operator.to_string(),
             value: value.to_string(),
             zone_id: None,
@@ -933,7 +993,7 @@ mod tests {
                 },
             },
         );
-        let mut condition = make_condition("latitude", "gte", "0");
+        let mut condition = make_condition("zone_state", "eq", "inside");
         condition.zone_id = Some("origin".to_string());
         cache.insert_rule(make_rule(
             "origin-geofence",
@@ -1039,6 +1099,46 @@ mod tests {
             triggered_value_for(&[condition], &data).as_deref(),
             Some("9007199254740993")
         );
+    }
+
+    #[test]
+    fn metric_rule_requires_its_declaring_revision() {
+        let data = TelemetryData {
+            latitude: None,
+            longitude: None,
+            metrics: std::collections::BTreeMap::from([(
+                "machine./counter".into(),
+                crate::number::MetricNumber::Integer(42),
+            )]),
+        };
+        let mut condition = make_condition("machine./counter", "gt", "40");
+        condition.blueprint_id = Some("blueprint-a".into());
+        condition.blueprint_revision_id = Some("revision-a".into());
+        let mut cache = empty_cache();
+        cache.insert_rule(make_rule(
+            "counter-rule",
+            "telemetry",
+            "global",
+            None,
+            0,
+            vec![condition],
+            vec![make_alert_action("warning")],
+        ));
+        let evaluate = |blueprint, revision| {
+            evaluate_telemetry_for_tenant_revision_at(
+                DEFAULT_TENANT_ID,
+                "dev1",
+                None,
+                blueprint,
+                revision,
+                &data,
+                &cache,
+                chrono::Utc::now().naive_utc(),
+            )
+        };
+        assert!(evaluate(Some("blueprint-b"), Some("revision-a")).is_empty());
+        assert!(evaluate(Some("blueprint-a"), Some("revision-b")).is_empty());
+        assert!(!evaluate(Some("blueprint-a"), Some("revision-a")).is_empty());
     }
 
     #[test]
@@ -1901,6 +2001,76 @@ mod tests {
                 "expected ({latitude}, {longitude}) to be inside the origin geofence"
             );
         }
+    }
+
+    #[test]
+    fn geofence_inside_dwell_waits_for_elapsed_observation_and_exit_fires_once() {
+        let mut cache = origin_geofence_cache(100.0);
+        let now = chrono::Utc::now().naive_utc();
+        let mut inside = make_telemetry(20.0, 50.0, 90.0);
+        inside.latitude = Some(0.0);
+        inside.longitude = Some(0.0);
+        cache.global_rules[0].conditions.push(CachedCondition {
+            field: "dwell_seconds".into(),
+            blueprint_id: None,
+            blueprint_revision_id: None,
+            operator: "gte".into(),
+            value: "30".into(),
+            zone_id: Some("origin".into()),
+        });
+        let evaluate_at = |data: &TelemetryData, cache: &RuleCache, at| {
+            evaluate_geofence_for_tenant_at(DEFAULT_TENANT_ID, "dev1", None, None, data, cache, at)
+        };
+        let entry = evaluate_at(&inside, &cache, now);
+        assert!(entry.iter().any(|action| matches!(
+            action,
+            PendingAction::UpdateZoneEntry {
+                entered_at: Some(_),
+                ..
+            }
+        )));
+        assert!(
+            !entry
+                .iter()
+                .any(|action| matches!(action, PendingAction::CreateAlert { .. }))
+        );
+        cache.zone_entry_times.insert(
+            (
+                DEFAULT_TENANT_ID.into(),
+                "origin-geofence".into(),
+                "dev1".into(),
+            ),
+            now,
+        );
+        assert!(
+            !evaluate_at(&inside, &cache, now + chrono::Duration::seconds(29))
+                .iter()
+                .any(|action| matches!(action, PendingAction::CreateAlert { .. }))
+        );
+        assert!(
+            evaluate_at(&inside, &cache, now + chrono::Duration::seconds(30))
+                .iter()
+                .any(|action| matches!(action, PendingAction::CreateAlert { .. }))
+        );
+
+        cache.global_rules[0].conditions = vec![CachedCondition {
+            field: "zone_state".into(),
+            blueprint_id: None,
+            blueprint_revision_id: None,
+            operator: "eq".into(),
+            value: "outside".into(),
+            zone_id: Some("origin".into()),
+        }];
+        let mut outside = inside.clone();
+        outside.latitude = Some(1.0);
+        let exit = evaluate_at(&outside, &cache, now + chrono::Duration::seconds(31));
+        assert!(exit.iter().any(|action| matches!(action, PendingAction::CreateAlert { message, .. } if message.contains("exited"))));
+        cache.zone_entry_times.clear();
+        assert!(
+            !evaluate_at(&outside, &cache, now + chrono::Duration::seconds(32))
+                .iter()
+                .any(|action| matches!(action, PendingAction::CreateAlert { .. }))
+        );
     }
 
     #[test]

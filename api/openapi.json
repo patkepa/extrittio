@@ -1374,6 +1374,28 @@
             }
           },
           {
+            "name": "sort_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "sort_dir",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -6218,16 +6240,16 @@
       "ConditionInput": {
         "type": "object",
         "required": [
-          "field",
+          "selector",
           "operator",
           "value"
         ],
         "properties": {
-          "field": {
-            "type": "string"
-          },
           "operator": {
             "type": "string"
+          },
+          "selector": {
+            "$ref": "#/components/schemas/ConditionSelector"
           },
           "value": {
             "type": "string"
@@ -6238,24 +6260,94 @@
         "type": "object",
         "required": [
           "id",
-          "field",
+          "selector",
           "operator",
           "value"
         ],
         "properties": {
-          "field": {
-            "type": "string"
-          },
           "id": {
             "type": "string"
           },
           "operator": {
             "type": "string"
           },
+          "selector": {
+            "$ref": "#/components/schemas/ConditionSelector"
+          },
           "value": {
             "type": "string"
           }
         }
+      },
+      "ConditionSelector": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "blueprint_id",
+              "blueprint_revision_id",
+              "stream_key",
+              "field_path",
+              "kind"
+            ],
+            "properties": {
+              "blueprint_id": {
+                "type": "string"
+              },
+              "blueprint_revision_id": {
+                "type": "string"
+              },
+              "field_path": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "metric"
+                ]
+              },
+              "stream_key": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "status"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "zone_id",
+              "field",
+              "kind"
+            ],
+            "properties": {
+              "field": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "geofence"
+                ]
+              },
+              "zone_id": {
+                "type": "string"
+              }
+            }
+          }
+        ]
       },
       "ConfigResponse": {
         "type": "object",

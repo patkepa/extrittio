@@ -3,6 +3,8 @@ import type { DeviceBlueprintRevision, DeviceContract } from '../../../types/api
 export interface RuleMetricFieldOption {
   value: string;
   label: string;
+  blueprint_id?: string;
+  blueprint_revision_id?: string;
 }
 
 interface BlueprintField {
@@ -76,12 +78,16 @@ function option(
   path: string,
   label: string | undefined,
   semantic: string | undefined,
+  blueprintId?: string,
+  revisionId?: string,
 ): RuleMetricFieldOption {
   const value = canonicalMetric(streamKey, path);
   const displayLabel = label ?? value;
   return {
     value,
     label: semantic ? `${displayLabel} · ${semantic}` : displayLabel,
+    blueprint_id: blueprintId,
+    blueprint_revision_id: revisionId,
   };
 }
 
@@ -93,17 +99,36 @@ export function blueprintRuleMetricFields(
     if (!stream.key) return [];
     return (stream.fields ?? [])
       .filter((field) => field.path && isNumeric(field.type))
-      .map((field) => option(stream.key!, field.path!, field.label, field.semantic));
+      .map((field) =>
+        option(
+          stream.key!,
+          field.path!,
+          field.label,
+          field.semantic,
+          revision?.blueprint_id,
+          revision?.id,
+        ),
+      );
   });
 }
 
 export function contractRuleMetricFields(
   contract: DeviceContract | undefined,
+  blueprintId?: string,
 ): RuleMetricFieldOption[] {
   const document = contract?.document as ContractDocument | undefined;
   return Object.entries(document?.streams ?? {}).flatMap(([streamKey, stream]) =>
     Object.entries(stream.fields ?? {})
       .filter(([, field]) => isNumeric(field.valueType))
-      .map(([path, field]) => option(streamKey, path, field.label, field.semantic)),
+      .map(([path, field]) =>
+        option(
+          streamKey,
+          path,
+          field.label,
+          field.semantic,
+          blueprintId,
+          contract?.blueprint_revision_id,
+        ),
+      ),
   );
 }

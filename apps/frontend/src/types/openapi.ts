@@ -1777,15 +1777,31 @@ export interface components {
             updated_at: string;
         };
         ConditionInput: {
-            field: string;
             operator: string;
+            selector: components["schemas"]["ConditionSelector"];
             value: string;
         };
         ConditionResponse: {
-            field: string;
             id: string;
             operator: string;
+            selector: components["schemas"]["ConditionSelector"];
             value: string;
+        };
+        ConditionSelector: {
+            blueprint_id: string;
+            blueprint_revision_id: string;
+            field_path: string;
+            /** @enum {string} */
+            kind: "metric";
+            stream_key: string;
+        } | {
+            /** @enum {string} */
+            kind: "status";
+        } | {
+            field: string;
+            /** @enum {string} */
+            kind: "geofence";
+            zone_id: string;
         };
         ConfigResponse: {
             config: {
@@ -3515,6 +3531,8 @@ export interface operations {
                 status?: string | null;
                 search?: string | null;
                 fleet_id?: number | null;
+                sort_by?: string | null;
+                sort_dir?: string | null;
                 limit?: number | null;
                 offset?: number | null;
             };

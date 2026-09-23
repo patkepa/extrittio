@@ -85,7 +85,7 @@ required to satisfy the full original plan.
 Primary areas: `crates/rule-engine`, core rule/event/analytics applications,
 HTTP DTOs, generated OpenAPI and frontend rule/history models.
 
-- [ ] Replace remaining public string-only selector assumptions with structured
+- [x] Replace remaining public string-only selector assumptions with structured
   blueprint/stream/exact-path identity and contract-aware validation.
 - [ ] Reject ambiguous paths, unknown declarations and invalid type/operator
   combinations; preserve exact integer comparisons and missing-value semantics.
@@ -210,6 +210,20 @@ evidence all pass. Existing unit tests do not substitute for browser checks.
   and serializes int64 as decimal text. Real PostgreSQL and Turso tests cover
   incompatible revisions sharing a path; web history separates their charts
   and table columns. The frontend suite passes 39 tests, with browser QA open.
+- Rule conditions now use a tagged public selector carrying blueprint, revision,
+  stream and exact JSON pointer for metrics. Both fresh database adapters persist
+  and reload that identity; PostgreSQL and Turso tests also check tenant isolation.
+  Runtime telemetry compares the event's originating revision before evaluating
+  a rule. The web editor emits and round-trips structured selectors, including
+  dotted stream keys and escaped pointers; OpenAPI/types were regenerated.
+  Geofence creation now validates tenant-owned zones and one state with optional
+  inside dwell. Focused runtime tests cover dwell and exit transitions. Full
+  adapter-backed rule/action and browser flows remain open. Checks on this slice:
+  `cargo test -p extrittio-rule-engine -p extrittio-backend-core -p extrittio-backend --lib`
+  (71, 55, 60 passed), `cargo test -p extrittio-backend-turso` (25 passed
+  before the new focused selector test, which passed), the new PostgreSQL rule
+  selector test on a fresh disposable baseline, and web typecheck, 42 unit tests
+  and production build.
 - Firmware/OTA required-revision schema regression passed; OpenAPI/types updated.
 - A disposable PostgreSQL 17 container is available for the current execution
   pass; no existing development database was deleted.

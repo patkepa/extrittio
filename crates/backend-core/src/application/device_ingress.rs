@@ -25,6 +25,7 @@ fn prepare_evaluation(
         device_id: context.identity.device_id().to_owned(),
         fleet_id: context.fleet_id,
         blueprint_id: context.blueprint_id.clone(),
+        blueprint_revision_id: None,
         input: crate::rule_snapshots::RuleEvaluationInput::Status(StatusChange {
             old_status: context.status.clone(),
             new_status: new_status.to_owned(),

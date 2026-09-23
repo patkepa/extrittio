@@ -118,7 +118,15 @@ export const Rules = () => {
   const conditionsSummary = (rule: Rule) => {
     if (!rule.conditions || rule.conditions.length === 0) return 'No conditions';
     return rule.conditions
-      .map((c) => `${c.field} ${operatorLabel[c.operator] ?? c.operator} ${c.value}`)
+      .map((c) => {
+        const field =
+          c.selector.kind === 'metric'
+            ? `${c.selector.stream_key}.${c.selector.field_path}`
+            : c.selector.kind === 'geofence'
+              ? `${c.selector.zone_id} ${c.selector.field}`
+              : 'status';
+        return `${field} ${operatorLabel[c.operator] ?? c.operator} ${c.value}`;
+      })
       .join(', ');
   };
 

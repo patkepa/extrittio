@@ -60,6 +60,7 @@ pub struct DeviceRuleEvaluation {
     pub device_id: String,
     pub fleet_id: Option<i32>,
     pub blueprint_id: Option<String>,
+    pub blueprint_revision_id: Option<String>,
     pub input: RuleEvaluationInput,
     pub observed_at: chrono::NaiveDateTime,
 }
@@ -114,11 +115,12 @@ impl DeviceRuleEvaluation {
                 self.observed_at,
             ),
             RuleEvaluationInput::Telemetry { data, geofence } => {
-                let mut actions = evaluate::evaluate_telemetry_for_tenant_at(
+                let mut actions = evaluate::evaluate_telemetry_for_tenant_revision_at(
                     self.tenant.as_str(),
                     &self.device_id,
                     self.fleet_id,
                     self.blueprint_id.as_deref(),
+                    self.blueprint_revision_id.as_deref(),
                     data,
                     &cache,
                     self.observed_at,

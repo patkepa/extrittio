@@ -258,6 +258,7 @@ use utoipa::{Modify, OpenApi};
         super::rules::CreateRuleRequest,
         super::rules::UpdateRuleRequest,
         super::rules::ConditionInput,
+        super::rules::ConditionSelector,
         super::rules::ActionInput,
         super::rules::EnabledInput,
         super::rules::RuleResponse,

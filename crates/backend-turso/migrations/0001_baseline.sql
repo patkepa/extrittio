@@ -128,7 +128,8 @@ CREATE TABLE rules (
   UNIQUE (tenant_id, name), UNIQUE (tenant_id, id)
 );
 CREATE TABLE rule_conditions (
-  id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, rule_id TEXT NOT NULL, field TEXT NOT NULL, operator TEXT NOT NULL,
+  id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, rule_id TEXT NOT NULL, field TEXT NOT NULL,
+  blueprint_id TEXT, blueprint_revision_id TEXT, operator TEXT NOT NULL,
   value TEXT NOT NULL, condition_group INTEGER NOT NULL, zone_id TEXT,
   FOREIGN KEY (tenant_id, rule_id) REFERENCES rules(tenant_id, id) ON DELETE CASCADE,
   FOREIGN KEY (tenant_id, zone_id) REFERENCES zones(tenant_id, id)

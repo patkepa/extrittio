@@ -57,6 +57,8 @@ fn condition_record(condition: RuleCondition) -> RuleConditionRecord {
     RuleConditionRecord {
         id: condition.id,
         field: condition.field,
+        blueprint_id: condition.blueprint_id,
+        blueprint_revision_id: condition.blueprint_revision_id,
         operator: condition.operator,
         value: condition.value,
         condition_group: condition.condition_group,
@@ -166,6 +168,8 @@ impl RuleRepository for PostgresRuleRepository {
                                 tenant_id: tenant_id.clone(),
                                 rule_id: record.id.clone(),
                                 field: condition.field,
+                                blueprint_id: condition.blueprint_id,
+                                blueprint_revision_id: condition.blueprint_revision_id,
                                 operator: condition.operator,
                                 value: condition.value,
                                 condition_group: condition.condition_group,
@@ -235,6 +239,8 @@ impl RuleRepository for PostgresRuleRepository {
                                     tenant_id: tenant_id.clone(),
                                     rule_id: id.clone(),
                                     field: condition.field,
+                                    blueprint_id: condition.blueprint_id,
+                                    blueprint_revision_id: condition.blueprint_revision_id,
                                     operator: condition.operator,
                                     value: condition.value,
                                     condition_group: condition.condition_group,
@@ -337,6 +343,8 @@ impl RuleRepository for PostgresRuleRepository {
                                     .into_iter()
                                     .map(|condition| CachedCondition {
                                         field: condition.field,
+                                        blueprint_id: condition.blueprint_id,
+                                        blueprint_revision_id: condition.blueprint_revision_id,
                                         operator: condition.operator,
                                         value: condition.value,
                                         zone_id: condition.zone_id,

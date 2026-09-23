@@ -93,6 +93,7 @@ mod rollup_tests {
                             device_id: "device".into(),
                             fleet_id: None,
                             blueprint_id: Some("blueprint".into()),
+                            blueprint_revision_id: None,
                             input: RuleEvaluationInput::Telemetry {
                                 data: TelemetryData {
                                     latitude: None,
@@ -186,6 +187,7 @@ mod rollup_tests {
                     device_id: "device".into(),
                     fleet_id: None,
                     blueprint_id: None,
+                    blueprint_revision_id: None,
                     input: RuleEvaluationInput::Telemetry {
                         data: TelemetryData {
                             latitude: None,
@@ -745,6 +747,7 @@ mod location_tests {
                 device_id: "device".into(),
                 fleet_id: None,
                 blueprint_id: None,
+                blueprint_revision_id: None,
                 input: RuleEvaluationInput::Telemetry {
                     data: TelemetryData {
                         latitude: None,
